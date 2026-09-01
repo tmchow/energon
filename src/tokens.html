@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tokens — Energon</title>
+  __HEAD__
+  <style>__CSS__</style>
+</head>
+<body class="page-tokens">
+  <header class="top">
+    <div class="top-inner">
+      <a class="brand" href="/">
+        <div class="mark">__LOGO__</div>
+        <div>
+          <div class="name">Energon</div>
+        </div>
+      </a>
+      <div class="top-end">
+        <nav class="app-nav" aria-label="Pages">
+          <a href="/">Hub</a>
+          <a href="/tokens" class="on" aria-current="page">Tokens</a>
+          <a href="/setup">Setup</a>
+          <a href="/about">About</a>
+          <a href="/stats">Stats</a>
+        </nav>
+        <div class="who" id="who"></div>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <h1 class="display">Tokens</h1>
+    <p class="lede">Agents send this as <code>__TOKEN_ENV__</code>. The list shows the last four characters. Reveal returns the full secret.</p>
+    <div id="messages"></div>
+    <section class="card">
+      <div class="card-head">
+        <h2>Mint</h2>
+      </div>
+      <div class="card-body">
+        <form id="mint" class="mint">
+          <label class="field">Label
+            <input name="label" placeholder="laptop" required maxlength="64">
+          </label>
+          <button type="submit" class="btn-primary">Mint token</button>
+        </form>
+        <div id="new-token"></div>
+      </div>
+      <div class="card-body tight" id="tokens"></div>
+    </section>
+  </main>
+  __FOOTER__
+
+  <dialog id="dlg" class="dlg">
+    <form method="dialog" class="dlg-form" id="dlg-form">
+      <h3 id="dlg-title"></h3>
+      <p class="muted" id="dlg-msg"></p>
+      <label class="field" id="dlg-field">
+        <span id="dlg-label"></span>
+        <input id="dlg-input">
+      </label>
+      <div class="dlg-actions">
+        <button value="cancel" type="submit">Cancel</button>
+        <button value="ok" type="submit" class="btn-primary" id="dlg-ok">Continue</button>
+      </div>
+    </form>
+  </dialog>
+
+<script id="bootstrap" type="application/json">__BOOTSTRAP__</script>
+<script>
+const boot = JSON.parse(document.getElementById("bootstrap").textContent);
+const $ = (id) => document.getElementById(id);
+const tokenEnv = boot.token_env || "__TOKEN_ENV__";
+
+function fmtTime(iso) {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function msg(html, err) {
+  const div = document.createElement("div");
+  div.className = err ? "err" : "flash";
+  div.innerHTML = html;
+  $("messages").prepend(div);
+}
+function rowActions(items) {
+  const box = document.createElement("div");
+  box.className = "row-actions";
+  for (const item of items) if (item) box.appendChild(item);
+  return box;
+}
+function openDialog({ title, message, label, value, placeholder, type, ok, danger, match }) {
+  return new Promise((resolve) => {
+    const dlg = $("dlg");
+    const form = $("dlg-form");
+    const field = $("dlg-field");
+    const input = $("dlg-input");
+    $("dlg-title").textContent = title;
+    $("dlg-msg").textContent = message || "";
+    $("dlg-msg").hidden = !message;
+    $("dlg-ok").textContent = ok || "Continue";
+    $("dlg-ok").className = danger ? "btn-danger" : "btn-primary";
+    input.setCustomValidity("");
+    if (label) {
+      field.hidden = false;
+      $("dlg-label").textContent = label;
+      input.type = type || "text";
+      input.value = value || "";
+      input.placeholder = placeholder || "";
+      input.required = true;
+      input.autocomplete = "off";
+    } else {
+      field.hidden = true;
+      input.value = "";
+      input.required = false;
+    }
+    const onSubmit = (e) => {
+      const submitter = e.submitter;
+      if (!submitter || submitter.value !== "ok") {
+        input.setCustomValidity("");
+        return;
+      }
+      if (match != null && input.value !== match) {
+        e.preventDefault();
+        input.setCustomValidity("Type the exact label.");
+        input.reportValidity();
+        return;
+      }
+      input.setCustomValidity("");
+    };
+    const onInput = () => input.setCustomValidity("");
+    form.addEventListener("submit", onSubmit);
+    input.addEventListener("input", onInput);
+    const done = () => {
+      dlg.removeEventListener("close", done);
+      form.removeEventListener("submit", onSubmit);
+      input.removeEventListener("input", onInput);
+      if (dlg.returnValue !== "ok") return resolve(null);
+      resolve(label ? input.value : true);
+    };
+    dlg.addEventListener("close", done);
+    dlg.showModal();
+    if (label) setTimeout(() => input.focus(), 0);
+  });
+}
+
+function render(data) {
+  $("who").textContent = data.email ? data.email : "Not signed in";
+  const tokens = (data.tokens || []).filter((t) => !t.revoked);
+  if (!tokens.length) {
+    $("tokens").innerHTML = '<p class="empty"><strong>No active tokens</strong>Mint one with a label like laptop or ci.</p>';
+    return;
+  }
+  const wrap = document.createElement("div");
+  wrap.className = "table-wrap";
+  const t = document.createElement("table");
+  t.className = "data";
+  t.innerHTML = "<thead><tr><th>Label</th><th>Key</th><th>Created</th><th>Last used</th><th></th></tr></thead>";
+  const tb = document.createElement("tbody");
+  for (const tok of tokens) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${esc(tok.label)}</td><td class="token-hint">${esc(tok.hint || "—")}</td><td>${esc(fmtTime(tok.created_at))}</td><td>${esc(fmtTime(tok.last_used_at) || "never")}</td><td class="actions"></td>`;
+    const actions = [];
+    if (tok.recoverable) {
+      const show = document.createElement("button");
+      show.type = "button";
+      show.className = "btn-ghost btn-sm";
+      show.textContent = "Reveal";
+      show.addEventListener("click", () => reveal(tok.id, tok.label));
+      actions.push(show);
+    }
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "btn-danger btn-sm";
+    b.textContent = "Revoke";
+    b.addEventListener("click", () => revoke(tok.id, tok.label));
+    actions.push(b);
+    tr.lastElementChild.appendChild(rowActions(actions));
+    tb.appendChild(tr);
+  }
+  t.appendChild(tb);
+  wrap.appendChild(t);
+  $("tokens").replaceChildren(wrap);
+}
+
+async function api(url, opts) {
+  const res = await fetch(url, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.message || res.status + " " + url);
+  }
+  return data;
+}
+
+async function refresh() {
+  const res = await fetch("/account/data", { headers: { accept: "application/json" } });
+  if (!res.ok) return;
+  const data = await res.json();
+  render({ email: data.email, tokens: data.tokens });
+}
+
+$("mint").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const label = new FormData(e.target).get("label");
+  try {
+    const data = await api("/account/tokens", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ label }),
+    });
+    $("new-token").innerHTML = `<div class="flash" style="margin-top:1rem">
+      <p class="token"><code>export ${tokenEnv}=${esc(data.token)}</code></p></div>`;
+    e.target.reset();
+    await refresh();
+  } catch (err) {
+    msg(esc(err.message), true);
+  }
+});
+
+async function reveal(id, label) {
+  try {
+    const data = await api("/account/tokens/" + encodeURIComponent(id));
+    $("new-token").innerHTML = `<div class="flash" style="margin-top:1rem">
+      <p class="token"><code>export ${tokenEnv}=${esc(data.token)}</code></p></div>`;
+    $("new-token").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  } catch (err) {
+    msg(esc(err.message), true);
+  }
+}
+
+async function revoke(id, label) {
+  const ok = await openDialog({
+    title: "Revoke token",
+    message: "Agents using this key will get 401. Type the label to confirm.",
+    label: "Type “" + label + "” to revoke",
+    placeholder: label,
+    match: label,
+    ok: "Revoke",
+    danger: true,
+  });
+  if (!ok) return;
+  try {
+    await api("/account/tokens/" + encodeURIComponent(id) + "/revoke", { method: "POST" });
+    $("new-token").innerHTML = "";
+    await refresh();
+  } catch (err) {
+    msg(esc(err.message), true);
+  }
+}
+
+render(boot);
+</script>
+</body>
+</html>
