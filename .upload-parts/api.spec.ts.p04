@@ -1,0 +1,168 @@
+{ method: "DELETE", headers: auth(token) });
+    expect(del.status).toBe(200);
+    const got = await req("/ada/s/temp-site/bye.txt");
+    expect(got.status).toBe(404);
+  });
+
+  it("DELETE a loose file removes the object", async () => {
+    const token = await mint("del-file");
+    const created = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "X-Filename": "gone.txt", "content-type": "text/plain" }),
+      body: "bye",
+    });
+    expect(created.status).toBe(201);
+    const path = new URL(created.body.url).pathname;
+    const del = await json(`/v1/files/${created.body.id}`, { method: "DELETE", headers: auth(token) });
+    expect(del.status).toBe(200);
+    const missing = await req(path);
+    expect(missing.status).toBe(404);
+    const viaApi = await json(`/v1/files/${created.body.id}`, { headers: auth(token) });
+    expect(viaApi.status).toBe(404);
+  });
+
+  it("lists page with a keyset cursor and search the full set", async () => {
+    const token = await mint("pager", "pager@esperlabs.app");
+    for (const name of ["alpha.txt", "beta.txt", "gamma.txt"]) {
+      await json("/v1/files", {
+        method: "POST",
+        headers: auth(token, { "X-Filename": name, "content-type": "text/plain" }),
+        body: name,
+      });
+    }
+    const first = await json("/v1/files?sort=name&limit=2", { headers: auth(token) });
+    expect(first.status).toBe(200);
+    expect(first.body.total).toBeGreaterThanOrEqual(3);
+    expect(first.body.files).toHaveLength(2);
+    expect(first.body.files.map((f: { filename: string }) => f.filename)).toEqual(["alpha.txt", "beta.txt"]);
+    expect(first.body.next_cursor).toBeTruthy();
+
+    const second = await json("/v1/files?sort=name&limit=2&cursor=" + encodeURIComponent(first.body.next_cursor), {
+      headers: auth(token),
+    });
+    expect(second.body.files.map((f: { filename: string }) => f.filename)).toContain("gamma.txt");
+
+    const found = await json("/v1/files?q=gamma", { headers: auth(token) });
+    expect(found.body.files.map((f: { filename: string }) => f.filename)).toEqual(["gamma.txt"]);
+    expect(found.body.total).toBe(1);
+  });
+
+  it("minting a token requires a label", async () => {
+    const empty = await json("/account/tokens", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "Cf-Access-Authenticated-User-Email": "label@esperlabs.app",
+      },
+      body: JSON.stringify({ label: "   " }),
+    });
+    expect(empty.status).toBe(400);
+    expect(empty.body.error).toBe("bad_label");
+  });
+
+  it("optional share password gates the public URL, not /v1", async () => {
+    const token = await mint("pw-site");
+    const created = await json("/v1/sites", {
+      method: "POST",
+      headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "gated", overwrite: false, password: "hunter2" }),
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.password_protected).toBe(true);
+    expect(created.body.password).toBe("hunter2");
+
+    const listed = await json("/v1/sites/gated", { headers: auth(token) });
+    expect(listed.status).toBe(200);
+    expect(listed.body.password_protected).toBe(true);
+    expect(listed.body).not.toHaveProperty("password");
+
+    await json("/v1/sites/gated/files/index.html", {
+      method: "PUT",
+      headers: auth(token, { "content-type": "text/html" }),
+      body: "<h1>secret page</h1>",
+    });
+
+    const viaApi = await req("/v1/sites/gated/files/index.html", { headers: auth(token) });
+    expect(viaApi.status).toBe(200);
+    expect(await viaApi.text()).toContain("secret page");
+
+    const blocked = await req("/ada/s/gated/");
+    expect(blocked.status).toBe(401);
+    const html = await blocked.text();
+    expect(html).toContain("password-protected");
+    expect(html).toContain("X-Energon-Password");
+
+    const asJson = await json("/ada/s/gated/", { headers: { accept: "application/json" } });
+    expect(asJson.status).toBe(401);
+    expect(asJson.body.error).toBe("password_required");
+
+    const wrong = await json("/ada/s/gated/", { headers: { "X-Energon-Password": "nope" } });
+    expect(wrong.status).toBe(401);
+    expect(wrong.body.error).toBe("password_required");
+
+    const unlocked = await req("/ada/s/gated/", { headers: { "X-Energon-Password": "hunter2" } });
+    expect(unlocked.status).toBe(200);
+    expect(await unlocked.text()).toContain("secret page");
+    expect(unlocked.headers.get("cache-control")).toMatch(/no-store/);
+
+    const cookieVal = await unlockToken(await hashSharePassword("hunter2"));
+    const viaCookie = await req("/ada/s/gated/", {
+      headers: { cookie: `${GATE_COOKIE}=${cookieVal}` },
+    });
+    expect(viaCookie.status).toBe(200);
+    expect(await viaCookie.text()).toContain("secret page");
+  }, 15_000);
+
+  it("optional share password on a loose file", async () => {
+    const token = await mint("pw-file");
+    const created = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, {
+        "X-Filename": "secret.txt",
+        "X-Energon-Set-Password": "abc",
+        "content-type": "text/plain",
+      }),
+      body: "hidden",
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.password_protected).toBe(true);
+    expect(created.body.password).toBe("abc");
+    const listed = await json("/v1/files", { headers: auth(token) });
+    const row = (listed.body.files || []).find((f: { id: string }) => f.id === created.body.id);
+    expect(row.password_protected).toBe(true);
+    expect(row).not.toHaveProperty("password");
+    const path = new URL(created.body.url).pathname;
+
+    const viaApi = await req(`/v1/files/${created.body.id}`, { headers: auth(token) });
+    expect(viaApi.status).toBe(200);
+    expect(await viaApi.text()).toBe("hidden");
+
+    const blocked = await req(path);
+    expect(blocked.status).toBe(401);
+    const unlocked = await req(path, { headers: { "X-Energon-Password": "abc" } });
+    expect(unlocked.status).toBe(200);
+    expect(await unlocked.text()).toBe("hidden");
+  }, 15_000);
+
+  it("PATCH sets a share password", async () => {
+    const token = await mint("pw-patch");
+    await json("/v1/sites", {
+      method: "POST",
+      headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "patch-me" }),
+    });
+    const set = await json("/v1/sites/patch-me", {
+      method: "PATCH",
+      headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({ password: "later" }),
+    });
+    expect(set.status).toBe(200);
+    expect(set.body.password_protected).toBe(true);
+    expect(set.body.password).toBe("later");
+    const listing = await json("/v1/sites/patch-me", { headers: auth(token) });
+    expect(listing.status).toBe(200);
+    expect(listing.body.password_protected).toBe(true);
+    expect(listing.body).not.toHaveProperty("password");
+    const cleared = await json("/v1/sites/patch-me", {
+      method: "PATCH",
+      headers: auth(token,
