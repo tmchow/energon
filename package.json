@@ -1,0 +1,34 @@
+{
+  "name": "energon",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run --config vitest.unit.config.ts && vitest run",
+    "test:unit": "vitest run --config vitest.unit.config.ts",
+    "test:worker": "vitest run",
+    "test:watch": "vitest",
+    "types": "wrangler types",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p test/tsconfig.json",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "prepare": "git config core.hooksPath .githooks || true",
+    "db:local": "wrangler d1 migrations apply energon --local",
+    "db:remote": "wrangler d1 migrations apply energon --remote",
+    "skill:render": "node scripts/render-skill.mjs",
+    "skill:init": "node scripts/render-skill.mjs --init"
+  },
+  "dependencies": {
+    "fflate": "^0.8.2",
+    "marked": "^18.0.11",
+    "xss": "^1.0.15"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.12.4",
+    "oxlint": "^1.80.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.33.1"
+  }
+}
