@@ -1,0 +1,177 @@
+site_not_found");
+    expect(put.body.message).toContain("POST /v1/sites");
+
+    const sites = await json("/v1/sites", { headers: auth(token) });
+    const slugs = (sites.body.sites || []).map((s: { slug: string }) => s.slug);
+    expect(slugs).not.toContain("ghost");
+  });
+
+  it("site with only notes.md serves a file list at / and the file at /notes.md", async () => {
+    const token = await mint("notes-only");
+    await json("/v1/sites", {
+      method: "POST",
+      headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "notes-site" }),
+    });
+    await json("/v1/sites/notes-site/files/notes.md", {
+      method: "PUT",
+      headers: auth(token),
+      body: "# notes",
+    });
+    const index = await req("/ada/s/notes-site/");
+    expect(index.status).toBe(200);
+    const html = await index.text();
+    expect(html).toContain("No index.html or index.md");
+    expect(html).toContain("notes.md");
+
+    const file = await req("/ada/s/notes-site/notes.md");
+    expect(file.status).toBe(200);
+    expect(file.headers.get("content-type")).toMatch(/markdown/);
+    expect(await file.text()).toBe("# notes");
+  });
+
+  it("loose file POST returns a unique URL that downloads", async () => {
+    const token = await mint("loose");
+    const a = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "X-Filename": "hello.txt", "content-type": "text/plain" }),
+      body: "hello world",
+    });
+    expect(a.status).toBe(201);
+    expect(a.body.url).toMatch(/^https:\/\/energon\.example\.com\/ada\/f\/[A-Za-z0-9]{6}\/hello\.txt$/);
+    expect(a.body.handle).toBe("ada");
+    expect(a.body.api_url).toBe(`https://energon.example.com/v1/files/${a.body.id}`);
+    const viaApi = await req(`/v1/files/${a.body.id}`, { headers: auth(token) });
+    expect(viaApi.status).toBe(200);
+    expect(await viaApi.text()).toBe("hello world");
+    const path = new URL(a.body.url).pathname;
+    const got = await req(path);
+    expect(got.status).toBe(200);
+    expect(got.headers.get("location")).toBeNull();
+    expect(await got.text()).toBe("hello world");
+
+    const b = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "X-Filename": "hello.txt", "content-type": "text/plain" }),
+      body: "hello world",
+    });
+    expect(b.body.url).not.toBe(a.body.url);
+
+    const spaced = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "X-Filename": "My Notes.md", "content-type": "text/markdown" }),
+      body: "notes",
+    });
+    expect(spaced.body.url).toMatch(/\/ada\/f\/[A-Za-z0-9]{6}\/My_Notes\.md$/);
+    expect(spaced.body.filename).toBe("My Notes.md");
+    const spacedGet = await req(new URL(spaced.body.url).pathname);
+    expect(spacedGet.status).toBe(200);
+    expect(await spacedGet.text()).toBe("notes");
+  });
+
+  it("PUT /v1/files/{id} replaces bytes and keeps the same URL", async () => {
+    const token = await mint("revise");
+    const created = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "X-Filename": "notes.md", "content-type": "text/markdown" }),
+      body: "# v1",
+    });
+    expect(created.status).toBe(201);
+    const replaced = await json(`/v1/files/${created.body.id}`, {
+      method: "PUT",
+      headers: auth(token, { "X-Filename": "notes.md", "content-type": "text/markdown" }),
+      body: "# v2\nrevised",
+    });
+    expect(replaced.status).toBe(200);
+    expect(replaced.body.replaced).toBe(true);
+    expect(replaced.body.id).toBe(created.body.id);
+    expect(replaced.body.url).toBe(created.body.url);
+    expect(replaced.body.api_url).toBe(created.body.api_url);
+    const viaApi = await req(`/v1/files/${created.body.id}`, { headers: auth(token) });
+    expect(await viaApi.text()).toBe("# v2\nrevised");
+    const missing = await json("/v1/files/doesnotexist00000000000", {
+      method: "PUT",
+      headers: auth(token, { "X-Filename": "x.txt" }),
+      body: "nope",
+    });
+    expect(missing.status).toBe(404);
+  });
+
+  it("failed password validation leaves renamed loose-file content intact", async () => {
+    const token = await mint("invalid-password-rename");
+    const created = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "X-Filename": "old.txt", "content-type": "text/plain" }),
+      body: "original",
+    });
+
+    const replaced = await json(`/v1/files/${created.body.id}`, {
+      method: "PUT",
+      headers: auth(token, {
+        "X-Filename": "new.txt",
+        "X-Energon-Set-Password": "x".repeat(129),
+        "content-type": "text/plain",
+      }),
+      body: "replacement",
+    });
+    expect(replaced.status).toBe(400);
+    expect(replaced.body.error).toBe("bad_password");
+
+    const viaApi = await req(`/v1/files/${created.body.id}`, { headers: auth(token) });
+    expect(viaApi.status).toBe(200);
+    expect(await viaApi.text()).toBe("original");
+
+    const publicFile = await req(new URL(created.body.url).pathname);
+    expect(publicFile.status).toBe(200);
+    expect(await publicFile.text()).toBe("original");
+  });
+
+  it("POST a zip to /v1/files stays a zip, not a site", async () => {
+    const token = await mint("zip-loose");
+    const zipped = zipSync({ "index.html": strToU8("<h1>inside</h1>") });
+    const posted = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "X-Filename": "site.zip", "content-type": "application/zip" }),
+      body: zipped,
+    });
+    expect(posted.status).toBe(201);
+    expect(posted.body.filename).toBe("site.zip");
+    const path = new URL(posted.body.url).pathname;
+    const got = await req(path);
+    expect(got.status).toBe(200);
+    expect(got.headers.get("content-type")).toMatch(/zip/);
+    const bytes = new Uint8Array(await got.arrayBuffer());
+    expect(bytes[0]).toBe(0x50);
+    expect(bytes[1]).toBe(0x4b);
+  });
+
+  it("import zip with wrapping folder puts index.html at site root", async () => {
+    const token = await mint("import");
+    await json("/v1/sites", {
+      method: "POST",
+      headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "wrapped" }),
+    });
+    const zipped = zipSync({
+      "my-site/index.html": strToU8("<h1>root</h1>"),
+      "my-site/css/app.css": strToU8("body{color:red}"),
+    });
+    const imported = await json("/v1/sites/wrapped/import", {
+      method: "POST",
+      headers: auth(token, { "content-type": "application/zip" }),
+      body: zipped,
+    });
+    expect(imported.status).toBe(200);
+    expect(imported.body.written.sort()).toEqual(["css/app.css", "index.html"]);
+    const page = await req("/ada/s/wrapped/");
+    expect(await page.text()).toContain("root");
+  });
+
+  it("26 MB file is 413 mentioning the 25 MB cap", async () => {
+    const token = await mint("big");
+    await json("/v1/sites", {
+      method: "POST",
+      headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "big-site" }),
+    });
+    const tooBig = awai
