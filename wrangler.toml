@@ -1,0 +1,51 @@
+name = "energon"
+main = "src/index.ts"
+compatibility_date = "2026-08-26"
+workers_dev = true
+
+# Uncomment after you attach a custom domain in Cloudflare.
+# [[routes]]
+# pattern = "energon.example.com"
+# custom_domain = true
+
+[vars]
+# Placeholder host. Run `npm run skill:init` with your real origin, then
+# set PUBLIC_ORIGIN / TOKEN_ENV / SKILL_NAME / MARKETPLACE_* to match.
+PUBLIC_ORIGIN = "https://energon.example.com"
+TOKEN_ENV = "ENERGON_TOKEN"
+SKILL_NAME = "energon"
+MARKETPLACE_NAME = "energon"
+MARKETPLACE_REPO = "tmchow/energon"
+# Company-shaped defaults: coworkers share writes, content does not expire.
+# Omit these vars to get public-strict code defaults (owner writes, 7d / 30d TTL).
+ALLOW_UNLIMITED_RETENTION = "true"
+DEFAULT_TTL = "never"
+MAX_TTL = "never"
+WRITE_POLICY = "instance"
+# Lock token minting to your workspace after Access is set up.
+# ALLOWED_EMAIL_DOMAINS = "your.co,your.com"
+FOOTER_TEXT = ""
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+# Repeat GETs of public /sites and /files skip the Worker (no D1, no R2, no CPU).
+# Cached until write or delete purges that prefix. Passworded responses are private.
+[cache]
+enabled = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "energon"
+# Replace with the id printed by `npx wrangler d1 create energon`.
+database_id = "00000000-0000-4000-8000-000000000001"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "energon"
+
+[[rules]]
+type = "Text"
+globs = ["**/*.html", "**/*.svg", "**/*.css", "**/*.client.js"]
+fallthrough = false

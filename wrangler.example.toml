@@ -1,0 +1,59 @@
+# Copy over wrangler.toml after `wrangler d1 create` / `wrangler r2 bucket create`.
+# Do not reuse another instance's database_id or bucket. See INSTALL.md and docs/DEPLOY.md.
+
+name = "energon"
+main = "src/index.ts"
+compatibility_date = "2026-08-26"
+workers_dev = true
+
+# [[routes]]
+# pattern = "energon.example.com"
+# custom_domain = true
+
+[vars]
+PUBLIC_ORIGIN = "https://energon.example.com"
+TOKEN_ENV = "ENERGON_TOKEN"
+SKILL_NAME = "energon"
+MARKETPLACE_NAME = "energon"
+MARKETPLACE_REPO = "your-org/energon"
+
+# Company (trusted org) — matches the committed wrangler.toml:
+ALLOW_UNLIMITED_RETENTION = "true"
+DEFAULT_TTL = "never"
+MAX_TTL = "never"
+WRITE_POLICY = "instance"
+# ALLOWED_EMAIL_DOMAINS = "example.com"
+# Optional line on signed-in pages. Omit or leave empty for no footer.
+# FOOTER_TEXT = "Internal — not for the public internet."
+# File / zip cap. Omit for 25 MB.
+# MAX_FILE_BYTES = "25mb"
+# Whole-bucket safety valve. Omit for 20 GB.
+# MAX_PLATFORM_BYTES = "20gb"
+
+# Stricter / untrusted host — use instead of the block above:
+# ALLOW_UNLIMITED_RETENTION = "false"
+# DEFAULT_TTL = "7d"
+# MAX_TTL = "30d"
+# WRITE_POLICY = "owner"
+# ALLOWED_EMAIL_DOMAINS = ""
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[cache]
+enabled = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "energon"
+database_id = "PASTE_FROM_WRANGLER_D1_CREATE"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "energon"
+
+[[rules]]
+type = "Text"
+globs = ["**/*.html", "**/*.svg", "**/*.css", "**/*.client.js"]
+fallthrough = false
