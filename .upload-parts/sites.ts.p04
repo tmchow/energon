@@ -1,0 +1,82 @@
+path = assertFilePath(pathRaw);
+  } catch {
+    return htmlPage(`<!doctype html><meta charset="utf-8"><title>Not found</title><p>Bad path.</p>`, 404, {
+      "cache-control": "no-store",
+    });
+  }
+  const obj = await env.BUCKET.get(siteKey(handle, slug, path));
+  if (!obj) {
+    return htmlPage(
+      `<!doctype html><meta charset="utf-8"><title>Not found</title><p>No file at ${escapeHtml(sitePublicPathHint(handle, slug, path))}.</p>`,
+      404,
+      { "cache-control": "no-store" },
+    );
+  }
+  if (isMarkdownName(path)) return respondMarkdown(request, obj, path);
+  const type = obj.httpMetadata?.contentType || "application/octet-stream";
+  return serveObject(obj, type, cacheable, siteCacheTag(handle, slug), remaining, {
+    filename: basename(path),
+    download: wantsDownload(request),
+  });
+}
+
+async function fileListHtml(env: Env, site: SiteRow): Promise<string> {
+  const files = await env.DB.prepare(
+    `SELECT path, size, content_type, updated_at FROM site_files WHERE handle = ? AND slug = ? ORDER BY path`,
+  )
+    .bind(site.handle, site.slug)
+    .all<{ path: string; size: number; content_type: string; updated_at: string }>();
+  const rows = (files.results || [])
+    .map(
+      (f) =>
+        `<tr><td><a href="${escapeHtml(f.path)}">${escapeHtml(f.path)}</a></td><td class="num">${escapeHtml(formatBytes(f.size))}</td><td>${escapeHtml(f.content_type)}</td></tr>`,
+    )
+    .join("");
+  const list = rows
+    ? `<table class="data"><thead><tr><th>Path</th><th class="num">Size</th><th>Type</th></tr></thead><tbody>${rows}</tbody></table>`
+    : `<p class="empty"><strong>Empty site</strong>No files yet.</p>`;
+  return documentShell({
+    title: `${site.slug} — ${PRODUCT}`,
+    bodyClass: "page-listing",
+    body: `<header class="top"><div class="top-inner">
+      <a class="brand" href="/"><div class="mark">${brandMark()}</div><div><div class="name">${escapeHtml(PRODUCT)}</div></div></a>
+      <a class="who" href="/">Back to hub</a>
+    </div></header>
+    <main class="wrap">
+      <h1>/${escapeHtml(site.handle)}/s/${escapeHtml(site.slug)}/</h1>
+      <p class="crumb">No index.html or index.md. Last written by ${escapeHtml(site.last_written_by)} at ${escapeHtml(site.updated_at)}.</p>
+      <section class="card"><div class="card-body tight">${list}</div></section>
+    </main>`,
+  });
+}
+
+function sitePublicPathHint(handle: string, slug: string, path: string): string {
+  return `/${handle}/s/${slug}/${path}`;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+}
+
+function serveObject(
+  obj: R2ObjectBody,
+  contentType: string,
+  cacheable: boolean,
+  tag: string,
+  remainingSeconds?: number | null,
+  extra?: { filename?: string; download?: boolean },
+): Response {
+  const headers = new Headers();
+  headers.set("content-type", contentType);
+  headers.set("x-content-type-options", "nosniff");
+  headers.set("cache-control", cacheable ? publicCacheControl(remainingSeconds) : privateCacheControl());
+  if (cacheable) headers.set("cache-tag", tag);
+  headers.set("etag", obj.httpEtag);
+  if (obj.size != null) headers.set("content-length", String(obj.size));
+  if (extra?.filename) {
+    headers.set("content-disposition", contentDisposition(extra.download ? "attachment" : "inline", extra.filename));
+  } else if (extra?.download) {
+    headers.set("content-disposition", "attachment");
+  }
+  return new Response(obj.body, { headers });
+}
