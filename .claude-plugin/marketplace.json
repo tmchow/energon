@@ -1,0 +1,22 @@
+{
+  "name": "energon",
+  "description": "Energon — internal URLs for prototypes and agent-made files.",
+  "owner": {
+    "name": "Energon",
+    "url": "https://github.com/tmchow/energon"
+  },
+  "metadata": {
+    "description": "Energon — internal URLs for prototypes and agent-made files.",
+    "pluginRoot": "./plugins"
+  },
+  "plugins": [
+    {
+      "name": "energon",
+      "source": "./plugins/energon",
+      "description": "Internal URLs for prototypes, markdown, and agent-made files so work can leave a session.",
+      "version": "1.0.0",
+      "homepage": "https://energon.example.com",
+      "keywords": ["energon", "publish", "preview", "static"]
+    }
+  ]
+}

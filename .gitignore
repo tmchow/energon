@@ -1,0 +1,10 @@
+node_modules/
+.wrangler/
+.dev.vars
+.DS_Store
+*.log
+.mf/
+.test-storage/
+dist/
+.clawpatch/
+worker-configuration.d.ts

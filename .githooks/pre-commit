@@ -1,0 +1,3 @@
+#!/bin/sh
+# Errors fail the commit. Warnings (including complexity) print and do not fail.
+exec npx oxlint
