@@ -1,0 +1,88 @@
+nsfer.items || [])];
+    const entries = items.map((it) => it.webkitGetAsEntry && it.webkitGetAsEntry()).filter(Boolean);
+    await handleFiles([...(e.dataTransfer.files || [])], entries);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  } catch (err) {
+    msg(esc(err.message), true);
+  }
+});
+
+$("pick-files").addEventListener("click", () => $("filepick").click());
+$("pick-folder").addEventListener("click", () => $("folderpick").click());
+$("filepick").addEventListener("change", async (e) => {
+  try { await handleFiles([...e.target.files], []); } catch (err) { msg(esc(err.message), true); }
+  e.target.value = "";
+});
+$("folderpick").addEventListener("change", async (e) => {
+  const files = [...e.target.files];
+  try {
+    if (files.length) {
+      showStage({
+        kind: "folder",
+        files: files.map((f) => ({ path: f.webkitRelativePath || f.name, file: f })),
+        slug: slugify(files[0].webkitRelativePath?.split("/")[0] || "site"),
+      });
+    }
+  } catch (err) { msg(esc(err.message), true); }
+  e.target.value = "";
+});
+
+$("stage-go").addEventListener("click", () => {
+  const run = staged && staged.kind === "loose" ? launchLoose : launchSite;
+  run().catch((err) => msg(esc(err.message), true));
+});
+$("stage-cancel").addEventListener("click", resetStage);
+$("stage-slug").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); launchSite(); } });
+$("stage-filename").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); launchLoose(); } });
+
+let qTimer = 0;
+$("q").addEventListener("input", () => {
+  clearTimeout(qTimer);
+  qTimer = setTimeout(() => { listState.q = $("q").value.trim(); resetLists(); }, 200);
+});
+$("sort").addEventListener("change", () => { listState.sort = $("sort").value; resetLists(); });
+$("scope").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-scope]");
+  if (!btn) return;
+  listState.scope = btn.getAttribute("data-scope");
+  for (const b of $("scope").querySelectorAll("button")) b.classList.toggle("on", b === btn);
+  resetLists();
+});
+
+fillTtlSelect();
+fillWriteSelect();
+bindPwField($("stage-password"), $("stage-pw-gen"), $("stage-pw-copy"));
+bindPwField($("pw-dlg-input"), $("pw-dlg-gen"), $("pw-dlg-copy"));
+$("more-dlg").addEventListener("click", (e) => {
+  if (e.target === $("more-dlg")) $("more-dlg").close();
+});
+render(boot);
+
+const modelContext = document.modelContext || navigator.modelContext;
+if (modelContext && typeof modelContext.registerTool === "function") {
+  const text = (value) => ({ content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value) }] });
+  modelContext.registerTool({
+    name: "energon_help",
+    description: "Energon SOP and public API map. Prefer this or GET /v1/help before inventing routes.",
+    inputSchema: { type: "object", properties: {} },
+    async execute() {
+      const res = await fetch("/v1/help");
+      return text(await res.json());
+    },
+  });
+  modelContext.registerTool({
+    name: "energon_list",
+    description: "List sites, files, and token labels visible on this signed-in hub. Does not return token secrets.",
+    inputSchema: { type: "object", properties: {} },
+    async execute() {
+      const res = await fetch("/account/data", { headers: { accept: "application/json" } });
+      const data = await res.json();
+      return text({
+        email: data.email,
+        sites: data.sites,
+        files: data.files,
+        tokens: (data.tokens || []).filter((t) => !t.revoked).map((t) => ({ label: t.label, hint: t.hint || null, recoverable: t.recoverable })),
+      });
+    },
+  });
+}
