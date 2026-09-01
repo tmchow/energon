@@ -1,0 +1,166 @@
+t json("/v1/sites/big-site/files/huge.bin", {
+      method: "PUT",
+      headers: auth(token, { "content-length": String(26 * 1024 * 1024) }),
+      body: "x",
+    });
+    expect(tooBig.status).toBe(413);
+    expect(tooBig.body.error).toBe("too_large");
+    expect(tooBig.body.message).toContain("25 MB");
+  });
+
+  it("revoked token cannot PUT", async () => {
+    const email = "revoker@esperlabs.app";
+    const token = await mint("to-revoke", email);
+    const listed = await json("/account/data", {
+      headers: { "Cf-Access-Authenticated-User-Email": email },
+    });
+    const id = listed.body.tokens.find((t: { label: string }) => t.label === "to-revoke").id;
+    const revoked = await json(`/account/tokens/${id}/revoke`, {
+      method: "POST",
+      headers: { "Cf-Access-Authenticated-User-Email": email },
+    });
+    expect(revoked.status).toBe(200);
+    const put = await json("/v1/sites", {
+      method: "POST",
+      headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "after-revoke" }),
+    });
+    expect(put.status).toBe(401);
+    expect(put.body.message).toContain("/account");
+  });
+
+  it("two users' tokens can both write the same site", async () => {
+    const ada = await mint("ada-key", "ada-two@esperlabs.app");
+    const bob = await mint("bob-key", "bob@esperlabs.app");
+    await json("/v1/sites", {
+      method: "POST",
+      headers: auth(ada, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "shared" }),
+    });
+    await json("/v1/sites/shared/files/a.txt", {
+      method: "PUT",
+      headers: auth(ada),
+      body: "ada",
+    });
+    await json("/v1/sites/shared/files/b.txt", {
+      method: "PUT",
+      headers: auth(bob),
+      body: "bob",
+    });
+    const listing = await json("/v1/sites/shared", { headers: auth(ada) });
+    const paths = listing.body.files.map((f: { path: string }) => f.path).sort();
+    expect(paths).toEqual(["a.txt", "b.txt"]);
+    expect(listing.body.last_written_by).toBe("bob@esperlabs.app");
+    expect(listing.body.write_policy).toBe("instance");
+  });
+
+  it("owner write_policy 403s a second token on mutate and lets the creator flip it", async () => {
+    const ada = await mint("ada-owner", "ada-owner@esperlabs.app");
+    const bob = await mint("bob-owner", "bob-owner@esperlabs.app");
+    const created = await json("/v1/sites", {
+      method: "POST",
+      headers: auth(ada, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "private-draft", write_policy: "owner" }),
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.write_policy).toBe("owner");
+    const listing = await json("/v1/sites/private-draft", { headers: auth(ada) });
+    expect(listing.status).toBe(200);
+    expect(listing.body.write_policy).toBe("owner");
+    const bobPut = await json("/v1/sites/private-draft/files/b.txt", {
+      method: "PUT",
+      headers: auth(bob),
+      body: "bob",
+    });
+    expect(bobPut.status).toBe(403);
+    expect(bobPut.body.error).toBe("forbidden_write");
+    const bobPatch = await json("/v1/sites/private-draft", {
+      method: "PATCH",
+      headers: auth(bob, { "content-type": "application/json" }),
+      body: JSON.stringify({ write_policy: "instance" }),
+    });
+    expect(bobPatch.status).toBe(403);
+    expect(bobPatch.body.error).toBe("forbidden_write_policy");
+    const adaPatch = await json("/v1/sites/private-draft", {
+      method: "PATCH",
+      headers: auth(ada, { "content-type": "application/json" }),
+      body: JSON.stringify({ write_policy: "instance" }),
+    });
+    expect(adaPatch.status).toBe(200);
+    expect(adaPatch.body.write_policy).toBe("instance");
+    const bobPutAfter = await json("/v1/sites/private-draft/files/b.txt", {
+      method: "PUT",
+      headers: auth(bob),
+      body: "bob",
+    });
+    expect(bobPutAfter.status).toBe(201);
+    const adaLock = await json("/v1/sites/private-draft", {
+      method: "PATCH",
+      headers: auth(ada, { "content-type": "application/json" }),
+      body: JSON.stringify({ write_policy: "owner" }),
+    });
+    expect(adaLock.status).toBe(200);
+    const bobDelete = await json("/v1/sites/private-draft", {
+      method: "DELETE",
+      headers: auth(bob),
+    });
+    expect(bobDelete.status).toBe(403);
+  });
+
+  it("duplicate_from copies a site without password or write policy and the duplicator owns it", async () => {
+    const ada = await mint("ada-dup", "ada-dup@esperlabs.app");
+    const bob = await mint("bob-dup", "bob-dup@esperlabs.app");
+    await json("/v1/sites", {
+      method: "POST",
+      headers: auth(ada, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "source-draft", write_policy: "owner", password: "secret-pw" }),
+    });
+    await json("/v1/sites/source-draft/files/index.html", {
+      method: "PUT",
+      headers: auth(ada, { "content-type": "text/html" }),
+      body: "<h1>source</h1>",
+    });
+    const bobPut = await json("/v1/sites/source-draft/files/x.txt", {
+      method: "PUT",
+      headers: auth(bob),
+      body: "nope",
+    });
+    expect(bobPut.status).toBe(403);
+    const copied = await json("/v1/sites", {
+      method: "POST",
+      headers: auth(bob, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "source-draft-2", duplicate_from: "source-draft" }),
+    });
+    expect(copied.status).toBe(201);
+    expect(copied.body.duplicated).toBe(true);
+    expect(copied.body.duplicated_from).toBe("source-draft");
+    expect(copied.body.file_count).toBe(1);
+    expect(copied.body.password_protected).toBe(false);
+    expect(copied.body.write_policy).toBe("instance");
+    expect(copied.body.handle).not.toBe(copied.body.duplicated_from);
+    const listing = await json("/v1/sites/source-draft-2", { headers: auth(bob) });
+    expect(listing.status).toBe(200);
+    expect(listing.body.created_by).toBe("bob-dup@esperlabs.app");
+    expect(listing.body.write_policy).toBe("instance");
+    expect(listing.body.password_protected).toBe(false);
+    expect(listing.body.files.map((f: { path: string }) => f.path)).toEqual(["index.html"]);
+    const bytes = await req("/v1/sites/source-draft-2/files/index.html", { headers: auth(bob) });
+    expect(bytes.status).toBe(200);
+    expect(await bytes.text()).toBe("<h1>source</h1>");
+    const bobEdit = await json("/v1/sites/source-draft-2/files/note.txt", {
+      method: "PUT",
+      headers: auth(bob),
+      body: "mine",
+    });
+    expect(bobEdit.status).toBe(201);
+    const clash = await json("/v1/sites", {
+      method: "POST",
+      headers: auth(bob, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "source-draft-2", duplicate_from: "source-draft" }),
+    });
+    expect(clash.status).toBe(409);
+    const overwriteDup = await json("/v1/sites", {
+      method: "POST",
+      headers: auth(bob, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "other", duplicate_from: "source-draft", overwrite: true }),
+  
