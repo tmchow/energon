@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Energon</title>
+  __HEAD__
+  <style>__CSS__</style>
+</head>
+<body>
+  <header class="top">
+    <div class="top-inner">
+      <a class="brand" href="/">
+        <div class="mark">__LOGO__</div>
+        <div>
+          <div class="name">Energon</div>
+        </div>
+      </a>
+      <div class="top-end">
+        <nav class="app-nav" aria-label="Pages">
+          <a href="/" class="on" aria-current="page">Hub</a>
+          <a href="/tokens">Tokens</a>
+          <a href="/setup">Setup</a>
+          <a href="/about">About</a>
+          <a href="/stats">Stats</a>
+        </nav>
+        <div class="who" id="who"></div>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <h1 class="display">Ship a file or a site in seconds.</h1>
+    <div id="messages"></div>
+
+    <section class="card" style="margin-bottom:1rem">
+      <div id="drop" class="drop">
+        <div id="drop-idle">
+          <div class="drop-icon" aria-hidden="true">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 64 64">
+              <polygon fill="#b08cff" fill-opacity="0.16" points="32,11 51,22 32,33 13,22"/>
+              <polygon fill="#6a4cff" fill-opacity="0.1" points="13,22 32,33 32,51 13,40"/>
+              <polygon fill="#b08cff" fill-opacity="0.14" points="51,22 32,33 32,51 51,40"/>
+              <g stroke="#c9b0ff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity="0.45">
+                <path d="M32 11v18"/><path d="M32 29 51 40"/><path d="M32 29 13 40"/>
+              </g>
+              <g stroke="#f3ecff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M32 11 51 22 32 33 13 22Z"/>
+                <path d="M13 22v18l19 11 19-11V22"/>
+                <path d="M32 33v18"/>
+              </g>
+            </svg>
+          </div>
+          <div class="drop-title">Drop a folder, zip, or file</div>
+          <div class="drop-sub">Nothing is written until you Launch. A folder or zip becomes a site. One file gets a stable URL.</div>
+          <div class="drop-actions">
+            <button type="button" class="btn-primary" id="pick-files">Choose files</button>
+            <button type="button" id="pick-folder">Choose folder</button>
+          </div>
+        </div>
+        <div id="stage" hidden>
+          <div class="stage-status" id="stage-status">Ready</div>
+          <div id="stage-site">
+            <label class="field" for="stage-slug">URL
+              <div class="url-preview">
+                <span class="url-static" id="stage-site-origin"></span>
+                <input id="stage-slug" spellcheck="false" autocomplete="off" aria-label="Site slug">
+                <span class="url-static">/</span>
+              </div>
+            </label>
+          </div>
+          <div id="stage-loose" hidden>
+            <label class="field" for="stage-filename">URL
+              <div class="url-preview">
+                <span class="url-static" id="stage-file-origin"></span>
+                <input id="stage-filename" spellcheck="false" autocomplete="off" aria-label="Filename">
+              </div>
+            </label>
+          </div>
+          <p class="stage-exists" id="stage-exists" hidden>That slug already exists. Launch again to write into it — other paths stay.</p>
+          <label class="field stage-pw" for="stage-password">Optional password
+            <div class="pw-field">
+              <input id="stage-password" type="text" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" inputmode="text">
+              <div class="pw-tools">
+                <button type="button" class="icon-btn" id="stage-pw-gen" title="Generate a readable password" aria-label="Generate a readable password"></button>
+                <button type="button" class="icon-btn" id="stage-pw-copy" title="Copy password" aria-label="Copy password" hidden></button>
+              </div>
+            </div>
+            <span class="pw-note">Leave empty so anyone with the link can open it.</span>
+          </label>
+          <label class="field stage-ttl" for="stage-ttl">Expiration
+            <select id="stage-ttl" aria-label="When this expires"></select>
+            <span class="pw-note" id="stage-ttl-note"></span>
+          </label>
+          <label class="field stage-write" for="stage-write">Who can write
+            <select id="stage-write" aria-label="Who can write">
+              <option value="owner">Only you</option>
+              <option value="instance">Anyone with a token on this host.</option>
+            </select>
+          </label>
+          <div class="stage-actions">
+            <button type="button" id="stage-cancel">Cancel</button>
+            <button type="button" class="btn-primary" id="stage-go">Launch</button>
+          </div>
+        </div>
+        <input id="filepick" class="sr-only" type="file" multiple>
+        <input id="folderpick" class="sr-only" type="file" webkitdirectory>
+      </div>
+    </section>
+
+    <div class="stack catalog">
+      <section class="card">
+        <div class="card-head">
+          <h2>Sites</h2>
+          <span class="hint" id="sites-count"></span>
+        </div>
+        <div class="card-body toolbar">
+          <input id="q" class="search" type="search" placeholder="Search slugs and filenames" autocomplete="off">
+          <div class="seg" id="scope">
+            <button type="button" data-scope="involved" class="on">All</button>
+            <button type="button" data-scope="created">Created</button>
+            <button type="button" data-scope="edited">Edited</button>
+          </div>
+          <select id="sort" aria-label="Sort">
+            <option value="updated">Updated</option>
+            <option value="name">Name</option>
+          </select>
+        </div>
+        <div class="card-body tight" id="sites"></div>
+      </section>
+      <section class="card">
+        <div class="card-head">
+          <h2>Files</h2>
+          <span class="hint" id="files-count"></span>
+        </div>
+        <div class="card-body tight" id="files"></div>
+      </section>
+    </div>
+  </main>
+  __FOOTER__
+
+  <dialog id="dlg" class="dlg">
+    <form method="dialog" class="dlg-form" id="dlg-form">
+      <h3 id="dlg-title"></h3>
+      <p class="muted" id="dlg-msg"></p>
+      <label class="field" id="dlg-field">
+        <span id="dlg-label"></span>
+        <input id="dlg-input">
+      </label>
+      <div class="dlg-actions">
+        <button value="cancel" type="submit">Cancel</button>
+        <button value="ok" type="submit" class="btn-primary" id="dlg-ok">Continue</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="more-dlg" class="dlg sheet">
+    <div class="sheet-head">
+      <h3 id="more-dlg-title"></h3>
+      <p class="muted" id="more-dlg-meta"></p>
+    </div>
+    <div id="more-dlg-actions" class="sheet-list"></div>
+    <form method="dialog" class="sheet-cancel">
+      <button value="cancel">Cancel</button>
+    </form>
+  </dialog>
+
+  <dialog id="write-dlg" class="dlg">
+    <form method="dialog" class="dlg-form" id="write-dlg-form">
+      <h3 id="write-dlg-title">Who can write</h3>
+      <p class="muted" id="write-dlg-msg">Only the creator can change this.</p>
+      <label class="field" for="write-dlg-select">Who can write
+        <select id="write-dlg-select" aria-label="Who can write">
+          <option value="owner">Only you</option>
+          <option value="instance">Anyone with a token on this host.</option>
+        </select>
+      </label>
+      <div class="dlg-actions">
+        <button value="cancel" type="submit">Cancel</button>
+        <button value="ok" type="submit" class="btn-primary" id="write-dlg-ok">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="pw-dlg" class="dlg">
+    <form method="dialog" class="dlg-form" id="pw-dlg-form">
+      <h3 id="pw-dlg-title"></h3>
+      <p class="muted" id="pw-dlg-msg"></p>
+      <label class="field" for="pw-dlg-input">Share password
+        <div class="pw-field">
+          <input id="pw-dlg-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" inputmode="text">
+          <div class="pw-tools">
+            <button type="button" class="icon-btn" id="pw-dlg-gen" title="Generate a readable password" aria-label="Generate a readable password"></button>
+            <button type="button" class="icon-btn" id="pw-dlg-copy" title="Copy password" aria-label="Copy password" hidden></button>
+          </div>
+        </div>
+      </label>
+      <p class="pw-note">Energon only stores a hash. After you close this, the current password cannot be shown.</p>
+      <div class="dlg-actions">
+        <button value="cancel" type="submit">Cancel</button>
+        <button value="clear" type="submit" id="pw-dlg-clear" hidden>Remove</button>
+        <button value="ok" type="submit" class="btn-primary" id="pw-dlg-ok">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="drop-overlay" class="drop-overlay" aria-hidden="true">
+    <div class="drop-overlay-frame">
+      <div class="drop-title">Drop to stage</div>
+      <div class="drop-sub">A folder or zip becomes a site. One file gets a stable URL. Nothing is written until you Launch.</div>
+    </div>
+  </div>
+
+<script id="bootstrap" type="application/json">__BOOTSTRAP__</script>
+<script id="pw-words" type="application/json">__WORDS__</script>
+<script>__SCRIPT__</script>
+</body>
+</html>
