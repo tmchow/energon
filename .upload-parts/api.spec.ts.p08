@@ -1,0 +1,39 @@
+() => {
+    const { env } = await import("cloudflare:test");
+    const { status, body } = await json("/account/tokens", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "Cf-Access-Authenticated-User-Email": "ada@gmail.com",
+      },
+      body: JSON.stringify({ label: "stranger" }),
+    });
+    expect(status).toBe(403);
+    expect(body.error).toBe("forbidden_domain");
+
+    const hub = await json("/", { headers: { "Cf-Access-Authenticated-User-Email": "ada@gmail.com" } });
+    expect(hub.status).toBe(403);
+    const data = await json("/account/data", { headers: { "Cf-Access-Authenticated-User-Email": "ada@gmail.com" } });
+    expect(data.status).toBe(403);
+    expect(await env.DB.prepare(`SELECT email FROM users WHERE email = ?`).bind("ada@gmail.com").first()).toBeNull();
+  });
+
+  it("PATCH ttl resets expiry from now", async () => {
+    const token = await mint("ttl-patch");
+    const created = await json("/v1/sites", {
+      method: "POST",
+      headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "extend-me", overwrite: false, ttl: "1d" }),
+    });
+    expect(created.status).toBe(201);
+    const patched = await json("/v1/sites/extend-me", {
+      method: "PATCH",
+      headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({ ttl: "30d" }),
+    });
+    expect(patched.status).toBe(200);
+    expect(patched.body.ttl).toBe("30d");
+    const exp = Date.parse(patched.body.expires_at);
+    expect(exp - Date.now()).toBeGreaterThan(20 * 86400 * 1000);
+  });
+});
