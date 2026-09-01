@@ -1,0 +1,170 @@
+v);
+  if (bytes.byteLength > policy.fileBytes) throw tooLarge(bytes.byteLength, "", policy.fileBytes);
+  const site = await requireSite(env, actor, slug, { ctx, mutate: true });
+  const existing = await env.DB.prepare(
+    `SELECT size FROM site_files WHERE handle = ? AND slug = ? AND path = ?`,
+  )
+    .bind(site.handle, slug, path)
+    .first<{ size: number }>();
+  await assertStorageRoom(env.DB, bytes.byteLength, existing?.size ?? 0, policy.platformBytes);
+
+  const contentType = contentTypeFor(path, bytes, hintType);
+  const key = siteKey(site.handle, slug, path);
+  const ts = new Date().toISOString();
+  await env.BUCKET.put(key, bytes, { httpMetadata: { contentType } });
+  await env.DB.prepare(
+    `INSERT INTO site_files (handle, slug, path, size, content_type, updated_at, last_written_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(handle, slug, path) DO UPDATE SET
+       size = excluded.size,
+       content_type = excluded.content_type,
+       updated_at = excluded.updated_at,
+       last_written_by = excluded.last_written_by`,
+  )
+    .bind(site.handle, slug, path, bytes.byteLength, contentType, ts, actor.email)
+    .run();
+  await env.DB.prepare(`UPDATE sites SET updated_at = ?, last_written_by = ? WHERE handle = ? AND slug = ?`)
+    .bind(ts, actor.email, site.handle, slug)
+    .run();
+
+  const origin = publicOrigin(env);
+  purgeContent(ctx, [sitePrefix(site.handle, slug)]);
+  return {
+    url: sitePublicUrl(env, site.handle, slug, path),
+    api_url: `${origin}/v1/sites/${slug}/files/${path}`,
+    created: !existing,
+    path,
+    size: bytes.byteLength,
+    content_type: contentType,
+  };
+}
+
+export async function getSiteFile(
+  env: Env,
+  ctx: ExecutionContext | undefined,
+  actor: Actor,
+  slugRaw: string,
+  pathRaw: string,
+): Promise<Response> {
+  const slug = assertSlug(slugRaw);
+  const path = assertFilePath(pathRaw);
+  const site = await requireSite(env, actor, slug, { ctx });
+  const obj = await env.BUCKET.get(siteKey(site.handle, slug, path));
+  if (!obj) {
+    throw new ApiError(404, "file_not_found", `No file at ${sitePublicPathHint(site.handle, slug, path)}.`);
+  }
+  const headers = new Headers();
+  headers.set("content-type", obj.httpMetadata?.contentType || "application/octet-stream");
+  headers.set("x-content-type-options", "nosniff");
+  if (obj.size != null) headers.set("content-length", String(obj.size));
+  return new Response(obj.body, { headers });
+}
+
+export async function importSiteZip(
+  env: Env,
+  ctx: ExecutionContext | undefined,
+  actor: Actor,
+  slugRaw: string,
+  zipBytes: Uint8Array,
+): Promise<{ slug: string; url: string; written: string[] }> {
+  const policy = instancePolicy(env);
+  if (zipBytes.byteLength > policy.fileBytes) throw tooLarge(zipBytes.byteLength, "", policy.fileBytes);
+  const slug = assertSlug(slugRaw);
+  const site = await requireSite(env, actor, slug, { ctx, mutate: true });
+  const files = unpackZip(zipBytes, policy.fileBytes);
+  const existingRows = await env.DB.prepare(`SELECT path, size FROM site_files WHERE handle = ? AND slug = ?`)
+    .bind(site.handle, slug)
+    .all<{ path: string; size: number }>();
+  const existingMap = new Map((existingRows.results || []).map((r) => [r.path, r.size]));
+  let additional = 0;
+  let replacing = 0;
+  for (const f of files) {
+    additional += f.bytes.byteLength;
+    replacing += existingMap.get(f.path) ?? 0;
+  }
+  await assertStorageRoom(env.DB, additional, replacing, policy.platformBytes);
+
+  const ts = new Date().toISOString();
+  const written: string[] = [];
+  for (const f of files) {
+    const contentType = contentTypeFor(f.path, f.bytes, null);
+    await env.BUCKET.put(siteKey(site.handle, slug, f.path), f.bytes, { httpMetadata: { contentType } });
+    await env.DB.prepare(
+      `INSERT INTO site_files (handle, slug, path, size, content_type, updated_at, last_written_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(handle, slug, path) DO UPDATE SET
+         size = excluded.size,
+         content_type = excluded.content_type,
+         updated_at = excluded.updated_at,
+         last_written_by = excluded.last_written_by`,
+    )
+      .bind(site.handle, slug, f.path, f.bytes.byteLength, contentType, ts, actor.email)
+      .run();
+    written.push(f.path);
+  }
+  await env.DB.prepare(`UPDATE sites SET updated_at = ?, last_written_by = ? WHERE handle = ? AND slug = ?`)
+    .bind(ts, actor.email, site.handle, slug)
+    .run();
+  purgeContent(ctx, [sitePrefix(site.handle, slug)]);
+  return { slug, url: sitePublicUrl(env, site.handle, slug), written };
+}
+
+export async function exportSiteZip(
+  env: Env,
+  ctx: ExecutionContext | undefined,
+  actor: Actor,
+  slugRaw: string,
+): Promise<Response> {
+  const slug = assertSlug(slugRaw);
+  const site = await requireSite(env, actor, slug, { ctx });
+  const rows = await env.DB.prepare(
+    `SELECT path, size FROM site_files WHERE handle = ? AND slug = ? ORDER BY path`,
+  )
+    .bind(site.handle, slug)
+    .all<{ path: string; size: number }>();
+  const listed = rows.results || [];
+  if (listed.length === 0) {
+    throw new ApiError(400, "empty_site", `Site '${slug}' has no files to zip.`);
+  }
+  if (listed.length > MAX_IMPORT_FILES) {
+    throw new ApiError(
+      400,
+      "too_many_files",
+      `That site has ${listed.length} files. ${PRODUCT} exports at most ${MAX_IMPORT_FILES} files per zip. Split the site, then retry.`,
+    );
+  }
+  const policy = instancePolicy(env);
+  const total = listed.reduce((n, r) => n + Number(r.size || 0), 0);
+  if (total > policy.fileBytes) {
+    throw new ApiError(
+      413,
+      "too_large",
+      `That site is over the ${formatBytes(policy.fileBytes)} export cap (${(total / (1024 * 1024)).toFixed(1)} MB of files). ${PRODUCT} zips at most ${formatBytes(policy.fileBytes)} so a download stays small. Split the site, then retry.`,
+      { limit_bytes: policy.fileBytes, actual_bytes: total },
+    );
+  }
+  const files: { path: string; bytes: Uint8Array }[] = [];
+  for (const row of listed) {
+    const obj = await env.BUCKET.get(siteKey(site.handle, slug, row.path));
+    if (!obj) {
+      throw new ApiError(
+        500,
+        "export_failed",
+        `Site file '${row.path}' is missing from storage. Re-upload that path, then retry.`,
+      );
+    }
+    files.push({ path: row.path, bytes: new Uint8Array(await obj.arrayBuffer()) });
+  }
+  const zip = packZip(files, policy.fileBytes);
+  const headers = new Headers();
+  headers.set("content-type", "application/zip");
+  headers.set("x-content-type-options", "nosniff");
+  headers.set("content-disposition", contentDisposition("attachment", `${slug}.zip`));
+  headers.set("cache-control", "no-store");
+  headers.set("content-length", String(zip.byteLength));
+  return new Response(zip, { headers });
+}
+
+export async function deleteSite(env: Env, ctx: ExecutionContext | undefined, actor: Actor, slugRaw: string): Promise<void> {
+  const slug = assertSlug(slugRaw);
+  const site = await requireSite(env, actor, slug, { allowExpired: true, mutat
