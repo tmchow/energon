@@ -40,3 +40,22 @@ import { packZip, unpackZip } from "./zip";
 
 const SITE_SELECT =
   `handle, slug, created_at, updated_at, created_by, last_written_by, password_hash, expires_at, write_policy`;
+
+export function assertSlug(slug: string): string {
+  const s = slug.trim().toLowerCase();
+  if (!SLUG_RE.test(s)) {
+    throw new ApiError(
+      400,
+      "bad_slug",
+      `Slug '${slug}' is invalid. Use 1–63 characters: lowercase letters, numbers, and hyphens, not starting or ending with a hyphen. Example: lunch-poll.`,
+    );
+  }
+  if (RESERVED_SLUGS.has(s)) {
+    throw new ApiError(
+      400,
+      "reserved_slug",
+      `Slug '${s}' is reserved by ${PRODUCT}. Pick another name.`,
+    );
+  }
+  return s;
+}
