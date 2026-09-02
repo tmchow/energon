@@ -1,4 +1,4 @@
-import { brandMark, documentShell, productName } from "./chrome";
+import { brandMark, documentShell, escapeHtml, productName } from "./chrome";
 import { PASSWORD_HEADER, SET_PASSWORD_HEADER } from "./config";
 import { ApiError, htmlPage, isLocalHost, sha256Hex } from "./http";
 import type { Env } from "./types";
@@ -144,10 +144,6 @@ export function passwordPromptHtml(title: string, action: string, wrong: boolean
       <p class="lede" style="margin-top:1rem">Agents: send header <code>${PASSWORD_HEADER}</code>.</p>
     </div>`,
   });
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
 
 export const GATE_WINDOW_MS = 15 * 60 * 1000;

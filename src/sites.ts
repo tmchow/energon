@@ -8,7 +8,7 @@ import {
   type ListPage,
   type ListQuery,
 } from "./catalog";
-import { brandMark, documentShell } from "./chrome";
+import { brandMark, documentShell, escapeHtml } from "./chrome";
 import { MAX_IMPORT_FILES, PRODUCT, RESERVED_SLUGS, SLUG_RE, formatBytes, siteKey } from "./config";
 import {
   expiredError,
@@ -1144,10 +1144,6 @@ async function fileListHtml(env: Env, site: SiteRow): Promise<string> {
 
 function sitePublicPathHint(handle: string, slug: string, path: string): string {
   return `/${handle}/s/${slug}/${path}`;
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
 
 function serveObject(
