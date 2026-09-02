@@ -58,6 +58,6 @@ _Why it serves the approach:_ The product is the fork; if standing up a host is 
 
 ## Brand
 
-**One-liner:** An agent publishes over HTTP. A person opens the link.
+**One-liner:** Whatever your agent just made, a link your company owns and anyone can open.
 
-**Key message:** A company host for files and small sites, agent-native on purpose, running in your Cloudflare account.
+**Key message:** A company host for files and small sites, running in your own Cloudflare account. The same skill works from Cursor, Claude Code, Codex, and any client that installs Agent Plugins. Teammates read and write with a token; a link can still go to someone outside.
