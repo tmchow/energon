@@ -27,9 +27,17 @@ Never default to overwrite. Never use a guessed slug that already exists without
 
 Machine-readable help lives at `GET /v1/help` and `GET /llms.txt` (no auth).
 
+## Pull requests to tmchow/energon
+
+The canonical repo `tmchow/energon` accepts [issues](https://github.com/tmchow/energon/issues/new/choose) and does not merge unsolicited pull requests. Humans: [CONTRIBUTING.md](./CONTRIBUTING.md).
+
+- Do not open a PR against `tmchow/energon` unless the human owns that repo and asked for the PR in this conversation. Do not push a branch there, and do not @ the maintainer asking them to merge.
+- File or draft a GitHub issue instead, or keep changes on a fork.
+- If you are working in some other clone (a company fork, a private copy), follow that repo’s humans. This file does not forbid PRs there.
+
 ## Working on this repository
 
-Do not run the full suite after every edit. GitHub CI runs `typecheck`, `test:unit`, and `test:worker` on every PR and push to `main`. Production deploy is opt-in (`ENABLE_PRODUCTION_DEPLOY` plus Cloudflare secrets) — see [INSTALL.md](./INSTALL.md). Do not `wrangler login` or `wrangler deploy` from a cloud agent VM. Do not stamp `d1_migrations` or run `d1 execute` against production. New schema belongs in `migrations/` first.
+Do not run the full suite after every edit. GitHub CI runs `typecheck`, `test:unit`, and `test:worker` on pushes to `main` and on any PR that is opened. Production deploy is opt-in (`ENABLE_PRODUCTION_DEPLOY` plus Cloudflare secrets) — see [INSTALL.md](./INSTALL.md). Do not `wrangler login` or `wrangler deploy` from a cloud agent VM. Do not stamp `d1_migrations` or run `d1 execute` against production. New schema belongs in `migrations/` first.
 
 | You changed | Run this (seconds) |
 |---|---|
@@ -40,6 +48,6 @@ Do not run the full suite after every edit. GitHub CI runs `typecheck`, `test:un
 | Loose-file write/rename failure paths | `npx vitest run test/files.spec.ts` |
 | `src/db.ts`, `migrations/`, shared types, or you are about to commit | `npm run typecheck && npm test` |
 
-`test:unit` is Node, no Miniflare. `test:worker` boots the Worker once and hits it over `SELF.fetch`. Prefer the matching file while iterating; run `npm test` before a PR.
+`test:unit` is Node, no Miniflare. `test:worker` boots the Worker once and hits it over `SELF.fetch`. Prefer the matching file while iterating; run `npm test` before you commit.
 
 Page tests check that the HTML still has the right contracts (nav, copy, element IDs the JS calls). They are not pixel tests. If you add `$("some-id")` or `getElementById("some-id")`, put that id on the page or `pages.spec.ts` fails.

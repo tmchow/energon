@@ -64,7 +64,11 @@ npm test
 
 `npm run test:unit` is the fast Node suite. `npm run test:worker` boots the app. Which file to run while you edit is in [AGENTS.md](./AGENTS.md).
 
-CI runs typecheck, lint, and both suites on every pull request and every push to `main`. Production deploy is opt-in. See [INSTALL.md](./INSTALL.md).
+CI runs typecheck, lint, and both suites on pushes to `main` and on any PR that is opened. Production deploy is opt-in. See [INSTALL.md](./INSTALL.md).
+
+## Contributing
+
+Issues are welcome. Pull requests against `tmchow/energon` are not merged. Fork the repo to run your own host, and keep instance changes on that fork. Details: [CONTRIBUTING.md](./CONTRIBUTING.md). Security reports: [SECURITY.md](./SECURITY.md).
 
 ## License
 
