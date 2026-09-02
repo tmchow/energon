@@ -80,7 +80,8 @@ fi
   printf 'EMAIL=%s\n' "$EMAIL"
   printf 'EVIDENCE=%s\n' "$EVIDENCE_ROOT/$RUN"
   printf 'REPO_ROOT=%s\n' "$REPO_ROOT"
-  printf 'VARS=%s\n' "${ENERGON_VERIFY_VARS:-}"
+  # Space-separated pairs; quote so `source state.env` does not run the second pair as a command.
+  printf 'VARS=%q\n' "${ENERGON_VERIFY_VARS:-}"
 } >"$DIR/state.env"
 
 cleanup_failed_launch() {
