@@ -18,7 +18,7 @@ import { MEMORABLE_WORDS } from "./memorable";
 import { deleteLooseFile, getLooseFile, hubLists, listLooseJson, patchLoose, postLooseFromRequest, putLooseFromRequest, serveLoose } from "./files";
 import { passwordField } from "./gate";
 import { ApiError, accountOriginRequired, assertTrustedAccountOrigin, contentOrigin, dedicatedContentOrigin, isLocalHost, isMermaidAssetPath, isPublicContentPath, json, publicOrigin, readBodyCapped, secretJson, serveMermaidAsset, wantsDownload } from "./http";
-import { instancePolicy, policyPublic } from "./policy";
+import { instancePolicy, policyPublic, tokenPolicy, tokenPolicyPublic } from "./policy";
 import {
   createSite,
   deleteSite,
@@ -162,8 +162,11 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   if (path === "/account/tokens" && method === "POST") {
     const actor = await requireHuman(request, env, ctx);
     const body = await readJson(request);
-    const minted = await mintToken(env, actor.email, String(body.label ?? ""), actor.userId);
-    return secretJson({ id: minted.id, label: minted.label, token: minted.token, recoverable: false }, 201);
+    const minted = await mintToken(env, actor.email, String(body.label ?? ""), actor.userId, body.ttl);
+    return secretJson(
+      { id: minted.id, label: minted.label, token: minted.token, expires_at: minted.expires_at, recoverable: false },
+      201,
+    );
   }
 
   const revokeMatch = path.match(/^\/account\/tokens\/([^/]+)\/revoke$/);
@@ -433,6 +436,7 @@ async function serveTokens(request: Request, env: Env, ctx: ExecutionContext): P
     email: actor.email,
     tokens,
     token_env: identityFromEnv(env).tokenEnv,
+    token_policy: tokenPolicyPublic(tokenPolicy(env), publicOrigin(env)),
   }).replace(/</g, "\\u003c");
   return htmlTemplate(tokensTemplate, bootstrap, identityFromEnv(env).tokenEnv, instanceFooter(env));
 }

@@ -370,6 +370,86 @@ describe("Energon", () => {
     expect(put.body.message).toContain("/account");
   });
 
+  describe("token lifetime", () => {
+    const DAY = 86400 * 1000;
+    const near = (iso: string, expectedMs: number) => Math.abs(Date.parse(iso) - expectedMs) < 60 * 1000;
+
+    it("stores the chosen preset and authenticates until it passes", async () => {
+      const email = "ttl-seven@esperlabs.app";
+      const before = Date.now();
+      const created = await json("/account/tokens", {
+        method: "POST",
+        headers: access(email, { "content-type": "application/json" }),
+        body: JSON.stringify({ label: "ci", ttl: "7d" }),
+      });
+      expect(created.status).toBe(201);
+      expect(near(created.body.expires_at, before + 7 * DAY)).toBe(true);
+      const me = await json("/v1/whoami", { headers: auth(created.body.token) });
+      expect(me.status).toBe(200);
+    });
+
+    it("defaults to 90 days when ttl is omitted", async () => {
+      const email = "ttl-default@esperlabs.app";
+      const before = Date.now();
+      await mint("default-life", email);
+      const listed = await json("/account/data", { headers: access(email) });
+      const row = listed.body.tokens.find((t: { label: string }) => t.label === "default-life");
+      expect(near(row.expires_at, before + 90 * DAY)).toBe(true);
+      expect(row.expired).toBe(false);
+    });
+
+    it("rejects a ttl outside the preset list", async () => {
+      const bad = await json("/account/tokens", {
+        method: "POST",
+        headers: access("ttl-bad@esperlabs.app", { "content-type": "application/json" }),
+        body: JSON.stringify({ label: "odd", ttl: "3h" }),
+      });
+      expect(bad.status).toBe(400);
+      expect(bad.body.error).toBe("bad_ttl");
+      expect(bad.body.message).toContain("1d, 7d, 30d, 60d, 90d, 180d, 365d, never");
+    });
+
+    it("mints a never-expiring token on the default instance", async () => {
+      const email = "ttl-never@esperlabs.app";
+      await mint("forever", email, undefined, "never");
+      const listed = await json("/account/data", { headers: access(email) });
+      const row = listed.body.tokens.find((t: { label: string }) => t.label === "forever");
+      expect(row.expires_at).toBeNull();
+      expect(row.expired).toBe(false);
+    });
+
+    it("lists an expired token as expired and still lets its owner revoke it", async () => {
+      const { env } = await import("cloudflare:test");
+      const email = "ttl-expired@esperlabs.app";
+      await mint("stale", email, undefined, "1d");
+      await env.DB.prepare(`UPDATE tokens SET expires_at = ? WHERE label = ? AND user_email = ?`)
+        .bind("2000-01-01T00:00:00.000Z", "stale", email)
+        .run();
+      await mint("garbled", email);
+      await env.DB.prepare(`UPDATE tokens SET expires_at = ? WHERE label = ? AND user_email = ?`)
+        .bind("not-a-date", "garbled", email)
+        .run();
+
+      const listed = await json("/account/data", { headers: access(email) });
+      const stale = listed.body.tokens.find((t: { label: string }) => t.label === "stale");
+      const garbled = listed.body.tokens.find((t: { label: string }) => t.label === "garbled");
+      expect(stale.expired).toBe(true);
+      expect(garbled.expired).toBe(true);
+
+      const foreign = await json(`/account/tokens/${stale.id}/revoke`, {
+        method: "POST",
+        headers: access("someone-else@esperlabs.app"),
+      });
+      expect(foreign.status).toBe(404);
+      expect(foreign.body.error).toBe("token_not_found");
+
+      const revoked = await json(`/account/tokens/${stale.id}/revoke`, { method: "POST", headers: access(email) });
+      expect(revoked.status).toBe(200);
+      const after = await json("/account/data", { headers: access(email) });
+      expect(after.body.tokens.find((t: { label: string }) => t.label === "stale").revoked).toBe(true);
+    });
+  });
+
   it("two users' tokens can both write the same site", async () => {
     const ada = await mint("ada-key", "ada-two@esperlabs.app");
     const bob = await mint("bob-key", "bob@esperlabs.app");

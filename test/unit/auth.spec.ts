@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { TOKEN_PREFIX } from "../../src/config";
 import { actorFromAccess, helpBody, maskToken, mintToken, parseBearer, rejectWorkersDevForHumans, requireToken } from "../../src/auth";
 import { readCookie } from "../../src/gate";
+import { tokenPolicy } from "../../src/policy";
 import type { Env, TokenRow } from "../../src/types";
 
 const env = { PUBLIC_ORIGIN: "https://energon.example.com" } as Env;
@@ -81,6 +82,71 @@ describe("mintToken", () => {
     ).resolves.toMatchObject({ email: row.user_email, tokenId: row.id, tokenLabel: row.label });
     expect(storedHash).not.toBe("");
     expect(lookedUpHash).toBe(storedHash);
+  });
+});
+
+describe("mintToken lifetime", () => {
+  function mintEnv(extra: Partial<Env> = {}) {
+    const binds: unknown[][] = [];
+    const user = { id: "user-id", email: "agent@esperlabs.app", handle: "agent", idp_sub: null };
+    const prepare = vi.fn((sql: string) => {
+      if (sql.includes("INSERT INTO tokens")) {
+        return { bind: (...args: unknown[]) => ({ run: async () => binds.push(args) }) };
+      }
+      if (sql.includes("FROM users")) return { bind: () => ({ first: async () => user }) };
+      return { bind: () => ({ run: async () => undefined, first: async () => null }) };
+    });
+    return { env: { PUBLIC_ORIGIN: "https://energon.example.com", ...extra, DB: { prepare } } as unknown as Env, binds };
+  }
+
+  it("binds the resolved expiry as the last INSERT value", async () => {
+    const { env, binds } = mintEnv();
+    const minted = await mintToken(env, "agent@esperlabs.app", "laptop", "user-id", "1d");
+    expect(binds).toHaveLength(1);
+    expect(binds[0][4]).toMatch(/^[a-f0-9]{64}$/);
+    expect(binds[0][7]).toBe(minted.expires_at);
+    expect(Date.parse(String(minted.expires_at)) - Date.now()).toBeGreaterThan(86000 * 1000);
+  });
+
+  it("refuses never when the instance forbids it, before touching the database", async () => {
+    const { env, binds } = mintEnv({ ALLOW_UNLIMITED_TOKENS: "false" });
+    let error: unknown;
+    try {
+      await mintToken(env, "agent@esperlabs.app", "laptop", "user-id", "never");
+    } catch (err) {
+      error = err;
+    }
+    expect(error).toMatchObject({ status: 400, code: "bad_ttl" });
+    expect(String((error as Error).message)).not.toContain("never");
+    expect(binds).toHaveLength(0);
+    expect(tokenPolicy(env).presets.map((p) => p.id)).not.toContain("never");
+  });
+
+  it("still authenticates a never-expiring row when the instance forbids new ones", async () => {
+    const row: TokenRow = {
+      id: "legacy-id",
+      user_email: "agent@esperlabs.app",
+      label: "legacy",
+      token_hash: "unused-by-mock",
+      created_at: "2024-01-01T00:00:00.000Z",
+      last_used_at: null,
+      revoked_at: null,
+      expires_at: null,
+    };
+    const prepare = vi.fn((sql: string) => {
+      if (sql.includes("FROM users")) return { bind: () => ({ first: async () => null }) };
+      if (sql.includes("SELECT")) return { bind: () => ({ first: async () => row }) };
+      return { bind: () => ({ run: async () => undefined }) };
+    });
+    const env = {
+      DB: { prepare },
+      PUBLIC_ORIGIN: "https://energon.example.com",
+      ALLOW_UNLIMITED_TOKENS: "false",
+    } as unknown as Env;
+    const request = new Request("https://energon.example.com/v1/whoami", {
+      headers: { authorization: `Bearer ${TOKEN_PREFIX}legacy-secret` },
+    });
+    await expect(requireToken(request, env)).resolves.toMatchObject({ tokenId: "legacy-id" });
   });
 });
 

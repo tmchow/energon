@@ -13,7 +13,12 @@ export async function json(path: string, init?: RequestInit): Promise<{ status: 
   return { status: res.status, body: await res.json() };
 }
 
-export async function mint(label: string, email = "ada@esperlabs.app", extra?: HeadersInit): Promise<string> {
+export async function mint(
+  label: string,
+  email = "ada@esperlabs.app",
+  extra?: HeadersInit,
+  ttl?: string,
+): Promise<string> {
   const { status, body } = await json("/account/tokens", {
     method: "POST",
     headers: {
@@ -22,7 +27,7 @@ export async function mint(label: string, email = "ada@esperlabs.app", extra?: H
       origin,
       ...extra,
     },
-    body: JSON.stringify({ label }),
+    body: JSON.stringify(ttl === undefined ? { label } : { label, ttl }),
   });
   expect(status).toBe(201);
   expect(String(body.token)).toMatch(/^ee_live_/);

@@ -7,7 +7,15 @@ import {
 } from "./config";
 import { ApiError, decodeJwtPayload, isLocalHost, isWorkersDev, nanoid, publicOrigin, sha256Hex } from "./http";
 import { identityFromEnv, installLine } from "./instance";
-import { emailAllowed, forbiddenDomain, instancePolicy, policyPublic } from "./policy";
+import {
+  emailAllowed,
+  forbiddenDomain,
+  instancePolicy,
+  policyPublic,
+  resolveTokenExpiresAt,
+  tokenExpired,
+  tokenPolicy,
+} from "./policy";
 import { ensureUser, getUser, getUserById } from "./handles";
 import type { Actor, Env, TokenRow } from "./types";
 
@@ -179,24 +187,27 @@ export async function mintToken(
   email: string,
   label: string,
   userId?: string,
-): Promise<{ id: string; token: string; label: string }> {
+  ttl?: unknown,
+): Promise<{ id: string; token: string; label: string; expires_at: string | null }> {
   const trimmed = label.trim().slice(0, 64);
   if (!trimmed) {
     throw new ApiError(400, "bad_label", "Give the token a label, like laptop or ci.");
   }
+  const now = new Date();
+  const expiresAt = resolveTokenExpiresAt(tokenPolicy(env), ttl, now);
   const user = (userId ? await getUserById(env, userId) : null) || (await ensureUser(env, email));
   const id = nanoid(12);
   const token = `${identityFromEnv(env).tokenPrefix}${nanoid(TOKEN_SECRET_LEN)}`;
   const tokenHash = await hashToken(token);
-  const created = new Date().toISOString();
+  const created = now.toISOString();
   const hint = maskToken(token, env);
   await env.DB.prepare(
-    `INSERT INTO tokens (id, user_email, user_id, label, token_hash, token_secret, token_hint, created_at, last_used_at, revoked_at)
-     VALUES (?, ?, ?, ?, ?, NULL, ?, ?, NULL, NULL)`,
+    `INSERT INTO tokens (id, user_email, user_id, label, token_hash, token_secret, token_hint, created_at, last_used_at, revoked_at, expires_at)
+     VALUES (?, ?, ?, ?, ?, NULL, ?, ?, NULL, NULL, ?)`,
   )
-    .bind(id, user.email, user.id, trimmed, tokenHash, hint, created)
+    .bind(id, user.email, user.id, trimmed, tokenHash, hint, created, expiresAt)
     .run();
-  return { id, token, label: trimmed };
+  return { id, token, label: trimmed, expires_at: expiresAt };
 }
 
 export function maskToken(token: string, env?: Env): string {
@@ -206,6 +217,16 @@ export function maskToken(token: string, env?: Env): string {
   return `${prefix}…${token.slice(-4)}`;
 }
 
+type TokenListRow = {
+  id: string;
+  label: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  token_hint: string | null;
+  expires_at: string | null;
+};
+
 export async function listTokens(env: Env, email: string, userId?: string): Promise<
   {
     id: string;
@@ -213,39 +234,29 @@ export async function listTokens(env: Env, email: string, userId?: string): Prom
     hint: string | null;
     created_at: string;
     last_used_at: string | null;
+    expires_at: string | null;
+    expired: boolean;
     revoked: boolean;
     recoverable: boolean;
   }[]
 > {
+  const columns = `id, label, created_at, last_used_at, revoked_at, token_hint, expires_at`;
   const rows = userId
     ? await env.DB.prepare(
-        `SELECT id, label, created_at, last_used_at, revoked_at, token_hint FROM tokens
+        `SELECT ${columns} FROM tokens
          WHERE user_id = ? OR (user_id IS NULL AND user_email = ?) ORDER BY created_at DESC`,
-      ).bind(userId, email).all<{
-        id: string;
-        label: string;
-        created_at: string;
-        last_used_at: string | null;
-        revoked_at: string | null;
-        token_hint: string | null;
-      }>()
-    : await env.DB.prepare(
-        `SELECT id, label, created_at, last_used_at, revoked_at, token_hint FROM tokens
-         WHERE user_email = ? ORDER BY created_at DESC`,
-      ).bind(email).all<{
-        id: string;
-        label: string;
-        created_at: string;
-        last_used_at: string | null;
-        revoked_at: string | null;
-        token_hint: string | null;
-      }>();
+      ).bind(userId, email).all<TokenListRow>()
+    : await env.DB.prepare(`SELECT ${columns} FROM tokens WHERE user_email = ? ORDER BY created_at DESC`)
+        .bind(email)
+        .all<TokenListRow>();
   return (rows.results || []).map((r) => ({
     id: r.id,
     label: r.label,
     hint: r.token_hint,
     created_at: r.created_at,
     last_used_at: r.last_used_at,
+    expires_at: r.expires_at ?? null,
+    expired: tokenExpired(r.expires_at),
     revoked: Boolean(r.revoked_at),
     recoverable: false,
   }));
