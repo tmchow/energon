@@ -2,6 +2,48 @@ import { describe, expect, it } from "vitest";
 import { auth, json, mint, req } from "./helpers";
 
 describe("TTL purge claims", () => {
+  it("blocks replacement while a loose-file deletion owns the write claim", async () => {
+    const { env } = await import("cloudflare:test");
+    const { deleteLooseFile, putLooseFile } = await import("../src/files");
+    const token = await mint("delete-write-claim");
+    const actor = { email: "ada@esperlabs.app", via: "token" } as const;
+    const uploaded = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "X-Filename": "delete-race.txt", "content-type": "text/plain" }),
+      body: "before",
+    });
+    const fileId = uploaded.body.id as string;
+    const key = `files/${fileId}/delete-race.txt`;
+    const bucket = env.BUCKET as R2Bucket & { delete: R2Bucket["delete"] };
+    const originalDelete = bucket.delete.bind(bucket);
+    let replacementError: unknown;
+    bucket.delete = async (objectKey) => {
+      const result = await originalDelete(objectKey);
+      if (objectKey === key) {
+        replacementError = await putLooseFile(
+          env,
+          undefined,
+          actor,
+          fileId,
+          new TextEncoder().encode("replacement"),
+          "delete-race.txt",
+          "text/plain",
+        ).catch((error: unknown) => error);
+      }
+      return result;
+    };
+
+    try {
+      await deleteLooseFile(env, undefined, actor, fileId);
+    } finally {
+      bucket.delete = originalDelete;
+    }
+
+    expect(replacementError).toMatchObject({ status: 409, code: "file_busy" });
+    expect(await env.DB.prepare(`SELECT id FROM loose_files WHERE id = ?`).bind(fileId).first()).toBeNull();
+    expect(await env.BUCKET.get(key)).toBeNull();
+  });
+
   it("keeps a replacement claim while purge observes the newly written bytes", async () => {
     const { env } = await import("cloudflare:test");
     const { purgeExpiredFile } = await import("../src/expire");

@@ -232,10 +232,13 @@ describe("deleteLooseFile", () => {
         objects.set(objectKey, value.slice());
       },
     };
+    let lastWrittenBy = "ada@esperlabs.app";
     const db = {
       prepare(sql: string) {
+        let values: unknown[] = [];
         return {
-          bind() {
+          bind(...args: unknown[]) {
+            values = args;
             return this;
           },
           async first() {
@@ -244,12 +247,24 @@ describe("deleteLooseFile", () => {
               id: "Abc123",
               handle: "ada",
               filename: "notes.txt",
+              expires_at: null,
               created_by: "ada@esperlabs.app",
+              last_written_by: lastWrittenBy,
+              updated_at: "2026-09-02T00:00:00.000Z",
               write_policy: "owner",
             };
           },
           async run() {
-            throw new Error("injected D1 delete failure");
+            if (sql.includes("updated_at = ?")) {
+              lastWrittenBy = String(values[0]);
+              return { meta: { changes: 1 } };
+            }
+            if (sql.startsWith("DELETE")) throw new Error("injected D1 delete failure");
+            if (sql.includes("SET last_written_by = ?")) {
+              lastWrittenBy = String(values[0]);
+              return { meta: { changes: 1 } };
+            }
+            return { meta: { changes: 0 } };
           },
         };
       },
@@ -262,5 +277,6 @@ describe("deleteLooseFile", () => {
     );
 
     expect(new TextDecoder().decode(objects.get(key))).toBe("original");
+    expect(lastWrittenBy).toBe("ada@esperlabs.app");
   });
 });

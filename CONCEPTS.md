@@ -17,7 +17,7 @@ An operation that changes one or more Site files or the Site itself. A mutation 
 A temporary catalog marker that gives expiration cleanup exclusive permission to remove an expired Site or loose file from storage and the catalog.
 
 ### Write claim
-A temporary leased catalog marker that gives one loose-file replacement exclusive permission to change storage and catalog state.
+A temporary leased catalog marker that gives one loose-file storage mutation exclusive permission to change storage and catalog state.
 
 A fresh Write claim blocks competing replacements and expiration cleanup. An abandoned claim becomes reclaimable after its lease is stale.
 

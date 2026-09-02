@@ -79,12 +79,33 @@ export async function claimLooseFileForWrite(
   lastWrittenBy: string | null,
   createdBy: string,
 ): Promise<LooseFileWriteClaim | null> {
+  return claimLooseFile(env, id, expiresAt, lastWrittenBy, createdBy, false);
+}
+
+export async function claimLooseFileForDelete(
+  env: Env,
+  id: string,
+  expiresAt: string | null,
+  lastWrittenBy: string | null,
+  createdBy: string,
+): Promise<LooseFileWriteClaim | null> {
+  return claimLooseFile(env, id, expiresAt, lastWrittenBy, createdBy, true);
+}
+
+async function claimLooseFile(
+  env: Env,
+  id: string,
+  expiresAt: string | null,
+  lastWrittenBy: string | null,
+  createdBy: string,
+  allowExpired: boolean,
+): Promise<LooseFileWriteClaim | null> {
   const now = new Date().toISOString();
   const staleBefore = staleClaimCutoff();
   const token = newWriteToken();
   const claimed = await env.DB.prepare(
     `UPDATE loose_files SET last_written_by = ?, updated_at = ?
-     WHERE id = ? AND (expires_at IS NULL OR expires_at > ?)
+     WHERE id = ? AND (? = 1 OR expires_at IS NULL OR expires_at > ?)
        AND ((expires_at = ?) OR (expires_at IS NULL AND ? IS NULL))
        AND ifnull(last_written_by, '') = ?
        AND ifnull(last_written_by, '') NOT LIKE ?
@@ -94,6 +115,7 @@ export async function claimLooseFileForWrite(
       token,
       now,
       id,
+      allowExpired ? 1 : 0,
       now,
       expiresAt,
       expiresAt,

@@ -12,6 +12,7 @@ import { FILE_ID_LEN, fileKey } from "./config";
 import {
   expiredError,
   expiredHtml,
+  claimLooseFileForDelete,
   claimLooseFileForWrite,
   isExpired,
   isPurgeClaimed,
@@ -717,37 +718,71 @@ export async function deleteLooseFile(
   if (!isFileId(id)) {
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
-  const row = await env.DB.prepare(`SELECT id, handle, filename, created_by, write_policy FROM loose_files WHERE id = ?`)
+  const row = await env.DB.prepare(
+    `SELECT id, handle, filename, expires_at, created_by, last_written_by, updated_at, write_policy FROM loose_files WHERE id = ?`,
+  )
     .bind(id)
     .first<{
       id: string;
       handle: string | null;
       filename: string;
+      expires_at: string | null;
       created_by: string;
+      last_written_by: string | null;
+      updated_at: string | null;
       write_policy: string | null;
     }>();
   if (!row) {
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
   assertCanMutate(actor, row);
+  if (isWriteClaimed(row.last_written_by) && !isStaleClaim(row.updated_at)) {
+    throw new ApiError(409, "file_busy", "Another write is in progress; retry this deletion.");
+  }
+  if (isPurgeClaimed(row.last_written_by)) throw expiredError("file");
+  const claim = await claimLooseFileForDelete(
+    env,
+    id,
+    row.expires_at,
+    row.last_written_by,
+    row.created_by,
+  );
+  if (!claim) {
+    const current = await env.DB.prepare(`SELECT last_written_by FROM loose_files WHERE id = ?`)
+      .bind(id)
+      .first<{ last_written_by: string | null }>();
+    if (!current) throw new ApiError(404, "file_not_found", "No loose file with that id.");
+    if (isPurgeClaimed(current.last_written_by)) throw expiredError("file");
+    throw new ApiError(409, "file_busy", "The file changed during deletion; retry.");
+  }
   const key = fileKey(row.id, row.filename);
-  const previousState = await snapshotR2Object(env.BUCKET, key);
-  await env.BUCKET.delete(key);
+  let previousState: R2Snapshot | null = null;
+  let storageDeleted = false;
   try {
-    await env.DB.prepare(`DELETE FROM loose_files WHERE id = ?`).bind(id).run();
+    previousState = await snapshotR2Object(env.BUCKET, key);
+    await env.BUCKET.delete(key);
+    storageDeleted = true;
+    const dropped = await env.DB.prepare(`DELETE FROM loose_files WHERE id = ? AND last_written_by = ?`)
+      .bind(id, claim.token)
+      .run();
+    if (!Number(dropped.meta?.changes ?? 0)) {
+      throw new ApiError(409, "file_delete_lost", "The file changed during deletion; retry.");
+    }
   } catch (err) {
-    if (previousState) {
+    let failure = err;
+    if (storageDeleted) {
       try {
         await restoreR2Object(env.BUCKET, key, previousState);
       } catch {
-        throw new ApiError(
+        failure = new ApiError(
           500,
           "file_delete_rollback_failed",
           "The file deletion failed and automatic rollback also failed. Retry after storage recovers.",
         );
       }
     }
-    throw err;
+    await releaseLooseFileWriteClaim(env, id, claim.token, claim.restoreWriter).catch(() => undefined);
+    throw failure;
   }
   if (row.handle) purgeContent(ctx, [filePrefix(row.handle, id)]);
 }
