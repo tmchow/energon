@@ -42,6 +42,10 @@
           <label class="field">Label
             <input name="label" placeholder="laptop" required maxlength="64">
           </label>
+          <label class="field mint-ttl" for="mint-ttl">Lifetime
+            <select name="ttl" id="mint-ttl" aria-label="Token lifetime"></select>
+            <span class="pw-note" id="mint-ttl-note"></span>
+          </label>
           <button type="submit" class="btn-primary">Mint token</button>
         </form>
         <div id="new-token"></div>
@@ -71,6 +75,41 @@
 const boot = JSON.parse(document.getElementById("bootstrap").textContent);
 const $ = (id) => document.getElementById(id);
 const tokenEnv = boot.token_env || "__TOKEN_ENV__";
+const tokenPolicy = boot.token_policy || { presets: [], default: "", allow_never: true };
+
+function fillTtlSelect() {
+  const sel = $("mint-ttl");
+  sel.replaceChildren();
+  for (const preset of tokenPolicy.presets || []) {
+    const opt = document.createElement("option");
+    opt.value = preset.id;
+    opt.textContent = preset.label || preset.id;
+    sel.appendChild(opt);
+  }
+  const fallback = (tokenPolicy.presets || []).some((p) => p.id === tokenPolicy.default)
+    ? tokenPolicy.default
+    : (tokenPolicy.presets || [])[0]?.id || "";
+  if (fallback) sel.value = fallback;
+  $("mint-ttl-note").textContent = tokenPolicy.allow_never
+    ? "Expired tokens stop working; mint a new one to replace them."
+    : "This instance does not allow never-expiring tokens.";
+}
+
+function fmtDate(iso) {
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  } catch {
+    return iso;
+  }
+}
+function fmtExpires(tok) {
+  if (tok.expired) return "Expired";
+  if (!tok.expires_at) return "Never";
+  const ms = Date.parse(tok.expires_at) - Date.now();
+  const days = Math.ceil(ms / 86400000);
+  const relative = days <= 1 ? "in less than a day" : `in ${days} days`;
+  return `${fmtDate(tok.expires_at)} (${relative})`;
+}
 
 function fmtTime(iso) {
   if (!iso) return "";
@@ -166,11 +205,12 @@ function render(data) {
   wrap.className = "table-wrap";
   const t = document.createElement("table");
   t.className = "data";
-  t.innerHTML = "<thead><tr><th>Label</th><th>Key</th><th>Created</th><th>Last used</th><th></th></tr></thead>";
+  t.innerHTML = "<thead><tr><th>Label</th><th>Key</th><th>Created</th><th>Last used</th><th>Expires</th><th></th></tr></thead>";
   const tb = document.createElement("tbody");
   for (const tok of tokens) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${esc(tok.label)}</td><td class="token-hint">${esc(tok.hint || "—")}</td><td>${esc(fmtTime(tok.created_at))}</td><td>${esc(fmtTime(tok.last_used_at) || "never")}</td><td class="actions"></td>`;
+    if (tok.expired) tr.className = "row-expired";
+    tr.innerHTML = `<td>${esc(tok.label)}</td><td class="token-hint">${esc(tok.hint || "—")}</td><td>${esc(fmtTime(tok.created_at))}</td><td>${esc(fmtTime(tok.last_used_at) || "never")}</td><td class="when">${esc(fmtExpires(tok))}</td><td class="actions"></td>`;
     const actions = [];
     const b = document.createElement("button");
     b.type = "button";
@@ -204,16 +244,19 @@ async function refresh() {
 
 $("mint").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const label = new FormData(e.target).get("label");
+  const form = new FormData(e.target);
+  const label = form.get("label");
+  const ttl = form.get("ttl") || undefined;
   try {
     const data = await api("/account/tokens", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ label }),
+      body: JSON.stringify({ label, ttl }),
     });
     $("new-token").innerHTML = `<div class="flash" style="margin-top:1rem">
       <p class="token"><code>export ${tokenEnv}=${esc(data.token)}</code></p></div>`;
     e.target.reset();
+    fillTtlSelect();
     await refresh();
   } catch (err) {
     msg(esc(err.message), true);
@@ -240,6 +283,7 @@ async function revoke(id, label) {
   }
 }
 
+fillTtlSelect();
 render(boot);
 </script>
 </body>

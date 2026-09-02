@@ -112,6 +112,14 @@ describe("signed-in pages", () => {
     expect(tokensHtml).not.toContain("Reveal returns the full secret");
     expect(tokensHtml).not.toContain("function reveal(");
     expect(tokensHtml).toContain("boot.token_env");
+    expect(tokensHtml).toContain('id="mint-ttl"');
+    expect(tokensHtml).toContain('aria-label="Token lifetime"');
+    expect(tokensHtml).toContain("<th>Expires</th>");
+    expect(tokensHtml).toContain('"Expired"');
+    expect(tokensHtml).toContain("row-expired");
+    expect(tokensHtml).toMatch(/"token_policy":\{"presets":\[\{"id":"1d"/);
+    expect(tokensHtml).toContain('"default":"90d"');
+    expect(tokensHtml).toContain('"allow_never":true');
     expect(tokensHtml).toContain("Type the exact label");
     expect(tokensHtml).toContain('href="/setup"');
     expect(tokensHtml).not.toContain('class="app-footer"');
