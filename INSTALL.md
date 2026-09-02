@@ -194,7 +194,7 @@ codex plugin add energon@energon
 
 ```
 grok plugin marketplace add your-org/energon
- grok plugin install energon@energon --trust
+grok plugin install energon@energon --trust
 ```
 
 **GitHub Copilot**
