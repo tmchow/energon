@@ -1,6 +1,15 @@
 {
   "name": "energon",
   "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tmchow/energon.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tmchow/energon/issues"
+  },
+  "homepage": "https://github.com/tmchow/energon#readme",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",

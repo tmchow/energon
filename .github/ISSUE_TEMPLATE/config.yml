@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security report
+    url: https://github.com/tmchow/energon/security/advisories/new
+    about: Private vulnerability report. Do not file a public issue.
+  - name: How this repo takes contributions
+    url: https://github.com/tmchow/energon/blob/main/CONTRIBUTING.md
+    about: Issues yes. Pull requests against tmchow/energon are not merged.

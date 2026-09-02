@@ -1,0 +1,24 @@
+name: Idea
+description: A change you want in this codebase. Not a patch.
+title: "[idea] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem. Do not attach a pull request.
+        See [CONTRIBUTING.md](https://github.com/tmchow/energon/blob/main/CONTRIBUTING.md).
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is hard or wrong today if this does not exist.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Idea
+      description: Optional. A sketch is enough. Keep the work on your fork if you build it.
+    validations:
+      required: false
