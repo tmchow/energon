@@ -308,6 +308,14 @@ export function canMutate(
   return actor.email.toLowerCase() === String(row.created_by || "").toLowerCase();
 }
 
+/** Atomic D1 predicate matching canMutate. Bind ownerWriteBinds(actor). */
+export const OWNER_WRITE_SQL = `(ifnull(write_policy, 'instance') != 'owner' OR (? IS NOT NULL AND owner_id = ?) OR (? IS NULL AND lower(created_by) = lower(?)))`;
+
+export function ownerWriteBinds(actor: Actor): [string | null, string, string | null, string] {
+  const id = actor.userId ?? null;
+  return [id, id ?? "", id, actor.email];
+}
+
 export function assertCanMutate(
   actor: Actor,
   row: { created_by: string; write_policy?: string | null; owner_id?: string | null },

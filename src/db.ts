@@ -66,6 +66,10 @@ const TABLE_STATEMENTS = [
     fails INTEGER NOT NULL,
     window_start TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS platform_quota (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    used INTEGER NOT NULL
+  )`,
 ];
 
 const INDEX_STATEMENTS = [
@@ -88,7 +92,7 @@ const INDEX_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_loose_created_by ON loose_files(created_by)`,
   `CREATE INDEX IF NOT EXISTS idx_loose_written_by ON loose_files(last_written_by)`,
   `CREATE INDEX IF NOT EXISTS idx_loose_updated_id ON loose_files(updated_at DESC, id DESC)`,
-  `  CREATE INDEX IF NOT EXISTS idx_loose_filename ON loose_files(filename)`,
+  `CREATE INDEX IF NOT EXISTS idx_loose_filename ON loose_files(filename)`,
   `CREATE INDEX IF NOT EXISTS idx_sites_expires_at ON sites(expires_at)`,
   `CREATE INDEX IF NOT EXISTS idx_loose_expires_at ON loose_files(expires_at)`,
 ];
@@ -124,6 +128,13 @@ export async function ensureSchema(db: D1Database): Promise<void> {
   for (const sql of INDEX_STATEMENTS) {
     await db.prepare(sql).run();
   }
+  await db.prepare(`INSERT OR IGNORE INTO platform_quota (id, used) VALUES (1, 0)`).run();
+  await db.prepare(
+    `UPDATE platform_quota SET used = (
+      (SELECT COALESCE(SUM(size), 0) FROM site_files) +
+      (SELECT COALESCE(SUM(size), 0) FROM loose_files)
+    ) WHERE id = 1 AND used = 0`,
+  ).run();
   columnsReady = true;
 }
 

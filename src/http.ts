@@ -225,15 +225,44 @@ export async function totalStoredBytes(db: D1Database): Promise<number> {
   return Number(row?.total ?? 0);
 }
 
+export async function usedStorage(db: D1Database): Promise<number> {
+  const ledger = await db.prepare(`SELECT used FROM platform_quota WHERE id = 1`).first<{ used: number }>();
+  if (ledger) return Number(ledger.used);
+  return totalStoredBytes(db);
+}
+
+export async function releaseStorage(db: D1Database, bytes: number): Promise<void> {
+  if (bytes <= 0) return;
+  await db
+    .prepare(`UPDATE platform_quota SET used = MAX(0, used - ?) WHERE id = 1`)
+    .bind(bytes)
+    .run()
+    .catch(() => undefined);
+}
+
 export async function assertStorageRoom(
   db: D1Database,
   additionalBytes: number,
   replacingBytes = 0,
   platformBytes = MAX_PLATFORM_BYTES,
-): Promise<void> {
+): Promise<number> {
+  const delta = additionalBytes - replacingBytes;
+  if (delta <= 0) return 0;
+  try {
+    const reserved = await db
+      .prepare(`UPDATE platform_quota SET used = used + ? WHERE id = 1 AND used + ? <= ?`)
+      .bind(delta, delta, platformBytes)
+      .run();
+    if (Number(reserved.meta?.changes ?? 0) > 0) return delta;
+    const ledger = await db.prepare(`SELECT used FROM platform_quota WHERE id = 1`).first<{ used: number }>();
+    if (ledger) throw storageCap(Number(ledger.used), delta, platformBytes);
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+  }
   const used = await totalStoredBytes(db);
   const next = used - replacingBytes + additionalBytes;
-  if (next > platformBytes) throw storageCap(used, additionalBytes - replacingBytes, platformBytes);
+  if (next > platformBytes) throw storageCap(used, delta, platformBytes);
+  return 0;
 }
 
 /** Same-bucket copy. Streams through the Worker once; does not go through the agent. */

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { formatBytes, formatCount } from "../../src/config";
 import {
   accountOriginRequired,
+  assertStorageRoom,
   assertTrustedAccountOrigin,
   contentOrigin,
   contentDisposition,
@@ -10,6 +11,7 @@ import {
   isPublicContentPath,
   isWorkersDev,
   normalizeRelPath,
+  releaseStorage,
   tooLarge,
   wantsDownload,
 } from "../../src/http";
@@ -105,5 +107,71 @@ describe("display helpers", () => {
     expect(formatBytes(1024)).toBe("1 KB");
     expect(formatBytes(0)).toBe("0 B");
     expect(formatCount(180)).toBe("180");
+  });
+});
+
+describe("storage ledger", () => {
+  function ledgerDb(initialUsed: number) {
+    let used = initialUsed;
+    return {
+      used: () => used,
+      prepare(sql: string) {
+        const stmt = {
+          bind(...args: unknown[]) {
+            return {
+              async run() {
+                if (sql.includes("used + ? <= ?")) {
+                  const delta = Number(args[0]);
+                  const cap = Number(args[2]);
+                  if (used + delta <= cap) {
+                    used += delta;
+                    return { meta: { changes: 1 } };
+                  }
+                  return { meta: { changes: 0 } };
+                }
+                if (sql.includes("used - ?")) {
+                  used = Math.max(0, used - Number(args[0]));
+                  return { meta: { changes: 1 } };
+                }
+                return { meta: { changes: 0 } };
+              },
+              async first() {
+                if (sql.includes("SELECT used")) return { used };
+                if (sql.includes("SUM(size)")) return { total: used };
+                return null;
+              },
+            };
+          },
+          async first() {
+            if (sql.includes("SELECT used")) return { used };
+            if (sql.includes("SUM(size)")) return { total: used };
+            return null;
+          },
+          async run() {
+            return { meta: { changes: 0 } };
+          },
+        };
+        return stmt;
+      },
+    };
+  }
+
+  it("reserves growth and leaves shrinks for commit", async () => {
+    const db = ledgerDb(50);
+    await expect(assertStorageRoom(db as unknown as D1Database, 30, 0, 100)).resolves.toBe(30);
+    expect(db.used()).toBe(80);
+    await expect(assertStorageRoom(db as unknown as D1Database, 10, 40, 100)).resolves.toBe(0);
+    expect(db.used()).toBe(80);
+    await releaseStorage(db as unknown as D1Database, 30);
+    expect(db.used()).toBe(50);
+  });
+
+  it("rejects growth past the cap without changing used", async () => {
+    const db = ledgerDb(90);
+    await expect(assertStorageRoom(db as unknown as D1Database, 20, 0, 100)).rejects.toMatchObject({
+      status: 413,
+      code: "storage_cap",
+    });
+    expect(db.used()).toBe(90);
   });
 });

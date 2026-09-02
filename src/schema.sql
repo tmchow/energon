@@ -94,3 +94,8 @@ CREATE INDEX IF NOT EXISTS idx_loose_updated_id ON loose_files(updated_at DESC, 
 CREATE INDEX IF NOT EXISTS idx_loose_filename ON loose_files(filename);
 CREATE INDEX IF NOT EXISTS idx_sites_expires_at ON sites(expires_at);
 CREATE INDEX IF NOT EXISTS idx_loose_expires_at ON loose_files(expires_at);
+
+CREATE TABLE IF NOT EXISTS platform_quota (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  used INTEGER NOT NULL
+);
