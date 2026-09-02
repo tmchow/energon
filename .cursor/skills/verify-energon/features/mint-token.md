@@ -24,7 +24,7 @@ Preconditions:
 - No token labeled `verify-run` exists, or use a unique label `verify-run-$RUN`.
 
 - **Hub mint.** Open `$ORIGIN/tokens`. `#who` shows the doctor email. Fill the `Label` textbox with `verify-run` and choose `Mint token`. `#new-token` contains `export ENERGON_TOKEN=ee_live_` plus a secret. Status of the POST is 201. Body `recoverable` is false.
-- **HTTP mint (same path).** Run `.cursor/skills/verify-energon/bin/mint-token verify-run`. Stdout is `ee_live_` plus 32+ characters. Do not invent a substitute.
+- **HTTP mint (same path).** Run `.cursor/skills/verify-energon/bin/mint-token verify-run`. The helper POSTs `/account/tokens` with `Origin` set to `$ORIGIN`. Stdout is `ee_live_` plus 32+ characters. Do not invent a substitute.
 - **Whoami.** Run `curl -sS -o "$EVIDENCE/mint-token/whoami.json" -w '%{http_code}' "$ORIGIN/v1/whoami" -H "Authorization: Bearer $TOKEN"`. Status `200`. Body `email` matches doctor; `label` is `verify-run`.
 - **List hides secret.** Run `curl -sS "$ORIGIN/account/data"`. The `tokens` array has a row with `label` `verify-run`, `hint` matching `ee_live_…` plus last four of `$TOKEN`, `recoverable` false, and the raw `$TOKEN` string does not appear in the JSON.
 - **No reveal.** `GET /account/tokens/{id}` is 404. The Tokens page has no Reveal control.

@@ -4,5 +4,5 @@
     "types": ["../worker-configuration.d.ts", "@cloudflare/vitest-pool-workers"]
   },
   "include": ["./**/*.ts", "../src/**/*.ts", "../worker-configuration.d.ts"],
-  "exclude": ["./unit/skill-render.spec.ts"]
+  "exclude": ["./unit/skill-render.spec.ts", "./unit/markdown.spec.ts"]
 }

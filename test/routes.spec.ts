@@ -51,6 +51,14 @@ describe("host and route contracts", () => {
       headers: { "Cf-Access-Authenticated-User-Email": "ada@esperlabs.app" },
     });
     expect(account.status).toBe(404);
+
+    const mermaid = await req("https://energon.example.com/static/mermaid/mermaid.esm.min.mjs");
+    expect(mermaid.status).toBe(200);
+    expect(mermaid.headers.get("content-type")).toMatch(/javascript|ecmascript/);
+    expect(mermaid.headers.get("access-control-allow-origin")).toBe("*");
+    const mermaidSrc = await mermaid.text();
+    expect(mermaidSrc).toContain("chunks/mermaid.esm.min/");
+    expect(mermaidSrc.length).toBeGreaterThan(1_000);
   });
 
   it("rejects a non-Energon bearer and a bad site slug", async () => {

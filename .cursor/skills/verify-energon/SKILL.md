@@ -126,7 +126,7 @@ All executable, all from repo root:
 |---|---|
 | `bin/launch` | Isolated wrangler + migrations. Prints origin, pid, persist, evidence. |
 | `bin/doctor` | Read-only health/identity/ownership check. Exit 1 → do not drive. |
-| `bin/mint-token [label]` | `POST /account/tokens` (same path as the Tokens page). Prints `ee_live_…`. Saves `$STATE_DIR/token`. |
+| `bin/mint-token [label]` | `POST /account/tokens` with `Origin: $ORIGIN` (same path as the Tokens page). Prints `ee_live_…`. Saves `$STATE_DIR/token`. |
 | `bin/cleanup` | Kill this run, remove persist, keep evidence. |
 
 `bin/_lib.sh` is sourced by those scripts; do not invoke it directly.

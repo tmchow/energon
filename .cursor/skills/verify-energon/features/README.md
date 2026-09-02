@@ -43,7 +43,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 
 ## Features
 
-- [Publish a site](./publish-site.md) covers creating a named folder, writing files, serving the public URL, overwrite, and duplicate.
+- [Publish a site](./publish-site.md) covers creating a named folder, writing files, serving the public URL, overwrite, duplicate, and mermaid on HTML markdown.
 - [Publish a file](./publish-file.md) covers minting a loose file with a stable id, replacing bytes, and downloading.
 - [Mint a token](./mint-token.md) covers mint, whoami, and revoke on the Tokens page and hub API.
 - [Share password](./share-password.md) covers setting a password, the public gate, header unlock, and clearing.

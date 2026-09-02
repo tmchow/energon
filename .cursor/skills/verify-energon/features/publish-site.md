@@ -7,6 +7,7 @@ Publish a site lets a user create a named folder of files at a stable `/{handle}
 - `site-create` creates an empty site for a new slug and returns `url` plus `api_url`.
 - `site-put-file` writes a path and serves it at the public site URL.
 - `site-homepage` serves `index.html`, or `index.md` when `index.html` is missing.
+- `site-mermaid` renders mermaid fences on HTML markdown views from `/static/mermaid/mermaid.esm.min.mjs` (no jsDelivr).
 - `site-conflict` returns 409 when the slug exists and `overwrite` is omitted.
 - `site-overwrite` claims an existing slug without deleting other paths.
 - `site-duplicate` copies into a new slug owned by the caller.
@@ -31,6 +32,7 @@ Preconditions:
 - **Create site.** Run `curl -sS -o "$EVIDENCE/publish-site/create.json" -w '%{http_code}' -X POST "$ORIGIN/v1/sites" -H "Authorization: Bearer $TOKEN" -H "content-type: application/json" --data '{"slug":"verify-site"}'`. Status `201`. Body `url` is `$ORIGIN/$HANDLE/s/verify-site/` and `created` is true.
 - **Write homepage.** Run `curl -sS -o "$EVIDENCE/publish-site/put.json" -w '%{http_code}' -X PUT "$ORIGIN/v1/sites/verify-site/files/index.html" -H "Authorization: Bearer $TOKEN" -H "content-type: text/html" --data '<h1>verify-site-ok</h1>'`. Status `201`. Body `url` ends with `/s/verify-site/index.html`.
 - **Public GET.** Run `curl -sS -o "$EVIDENCE/publish-site/public.html" -w '%{http_code}' "$ORIGIN/$HANDLE/s/verify-site/"`. Status `200`. Body contains `verify-site-ok`. Content-Type is HTML.
+- **Mermaid HTML.** PUT `diagram.md` with a `mermaid` fence (`graph LR` / `A-->B`). `GET "$ORIGIN/$HANDLE/s/verify-site/diagram.md"` with `Accept: text/html` contains `class="mermaid"` and `/static/mermaid/mermaid.esm.min.mjs`, and does not contain `jsdelivr`. `GET "$ORIGIN/static/mermaid/mermaid.esm.min.mjs"` is `200` JavaScript.
 - **API GET.** Run `curl -sS -o "$EVIDENCE/publish-site/api.html" -w '%{http_code}' "$ORIGIN/v1/sites/verify-site/files/index.html" -H "Authorization: Bearer $TOKEN"`. Status `200`. Body matches the PUT.
 - **Conflict.** Run the create POST again without `overwrite`. Status `409`, `error` is `site_exists`, `url` still points at the existing site, `hint` mentions overwrite.
 - **Overwrite keeps other paths.** PUT `notes.md` with body `keep-me`, then `POST /v1/sites` with `{"slug":"verify-site","overwrite":true}` (status `200`, `created` false), then PUT a new `index.html`. `GET /v1/sites/verify-site` lists both `index.html` and `notes.md`.

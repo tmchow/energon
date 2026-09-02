@@ -22,7 +22,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p test/tsconfig.json",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
-    "prepare": "git config core.hooksPath .githooks || true",
+    "prepare": "git config core.hooksPath .githooks || true && node scripts/vendor-mermaid.mjs",
+    "vendor:mermaid": "node scripts/vendor-mermaid.mjs",
     "db:local": "wrangler d1 migrations apply energon --local",
     "db:remote": "wrangler d1 migrations apply energon --remote",
     "skill:render": "node scripts/render-skill.mjs",
@@ -31,6 +32,7 @@
   "dependencies": {
     "fflate": "^0.8.2",
     "marked": "^18.0.11",
+    "mermaid": "11.17.2",
     "xss": "^1.0.15"
   },
   "devDependencies": {

@@ -49,6 +49,11 @@ migrations_dir = "migrations"
 binding = "BUCKET"
 bucket_name = "energon"
 
+[assets]
+directory = "./public"
+binding = "ASSETS"
+html_handling = "none"
+
 [[rules]]
 type = "Text"
 globs = ["**/*.html", "**/*.svg", "**/*.css", "**/*.client.js"]

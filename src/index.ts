@@ -17,7 +17,7 @@ import { identityFromEnv } from "./instance";
 import { MEMORABLE_WORDS } from "./memorable";
 import { deleteLooseFile, getLooseFile, hubLists, listLooseJson, patchLoose, postLooseFromRequest, putLooseFromRequest, serveLoose } from "./files";
 import { passwordField } from "./gate";
-import { ApiError, accountOriginRequired, assertTrustedAccountOrigin, contentOrigin, dedicatedContentOrigin, isLocalHost, isPublicContentPath, json, publicOrigin, readBodyCapped, secretJson, wantsDownload } from "./http";
+import { ApiError, accountOriginRequired, assertTrustedAccountOrigin, contentOrigin, dedicatedContentOrigin, isLocalHost, isMermaidAssetPath, isPublicContentPath, json, publicOrigin, readBodyCapped, secretJson, serveMermaidAsset, wantsDownload } from "./http";
 import { instancePolicy, policyPublic } from "./policy";
 import {
   createSite,
@@ -81,6 +81,10 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   if (path === "/v1/help") {
     if (method === "GET") return json(helpBody(publicOrigin(env), env));
     return methodNotAllowed();
+  }
+
+  if (isMermaidAssetPath(path) && (method === "GET" || method === "HEAD")) {
+    return serveMermaidAsset(env, request);
   }
 
   const configuredContentOrigin = dedicatedContentOrigin(env);
