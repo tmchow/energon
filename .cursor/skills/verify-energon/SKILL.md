@@ -30,7 +30,7 @@ export ENERGON_VERIFY_PORT=18787          # default; stays off 8787
 .cursor/skills/verify-energon/bin/launch
 ```
 
-Launch applies D1 migrations with `--persist-to /tmp/energon-verify/$RUN/persist`, starts `npx wrangler dev --ip 127.0.0.1 --port $PORT --local --persist-to … --var PUBLIC_ORIGIN:$ORIGIN --var CONTENT_ORIGIN:$ORIGIN --show-interactive-dev-session false`, and waits until `GET $ORIGIN/health` returns `{"ok":true}` and `GET $ORIGIN/v1/help` echoes that same origin.
+Launch applies D1 migrations with `--persist-to /tmp/energon-verify/$RUN/persist`, starts `npx wrangler dev --ip 127.0.0.1 --port $PORT --local --persist-to … --var PUBLIC_ORIGIN:$ORIGIN --var CONTENT_ORIGIN:$ORIGIN --show-interactive-dev-session false` in its own process group (`setsid` where available, bash job control on macOS), and waits until `GET $ORIGIN/health` returns `{"ok":true}` and `GET $ORIGIN/v1/help` echoes that same origin.
 
 Ready when launch prints `verify-energon launch ok` and `GET $ORIGIN/health` is 200. Typical first boot is under a minute. Log: `/tmp/energon-verify/$RUN/wrangler.log`.
 
