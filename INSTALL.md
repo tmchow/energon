@@ -17,7 +17,7 @@ You need a Cloudflare account (Workers Paid — unzip + 25 MB uploads), a hostna
 
 ### 1. Fork or clone
 
-Fork [`tmchow/energon`](https://github.com/tmchow/energon) into your org (or clone and add your own `origin`). The marketplace lives in this same tree. Point `origin` at **your** repo before you render the skill.
+Fork [`tmchow/energon`](https://github.com/tmchow/energon) into your org (or clone and add your own `origin`). After `skill:init`, the marketplace lives in this same tree. Point `origin` at **your** repo before you render the skill.
 
 `tmchow/energon` accepts [issues](https://github.com/tmchow/energon/issues/new/choose) and does not merge unsolicited pull requests. Keep your instance on the fork. See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
@@ -59,13 +59,13 @@ For the generic names (`energon@energon`, `ENERGON_TOKEN`) instead of `yourco-en
 npm run skill:init -- --skill energon --marketplace energon --origin https://energon.your.co --token-env ENERGON_TOKEN --repo your-org/energon
 ```
 
-That **replaces** `plugins/`, rewrites `marketplace.json`, and writes `instance-skill.json`. Commit the result.
+That writes `plugins/yourco-energon/` (Agent Plugins package), the harness catalogs (`.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`, and the Copilot/root copies), and `instance-skill.json`. The plugin lives in that subdirectory — not at the repo root, and not under `.agents/skills` or `.claude/skills`. Commit the result. After that, this fork is the marketplace teammates add.
 
 Then set wrangler `[vars]` to the same values. The init command prints the line.
 
-`npm run skill:render -- --check` fails if `SKILL.md` drifted from `instance-skill.json` + the template. That check is part of `npm run test:unit`.
+`npm run skill:render -- --check` fails if those files drifted from `instance-skill.json` + `templates/`. That check is part of `npm run test:unit`.
 
-The committed skill in **this** upstream tree is a placeholder: `energon@energon` bound to `https://energon.example.com`. Do not tell teammates to install from `tmchow/energon` against that host. After init, they install from **your** fork.
+The committed skill in **this** upstream tree is a placeholder under `plugins/energon`, bound to `https://energon.example.com`. Upstream does not ship marketplace catalogs. Do not tell teammates to install from `tmchow/energon`. After init, they install from **your** fork.
 
 ### 4. Company vars (`wrangler.toml`)
 
