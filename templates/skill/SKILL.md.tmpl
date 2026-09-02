@@ -15,7 +15,7 @@ This skill is bound to **{{ORIGIN}}**. Do not send traffic to another Energon ho
 
 ## Hard rules
 
-1. Look for env `{{TOKEN_ENV}}`. If it is missing, **stop and tell the human** to open {{ORIGIN}}/tokens, mint a key, and export it. Do **not** invent a token. Do **not** reuse a token you saw in chat history unless they just pasted it.
+1. Look for env `{{TOKEN_ENV}}`. If it is missing, **stop and tell the human** to open {{ORIGIN}}/tokens, mint a token, and export it. Do **not** invent a token. Do **not** reuse a token you saw in chat history unless they just pasted it. A token that has expired (`401` with `error: token_expired`) is the same stop: it cannot be renewed; the human mints a new one.
 2. Never default to `overwrite: true`.
 3. Never pick a slug that already exists without the human confirming.
 4. Last write wins **on that path only**. Putting a file does not delete other files. There is no merge, no comments, no presence.
@@ -185,16 +185,18 @@ curl -sS {{ORIGIN}}/v1/sites/onboarding-draft/export \
 
 A single file is never a zip. `GET /v1/files/{id}?download=1` (or the public URL with `?download=1`) returns the file with `Content-Disposition: attachment`.
 
-## Scenario G — No token / 401
+## Scenario G — No token, expired token, or 401
 
 401 messages point at {{ORIGIN}}/tokens. Tell the human:
 
 1. Open that page while signed in.
-2. Mint a token with a label (`laptop`, `ci`).
+2. Mint a token with a label (`laptop`, `ci`) and a lifetime (default 3 months).
 3. Copy it **now** — it is shown once.
 4. `export {{TOKEN_ENV}}={{TOKEN_PREFIX}}…` (or add it to their secret store).
 
-Then retry. Do not scrape HTML for a token. Do not mint from the API; only humans mint, via the hub.
+Then retry with the **new** token. Do not scrape HTML for a token. Do not mint from the API; only humans mint, via the hub.
+
+If the 401 body has `error: token_expired`, the token passed its lifetime. It cannot be extended and there is no renew call: do not retry with it, do not invent a replacement, hand the human the steps above. `GET /v1/whoami` returns your token's `expires_at` (`null` means never) if you want to warn the human before it happens.
 
 ## Scenario H — Too big, password, or TTL
 

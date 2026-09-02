@@ -15,6 +15,7 @@ import {
   resolveTokenExpiresAt,
   tokenExpired,
   tokenPolicy,
+  tokenPolicyPublic,
 } from "./policy";
 import { ensureUser, getUser, getUserById } from "./handles";
 import type { Actor, Env, TokenRow } from "./types";
@@ -309,6 +310,7 @@ export function helpBody(origin: string, env?: Env): unknown {
       max_import_files: MAX_IMPORT_FILES,
     },
     retention: policyPublic(policy),
+    tokens: tokenPolicyPublic(tokenPolicy(env || {}), origin),
     identity: {
       origin: id.origin,
       skill: id.skill,
@@ -317,7 +319,8 @@ export function helpBody(origin: string, env?: Env): unknown {
       repo: id.repo,
     },
     sop: [
-      `Look for env ${id.tokenEnv}. If missing, tell the human to open ${origin}/tokens, mint a key, and export it. The secret is shown once. Do not invent a token.`,
+      `Look for env ${id.tokenEnv}. If missing, tell the human to open ${origin}/tokens, mint a token, and export it. The secret is shown once. Do not invent a token.`,
+      `Tokens expire after the lifetime the human picked at mint (default 90 days; see tokens.presets). A 401 with error token_expired is terminal: stop, tell the human to mint a new token at ${origin}/tokens, and do not retry. Tokens cannot be extended. GET /v1/whoami shows your token's expires_at.`,
       `This instance's skill is ${id.skill} (install ${installLine(id)}). The origin is ${origin}. Do not guess another host.`,
       `Decide: a site (named folder of files) vs a file (one file, short id). Public URLs are /{handle}/s/{slug}/ and /{handle}/f/{id}/{filename}. Both stay put when you PUT again.`,
       `New site: POST /v1/sites with the human's slug and optional ttl (${policy.presets.map((p) => p.id).join(", ")}). Omit ttl to use ${policy.defaultTtl}. On 409, show the existing URL and ask: new slug, or retry with overwrite: true.`,
@@ -338,7 +341,7 @@ export function helpBody(origin: string, env?: Env): unknown {
       "GET /llms.txt": "agent-readable overview, no auth",
       "GET /v1/help": "this document, no auth",
       "GET /v1/health": "liveness, no auth",
-      "GET /v1/whoami": "token label and owner email",
+      "GET /v1/whoami": "token label, owner email, and expires_at (null = never)",
       "POST /v1/sites": '{ "slug", "overwrite": false, "password"?: string, "ttl"?: string, "write_policy"?: "owner"|"instance", "duplicate_from"?: slug }',
       "PATCH /v1/sites/{slug}": '{ "password"?: string, "ttl"?: string, "write_policy"?: "owner"|"instance" } — empty password clears. ttl resets expiry from now. write_policy is creator-only.',
       "GET /v1/sites/{slug}/files/{path}": "raw file bytes (token)",

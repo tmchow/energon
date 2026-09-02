@@ -13,6 +13,7 @@ This skill talks only to **https://energon.example.com**. Install a separately r
 | Status | Typical `error` | What you do |
 | --- | --- | --- |
 | 401 | `unauthorized` | Stop. Send them to https://energon.example.com/tokens |
+| 401 | `token_expired` | Terminal. The token passed its lifetime and cannot be extended. Do not retry with it; the human mints a new one at https://energon.example.com/tokens (`expired_at` and `tokens_url` are in the body) |
 | 401 | `password_required` | Retry the human URL with `X-Energon-Password`, or use `api_url` with a token |
 | 404 | `site_not_found` / `file_not_found` | Create the site first; never implicit-create. For files, check the path or id. |
 | 409 | `site_exists` | Show `url` + last writer. Ask: new slug or `overwrite: true` |
@@ -64,11 +65,15 @@ DELETE /v1/files/{id}    delete the file (no recycle bin)
 
 Expired public and `/v1` reads are `410`. A cron sweep deletes the R2 objects and D1 rows so storage does not wait for a click.
 
+## Token lifetime
+
+Humans pick a lifetime when minting on https://energon.example.com/tokens. `GET /v1/help` → `tokens` lists the presets (`1d`…`365d`, plus `never` only when this instance allows it), the default (`90d`), `allow_never`, and `tokens_url`. This is separate from content `retention`. After expiry every `/v1` call is `401 token_expired`; there is no renew. `GET /v1/whoami` shows `expires_at` (`null` = never).
+
 ## Other
 
 ```
-GET /v1/whoami     { email, label }
-GET /v1/help       this product, SOP, limits, routes, retention, identity
+GET /v1/whoami     { email, label, expires_at }
+GET /v1/help       this product, SOP, limits, routes, retention, tokens, identity
 GET /v1/health     { ok: true }
 ```
 

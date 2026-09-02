@@ -5,4 +5,5 @@ DEV_ACCESS_EMAIL=dev@example.com
 # DEFAULT_TTL=never
 # MAX_TTL=never
 # WRITE_POLICY=instance
+# ALLOW_UNLIMITED_TOKENS=true
 # ALLOWED_EMAIL_DOMAINS=example.com

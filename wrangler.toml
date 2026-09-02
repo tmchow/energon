@@ -26,6 +26,8 @@ ALLOW_UNLIMITED_RETENTION = "true"
 DEFAULT_TTL = "never"
 MAX_TTL = "never"
 WRITE_POLICY = "instance"
+# API tokens: 1d..365d at mint (default 90d). "true" also offers Never. Only affects future mints.
+ALLOW_UNLIMITED_TOKENS = "true"
 # Lock token minting to your workspace after Access is set up.
 # ALLOWED_EMAIL_DOMAINS = "your.co,your.com"
 FOOTER_TEXT = ""

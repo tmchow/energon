@@ -21,6 +21,7 @@ describe("Energon", () => {
     expect(text).toContain("/v1/help");
     expect(text).toContain("user (global) scope");
     expect(text).toContain("unless the human asked for that");
+    expect(text).toContain("token_expired");
     expect(text).not.toMatch(/ee_live_[A-Za-z0-9]+/);
   });
 
@@ -59,6 +60,11 @@ describe("Energon", () => {
     );
     expect(body.retention.presets.at(-1)).toMatchObject({ id: "never", label: "Never" });
     expect(body.retention.write_policy).toBe("instance");
+    expect(body.tokens.default).toBe("90d");
+    expect(body.tokens.allow_never).toBe(true);
+    expect(body.tokens.tokens_url).toBe("https://hub.energon.example.com/tokens");
+    expect(body.tokens.presets.map((p: { id: string }) => p.id)).toEqual(["1d", "7d", "30d", "60d", "90d", "180d", "365d", "never"]);
+    expect(body.sop.some((line: string) => line.includes("token_expired") && line.includes("/tokens"))).toBe(true);
   });
 
   it("curl without token to /v1/sites is 401 pointing at hub", async () => {
