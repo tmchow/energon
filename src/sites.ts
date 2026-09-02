@@ -283,3 +283,124 @@ export async function duplicateSite(
     },
   };
 }
+
+export async function patchSite(
+  env: Env,
+  actor: Actor,
+  slugRaw: string,
+  patch: { password?: string; ttl?: unknown; setTtl?: boolean; write_policy?: unknown },
+  ctx?: ExecutionContext,
+): Promise<Response> {
+  const slug = assertSlug(slugRaw);
+  const wantsWrite = Object.prototype.hasOwnProperty.call(patch, "write_policy");
+  const wantsOther = patch.password !== undefined || Boolean(patch.setTtl);
+  const site = await requireSite(env, actor, slug, {
+    allowExpired: Boolean(patch.setTtl),
+    ctx,
+    mutate: wantsOther,
+  });
+  let nextWrite = resolveWritePolicy(site.write_policy);
+  if (wantsWrite) {
+    assertCanSetWritePolicy(actor, site.created_by);
+    const parsed = requestedWritePolicy(patch.write_policy);
+    if (parsed === "invalid" || parsed === null) {
+      throw new ApiError(400, "bad_write_policy", "write_policy must be owner or instance.");
+    }
+    nextWrite = parsed;
+  }
+  const hash = await passwordHashFromInput(patch.password);
+  const ts = new Date().toISOString();
+  const resolved = patch.setTtl ? resolveExpiresAt(instancePolicy(env), patch.ttl) : null;
+  const notClaimed = `last_written_by NOT LIKE ?`;
+  if (hash !== undefined && resolved) {
+    const updated = await env.DB.prepare(
+      `UPDATE sites SET updated_at = ?, last_written_by = ?, password_hash = ?, expires_at = ? WHERE handle = ? AND slug = ? AND ${notClaimed}`,
+    )
+      .bind(ts, actor.email, hash, resolved.expiresAt, site.handle, slug, PURGE_CLAIM_LIKE)
+      .run();
+    if (!Number(updated.meta?.changes ?? 0)) throw expiredError("site");
+    purgeContent(ctx, [sitePrefix(site.handle, slug)]);
+  } else if (hash !== undefined) {
+    const updated = await env.DB.prepare(
+      `UPDATE sites SET updated_at = ?, last_written_by = ?, password_hash = ? WHERE handle = ? AND slug = ? AND ${notClaimed}`,
+    )
+      .bind(ts, actor.email, hash, site.handle, slug, PURGE_CLAIM_LIKE)
+      .run();
+    if (!Number(updated.meta?.changes ?? 0)) throw expiredError("site");
+    purgeContent(ctx, [sitePrefix(site.handle, slug)]);
+  } else if (resolved) {
+    const updated = await env.DB.prepare(
+      `UPDATE sites SET updated_at = ?, last_written_by = ?, expires_at = ? WHERE handle = ? AND slug = ? AND ${notClaimed}`,
+    )
+      .bind(ts, actor.email, resolved.expiresAt, site.handle, slug, PURGE_CLAIM_LIKE)
+      .run();
+    if (!Number(updated.meta?.changes ?? 0)) throw expiredError("site");
+    purgeContent(ctx, [sitePrefix(site.handle, slug)]);
+  } else if (wantsWrite) {
+    const updated = await env.DB.prepare(
+      `UPDATE sites SET updated_at = ?, last_written_by = ? WHERE handle = ? AND slug = ? AND ${notClaimed}`,
+    )
+      .bind(ts, actor.email, site.handle, slug, PURGE_CLAIM_LIKE)
+      .run();
+    if (!Number(updated.meta?.changes ?? 0)) throw expiredError("site");
+  }
+  if (wantsWrite) {
+    const updated = await env.DB.prepare(
+      `UPDATE sites SET write_policy = ? WHERE handle = ? AND slug = ? AND ${notClaimed}`,
+    )
+      .bind(nextWrite, site.handle, slug, PURGE_CLAIM_LIKE)
+      .run();
+    if (!Number(updated.meta?.changes ?? 0)) throw expiredError("site");
+  }
+  const protectedNow = hash === undefined ? Boolean(site.password_hash) : Boolean(hash);
+  return json({
+    slug,
+    handle: site.handle,
+    url: sitePublicUrl(env, site.handle, slug),
+    password_protected: protectedNow,
+    password: passwordEcho(patch.password, hash) ?? null,
+    expires_at: resolved ? resolved.expiresAt : site.expires_at ?? null,
+    ttl: resolved ? resolved.ttl : undefined,
+    write_policy: nextWrite,
+  });
+}
+
+export async function requireSite(
+  env: Env,
+  actor: Actor,
+  slug: string,
+  opts?: { allowExpired?: boolean; ctx?: ExecutionContext; mutate?: boolean },
+): Promise<SiteRow> {
+  const origin = publicOrigin(env);
+  const site = await findSiteForActor(env, actor, slug);
+  if (!site) {
+    throw new ApiError(
+      404,
+      "site_not_found",
+      `Site '${slug}' does not exist. Create it first with POST /v1/sites {"slug":"${slug}"}, then PUT files. See ${origin}/v1/help.`,
+      { hint: `POST ${origin}/v1/sites with {"slug":"${slug}"}` },
+    );
+  }
+  if (isPurgeClaimed(site.last_written_by)) {
+    try {
+      await purgeExpiredSite(env, opts?.ctx, site.handle, site.slug);
+    } catch (err) {
+      console.error("purgeExpiredSite failed", err);
+    }
+    if (!opts?.allowExpired) throw expiredError("site");
+    const still = await findSiteForActor(env, actor, slug);
+    if (!still) throw expiredError("site");
+    if (opts.mutate) assertCanMutate(actor, still);
+    return still;
+  }
+  if (isExpired(site.expires_at) && !opts?.allowExpired) {
+    try {
+      await purgeExpiredSite(env, opts?.ctx, site.handle, site.slug);
+    } catch (err) {
+      console.error("purgeExpiredSite failed", err);
+    }
+    throw expiredError("site");
+  }
+  if (opts?.mutate) assertCanMutate(actor, site);
+  return site;
+}
