@@ -33,6 +33,9 @@ describe("host and route contracts", () => {
     expect(hub.status).toBe(302);
     expect(hub.headers.get("location")).toBe("https://energon.example.com/ada/s/content-origin/");
 
+    const content = await req("https://energon.example.com/ada/s/content-origin/");
+    expect(content.headers.get("access-control-allow-origin")).toBe("https://hub.energon.example.com");
+
     const account = await req("https://energon.example.com/account/tokens", {
       headers: { "Cf-Access-Authenticated-User-Email": "ada@esperlabs.app" },
     });

@@ -248,7 +248,11 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   if (pubFile && (method === "GET" || method === "POST")) {
     const handle = decodeURIComponent(pubFile[1]).toLowerCase();
     if (!RESERVED_HANDLES.has(handle)) {
-      return serveLoose(env, ctx, handle, decodeURIComponent(pubFile[2]), pubFile[3], request);
+      return contentResponse(
+        await serveLoose(env, ctx, handle, decodeURIComponent(pubFile[2]), pubFile[3], request),
+        env,
+        contentHost,
+      );
     }
   }
 
@@ -260,7 +264,11 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
       if (method === "GET" && !pubSite[3] && !path.endsWith("/")) {
         return Response.redirect(sitePublicUrl(env, handle, slug), 302);
       }
-      return serveSite(env, ctx, handle, slug, pubSite[3] || "", request);
+      return contentResponse(
+        await serveSite(env, ctx, handle, slug, pubSite[3] || "", request),
+        env,
+        contentHost,
+      );
     }
   }
 
@@ -272,6 +280,11 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     },
     404,
   );
+}
+
+function contentResponse(response: Response, env: Env, contentHost: boolean): Response {
+  if (contentHost) response.headers.set("access-control-allow-origin", publicOrigin(env));
+  return response;
 }
 
 async function api(
