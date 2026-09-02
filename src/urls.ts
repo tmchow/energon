@@ -1,5 +1,5 @@
 import { FILE_ID_RE } from "./config";
-import { basename, publicOrigin } from "./http";
+import { basename, contentOrigin } from "./http";
 import type { Env } from "./types";
 
 /** Spaces to underscores so the path stays readable. Identity is the id, not this name. */
@@ -21,9 +21,9 @@ export function sitePublicPath(handle: string, slug: string, path = ""): string 
 }
 
 export function filePublicUrl(env: Env, handle: string, id: string, filename: string): string {
-  return `${publicOrigin(env)}${filePublicPath(handle, id, filename)}`;
+  return `${contentOrigin(env)}${filePublicPath(handle, id, filename)}`;
 }
 
 export function sitePublicUrl(env: Env, handle: string, slug: string, path = ""): string {
-  return `${publicOrigin(env)}${sitePublicPath(handle, slug, path)}`;
+  return `${contentOrigin(env)}${sitePublicPath(handle, slug, path)}`;
 }

@@ -2,6 +2,7 @@ const boot = JSON.parse(document.getElementById("bootstrap").textContent);
 const $ = (id) => document.getElementById(id);
 const drop = $("drop");
 const ORIGIN = (boot.origin || location.origin).replace(/\/$/, "");
+const CONTENT_ORIGIN = (boot.content_origin || ORIGIN).replace(/\/$/, "");
 const listState = {
   scope: "involved",
   q: "",
@@ -665,7 +666,7 @@ function nextNumberedSlug(slug) {
 async function slugTaken(slug) {
   const handle = boot.handle || "you";
   try {
-    const res = await fetch(ORIGIN + "/" + handle + "/s/" + encodeURIComponent(slug) + "/", {
+    const res = await fetch(CONTENT_ORIGIN + "/" + handle + "/s/" + encodeURIComponent(slug) + "/", {
       headers: { accept: "application/json" },
     });
     return res.status !== 404 && res.status !== 410;
@@ -721,8 +722,8 @@ function showStage(next) {
   $("stage-loose").hidden = next.kind !== "loose";
   $("stage-go").textContent = "Launch";
   const handle = boot.handle || "you";
-  $("stage-site-origin").textContent = ORIGIN + "/" + handle + "/s/";
-  $("stage-file-origin").textContent = ORIGIN + "/" + handle + "/f/{id}/";
+  $("stage-site-origin").textContent = CONTENT_ORIGIN + "/" + handle + "/s/";
+  $("stage-file-origin").textContent = CONTENT_ORIGIN + "/" + handle + "/f/{id}/";
   if (next.kind === "loose") {
     $("stage-status").textContent = "1 file ready";
     $("stage-filename").value = next.file.name;
@@ -828,7 +829,7 @@ async function launchSite() {
           body: it.file,
         });
       }
-      launchFlash(`Launched <a href="${esc(ORIGIN)}/${esc(boot.handle || "you")}/s/${esc(slug)}/">${esc(slug)}</a> (${files.length} files).`, data.password || password);
+      launchFlash(`Launched <a href="${esc(CONTENT_ORIGIN)}/${esc(boot.handle || "you")}/s/${esc(slug)}/">${esc(slug)}</a> (${files.length} files).`, data.password || password);
     }
     resetStage();
     await resetLists();
