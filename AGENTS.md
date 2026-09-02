@@ -31,7 +31,7 @@ This file is how to **change this tree**. It is not a product README and not the
 | `src/hub.html`, `src/hub.client.js`, `src/tokens.html`, `src/chrome.ts`, `src/setup.ts`, `src/about.ts`, `src/stats.ts` | Signed-in UI |
 | `src/auth.ts` `helpBody`, `src/llms.ts` | Runtime agent docs (`/v1/help`, `/llms.txt`). Update both when `/v1` behavior changes; then `templates/skill/` if the SOP changed. |
 | `src/db.ts`, `src/schema.sql`, `migrations/` | Schema (see below) |
-| `src/catalog.ts`, `handles.ts`, `urls.ts`, `http.ts`, `policy.ts`, `instance.ts`, `expire.ts`, `cache.ts`, `zip.ts`, `markdown.ts`, `mime.ts`, `memorable.ts`, `slugs.ts`, `config.ts` | Helpers — prefer `test:unit` |
+| `src/catalog.ts`, `src/handles.ts`, `src/urls.ts`, `src/http.ts`, `src/policy.ts`, `src/instance.ts`, `src/expire.ts`, `src/cache.ts`, `src/zip.ts`, `src/markdown.ts`, `src/mime.ts`, `src/memorable.ts`, `src/slugs.ts`, `src/config.ts` | Helpers — prefer `test:unit` |
 | `templates/`, `scripts/render-skill.mjs`, `instance-skill.json` | Skill / plugin source |
 | `plugins/energon/` | Rendered placeholder bound to `https://energon.example.com`. Not a marketplace until `npm run skill:init`. |
 | `.cursor/skills/verify-energon/` | Isolated local hub + `/v1` user-path verification |
@@ -40,7 +40,7 @@ This file is how to **change this tree**. It is not a product README and not the
 
 Three representations. One change updates all that apply:
 
-1. A **new file** under `migrations/` (do not rewrite old ones; `0001_init.sql` is frozen history, not a live copy of `schema.sql`).
+1. A **new file** under `migrations/` (do not rewrite old ones; `migrations/0001_init.sql` is frozen history, not a live copy of `src/schema.sql`).
 2. `src/db.ts` `TABLE_STATEMENTS` / `INDEX_STATEMENTS` / `ensureColumns` — request/cron bootstrap and legacy upgrades. Indexes after columns. A 0005-shaped DB must still start.
 3. `src/schema.sql` — documented current `CREATE` shape. Not applied at runtime; keep aligned with `ensureSchema`.
 
@@ -68,9 +68,9 @@ Do not run the full suite after every edit. CI (`.github/workflows/ci.yml`) runs
 | --- | --- |
 | Pure helper under `src/` | `npm run test:unit -- test/unit/<name>.spec.ts` |
 | `templates/`, `scripts/render-skill.mjs`, `instance-skill.json` | `npm run test:unit -- test/unit/skill-render.spec.ts` |
-| Hub/tokens/setup/about/stats HTML, `hub.client.js`, `chrome.ts` | `npx vitest run test/pages.spec.ts` |
+| Hub/tokens/setup/about/stats HTML, `src/hub.client.js`, `src/chrome.ts` | `npx vitest run test/pages.spec.ts` |
 | `src/index.ts` routes, host rules, hub `/account` API | `npx vitest run test/routes.spec.ts` |
-| Publish/delete/list, `sites.ts`, `files.ts`, `auth.ts` (DB), `markdown.ts`, `gate.ts` | `npx vitest run test/api.spec.ts` |
+| Publish/delete/list, `src/sites.ts`, `src/files.ts`, `src/auth.ts` (DB), `src/markdown.ts`, `src/gate.ts` | `npx vitest run test/api.spec.ts` |
 | Loose-file write/rename failures | `npx vitest run test/files.spec.ts` |
 | Site mutation rollback | `npx vitest run test/site-integrity.spec.ts` |
 | Expiry purge races | `npx vitest run test/api.purge-claim.spec.ts` |
