@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Tear down the instance this run started. Leaves evidence in place.
+# Usage: .cursor/skills/verify-energon/bin/cleanup
+
+set -euo pipefail
+_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$_script_dir/_lib.sh"
+
+if [[ -z "${ENERGON_VERIFY_RUN:-}" && ! -f "$CURRENT_FILE" ]]; then
+  die "no active run to clean up"
+fi
+
+load_state
+evidence="${EVIDENCE:-$EVIDENCE_ROOT/$RUN}"
+
+if pid_alive "$PID"; then
+  kill -- "-$PID" 2>/dev/null || kill "$PID" 2>/dev/null || true
+  for _ in $(seq 1 20); do
+    pid_alive "$PID" || break
+    sleep 0.2
+  done
+  if pid_alive "$PID"; then
+    kill -9 -- "-$PID" 2>/dev/null || kill -9 "$PID" 2>/dev/null || true
+  fi
+fi
+
+listeners="$(listen_pids "$PORT")"
+for lp in $listeners; do
+  pgid="$(ps -o pgid= -p "$lp" 2>/dev/null | tr -d ' ' || true)"
+  ppid="$(ps -o ppid= -p "$lp" 2>/dev/null | tr -d ' ' || true)"
+  if [[ "$lp" == "$PID" || "$pgid" == "$PID" || "$ppid" == "$PID" ]]; then
+    kill "$lp" 2>/dev/null || true
+  fi
+done
+
+if [[ -n "${PERSIST:-}" && "$PERSIST" == "$VERIFY_ROOT/"* && -d "$PERSIST" ]]; then
+  rm -rf "$PERSIST"
+fi
+
+if [[ -f "$CURRENT_FILE" && "$(cat "$CURRENT_FILE")" == "$RUN" ]]; then
+  rm -f "$CURRENT_FILE"
+fi
+
+# Keep state.env and logs so a later doctor can explain a dead run; drop the Worker data only.
+printf 'verify-energon cleanup ok\n'
+printf '  killed pid %s on port %s\n' "$PID" "$PORT"
+printf '  removed persist %s\n' "$PERSIST"
+printf '  evidence remains at %s\n' "$evidence"
+if [[ -d "$evidence" ]]; then
+  ls -la "$evidence" || true
+else
+  printf '  (evidence dir not created this run)\n'
+fi

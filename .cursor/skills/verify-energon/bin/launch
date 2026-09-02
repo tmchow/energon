@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# Start an isolated local Energon for verification.
+# Usage (from repo root): .cursor/skills/verify-energon/bin/launch
+# Env: ENERGON_VERIFY_RUN, ENERGON_VERIFY_PORT (default 18787)
+
+set -euo pipefail
+_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$_script_dir/_lib.sh"
+
+cd "$REPO_ROOT"
+
+if [[ ! -d "$REPO_ROOT/node_modules/wrangler" ]]; then
+  npm install
+fi
+
+RUN="${ENERGON_VERIFY_RUN:-$(date +%Y%m%d-%H%M%S)-$$}"
+export ENERGON_VERIFY_RUN="$RUN"
+PORT="${ENERGON_VERIFY_PORT:-$DEFAULT_PORT}"
+ORIGIN="http://127.0.0.1:${PORT}"
+DIR="$VERIFY_ROOT/$RUN"
+PERSIST="$DIR/persist"
+LOG="$DIR/wrangler.log"
+INSPECTOR_PORT=$((PORT + 1000))
+EMAIL="${ENERGON_VERIFY_EMAIL:-dev@example.com}"
+
+mkdir -p "$DIR" "$PERSIST" "$EVIDENCE_ROOT/$RUN"
+printf '%s\n' "$RUN" >"$CURRENT_FILE"
+
+if port_in_use "$PORT"; then
+  die "port $PORT is already in use. Set ENERGON_VERIFY_PORT to a free port, or stop the process that owns $PORT. Do not drive a shared instance."
+fi
+if port_in_use "$INSPECTOR_PORT"; then
+  INSPECTOR_PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
+fi
+
+npx wrangler d1 migrations apply energon --local --persist-to "$PERSIST"
+
+# --var wins over wrangler.toml [vars] so published URLs match this port.
+# Do not pass --remote. Do not use the default .wrangler/state directory.
+setsid npx wrangler dev \
+  --ip 127.0.0.1 \
+  --port "$PORT" \
+  --inspector-port "$INSPECTOR_PORT" \
+  --local \
+  --persist-to "$PERSIST" \
+  --var "PUBLIC_ORIGIN:${ORIGIN}" \
+  --var "CONTENT_ORIGIN:${ORIGIN}" \
+  --show-interactive-dev-session false \
+  >"$LOG" 2>&1 &
+PID=$!
+
+{
+  printf 'RUN=%s\n' "$RUN"
+  printf 'PORT=%s\n' "$PORT"
+  printf 'ORIGIN=%s\n' "$ORIGIN"
+  printf 'PERSIST=%s\n' "$PERSIST"
+  printf 'LOG=%s\n' "$LOG"
+  printf 'PID=%s\n' "$PID"
+  printf 'INSPECTOR_PORT=%s\n' "$INSPECTOR_PORT"
+  printf 'EMAIL=%s\n' "$EMAIL"
+  printf 'EVIDENCE=%s\n' "$EVIDENCE_ROOT/$RUN"
+  printf 'REPO_ROOT=%s\n' "$REPO_ROOT"
+} >"$DIR/state.env"
+
+cleanup_failed_launch() {
+  if pid_alive "$PID"; then
+    kill -- "-$PID" 2>/dev/null || kill "$PID" 2>/dev/null || true
+    wait "$PID" 2>/dev/null || true
+  fi
+  local extra
+  extra="$(listen_pids "$PORT")"
+  if [[ -n "$extra" ]]; then
+    # Only the listener on this verification port — never kill by process name.
+    # shellcheck disable=SC2086
+    kill $extra 2>/dev/null || true
+  fi
+}
+
+ok=0
+for _ in $(seq 1 90); do
+  if ! pid_alive "$PID"; then
+    cleanup_failed_launch
+    die "wrangler exited before becoming ready. See $LOG"
+  fi
+  code="$(curl -sS -o /tmp/energon-verify-body.$$ -w '%{http_code}' "$ORIGIN/health" || true)"
+  if [[ "$code" == "200" ]] && grep -q '"ok":true' /tmp/energon-verify-body.$$; then
+    ok=1
+    break
+  fi
+  sleep 1
+done
+
+if [[ "$ok" != "1" ]]; then
+  cleanup_failed_launch
+  die "timed out waiting for $ORIGIN/health. See $LOG"
+fi
+
+help_json="$(curl -sS "$ORIGIN/v1/help")"
+hub="$(json_get "$help_json" "hub" || true)"
+content="$(json_get "$help_json" "content_origin" || true)"
+if [[ "$hub" != "$ORIGIN" || "$content" != "$ORIGIN" ]]; then
+  cleanup_failed_launch
+  die "instance origins are hub=$hub content_origin=$content, expected $ORIGIN. A project .dev.vars likely overrode --var. Align PUBLIC_ORIGIN and CONTENT_ORIGIN with ENERGON_VERIFY_PORT, or remove those keys from .dev.vars for this run."
+fi
+
+printf 'verify-energon launch ok\n'
+printf '  run      %s\n' "$RUN"
+printf '  origin   %s\n' "$ORIGIN"
+printf '  pid      %s\n' "$PID"
+printf '  persist  %s\n' "$PERSIST"
+printf '  evidence %s\n' "$EVIDENCE_ROOT/$RUN"
+printf '  log      %s\n' "$LOG"
+printf 'export ENERGON_VERIFY_RUN=%s\n' "$RUN"
