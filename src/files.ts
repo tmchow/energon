@@ -22,11 +22,12 @@ import {
 import { ensureHandle, ensureUser } from "./handles";
 import { listSitesFor } from "./sites";
 import { passwordEcho, passwordField, passwordHashFromInput, protectContent, readSetPasswordHeader } from "./gate";
-import { filePublicPath, filePublicUrl, isFileId, urlFilename } from "./urls";
+import { filePublicUrl, isFileId, urlFilename } from "./urls";
 import {
   ApiError,
   assertStorageRoom,
   basename,
+  contentOrigin,
   contentDisposition,
   copyR2Object,
   json,
@@ -68,6 +69,7 @@ export async function createLooseFile(
   if (filename === "." || filename === ".." || filename.includes("/")) {
     throw new ApiError(400, "bad_filename", "Give a simple filename, not a path.");
   }
+  contentOrigin(env);
   await assertStorageRoom(env.DB, bytes.byteLength, 0, policy.platformBytes);
   const user = await ensureUser(env, actor.email);
   const handle = user.handle;
@@ -151,6 +153,7 @@ export async function duplicateLooseFile(
     }
     throw expiredError("file");
   }
+  contentOrigin(env);
   const policy = instancePolicy(env);
   await assertStorageRoom(env.DB, source.size, 0, policy.platformBytes);
   const user = await ensureUser(env, actor.email);
@@ -404,6 +407,7 @@ export async function putLooseFile(
       throw new ApiError(400, "bad_filename", "Give a simple filename, not a path.");
     }
   }
+  contentOrigin(env);
   await assertStorageRoom(env.DB, bytes.byteLength, existing.size, policy.platformBytes);
   const contentType = contentTypeFor(filename, bytes, hintType);
   const ts = new Date().toISOString();
@@ -810,7 +814,7 @@ export async function serveLoose(
 
   const pretty = urlFilename(row.filename);
   if (filename !== pretty) {
-    return Response.redirect(`${publicOrigin(env)}${filePublicPath(handle, id, row.filename)}`, 302);
+    return Response.redirect(filePublicUrl(env, handle, id, row.filename), 302);
   }
   const obj = await env.BUCKET.get(fileKey(id, row.filename));
   if (!obj) return new Response("Not found", { status: 404, headers: { "cache-control": "no-store" } });

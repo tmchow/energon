@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { TOKEN_PREFIX } from "../../src/config";
-import { actorFromAccess, maskToken, parseBearer, rejectWorkersDevForHumans, requireToken } from "../../src/auth";
+import { actorFromAccess, helpBody, maskToken, mintToken, parseBearer, rejectWorkersDevForHumans, requireToken } from "../../src/auth";
 import type { Env, TokenRow } from "../../src/types";
 
 const env = { PUBLIC_ORIGIN: "https://energon.example.com" } as Env;
@@ -15,6 +15,77 @@ describe("maskToken", () => {
   it("still masks a short or unprefixed value", () => {
     expect(maskToken("abcd")).toBe(`${TOKEN_PREFIX}…`);
     expect(maskToken("totally-plain-token")).toBe("…oken");
+  });
+
+  it("uses the configured prefix", () => {
+    const customEnv = { TOKEN_PREFIX: "custom_" } as Env;
+    expect(maskToken("custom_abcdefghijKLMN", customEnv)).toBe("custom_…KLMN");
+    expect(maskToken("abcd", customEnv)).toBe("custom_…");
+  });
+});
+
+describe("mintToken", () => {
+  it("mints a custom-prefix token that requireToken accepts", async () => {
+    const customEnv = {
+      TOKEN_PREFIX: "custom_",
+      PUBLIC_ORIGIN: "https://energon.example.com",
+    } as Env;
+    let storedHash = "";
+    let lookedUpHash = "";
+    const row: TokenRow = {
+      id: "token-id",
+      user_email: "agent@esperlabs.app",
+      label: "custom",
+      token_hash: "",
+      created_at: "2026-08-27T00:00:00.000Z",
+      last_used_at: null,
+      revoked_at: null,
+    };
+    const prepare = vi.fn((sql: string) => {
+      if (sql.includes("INSERT")) {
+        return {
+          bind: (...args: unknown[]) => ({
+            run: async () => {
+              storedHash = String(args[3]);
+              row.token_hash = storedHash;
+            },
+          }),
+        };
+      }
+      if (sql.includes("SELECT")) {
+        return {
+          bind: (hash: string) => ({
+            first: async () => {
+              lookedUpHash = hash;
+              return hash === storedHash ? row : null;
+            },
+          }),
+        };
+      }
+      return { bind: () => ({ run: async () => undefined }) };
+    });
+    const env = { ...customEnv, DB: { prepare } } as unknown as Env;
+
+    const minted = await mintToken(env, row.user_email, row.label);
+    expect(minted.token).toMatch(/^custom_/);
+    await expect(
+      requireToken(new Request("https://energon.example.com/v1/whoami", {
+        headers: { authorization: `Bearer ${minted.token}` },
+      }), env),
+    ).resolves.toMatchObject({ email: row.user_email, tokenId: row.id, tokenLabel: row.label });
+    expect(storedHash).not.toBe("");
+    expect(lookedUpHash).toBe(storedHash);
+  });
+});
+
+describe("helpBody", () => {
+  it("publishes the configured token prefix", () => {
+    const body = helpBody("https://custom.example.com", { TOKEN_PREFIX: "custom_" } as Env) as {
+      auth: string;
+      token_prefix: string;
+    };
+    expect(body.token_prefix).toBe("custom_");
+    expect(body.auth).toBe("Authorization: Bearer custom_<secret>");
   });
 });
 

@@ -1,23 +1,23 @@
 {
-  "name": "energon",
+  "name": "{{MARKETPLACE_NAME}}",
   "interface": {
-    "displayName": "Energon"
+    "displayName": "{{PRODUCT}}"
   },
   "plugins": [
     {
-      "name": "energon",
+      "name": "{{PLUGIN_NAME}}",
       "version": "1.0.0",
       "description": "Internal URLs for prototypes, markdown, and agent-made files so work can leave a session.",
       "source": {
         "source": "local",
-        "path": "./plugins/energon"
+        "path": "./plugins/{{PLUGIN_NAME}}"
       },
       "policy": {
         "installation": "AVAILABLE",
         "authentication": "ON_INSTALL"
       },
       "category": "Productivity",
-      "homepage": "https://energon.example.com"
+      "homepage": "{{ORIGIN}}"
     }
   ]
 }

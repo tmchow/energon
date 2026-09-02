@@ -4,9 +4,9 @@ Energon is a company host for files and small sites. An agent publishes over HTT
 
 It is agent-native on purpose. The same skill works from Cursor, Claude Code, Codex, and other clients that install [Agent Plugins](https://agent-plugins.org/). Markdown, a folder of HTML, a screenshot, a PDF: one place, not a static host plus Drive plus Slack. You run it in your Cloudflare account, so the bytes are not sitting on a public paste service. Teammates with a token can read and write. You can lock a site or a file so only the creator overwrites it. You can still send the link to someone outside the company.
 
-Team members authenticate to mint a token. Published URLs are open by default, because an agent has no login cookie and a preview for someone outside the company is the same URL. Anyone with the link can open it. Put a share password on a URL that should not be wide open. Token reads on `/v1` skip the password. Writing stays on tokens.
+Team members authenticate to mint a token. Published URLs are served from the separately configured content hostname and are open by default, because an agent has no login cookie and a preview for someone outside the company is the same URL. Anyone with the link can open it. Put a share password on a URL that should not be wide open. Token reads on the hub's `/v1` skip the password. Writing stays on tokens.
 
-This repo is what you fork. The skill in the tree is bound to this instance. `npm run skill:init` names it for your host (`yourco-energon`, `YOURCO_ENERGON_TOKEN`) so it does not collide with another Energon you also use. Install that skill at user scope if this is the host you want in every project. If you belong to more than one organization, install each instance's skill. They have different names and different token env vars. Or pin one at project scope in that company's repos.
+This repo is what you fork. `npm run skill:init` writes a plugin package named for your host (`yourco-energon`, `YOURCO_ENERGON_TOKEN`) and the marketplace catalogs teammates add, so it does not collide with another Energon you also use. Install that skill at user scope if this is the host you want in every project. If you belong to more than one organization, install each instance's skill. They have different names and different token env vars. Or pin one at project scope in that company's repos.
 
 A site is a named folder, like `/ada/s/lunch-poll/`. A file is one object with a short id, like `/ada/f/x7k2/brief.md`. POST once to mint the id, then PUT to replace it. The address does not move. `curl` and `?raw=1` stay the source. `index.md` is the homepage when `index.html` is missing. Last write wins on each path.
 
@@ -14,7 +14,7 @@ Who can mint tokens, the default write policy, and how long things live are sett
 
 `GET /v1/sites` and `GET /v1/files` only return what you created or last wrote. They are not a company catalog.
 
-The skill in this upstream tree is `energon@energon`, aimed at `https://energon.example.com`. That host is not real. Run `npm run skill:init` with your hostname before anyone installs the skill. Default token env is `ENERGON_TOKEN`.
+The package in this upstream tree is `plugins/energon`, aimed at `https://energon.example.com`. That host is not real, and this tree is not a marketplace. Run `npm run skill:init` with your hostname before anyone installs the skill. Default token env is `ENERGON_TOKEN`.
 
 ## Where this came from
 
@@ -37,9 +37,9 @@ Same steps for you or an agent: [INSTALL.md](./INSTALL.md). Paste one of these.
 ```
 Read INSTALL.md in this repository and stand up an Energon host for our company.
 
-Follow INSTALL.md exactly. Ask me for our public hostname, who may mint tokens, and whether coworkers' tokens should overwrite each other's files (WRITE_POLICY=instance) or only the creator (owner).
+Follow INSTALL.md exactly. Ask me for our hub hostname, content hostname, who may mint tokens, and whether coworkers' tokens should overwrite each other's files (WRITE_POLICY=instance) or only the creator (owner).
 
-Do not invent a token. Do not reuse another instance's D1 database_id or R2 bucket. After skill:init, commit the rendered skill so teammates install from this fork.
+Do not invent a token. Do not reuse another instance's D1 database_id or R2 bucket. After skill:init, commit the generated plugin and catalogs so teammates install from this fork.
 ```
 
 ### Connect an agent to a host that exists

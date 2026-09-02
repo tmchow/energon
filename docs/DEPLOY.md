@@ -18,7 +18,7 @@ This tree is meant to be forked and run inside a company. There is no hosted pub
 | `WRITE_POLICY` | `instance` (committed) | `owner` |
 | Skill | rendered for this host | placeholder `energon@energon` |
 
-Code defaults are **strict** when vars are omitted: required TTL, 30-day cap, creator-only writes. The committed `wrangler.toml` opts into company mode. Replace the placeholder D1 id and `PUBLIC_ORIGIN` before you deploy.
+Code defaults are **strict** when vars are omitted: required TTL, 30-day cap, creator-only writes. The committed `wrangler.toml` opts into company mode. Replace the placeholder D1 id, `PUBLIC_ORIGIN`, and `CONTENT_ORIGIN` before you deploy. `CONTENT_ORIGIN` must be a separate custom hostname; without it, production content publication fails closed.
 
 Auth on the Worker is Cloudflare Access (`Cf-Access-Authenticated-User-Email`). There is no signup in the app.
 
@@ -44,11 +44,11 @@ Two paths, on purpose:
 
 R2 lifecycle rules cannot do per-object `expires_at`. The Worker owns the clock.
 
-## Skill: committed files are installable; forks replace them
+## Skill: init writes the installable package; forks commit it
 
-The installable skill is the **committed files** under `plugins/`. That is what `/plugin install` reads.
+The installable skill is the **committed files** under `plugins/{name}/` plus the harness catalogs `skill:init` writes. That is what `/plugin install` reads. Source templates live in `templates/`.
 
-This upstream ships a placeholder skill named **`energon`** (`energon@energon`) bound to `https://energon.example.com` and `ENERGON_TOKEN`. That is not a live host. After you fork:
+This upstream ships a placeholder package named **`energon`** under `plugins/energon`, bound to `https://energon.example.com` and `ENERGON_TOKEN`. It is not a marketplace — there is no `.claude-plugin/marketplace.json` until you init. After you fork:
 
 ```bash
 npm run skill:init -- --name yourco --origin https://energon.your.co
@@ -56,11 +56,13 @@ npm run skill:init -- --name yourco --origin https://energon.your.co
 
 That sets skill **and** marketplace to `yourco-energon`, token env `YOURCO_ENERGON_TOKEN`, and the GitHub repo from `git remote get-url origin`. `--repo owner/energon` only if origin is still `tmchow/energon`.
 
-It **replaces** the shipped plugin folder, rewrites `marketplace.json`, and writes `instance-skill.json`. Commit that. Point wrangler `SKILL_NAME`, `MARKETPLACE_NAME`, `MARKETPLACE_REPO`, `TOKEN_ENV`, and `PUBLIC_ORIGIN` at the same values.
+It writes `plugins/yourco-energon/`, `.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`, the Copilot/root catalog copies, and `instance-skill.json`. Commit that. Point wrangler `SKILL_NAME`, `MARKETPLACE_NAME`, `MARKETPLACE_REPO`, `TOKEN_ENV`, and `PUBLIC_ORIGIN` at the same values. Set `CONTENT_ORIGIN` to a second custom hostname for published files and sites.
+
+Do not put the skill in `.agents/skills` or `.claude/skills` — those autoload it in this Worker repo. Keep the plugin in `plugins/{name}/` so `claude plugin validate .` treats the fork as a marketplace, not the whole Worker as a plugin.
 
 Skill name and marketplace name match so a second Energon catalog does not collide. Claude Code has one marketplace `name` slot.
 
-`npm run skill:render -- --check` fails if `SKILL.md` drifted from `instance-skill.json` + the template.
+`npm run skill:render -- --check` fails if committed files drifted from `instance-skill.json` + `templates/`.
 
 Do not ship `{{placeholders}}` in `SKILL.md`. Do not tell a private host to install the placeholder `tmchow/energon` skill.
 
@@ -77,7 +79,7 @@ Put the printed D1 `database_id` in `wrangler.toml`. Keep `database_name` and `b
 
 Then:
 
-- Custom domain → `[[routes]]` in `wrangler.toml`
+- Custom domains → both `[[routes]]` entries in `wrangler.toml` (hub and content)
 - GitHub Actions secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
 - GitHub Actions variable `ENABLE_PRODUCTION_DEPLOY=true` to deploy on push to `main`. Unset = tests only.
 - Do not `wrangler login` from a cloud agent VM. Land on `main`.
@@ -89,6 +91,7 @@ Strings only (Wrangler).
 | Var | Company | Default if unset |
 | --- | --- | --- |
 | `PUBLIC_ORIGIN` | `https://energon.your.co` | `https://energon.example.com` |
+| `CONTENT_ORIGIN` | `https://content.energon.your.co` | `https://content.energon.example.com` |
 | `ALLOW_UNLIMITED_RETENTION` | `true` | `false` |
 | `DEFAULT_TTL` | `never` | `7d` (`never` if unlimited is on and this is unset) |
 | `MAX_TTL` | `never` | `30d` (`never` if unlimited) |
@@ -135,9 +138,9 @@ The Worker reads `Cf-Access-Authenticated-User-Email`. It does not implement sig
 **Paths**
 
 - **Allow** (signed-in): `/`, `/account*`, `/about`, `/stats`, `/setup`, `/tokens`
-- **Bypass** (default): `/v1*`, `/health`, `/llms.txt`, `/favicon.svg`, `/static*`, `/{handle}/s/*`, `/{handle}/f/*`
+- **Bypass** (default): `/v1*`, `/health`, `/llms.txt`, `/favicon.svg`, `/static*` on the hub, and `/{handle}/s/*`, `/{handle}/f/*` on the content hostname
 
-Published `/{handle}/s/*` and `/{handle}/f/*` stay on the open internet by default so a share link just opens. To keep those links off the public web, put Access on **those paths only**. Leave `/v1*` on Bypass. There is no `PUBLISH_VISIBILITY` var.
+Published `/{handle}/s/*` and `/{handle}/f/*` are served from `CONTENT_ORIGIN` and stay on the open internet by default so a share link just opens. Do not put Access on the content hostname; the Worker rejects hub routes there and the separate origin prevents active uploads from reading authenticated hub responses. Leave `/v1*` on Bypass on the hub. There is no `PUBLISH_VISIBILITY` var.
 
 Disable or ignore `*.workers.dev` for humans; the Worker 403s the hub there.
 
@@ -147,6 +150,7 @@ Disable or ignore `*.workers.dev` for humans; the Worker 403s the hub there.
 npm install
 npx wrangler d1 migrations apply energon --local
 # .dev.vars: PUBLIC_ORIGIN=http://127.0.0.1:8787
+#            CONTENT_ORIGIN=http://127.0.0.1:8787
 #            DEV_ACCESS_EMAIL=you@your.co
 npm run dev
 ```

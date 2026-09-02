@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * The committed plugin under plugins/ is the installable skill (complete
- * SKILL.md, no placeholders). templates/skill is only used to generate or
- * replace that skill.
+ * templates/ is the source. plugins/ is a render of those templates.
  *
- * OSS ships a finished /energon skill. A fork runs --init to replace those
- * files. Skill name and marketplace name match (cybertron-energon@cybertron-energon).
- * The GitHub repo is this fork — read from `origin`, or pass --repo.
+ * OSS renders plugins/energon bound to https://energon.example.com. It does
+ * not ship marketplace catalogs — this tree is not installable.
+ *
+ * A fork runs --init. That writes plugins/{name}/, the harness catalogs, and
+ * instance-skill.json. Commit those; that repo is the marketplace.
  *
  *   npm run skill:render
  *   npm run skill:render -- --check
@@ -14,25 +14,28 @@
  */
 import { execFileSync } from "node:child_process";
 import {
-  cpSync,
-  existsSync,
   lstatSync,
   mkdirSync,
   readFileSync,
-  realpathSync,
   readdirSync,
-  renameSync,
+  realpathSync,
   rmSync,
-  symlinkSync,
-  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const TMPL_DIR = join(ROOT, "templates", "skill");
-const INSTANCE_PATH = join(ROOT, "instance-skill.json");
+const SCRIPT_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const SKILL_TMPL_DIR = join(SCRIPT_ROOT, "templates", "skill");
+const PLUGIN_TMPL_DIR = join(SCRIPT_ROOT, "templates", "plugin");
+const MARKETPLACE_TMPL_DIR = join(SCRIPT_ROOT, "templates", "marketplace");
+
+const MARKETPLACES = [
+  { rel: "marketplace.json", tmpl: "claude.json.tmpl" },
+  { rel: ".claude-plugin/marketplace.json", tmpl: "claude.json.tmpl" },
+  { rel: ".github/plugin/marketplace.json", tmpl: "github.json.tmpl" },
+  { rel: ".agents/plugins/marketplace.json", tmpl: "agents.json.tmpl" },
+];
 
 /** If instance-skill.json is missing, treat the tree as the public OSS skill. */
 const OSS_DEFAULTS = {
@@ -55,8 +58,9 @@ function hasPath(path) {
   try {
     lstatSync(path);
     return true;
-  } catch {
-    return false;
+  } catch (err) {
+    if (err && err.code === "ENOENT") return false;
+    throw err;
   }
 }
 
@@ -71,6 +75,7 @@ function assertIdentifier(value, label) {
   }
 }
 
+/** Check lexical containment and resolve every existing ancestor for symlink escapes. */
 function assertPathInside(root, candidate, label) {
   const rootPath = resolve(root);
   const candidatePath = resolve(candidate);
@@ -92,13 +97,13 @@ function assertPathInside(root, candidate, label) {
   return candidatePath;
 }
 
-function assertLexicallyInside(root, candidate, label) {
-  const rootPath = resolve(root);
-  const candidatePath = resolve(candidate);
-  if (!isContained(rootPath, candidatePath)) {
-    throw new Error(`${label} resolves outside ${rootPath}`);
+function assertMutationPath(root, scope, candidate, label) {
+  const candidatePath = assertPathInside(root, candidate, label);
+  const scopePath = resolve(scope);
+  if (!isContained(scopePath, candidatePath)) {
+    throw new Error(`${label} resolves outside ${scopePath}`);
   }
-  return candidatePath;
+  if (hasPath(scopePath)) assertPathInside(scopePath, candidatePath, label);
 }
 
 function validateIdentifiers(opts, source) {
@@ -114,7 +119,7 @@ export function parseGitHubRepo(url) {
   return `${match[1]}/${match[2].replace(/\.git$/i, "")}`;
 }
 
-export function discoverRepo(root = ROOT) {
+export function discoverRepo(root = SCRIPT_ROOT) {
   try {
     const url = execFileSync("git", ["-C", root, "remote", "get-url", "origin"], { encoding: "utf8" }).trim();
     return parseGitHubRepo(url);
@@ -147,17 +152,25 @@ export function orgFromBrand(brand) {
     .join(" ");
 }
 
-function loadInstance() {
-  if (!existsSync(INSTANCE_PATH)) return { ...OSS_DEFAULTS };
-  const raw = JSON.parse(readFileSync(INSTANCE_PATH, "utf8"));
-  const repo = raw.repo || raw.marketplaceRepo || OSS_DEFAULTS.repo;
-  const opts = { ...OSS_DEFAULTS, ...raw, repo, marketplaceRepo: repo };
-  validateIdentifiers(opts, "instance configuration");
-  return opts;
+function instancePath(root) {
+  return join(root, "instance-skill.json");
 }
 
-function parseArgs(argv) {
-  const prev = loadInstance();
+function loadInstance(root) {
+  try {
+    const raw = JSON.parse(readFileSync(instancePath(root), "utf8"));
+    const repo = raw.repo || raw.marketplaceRepo || OSS_DEFAULTS.repo;
+    const opts = { ...OSS_DEFAULTS, ...raw, repo, marketplaceRepo: repo };
+    validateIdentifiers(opts, "instance configuration");
+    return opts;
+  } catch (err) {
+    if (err && err.code === "ENOENT") return { ...OSS_DEFAULTS };
+    throw err;
+  }
+}
+
+function parseArgs(argv, root) {
+  const prev = loadInstance(root);
   const out = { ...prev, check: false, init: false, updateMarketplace: true };
   const set = new Set();
   for (let i = 0; i < argv.length; i++) {
@@ -208,14 +221,14 @@ function parseArgs(argv) {
   node scripts/render-skill.mjs [--check]
   node scripts/render-skill.mjs --init --name cybertron --origin URL
 
-  --init                 replace the shipped skill with this host's values
+  --init                 write this host's plugin package and marketplace catalogs
   --name PREFIX          skill + marketplace become PREFIX-energon (cybertron → cybertron-energon)
   --skill NAME           slash command /NAME (defaults marketplace to the same NAME)
   --origin URL           public hostname, no trailing slash
   --repo OWNER/REPO      GitHub repo that is the marketplace. Default: git remote origin
   --token-env NAME       env var agents look for
   --org NAME             company name in prose
-  --check                exit 1 if committed SKILL.md drifted`);
+  --check                exit 1 if committed files drifted from templates`);
       process.exit(0);
     } else {
       throw new Error(`unknown arg: ${a}`);
@@ -223,6 +236,7 @@ function parseArgs(argv) {
   }
 
   if (set.has("name")) {
+    assertIdentifier(out.name, "--name");
     const brand = brandFromName(out.name);
     if (!brand) throw new Error("--name must be a slug, e.g. cybertron");
     if (!set.has("skill")) {
@@ -246,7 +260,7 @@ function parseArgs(argv) {
   out.origin = String(out.origin || "").replace(/\/$/, "");
 
   if (out.init && !set.has("repo")) {
-    const found = discoverRepo();
+    const found = discoverRepo(root);
     if (found) out.repo = found;
     if (found === "tmchow/energon" && out.skill !== "energon") {
       console.warn(
@@ -255,17 +269,14 @@ function parseArgs(argv) {
     }
   }
   if (!out.repo) out.repo = prev.repo || OSS_DEFAULTS.repo;
-  if (!set.has("marketplaceUrl")) {
-    out.marketplaceUrl = `https://github.com/${out.repo}`;
-  }
+  if (!set.has("marketplaceUrl")) out.marketplaceUrl = `https://github.com/${out.repo}`;
   out.marketplaceRepo = out.repo;
 
-  if (out.init && (!set.has("skill") || !out.origin)) {
+  if (out.init && (!set.has("skill") || !set.has("origin"))) {
     throw new Error("skill:init requires --name (or --skill) and --origin");
   }
-  if (set.has("name")) assertIdentifier(out.name, "--name");
   validateIdentifiers(out, "argument");
-  return { opts: out, prev, set };
+  return { opts: out, prev };
 }
 
 function varsFrom(opts) {
@@ -321,13 +332,23 @@ function render(template, vars) {
   return text;
 }
 
+function withTrailingNewline(text) {
+  return `${String(text).replace(/\n$/, "")}\n`;
+}
+
 function sameContents(path, contents) {
-  if (!existsSync(path)) return false;
-  const prev = readFileSync(path, "utf8");
-  if (prev === contents) return true;
-  if (path.endsWith(".json")) {
+  let prev;
+  try {
+    prev = readFileSync(path);
+  } catch (err) {
+    if (err && err.code === "ENOENT") return false;
+    throw err;
+  }
+  const next = Buffer.isBuffer(contents) ? contents : Buffer.from(contents);
+  if (Buffer.compare(prev, next) === 0) return true;
+  if (path.endsWith(".json") && !Buffer.isBuffer(contents)) {
     try {
-      return JSON.stringify(JSON.parse(prev)) === JSON.stringify(JSON.parse(contents));
+      return JSON.stringify(JSON.parse(prev.toString("utf8"))) === JSON.stringify(JSON.parse(contents));
     } catch {
       return false;
     }
@@ -335,195 +356,177 @@ function sameContents(path, contents) {
   return false;
 }
 
-function writeOrCheck(path, contents, check, dirty) {
+function writeOrCheck(root, path, contents, check, dirty) {
   if (sameContents(path, contents)) return;
-  dirty.push(relative(ROOT, path));
+  dirty.push(relative(root, path));
   if (check) return;
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, contents);
 }
 
-function upsertMarketplace(path, opts, check, dirty) {
-  if (!existsSync(path)) return;
-  const json = JSON.parse(readFileSync(path, "utf8"));
-  json.name = opts.marketplace;
-  const current = json.plugins?.[0] || {};
-  const pluginPath = `./plugins/${opts.plugin}`;
-  const source =
-    current.source && typeof current.source === "object"
-      ? { ...current.source, path: pluginPath }
-      : pluginPath;
-  const plugin = {
-    ...current,
-    name: opts.plugin,
-    source,
-  };
-  if (current.homepage !== undefined || opts.plugin !== current.name) plugin.homepage = opts.origin;
-  json.plugins = [plugin];
-  writeOrCheck(path, `${JSON.stringify(json, null, 2)}\n`, check, dirty);
+function isPlaceholder(opts) {
+  return opts.origin === OSS_DEFAULTS.origin && opts.skill === OSS_DEFAULTS.skill;
 }
 
-function upsertPluginJson(path, opts, check, dirty) {
-  const existing = existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : null;
-  const json = existing || {
-    $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-    name: opts.plugin,
-    version: "1.0.0",
-    description: "Internal URLs for prototypes, markdown, and agent-made files so work can leave a session.",
-    homepage: opts.origin,
-    repository: opts.marketplaceUrl,
-    keywords: [opts.skill, "static-hosting", "preview", "publish"],
-    author: { name: opts.org, url: opts.marketplaceUrl },
-  };
-  json.name = opts.plugin;
-  json.homepage = opts.origin;
-  writeOrCheck(path, `${JSON.stringify(json, null, 2)}\n`, check, dirty);
+function entryExists(path) {
+  return hasPath(path);
 }
 
-function validateMutationTargets(prev, opts) {
-  const pluginsRoot = join(ROOT, "plugins");
-  realpathSync(pluginsRoot);
+const AUTOLOAD_SKILL_DIRS = [
+  [".agents", "skills"],
+  [".claude", "skills"],
+];
 
-  const oldDir = join(pluginsRoot, prev.plugin);
-  const newDir = join(pluginsRoot, opts.plugin);
-  assertPathInside(pluginsRoot, oldDir, "previous plugin directory");
-  assertPathInside(pluginsRoot, newDir, "plugin directory");
+function pluginRel(opts, ...parts) {
+  return join("plugins", opts.plugin, ...parts);
+}
 
-  if (prev.plugin !== opts.plugin) {
-    if (hasPath(newDir)) {
-      throw new Error(`refusing to replace existing plugin destination ${newDir}`);
+function listTmplFiles(dir, prefix = "") {
+  const out = [];
+  for (const name of readdirSync(dir, { withFileTypes: true })) {
+    const rel = prefix ? join(prefix, name.name) : name.name;
+    if (name.isDirectory()) out.push(...listTmplFiles(join(dir, name.name), rel));
+    else out.push(rel);
+  }
+  return out;
+}
+
+function templateDestinations(root, tmplDir, destPrefix) {
+  return listTmplFiles(tmplDir).map((file) =>
+    join(root, destPrefix, file.endsWith(".tmpl") ? file.replace(/\.tmpl$/, "") : file),
+  );
+}
+
+/** Validate every path that a render may delete or write before doing any mutation. */
+function validateMutationTargets(root, prev, opts, catalogsRequired) {
+  realpathSync(root);
+  const pluginsRoot = join(root, "plugins");
+  const pluginTargets = [
+    ...templateDestinations(root, PLUGIN_TMPL_DIR, pluginRel(opts)),
+    ...templateDestinations(root, SKILL_TMPL_DIR, pluginRel(opts, "skills", opts.skill)),
+  ];
+  const rootTargets = [];
+  if (opts.updateMarketplace && catalogsRequired) {
+    rootTargets.push(...MARKETPLACES.map(({ rel }) => join(root, rel)));
+  }
+  if (opts.init) rootTargets.push(instancePath(root));
+
+  if (opts.init && prev.plugin !== opts.plugin) {
+    const destination = join(root, "plugins", opts.plugin);
+    if (entryExists(destination)) {
+      throw new Error(`refusing to replace existing plugin destination ${destination}`);
     }
-    assertPathInside(pluginsRoot, join(oldDir, "skills", prev.skill), "previous skill directory");
-    assertPathInside(pluginsRoot, join(newDir, "skills", opts.skill), "skill directory");
+    pluginTargets.push(join(root, "plugins", prev.plugin));
+  } else if (opts.init && prev.skill !== opts.skill) {
+    pluginTargets.push(join(root, "plugins", opts.plugin, "skills", prev.skill));
   }
 
-  const skillDir = join(newDir, "skills", opts.skill);
-  assertPathInside(pluginsRoot, skillDir, "skill directory");
-  for (const file of readdirSync(TMPL_DIR)) {
-    if (!file.endsWith(".tmpl")) continue;
-    const name = file.replace(/\.tmpl$/, "");
-    const destination =
-      name === "api.md" ? join(skillDir, "references", "api.md") : join(skillDir, name);
-    assertPathInside(pluginsRoot, destination, "skill file");
+  for (const name of new Set([prev.skill, opts.skill].filter(Boolean))) {
+    for (const parts of AUTOLOAD_SKILL_DIRS) {
+      const target = join(root, ...parts, name);
+      if (entryExists(target)) rootTargets.push(target);
+    }
   }
-  assertPathInside(pluginsRoot, join(newDir, "plugin.json"), "plugin manifest");
-  for (const extra of [".claude-plugin/plugin.json", ".codex-plugin/plugin.json"]) {
-    assertPathInside(pluginsRoot, join(newDir, extra), "plugin manifest");
-  }
-
-  const agentsSkills = join(ROOT, ".agents", "skills");
-  if (!hasPath(agentsSkills)) return;
-  assertPathInside(ROOT, agentsSkills, "agent skills directory");
-  const link = join(agentsSkills, opts.skill);
-  assertLexicallyInside(agentsSkills, link, "agent skill link");
-  assertPathInside(pluginsRoot, resolve(dirname(link), "..", "..", "plugins", opts.plugin, "skills", opts.skill), "agent skill link target");
-  if (prev.skill !== opts.skill) {
-    assertLexicallyInside(agentsSkills, join(agentsSkills, prev.skill), "previous agent skill link");
-  }
+  for (const target of pluginTargets) assertMutationPath(root, pluginsRoot, target, "plugin render target");
+  for (const target of rootTargets) assertPathInside(root, target, "render target");
 }
 
-function replacePluginTree(prev, opts, check) {
+function removeStalePlugin(root, prev, opts, check) {
   if (check) return;
-  const oldDir = join(ROOT, "plugins", prev.plugin);
-  const newDir = join(ROOT, "plugins", opts.plugin);
-  if (prev.plugin !== opts.plugin && existsSync(oldDir)) {
-    cpSync(oldDir, newDir, { recursive: true });
-    const oldSkillDir = join(newDir, "skills", prev.skill);
-    const newSkillDir = join(newDir, "skills", opts.skill);
-    if (prev.skill !== opts.skill && existsSync(oldSkillDir)) {
-      mkdirSync(dirname(newSkillDir), { recursive: true });
-      if (existsSync(newSkillDir)) rmSync(newSkillDir, { recursive: true, force: true });
-      renameSync(oldSkillDir, newSkillDir);
-    }
-    rmSync(oldDir, { recursive: true, force: true });
+  if (prev.plugin !== opts.plugin) {
+    rmSync(join(root, "plugins", prev.plugin), { recursive: true, force: true });
+  } else if (prev.skill !== opts.skill) {
+    rmSync(join(root, "plugins", opts.plugin, "skills", prev.skill), { recursive: true, force: true });
   }
+}
 
-  const agentsSkills = join(ROOT, ".agents", "skills");
-  if (!existsSync(agentsSkills)) return;
-  const link = join(agentsSkills, opts.skill);
-  const target = join("..", "..", "plugins", opts.plugin, "skills", opts.skill);
-  const oldLink = join(agentsSkills, prev.skill);
-  if (prev.skill !== opts.skill) {
-    try {
-      unlinkSync(oldLink);
-    } catch {
-      /* missing or already gone */
+function dropAutoloadSkills(root, names, check, dirty) {
+  for (const name of new Set(names.filter(Boolean))) {
+    for (const parts of AUTOLOAD_SKILL_DIRS) {
+      const rel = join(...parts, name);
+      const dest = join(root, rel);
+      if (!entryExists(dest)) continue;
+      dirty.push(rel);
+      if (!check) rmSync(dest, { recursive: true, force: true });
     }
   }
-  try {
-    if (existsSync(link) && lstatSync(link).isSymbolicLink()) unlinkSync(link);
-    if (!existsSync(link)) symlinkSync(target, link);
-  } catch {
-    /* hosts without symlink perms still have plugins/ */
+}
+
+function rejectPlaceholderCatalogs(root, check, dirty) {
+  for (const { rel } of MARKETPLACES) {
+    const dest = join(root, rel);
+    if (!entryExists(dest)) continue;
+    dirty.push(rel);
+    if (!check) rmSync(dest, { recursive: true, force: true });
   }
+}
+
+function writeTmplTree(root, tmplDir, destPrefix, vars, check, dirty) {
+  for (const file of listTmplFiles(tmplDir)) {
+    const src = join(tmplDir, file);
+    const dest = join(root, destPrefix, file.endsWith(".tmpl") ? file.replace(/\.tmpl$/, "") : file);
+    const contents = file.endsWith(".tmpl")
+      ? withTrailingNewline(render(readFileSync(src, "utf8"), vars))
+      : readFileSync(src);
+    writeOrCheck(root, dest, contents, check, dirty);
+  }
+}
+
+function writePluginTree(root, opts, vars, check, dirty) {
+  writeTmplTree(root, PLUGIN_TMPL_DIR, pluginRel(opts), vars, check, dirty);
+  writeTmplTree(root, SKILL_TMPL_DIR, pluginRel(opts, "skills", opts.skill), vars, check, dirty);
+}
+
+function writeMarketplaces(root, opts, vars, check, dirty, required) {
+  if (!opts.updateMarketplace) return;
+  if (!required) {
+    rejectPlaceholderCatalogs(root, check, dirty);
+    return;
+  }
+  const rendered = new Map();
+  for (const { rel, tmpl } of MARKETPLACES) {
+    const dest = join(root, rel);
+    if (!rendered.has(tmpl)) {
+      rendered.set(
+        tmpl,
+        withTrailingNewline(render(readFileSync(join(MARKETPLACE_TMPL_DIR, tmpl), "utf8"), vars)),
+      );
+    }
+    writeOrCheck(root, dest, rendered.get(tmpl), check, dirty);
+  }
+}
+
+export function runRender(argv, { root = SCRIPT_ROOT } = {}) {
+  const { opts, prev } = parseArgs(argv, root);
+  const vars = varsFrom(opts);
+  const dirty = [];
+  const catalogsRequired = opts.init || (opts.updateMarketplace && !isPlaceholder(opts));
+
+  validateMutationTargets(root, prev, opts, catalogsRequired);
+  if (opts.init && (prev.plugin !== opts.plugin || prev.skill !== opts.skill)) {
+    removeStalePlugin(root, prev, opts, opts.check);
+  }
+  dropAutoloadSkills(root, [prev.skill, opts.skill], opts.check, dirty);
+  writePluginTree(root, opts, vars, opts.check, dirty);
+  writeMarketplaces(root, opts, vars, opts.check, dirty, catalogsRequired);
+  if (opts.init) {
+    writeOrCheck(root, instancePath(root), `${JSON.stringify(instancePayload(opts), null, 2)}\n`, opts.check, dirty);
+  }
+  return { opts, vars, dirty };
 }
 
 function main() {
-  const { opts, prev } = parseArgs(process.argv.slice(2));
-  validateMutationTargets(prev, opts);
-  const vars = varsFrom(opts);
-  const dirty = [];
-
-  if (opts.init && (prev.plugin !== opts.plugin || prev.skill !== opts.skill)) {
-    replacePluginTree(prev, opts, opts.check);
-  }
-
-  const skillRel = join("plugins", opts.plugin, "skills", opts.skill);
-  for (const file of readdirSync(TMPL_DIR)) {
-    if (!file.endsWith(".tmpl")) continue;
-    const name = file.replace(/\.tmpl$/, "");
-    const rendered = render(readFileSync(join(TMPL_DIR, file), "utf8"), vars);
-    const dest =
-      name === "api.md"
-        ? join(ROOT, skillRel, "references", "api.md")
-        : join(ROOT, skillRel, name);
-    writeOrCheck(dest, rendered, opts.check, dirty);
-  }
-
-  upsertPluginJson(join(ROOT, "plugins", opts.plugin, "plugin.json"), opts, opts.check, dirty);
-  for (const extra of [".claude-plugin/plugin.json", ".codex-plugin/plugin.json"]) {
-    const p = join(ROOT, "plugins", opts.plugin, extra);
-    if (existsSync(p)) upsertPluginJson(p, opts, opts.check, dirty);
-  }
-
-  if (opts.updateMarketplace) {
-    for (const rel of [
-      "marketplace.json",
-      ".claude-plugin/marketplace.json",
-      ".github/plugin/marketplace.json",
-      ".agents/plugins/marketplace.json",
-    ]) {
-      upsertMarketplace(join(ROOT, rel), opts, opts.check, dirty);
-    }
-  }
-
-  if (opts.init) {
-    writeOrCheck(INSTANCE_PATH, `${JSON.stringify(instancePayload(opts), null, 2)}\n`, opts.check, dirty);
-  }
-
+  const { opts, dirty } = runRender(process.argv.slice(2));
   if (opts.check) {
     if (dirty.length) {
-      console.error(`skill render is stale:\n  ${dirty.join("\n  ")}\nRun: npm run skill:render`);
-      process.exit(1);
+      console.error(`skill drift: ${dirty.join(", ")}`);
+      process.exitCode = 1;
+    } else {
+      console.log("skill is up to date");
     }
-    console.log("skill render is current");
-    return;
-  }
-  if (dirty.length) console.log(`wrote ${dirty.join(", ")}`);
-  else console.log("skill files already match the template");
-  console.log(`install ${vars.INSTALL_LINE}  origin ${vars.ORIGIN}  env ${vars.TOKEN_ENV}`);
-  if (opts.init) {
-    console.log(`Set wrangler [vars] SKILL_NAME=${opts.skill} MARKETPLACE_NAME=${opts.marketplace} MARKETPLACE_REPO=${opts.marketplaceRepo} TOKEN_ENV=${opts.tokenEnv} PUBLIC_ORIGIN=${opts.origin}`);
+  } else {
+    console.log(`rendered ${opts.plugin}/${opts.skill}${dirty.length ? ` (${dirty.length} changed)` : ""}`);
   }
 }
 
-function isDirectRun() {
-  if (!process.argv[1]) return false;
-  try {
-    return fileURLToPath(import.meta.url) === realpathSync(process.argv[1]);
-  } catch {
-    return false;
-  }
-}
-
-if (isDirectRun()) main();
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) main();
