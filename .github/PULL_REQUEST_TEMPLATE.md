@@ -1,5 +1,3 @@
-Thanks for the patch. **`tmchow/energon` does not merge unsolicited pull requests.**
+Same-repo PRs from the maintainer are fine. Describe the change.
 
-Please [open an issue](https://github.com/tmchow/energon/issues/new/choose) instead and keep the work on your fork.
-
-See [CONTRIBUTING.md](../CONTRIBUTING.md).
+Fork PRs are closed automatically. Open an issue instead: [CONTRIBUTING.md](../CONTRIBUTING.md).
