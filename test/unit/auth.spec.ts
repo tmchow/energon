@@ -185,12 +185,22 @@ describe("actorFromAccess", () => {
   it("uses identity verified by the Cloudflare Access runtime", async () => {
     const access = {
       aud: "configured-access-audience",
-      getIdentity: async () => ({ email: "Ada@EsperLabs.app" }),
+      getIdentity: async () => ({ email: "Ada@EsperLabs.app", user_uuid: "uuid-ada" }),
     };
 
     await expect(
       actorFromAccess(new Request("https://energon.example.com/account"), env, { access }),
-    ).resolves.toEqual({ email: "ada@esperlabs.app", idpSub: "local:ada@esperlabs.app", via: "access" });
+    ).resolves.toEqual({ email: "ada@esperlabs.app", idpSub: "uuid-ada", via: "access" });
+  });
+
+  it("rejects production Access identity that has no subject", async () => {
+    const access = {
+      aud: "configured-access-audience",
+      getIdentity: async () => ({ email: "Ada@EsperLabs.app" }),
+    };
+    await expect(
+      actorFromAccess(new Request("https://energon.example.com/account"), env, { access }),
+    ).resolves.toBeNull();
   });
 
   it("ignores client Access subject headers once getIdentity has verified the session", async () => {

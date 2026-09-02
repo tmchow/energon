@@ -105,7 +105,7 @@ export function identitySubFromRequest(request: Request, email: string): string 
   return `local:${email}`;
 }
 
-function identitySubFromAccess(identity: unknown, email: string): string {
+function identitySubFromAccess(identity: unknown): string | null {
   if (identity && typeof identity === "object") {
     const rec = identity as { user_uuid?: unknown; sub?: unknown };
     const uuid = typeof rec.user_uuid === "string" ? rec.user_uuid.trim() : "";
@@ -113,7 +113,7 @@ function identitySubFromAccess(identity: unknown, email: string): string {
     const sub = typeof rec.sub === "string" ? rec.sub.trim() : "";
     if (sub) return sub;
   }
-  return `local:${email}`;
+  return null;
 }
 
 export async function actorFromAccess(
@@ -140,7 +140,8 @@ export async function actorFromAccess(
     const identity = await ctx.access.getIdentity();
     const email = typeof identity?.email === "string" ? identity.email.trim().toLowerCase() : "";
     if (!email.includes("@")) return null;
-    const idpSub = identitySubFromAccess(identity, email);
+    const idpSub = identitySubFromAccess(identity);
+    if (!idpSub) return null;
     return { email, idpSub, via: "access" };
   } catch {
     return null;
