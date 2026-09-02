@@ -1,27 +1,32 @@
 # Energon
 
-You made a prototype in a chat, or a brief, or a screenshot. Now it has to leave that session. A coworker needs to see it. Tomorrow's agent needs the current bytes. The usual path is a pile of tools built for a person who is already signed in: a static host for the HTML, Drive or Notion for the writeup, Slack for the image. You spend longer sharing than you did making it. An agent cannot publish to those places, and it cannot GET a Drive link with a token.
+Energon is a company host for files and small sites. An agent publishes over HTTP. A person opens the link.
 
-What you want is simpler. Drop the folder and send a link. They see the prototype in the browser, not a zip. Put the markdown up and they get a formatted page. The next agent reads the same file over HTTP. You replace it later and the address does not move.
+It is agent-native on purpose. The same skill works from Cursor, Claude Code, Codex, and other clients that install [Agent Plugins](https://agent-plugins.org/). Markdown, a folder of HTML, a screenshot, a PDF: one place, not a static host plus Drive plus Slack. You run it in your Cloudflare account, so the bytes are not sitting on a public paste service. Teammates with a token can read and write. You can lock a site or a file so only the creator overwrites it. You can still send the link to someone outside the company.
 
-Energon is that host, for your company. People and agents publish with a token. The published link is public on purpose. A coworker opens it. Someone outside the company opens it. An agent does not need a login cookie. That is the point: sharing inside the company has no extra gate, and sending a preview out is the same link. If a given URL should not be on the open web, put a share password on it, or put Access on those paths. Writing stays private. Tokens decide who can publish, and you can lock one object so only its creator can overwrite it.
+Team members authenticate to mint a token. Published URLs are open by default, because an agent has no login cookie and a preview for someone outside the company is the same URL. Anyone with the link can open it. Put a share password on a URL that should not be wide open. Token reads on `/v1` skip the password. Writing stays on tokens.
 
-You deploy it on the company's Cloudflare account, next to Access, DNS, and whatever else you already run there. Nobody else is in the middle of that. The hostname is yours.
+This repo is what you fork. The skill in the tree is bound to this instance. `npm run skill:init` names it for your host (`yourco-energon`, `YOURCO_ENERGON_TOKEN`) so it does not collide with another Energon you also use. Install that skill at user scope if this is the host you want in every project. If you belong to more than one organization, install each instance's skill. They have different names and different token env vars. Or pin one at project scope in that company's repos.
 
-- **Worker.** This repo. The hub, the `/v1` API, and the viewer. Published links are served from here. Repeat views can hit the edge cache.
-- **R2.** The files.
-- **D1.** Slugs, handles, token hashes, expiry, and who may write.
-- **Access.** Who can sign in and mint a key. Published links skip it unless you add it.
-
-This repo is what you fork. Point the skill at your origin. Teammates install from your fork.
-
-A site is a named folder, like `/ada/s/lunch-poll/`. A file is one object with a short id, like `/ada/f/x7k2/brief.md`. POST once to mint the id, then PUT to replace it. `curl` and `?raw=1` stay the source. `index.md` is the homepage when `index.html` is missing. Last write wins on each path, because you are taking turns on the live object, not merging.
+A site is a named folder, like `/ada/s/lunch-poll/`. A file is one object with a short id, like `/ada/f/x7k2/brief.md`. POST once to mint the id, then PUT to replace it. The address does not move. `curl` and `?raw=1` stay the source. `index.md` is the homepage when `index.html` is missing. Last write wins on each path.
 
 Who can mint tokens, the default write policy, and how long things live are settings on the host. Companies usually let any token on the host write, and leave expiration off. [Deploy your own Energon](./docs/DEPLOY.md) has the list.
 
 `GET /v1/sites` and `GET /v1/files` only return what you created or last wrote. They are not a company catalog.
 
-The skill in this tree is `energon@energon`, aimed at `https://energon.example.com`. That host is not real. Run `npm run skill:init` with your hostname before anyone installs the skill. Default token env is `ENERGON_TOKEN`.
+The skill in this upstream tree is `energon@energon`, aimed at `https://energon.example.com`. That host is not real. Run `npm run skill:init` with your hostname before anyone installs the skill. Default token env is `ENERGON_TOKEN`.
+
+## Where this came from
+
+[Claude Artifacts](https://claude.com/blog/artifacts) is really easy. An HTML app, a link, someone can open it. Only inside Claude products, though. Bounce across agents in different harnesses and you cannot reach for the same thing.
+
+[ht-ml.app](https://ht-ml.app) is the version of that idea that is not stuck in one chat product. It is shaped around HTML, and it is a public host.
+
+[Proof](https://www.proofeditor.ai) is great because it is markdown. It is simple, and there is also a lot of it. It sits between Google Docs and something more agent-native, and markdown-only is limiting.
+
+I saw [Shopify Quick](https://shopify.engineering/quick) last year and thought it was genius. A folder becomes a link, on your own infrastructure. I did not find an easy way that matched my preferences, so I built Energon.
+
+I wanted one place an agent can write from whatever agent I am in. A small site, a markdown doc, an image, a file. Running in our Cloudflare account instead of a public service. Teammates can read and write. A site or a file can be limited to the person who created it. A link can still go to someone outside the company. The skill lives in the instance repo and is named for that host, so two organizations do not step on each other. Plenty of people have already made Quick-shaped tools, Open Quick and others. This is the combination I wanted.
 
 ## Give this to an agent
 
@@ -42,10 +47,14 @@ Do not invent a token. Do not reuse another instance's D1 database_id or R2 buck
 ```
 Read INSTALL.md in this repository, section "Connect an agent", and install Energon for this machine.
 
-Ask me for our Energon origin (https://...) if it is not already in the environment or INSTALL.md. I will mint a token at {origin}/tokens and paste the secret. Export it as the token env named by GET {origin}/v1/help. Install the skill from our company repo at user (global) scope. Do not invent a token.
+Ask me for our Energon origin (https://...) if it is not already in the environment or INSTALL.md. I will mint a token at {origin}/tokens and paste the secret. Export it as the token env named by GET {origin}/v1/help. Install the skill from our company repo at user (global) scope. If I already use another Energon, this skill has a different name. Install it too, or pin it in this repo. Do not invent a token.
 ```
 
 `{origin}/setup` has the same block already filled in for your host.
+
+## What you deploy
+
+The Worker is this repo: the hub, the `/v1` API, and the viewer. Files live in R2. D1 holds slugs, handles, token hashes, expiry, and who may write. Cloudflare Access is who can authenticate and mint a key. Published links skip it unless you put it on those paths. Repeat views can hit the edge cache. The rest is in [INSTALL.md](./INSTALL.md) and [docs/DEPLOY.md](./docs/DEPLOY.md).
 
 ## Run it on your machine
 
