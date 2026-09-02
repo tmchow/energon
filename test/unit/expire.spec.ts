@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { isExpired, remainingCacheSeconds } from "../../src/expire";
+import { isExpired, isPurgeClaimed, remainingCacheSeconds } from "../../src/expire";
+
+describe("isPurgeClaimed", () => {
+  it("is only the in-progress purge marker", () => {
+    expect(isPurgeClaimed("__energon_purging__")).toBe(true);
+    expect(isPurgeClaimed("__energon_purging__:claim-id")).toBe(true);
+    expect(isPurgeClaimed("ada@esperlabs.app")).toBe(false);
+    expect(isPurgeClaimed(null)).toBe(false);
+  });
+});
 
 describe("isExpired", () => {
   it("treats null as keep-until-deleted", () => {

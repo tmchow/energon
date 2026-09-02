@@ -4,6 +4,16 @@ import { ApiError, deletePrefix, htmlPage } from "./http";
 import type { Env } from "./types";
 
 const SWEEP_BATCH = 100;
+const STALE_CLAIM_MS = 60_000;
+const inFlight = new Set<string>();
+
+/** In-place lock so a concurrent PATCH ttl cannot revive bytes we are about to delete. */
+export const PURGE_CLAIM = "__energon_purging__";
+export const PURGE_CLAIM_LIKE = `${PURGE_CLAIM}%`;
+
+export function isPurgeClaimed(lastWrittenBy: string | null | undefined): boolean {
+  return typeof lastWrittenBy === "string" && lastWrittenBy.startsWith(PURGE_CLAIM);
+}
 
 export function isExpired(expiresAt: string | null | undefined, now = Date.now()): boolean {
   if (!expiresAt) return false;
@@ -34,19 +44,22 @@ function d1Changed(result: { meta?: { changes?: number } }): boolean {
   return Number(result.meta?.changes ?? 0) > 0;
 }
 
-/** True when this row is still the expired generation we started sweeping. */
-function stillExpiredGeneration(
-  row: { expires_at: string | null } | null,
-  claimedExpiresAt: string,
-  now = Date.now(),
-): boolean {
-  return !!row && row.expires_at === claimedExpiresAt && isExpired(row.expires_at, now);
+type Claim = { expiresAt: string; restoreWriter: string; token: string };
+
+function newPurgeToken(): string {
+  return `${PURGE_CLAIM}:${crypto.randomUUID()}`;
+}
+
+function isStaleClaim(updatedAt: string | null | undefined, now = Date.now()): boolean {
+  if (!updatedAt) return true;
+  const t = Date.parse(updatedAt);
+  return Number.isFinite(t) && now - t >= STALE_CLAIM_MS;
 }
 
 /**
  * Hold the slug until R2 is gone, then drop the catalog row.
- * A concurrent create cannot INSERT the same PK while the expired row remains.
- * If TTL was reset, skip the catalog delete so revived metadata stays.
+ * Claim last_written_by first so a concurrent TTL reset cannot keep a live
+ * catalog after this function has started deleting objects.
  */
 export async function purgeExpiredSite(
   env: Env,
@@ -54,30 +67,43 @@ export async function purgeExpiredSite(
   handle: string,
   slug: string,
 ): Promise<boolean> {
-  const now = new Date().toISOString();
-  const row = await env.DB.prepare(
-    `SELECT expires_at FROM sites WHERE handle = ? AND slug = ? AND expires_at IS NOT NULL AND expires_at <= ?`,
-  )
-    .bind(handle, slug, now)
-    .first<{ expires_at: string }>();
-  if (!row) return false;
+  const key = `site:${handle}/${slug}`;
+  if (inFlight.has(key)) return false;
+  inFlight.add(key);
+  try {
+    const claim = await claimExpiredSite(env, handle, slug);
+    if (!claim) return false;
 
-  await deletePrefix(env.BUCKET, `sites/${handle}/${slug}/`);
+    try {
+      await deletePrefix(env.BUCKET, `sites/${handle}/${slug}/`);
+    } catch (err) {
+      await env.DB.prepare(
+        `UPDATE sites SET last_written_by = ? WHERE handle = ? AND slug = ? AND last_written_by = ?`,
+      )
+        .bind(claim.restoreWriter, handle, slug, claim.token)
+        .run();
+      throw err;
+    }
 
-  const still = await env.DB.prepare(`SELECT expires_at FROM sites WHERE handle = ? AND slug = ?`)
-    .bind(handle, slug)
-    .first<{ expires_at: string | null }>();
-  if (!stillExpiredGeneration(still, row.expires_at)) return false;
-
-  await env.DB.prepare(`DELETE FROM site_files WHERE handle = ? AND slug = ?`).bind(handle, slug).run();
-  const dropped = await env.DB.prepare(
-    `DELETE FROM sites WHERE handle = ? AND slug = ? AND expires_at IS NOT NULL AND expires_at = ? AND expires_at <= ?`,
-  )
-    .bind(handle, slug, row.expires_at, now)
-    .run();
-  if (!d1Changed(dropped)) return false;
-  purgeContent(ctx, [sitePrefix(handle, slug)]);
-  return true;
+    await env.DB.prepare(
+      `DELETE FROM site_files WHERE handle = ? AND slug = ?
+       AND EXISTS (
+         SELECT 1 FROM sites WHERE handle = ? AND slug = ? AND last_written_by = ? AND expires_at = ?
+       )`,
+    )
+      .bind(handle, slug, handle, slug, claim.token, claim.expiresAt)
+      .run();
+    const dropped = await env.DB.prepare(
+      `DELETE FROM sites WHERE handle = ? AND slug = ? AND last_written_by = ? AND expires_at IS NOT NULL AND expires_at = ?`,
+    )
+      .bind(handle, slug, claim.token, claim.expiresAt)
+      .run();
+    if (!d1Changed(dropped)) return false;
+    purgeContent(ctx, [sitePrefix(handle, slug)]);
+    return true;
+  } finally {
+    inFlight.delete(key);
+  }
 }
 
 export async function purgeExpiredFile(
@@ -87,29 +113,88 @@ export async function purgeExpiredFile(
   handle: string | null,
   filename: string,
 ): Promise<boolean> {
+  const key = `file:${id}`;
+  if (inFlight.has(key)) return false;
+  inFlight.add(key);
+  try {
+    const claim = await claimExpiredFile(env, id);
+    if (!claim) return false;
+
+    try {
+      await env.BUCKET.delete(fileKey(id, filename));
+    } catch (err) {
+      await env.DB.prepare(`UPDATE loose_files SET last_written_by = ? WHERE id = ? AND last_written_by = ?`)
+        .bind(claim.restoreWriter, id, claim.token)
+        .run();
+      throw err;
+    }
+
+    const dropped = await env.DB.prepare(
+      `DELETE FROM loose_files WHERE id = ? AND last_written_by = ? AND expires_at IS NOT NULL AND expires_at = ?`,
+    )
+      .bind(id, claim.token, claim.expiresAt)
+      .run();
+    if (!d1Changed(dropped)) return false;
+    if (handle) purgeContent(ctx, [filePrefix(handle, id)]);
+    return true;
+  } finally {
+    inFlight.delete(key);
+  }
+}
+
+async function claimExpiredSite(env: Env, handle: string, slug: string): Promise<Claim | null> {
   const now = new Date().toISOString();
   const row = await env.DB.prepare(
-    `SELECT expires_at FROM loose_files WHERE id = ? AND expires_at IS NOT NULL AND expires_at <= ?`,
+    `SELECT expires_at, last_written_by, created_by, updated_at FROM sites
+     WHERE handle = ? AND slug = ? AND expires_at IS NOT NULL AND expires_at <= ?`,
+  )
+    .bind(handle, slug, now)
+    .first<{ expires_at: string; last_written_by: string; created_by: string; updated_at: string }>();
+  if (!row) return null;
+  if (isPurgeClaimed(row.last_written_by) && !isStaleClaim(row.updated_at)) {
+    return null;
+  }
+  const token = newPurgeToken();
+  const claimed = await env.DB.prepare(
+    `UPDATE sites SET last_written_by = ?, updated_at = ?
+     WHERE handle = ? AND slug = ? AND expires_at = ? AND expires_at <= ? AND last_written_by = ?`,
+  )
+    .bind(token, now, handle, slug, row.expires_at, now, row.last_written_by)
+    .run();
+  if (!d1Changed(claimed)) return null;
+  const restoreWriter = isPurgeClaimed(row.last_written_by) ? row.created_by : row.last_written_by;
+  return { expiresAt: row.expires_at, restoreWriter, token };
+}
+
+async function claimExpiredFile(env: Env, id: string): Promise<Claim | null> {
+  const now = new Date().toISOString();
+  const row = await env.DB.prepare(
+    `SELECT expires_at, last_written_by, created_by, updated_at FROM loose_files
+     WHERE id = ? AND expires_at IS NOT NULL AND expires_at <= ?`,
   )
     .bind(id, now)
-    .first<{ expires_at: string }>();
-  if (!row) return false;
-
-  await env.BUCKET.delete(fileKey(id, filename));
-
-  const still = await env.DB.prepare(`SELECT expires_at FROM loose_files WHERE id = ?`)
-    .bind(id)
-    .first<{ expires_at: string | null }>();
-  if (!stillExpiredGeneration(still, row.expires_at)) return false;
-
-  const dropped = await env.DB.prepare(
-    `DELETE FROM loose_files WHERE id = ? AND expires_at IS NOT NULL AND expires_at = ? AND expires_at <= ?`,
+    .first<{
+      expires_at: string;
+      last_written_by: string | null;
+      created_by: string;
+      updated_at: string | null;
+    }>();
+  if (!row) return null;
+  if (isPurgeClaimed(row.last_written_by) && !isStaleClaim(row.updated_at)) {
+    return null;
+  }
+  const token = newPurgeToken();
+  const claimed = await env.DB.prepare(
+    `UPDATE loose_files SET last_written_by = ?, updated_at = ?
+     WHERE id = ? AND expires_at = ? AND expires_at <= ? AND ifnull(last_written_by, '') = ?`,
   )
-    .bind(id, row.expires_at, now)
+    .bind(token, now, id, row.expires_at, now, row.last_written_by ?? "")
     .run();
-  if (!d1Changed(dropped)) return false;
-  if (handle) purgeContent(ctx, [filePrefix(handle, id)]);
-  return true;
+  if (!d1Changed(claimed)) return null;
+  const restoreWriter = isPurgeClaimed(row.last_written_by)
+    ? row.created_by
+    : row.last_written_by || row.created_by;
+  return { expiresAt: row.expires_at, restoreWriter, token };
 }
 
 export function schedulePurgeExpiredSite(
