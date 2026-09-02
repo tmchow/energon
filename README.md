@@ -4,12 +4,12 @@ Energon is a company host for files and small sites. An agent publishes over HTT
 
 It is agent-native on purpose. The same skill works from Cursor, Claude Code, Codex, and other clients that install [Agent Plugins](https://agent-plugins.org/). Markdown, a folder of HTML, a screenshot, a PDF: one place, not a static host plus Drive plus Slack. You run it in your Cloudflare account, so the bytes are not sitting on a public paste service. Teammates with a token can read and write. You can lock a site or a file so only the creator overwrites it. You can still send the link to someone outside the company.
 
-People sign in through Access to mint a token. Published URLs skip Access by default, because agents have no Access cookie and a preview for someone who is not on your IdP is the same URL. Anyone with the link can open it. Put a share password on a URL that should not be wide open. Token reads on `/v1` skip the password. Writing stays on tokens. You can put Access on published paths if this host should not be on the open web.
+Team members authenticate to mint a token. Published URLs are open by default, because an agent has no login cookie and a preview for someone outside the company is the same URL. Anyone with the link can open it. Put a share password on a URL that should not be wide open. Token reads on `/v1` skip the password. Writing stays on tokens.
 
 - **Worker.** This repo. The hub, the `/v1` API, and the viewer. Repeat views can hit the edge cache.
 - **R2.** The files.
 - **D1.** Slugs, handles, token hashes, expiry, and who may write.
-- **Access.** Who can sign in and mint a key.
+- **Cloudflare Access.** Who can authenticate and mint a key. Published links skip it unless you put it on those paths.
 
 This repo is what you fork. The skill in the tree is bound to this instance. `npm run skill:init` names it for your host (`yourco-energon`, `YOURCO_ENERGON_TOKEN`) so it does not collide with another Energon you also use. Install that skill at user scope if this is the host you want in every project. If you belong to more than one organization, install each instance's skill. They have different names and different token env vars. Or pin one at project scope in that company's repos.
 
