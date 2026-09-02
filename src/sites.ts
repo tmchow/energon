@@ -43,6 +43,7 @@ import { packZip, unpackZip } from "./zip";
 
 const SITE_SELECT =
   `handle, slug, owner_id, created_at, updated_at, created_by, last_written_by, password_hash, expires_at, write_policy`;
+const D1_BATCH_MAX_STATEMENTS = 100;
 
 type R2Snapshot = {
   key: string;
@@ -141,7 +142,7 @@ async function restoreSiteFileRows(
   previousRows: Map<string, SiteFileRow>,
   previousSite: SiteRow,
 ): Promise<void> {
-  const pathBatchSize = Math.floor((100 - 1) / 2);
+  const pathBatchSize = Math.floor((D1_BATCH_MAX_STATEMENTS - 1) / 2);
   for (let i = 0; i < paths.length || i === 0; i += pathBatchSize) {
     const statements: D1PreparedStatement[] = [];
     for (const path of paths.slice(i, i + pathBatchSize)) {
@@ -700,6 +701,7 @@ export async function importSiteZip(
 
   const ts = new Date().toISOString();
   const written: string[] = [];
+  const upserts: D1PreparedStatement[] = [];
   const previousRows = new Map<string, SiteFileRow>();
   const snapshots: R2State[] = [];
   const affectedPaths = files.map((f) => f.path);
@@ -711,8 +713,11 @@ export async function importSiteZip(
       snapshots.push({ key, snapshot: previous });
       const contentType = contentTypeFor(f.path, f.bytes, null);
       await env.BUCKET.put(key, f.bytes, { httpMetadata: { contentType } });
-      await siteFileUpsert(env, site.handle, slug, f.path, f.bytes.byteLength, contentType, ts, actor.email).run();
+      upserts.push(siteFileUpsert(env, site.handle, slug, f.path, f.bytes.byteLength, contentType, ts, actor.email));
       written.push(f.path);
+    }
+    for (let i = 0; i < upserts.length; i += D1_BATCH_MAX_STATEMENTS) {
+      await env.DB.batch(upserts.slice(i, i + D1_BATCH_MAX_STATEMENTS));
     }
     await writeSite(env, actor, site.handle, slug, "updated_at = ?, last_written_by = ?", [ts, actor.email]);
   } catch (err) {

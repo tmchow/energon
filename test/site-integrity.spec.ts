@@ -1,6 +1,9 @@
 import { zipSync, strToU8 } from "fflate";
 import { describe, expect, it } from "vitest";
+import { MAX_IMPORT_FILES } from "../src/config";
 import { auth, json, mint, req } from "./helpers";
+
+const D1_BATCH_LIMIT = 100;
 
 async function createSite(token: string, slug: string, files: Record<string, string> = { "index.html": "original" }) {
   await json("/v1/sites", {
@@ -81,11 +84,15 @@ describe("site mutation integrity", () => {
     const token = await mint("site-integrity-import-db");
     await createSite(token, "integrity-import-db", { "a.txt": "old-a", "b.txt": "old-b" });
     const db = env.DB;
-    const originalPrepare = db.prepare.bind(db);
-    db.prepare = ((sql: string) => {
-      if (sql.includes("ON CONFLICT(handle, slug, path)")) throw new Error("injected import metadata failure");
-      return originalPrepare(sql);
-    }) as typeof db.prepare;
+    const originalBatch = db.batch.bind(db);
+    let failed = false;
+    db.batch = async (statements) => {
+      if (!failed) {
+        failed = true;
+        throw new Error("injected import metadata failure");
+      }
+      return originalBatch(statements);
+    };
     try {
       const zipped = zipSync({ "a.txt": strToU8("new-a"), "b.txt": strToU8("new-b") });
       const response = await json("/v1/sites/integrity-import-db/import", {
@@ -95,7 +102,7 @@ describe("site mutation integrity", () => {
       });
       expect(response.status).toBe(500);
     } finally {
-      db.prepare = originalPrepare;
+      db.batch = originalBatch;
     }
     const listing = await json("/v1/sites/integrity-import-db", { headers: auth(token) });
     expect(listing.body.files.map((file: { path: string; size: number }) => [file.path, file.size])).toEqual([
@@ -106,6 +113,34 @@ describe("site mutation integrity", () => {
       const response = await req(`/v1/sites/integrity-import-db/files/${path}`, { headers: auth(token) });
       expect(await response.text()).toBe(`old-${path[0]}`);
     }
+  });
+
+  it("keeps max-size import metadata batches within the D1 statement limit", async () => {
+    const { env } = await import("cloudflare:test");
+    const token = await mint("site-integrity-import-batch-limit");
+    await createSite(token, "integrity-import-batch-limit", {});
+    const db = env.DB;
+    const originalBatch = db.batch.bind(db);
+    const batchSizes: number[] = [];
+    db.batch = async (statements) => {
+      batchSizes.push(statements.length);
+      if (statements.length > D1_BATCH_LIMIT) throw new Error("D1 batch statement limit exceeded");
+      return originalBatch(statements);
+    };
+    try {
+      const files = Object.fromEntries(
+        Array.from({ length: MAX_IMPORT_FILES }, (_, index) => [`file-${index.toString().padStart(3, "0")}.txt`, strToU8(String(index))]),
+      );
+      const response = await json("/v1/sites/integrity-import-batch-limit/import", {
+        method: "POST",
+        headers: auth(token, { "content-type": "application/zip" }),
+        body: zipSync(files),
+      });
+      expect(response.status).toBe(200);
+    } finally {
+      db.batch = originalBatch;
+    }
+    expect(batchSizes).toEqual([D1_BATCH_LIMIT, D1_BATCH_LIMIT]);
   });
 
   it("cleans up a duplicate when a later R2 copy fails", async () => {
