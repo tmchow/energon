@@ -29,6 +29,9 @@ An instance-issued credential that authorizes an agent to use Energon's authenti
 ### Token Prefix
 The instance-specific marker at the beginning of an API Token that identifies which token format the instance accepts. It is part of the instance identity and must remain consistent when tokens are minted, authenticated, masked, or described to agents.
 
+### Token Expiry
+The lifetime a human chooses when minting an API Token, after which authentication rejects it. An expired token is kept in the account's token list as a record and can still be revoked, but it cannot be renewed; like every API Token it has no recoverable secret. Token expiry is governed by its own instance policy, separate from content retention.
+
 ## Instance Identity
 
 ### Instance Identity
