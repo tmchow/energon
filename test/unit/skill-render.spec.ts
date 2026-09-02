@@ -176,6 +176,17 @@ describe("skill:init", () => {
     expect(dirty).toContain(join(".claude-plugin", "marketplace.json"));
     expect(existsSync(join(root, ".claude-plugin", "marketplace.json"))).toBe(true);
   });
+
+  it("rejects placeholder catalog cleanup through a symlinked parent", () => {
+    const root = mkdtempSync(join(tmpdir(), "energon-skill-"));
+    const outside = mkdtempSync(join(tmpdir(), "energon-outside-"));
+    disposableRoots.push(root, outside);
+    writeFileSync(join(outside, "marketplace.json"), "must survive\n");
+    symlinkSync(outside, join(root, ".claude-plugin"));
+
+    expect(() => runRender(["--check"], { root })).toThrow(/resolves outside/);
+    expect(readFileSync(join(outside, "marketplace.json"), "utf8")).toBe("must survive\n");
+  });
 });
 
 describe("render path safety", () => {

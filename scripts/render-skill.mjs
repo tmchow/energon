@@ -406,8 +406,11 @@ function validateMutationTargets(root, prev, opts, catalogsRequired) {
     ...templateDestinations(root, SKILL_TMPL_DIR, pluginRel(opts, "skills", opts.skill)),
   ];
   const rootTargets = [];
-  if (opts.updateMarketplace && catalogsRequired) {
-    rootTargets.push(...MARKETPLACES.map(({ rel }) => join(root, rel)));
+  if (opts.updateMarketplace) {
+    for (const { rel } of MARKETPLACES) {
+      const target = join(root, rel);
+      if (catalogsRequired || entryExists(target)) rootTargets.push(target);
+    }
   }
   if (opts.init) rootTargets.push(instancePath(root));
 
