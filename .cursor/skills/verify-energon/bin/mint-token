@@ -15,6 +15,7 @@ payload="$(python3 -c 'import json,sys; print(json.dumps({"label": sys.argv[1]})
 code="$(curl -sS -o /tmp/energon-verify-body.$$ -w '%{http_code}' \
   -X POST "$ORIGIN/account/tokens" \
   -H 'content-type: application/json' \
+  -H "origin: $ORIGIN" \
   --data "$payload")"
 body="$(curl_body)"
 if [[ "$code" != "201" ]]; then
