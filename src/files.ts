@@ -15,12 +15,14 @@ import {
   claimLooseFileForWrite,
   isExpired,
   isPurgeClaimed,
+  isStaleClaim,
   isWriteClaimed,
   PURGE_CLAIM_LIKE,
   purgeExpiredFile,
   releaseLooseFileWriteClaim,
   remainingCacheSeconds,
   schedulePurgeExpiredFile,
+  staleClaimCutoff,
   WRITE_CLAIM_LIKE,
 } from "./expire";
 import { ensureHandle, ensureUser } from "./handles";
@@ -373,7 +375,7 @@ export async function putLooseFile(
   const policy = instancePolicy(env);
   if (bytes.byteLength > policy.fileBytes) throw tooLarge(bytes.byteLength, "", policy.fileBytes);
   const existing = await env.DB.prepare(
-    `SELECT id, handle, filename, size, expires_at, created_by, last_written_by, write_policy FROM loose_files WHERE id = ?`,
+    `SELECT id, handle, filename, size, expires_at, created_by, last_written_by, updated_at, write_policy FROM loose_files WHERE id = ?`,
   )
     .bind(id)
     .first<{
@@ -384,6 +386,7 @@ export async function putLooseFile(
       expires_at: string | null;
       created_by: string;
       last_written_by: string | null;
+      updated_at: string | null;
       write_policy: string | null;
     }>();
   if (!existing) {
@@ -393,7 +396,7 @@ export async function putLooseFile(
       `No loose file '${id}'. Create it first with POST /v1/files, then PUT /v1/files/{id} to replace it.`,
     );
   }
-  if (isWriteClaimed(existing.last_written_by)) {
+  if (isWriteClaimed(existing.last_written_by) && !isStaleClaim(existing.updated_at)) {
     throw new ApiError(409, "file_busy", "Another write is in progress; retry this replacement.");
   }
   if (isPurgeClaimed(existing.last_written_by) || isExpired(existing.expires_at)) {
@@ -530,7 +533,7 @@ export async function patchLoose(
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
   const existing = await env.DB.prepare(
-    `SELECT id, handle, filename, password_hash, expires_at, created_by, last_written_by, write_policy FROM loose_files WHERE id = ?`,
+    `SELECT id, handle, filename, password_hash, expires_at, created_by, last_written_by, updated_at, write_policy FROM loose_files WHERE id = ?`,
   )
     .bind(id)
     .first<{
@@ -541,12 +544,13 @@ export async function patchLoose(
       expires_at: string | null;
       created_by: string;
       last_written_by: string | null;
+      updated_at: string | null;
       write_policy: string | null;
     }>();
   if (!existing) {
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
-  if (isWriteClaimed(existing.last_written_by)) {
+  if (isWriteClaimed(existing.last_written_by) && !isStaleClaim(existing.updated_at)) {
     throw new ApiError(409, "file_busy", "Another write is in progress; retry this update.");
   }
   if (isPurgeClaimed(existing.last_written_by) || (isExpired(existing.expires_at) && !patch.setTtl)) {
@@ -573,46 +577,47 @@ export async function patchLoose(
   const ts = new Date().toISOString();
   const handle = existing.handle || (await ensureHandle(env, actor.email));
   const resolved = patch.setTtl ? resolveExpiresAt(instancePolicy(env), patch.ttl) : null;
-  const notClaimed = `ifnull(last_written_by, '') NOT LIKE ? AND ifnull(last_written_by, '') NOT LIKE ?`;
+  const notClaimed = `ifnull(last_written_by, '') NOT LIKE ? AND (ifnull(last_written_by, '') NOT LIKE ? OR updated_at IS NULL OR updated_at <= ?)`;
+  const claimGuards = [PURGE_CLAIM_LIKE, WRITE_CLAIM_LIKE, staleClaimCutoff()] as const;
   if (hash !== undefined && resolved) {
     const updated = await env.DB.prepare(
       `UPDATE loose_files SET updated_at = ?, last_written_by = ?, password_hash = ?, expires_at = ? WHERE id = ? AND ${notClaimed}`,
     )
-      .bind(ts, actor.email, hash, resolved.expiresAt, id, PURGE_CLAIM_LIKE, WRITE_CLAIM_LIKE)
+      .bind(ts, actor.email, hash, resolved.expiresAt, id, ...claimGuards)
       .run();
-    if (!Number(updated.meta?.changes ?? 0)) throw expiredError("file");
+    if (!Number(updated.meta?.changes ?? 0)) await throwLooseFileMutationConflict(env, id);
     purgeContent(ctx, [filePrefix(handle, id)]);
   } else if (hash !== undefined) {
     const updated = await env.DB.prepare(
       `UPDATE loose_files SET updated_at = ?, last_written_by = ?, password_hash = ? WHERE id = ? AND ${notClaimed}`,
     )
-      .bind(ts, actor.email, hash, id, PURGE_CLAIM_LIKE, WRITE_CLAIM_LIKE)
+      .bind(ts, actor.email, hash, id, ...claimGuards)
       .run();
-    if (!Number(updated.meta?.changes ?? 0)) throw expiredError("file");
+    if (!Number(updated.meta?.changes ?? 0)) await throwLooseFileMutationConflict(env, id);
     purgeContent(ctx, [filePrefix(handle, id)]);
   } else if (resolved) {
     const updated = await env.DB.prepare(
       `UPDATE loose_files SET updated_at = ?, last_written_by = ?, expires_at = ? WHERE id = ? AND ${notClaimed}`,
     )
-      .bind(ts, actor.email, resolved.expiresAt, id, PURGE_CLAIM_LIKE, WRITE_CLAIM_LIKE)
+      .bind(ts, actor.email, resolved.expiresAt, id, ...claimGuards)
       .run();
-    if (!Number(updated.meta?.changes ?? 0)) throw expiredError("file");
+    if (!Number(updated.meta?.changes ?? 0)) await throwLooseFileMutationConflict(env, id);
     purgeContent(ctx, [filePrefix(handle, id)]);
   } else if (wantsWrite) {
     const updated = await env.DB.prepare(
       `UPDATE loose_files SET updated_at = ?, last_written_by = ? WHERE id = ? AND ${notClaimed}`,
     )
-      .bind(ts, actor.email, id, PURGE_CLAIM_LIKE, WRITE_CLAIM_LIKE)
+      .bind(ts, actor.email, id, ...claimGuards)
       .run();
-    if (!Number(updated.meta?.changes ?? 0)) throw expiredError("file");
+    if (!Number(updated.meta?.changes ?? 0)) await throwLooseFileMutationConflict(env, id);
   }
   if (wantsWrite) {
     const updated = await env.DB.prepare(
       `UPDATE loose_files SET write_policy = ? WHERE id = ? AND ${notClaimed}`,
     )
-      .bind(nextWrite, id, PURGE_CLAIM_LIKE, WRITE_CLAIM_LIKE)
+      .bind(nextWrite, id, ...claimGuards)
       .run();
-    if (!Number(updated.meta?.changes ?? 0)) throw expiredError("file");
+    if (!Number(updated.meta?.changes ?? 0)) await throwLooseFileMutationConflict(env, id);
   }
   const origin = publicOrigin(env);
   const protectedNow = hash === undefined ? Boolean(existing.password_hash) : Boolean(hash);
@@ -628,6 +633,16 @@ export async function patchLoose(
     ttl: resolved ? resolved.ttl : undefined,
     write_policy: nextWrite,
   });
+}
+
+async function throwLooseFileMutationConflict(env: Env, id: string): Promise<never> {
+  const current = await env.DB.prepare(`SELECT last_written_by FROM loose_files WHERE id = ?`)
+    .bind(id)
+    .first<{ last_written_by: string | null }>();
+  if (isWriteClaimed(current?.last_written_by)) {
+    throw new ApiError(409, "file_busy", "Another write is in progress; retry this update.");
+  }
+  throw expiredError("file");
 }
 
 export async function putLooseFromRequest(

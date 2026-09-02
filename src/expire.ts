@@ -60,7 +60,11 @@ function newWriteToken(): string {
   return `${WRITE_CLAIM}:${crypto.randomUUID()}`;
 }
 
-function isStaleClaim(updatedAt: string | null | undefined, now = Date.now()): boolean {
+export function staleClaimCutoff(now = Date.now()): string {
+  return new Date(now - STALE_CLAIM_MS).toISOString();
+}
+
+export function isStaleClaim(updatedAt: string | null | undefined, now = Date.now()): boolean {
   if (!updatedAt) return true;
   const t = Date.parse(updatedAt);
   return Number.isFinite(t) && now - t >= STALE_CLAIM_MS;
@@ -76,18 +80,31 @@ export async function claimLooseFileForWrite(
   createdBy: string,
 ): Promise<LooseFileWriteClaim | null> {
   const now = new Date().toISOString();
+  const staleBefore = staleClaimCutoff();
   const token = newWriteToken();
   const claimed = await env.DB.prepare(
     `UPDATE loose_files SET last_written_by = ?, updated_at = ?
      WHERE id = ? AND (expires_at IS NULL OR expires_at > ?)
        AND ((expires_at = ?) OR (expires_at IS NULL AND ? IS NULL))
        AND ifnull(last_written_by, '') = ?
-       AND ifnull(last_written_by, '') NOT LIKE ? AND ifnull(last_written_by, '') NOT LIKE ?`,
+       AND ifnull(last_written_by, '') NOT LIKE ?
+       AND (ifnull(last_written_by, '') NOT LIKE ? OR updated_at IS NULL OR updated_at <= ?)`,
   )
-    .bind(token, now, id, now, expiresAt, expiresAt, lastWrittenBy ?? "", PURGE_CLAIM_LIKE, WRITE_CLAIM_LIKE)
+    .bind(
+      token,
+      now,
+      id,
+      now,
+      expiresAt,
+      expiresAt,
+      lastWrittenBy ?? "",
+      PURGE_CLAIM_LIKE,
+      WRITE_CLAIM_LIKE,
+      staleBefore,
+    )
     .run();
   if (!d1Changed(claimed)) return null;
-  return { restoreWriter: lastWrittenBy || createdBy, token };
+  return { restoreWriter: isWriteClaimed(lastWrittenBy) ? createdBy : lastWrittenBy || createdBy, token };
 }
 
 export async function releaseLooseFileWriteClaim(
