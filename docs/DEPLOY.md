@@ -18,7 +18,7 @@ This tree is meant to be forked and run inside a company. There is no hosted pub
 | `WRITE_POLICY` | `instance` (committed) | `owner` |
 | Skill | rendered for this host | placeholder `energon@energon` |
 
-Code defaults are **strict** when vars are omitted: required TTL, 30-day cap, creator-only writes. The committed `wrangler.toml` opts into company mode. Replace the placeholder D1 id and `PUBLIC_ORIGIN` before you deploy.
+Code defaults are **strict** when vars are omitted: required TTL, 30-day cap, creator-only writes. The committed `wrangler.toml` opts into company mode. Replace the placeholder D1 id, `PUBLIC_ORIGIN`, and `CONTENT_ORIGIN` before you deploy. `CONTENT_ORIGIN` must be a separate custom hostname; without it, production content publication fails closed.
 
 Auth on the Worker is Cloudflare Access (`Cf-Access-Authenticated-User-Email`). There is no signup in the app.
 
@@ -56,7 +56,7 @@ npm run skill:init -- --name yourco --origin https://energon.your.co
 
 That sets skill **and** marketplace to `yourco-energon`, token env `YOURCO_ENERGON_TOKEN`, and the GitHub repo from `git remote get-url origin`. `--repo owner/energon` only if origin is still `tmchow/energon`.
 
-It **replaces** the shipped plugin folder, rewrites `marketplace.json`, and writes `instance-skill.json`. Commit that. Point wrangler `SKILL_NAME`, `MARKETPLACE_NAME`, `MARKETPLACE_REPO`, `TOKEN_ENV`, and `PUBLIC_ORIGIN` at the same values.
+It **replaces** the shipped plugin folder, rewrites `marketplace.json`, and writes `instance-skill.json`. Commit that. Point wrangler `SKILL_NAME`, `MARKETPLACE_NAME`, `MARKETPLACE_REPO`, `TOKEN_ENV`, and `PUBLIC_ORIGIN` at the same values. Set `CONTENT_ORIGIN` to a second custom hostname for published files and sites.
 
 Skill name and marketplace name match so a second Energon catalog does not collide. Claude Code has one marketplace `name` slot.
 
@@ -77,7 +77,7 @@ Put the printed D1 `database_id` in `wrangler.toml`. Keep `database_name` and `b
 
 Then:
 
-- Custom domain → `[[routes]]` in `wrangler.toml`
+- Custom domains → both `[[routes]]` entries in `wrangler.toml` (hub and content)
 - GitHub Actions secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
 - GitHub Actions variable `ENABLE_PRODUCTION_DEPLOY=true` to deploy on push to `main`. Unset = tests only.
 - Do not `wrangler login` from a cloud agent VM. Land on `main`.
@@ -89,6 +89,7 @@ Strings only (Wrangler).
 | Var | Company | Default if unset |
 | --- | --- | --- |
 | `PUBLIC_ORIGIN` | `https://energon.your.co` | `https://energon.example.com` |
+| `CONTENT_ORIGIN` | `https://content.energon.your.co` | `https://content.energon.example.com` |
 | `ALLOW_UNLIMITED_RETENTION` | `true` | `false` |
 | `DEFAULT_TTL` | `never` | `7d` (`never` if unlimited is on and this is unset) |
 | `MAX_TTL` | `never` | `30d` (`never` if unlimited) |
@@ -135,9 +136,9 @@ The Worker reads `Cf-Access-Authenticated-User-Email`. It does not implement sig
 **Paths**
 
 - **Allow** (signed-in): `/`, `/account*`, `/about`, `/stats`, `/setup`, `/tokens`
-- **Bypass** (default): `/v1*`, `/health`, `/llms.txt`, `/favicon.svg`, `/static*`, `/{handle}/s/*`, `/{handle}/f/*`
+- **Bypass** (default): `/v1*`, `/health`, `/llms.txt`, `/favicon.svg`, `/static*` on the hub, and `/{handle}/s/*`, `/{handle}/f/*` on the content hostname
 
-Published `/{handle}/s/*` and `/{handle}/f/*` stay on the open internet by default so a share link just opens. To keep those links off the public web, put Access on **those paths only**. Leave `/v1*` on Bypass. There is no `PUBLISH_VISIBILITY` var.
+Published `/{handle}/s/*` and `/{handle}/f/*` are served from `CONTENT_ORIGIN` and stay on the open internet by default so a share link just opens. Do not put Access on the content hostname; the Worker rejects hub routes there and the separate origin prevents active uploads from reading authenticated hub responses. Leave `/v1*` on Bypass on the hub. There is no `PUBLISH_VISIBILITY` var.
 
 Disable or ignore `*.workers.dev` for humans; the Worker 403s the hub there.
 
@@ -147,6 +148,7 @@ Disable or ignore `*.workers.dev` for humans; the Worker 403s the hub there.
 npm install
 npx wrangler d1 migrations apply energon --local
 # .dev.vars: PUBLIC_ORIGIN=http://127.0.0.1:8787
+#            CONTENT_ORIGIN=http://127.0.0.1:8787
 #            DEV_ACCESS_EMAIL=you@your.co
 npm run dev
 ```

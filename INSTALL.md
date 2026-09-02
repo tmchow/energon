@@ -39,7 +39,8 @@ Put the printed D1 `database_id` into `wrangler.toml`. Keep `database_name` and 
 
 Ask the human for:
 
-- Public hostname (example: `https://energon.your.co`)
+- Hub hostname (example: `https://energon.your.co`)
+- Content hostname (example: `https://content.energon.your.co`; this must be separate from the hub)
 - Email domains that may mint tokens (example: `your.co,your.com`)
 - Write default: `instance` (any token on this host — usual for coworker/agent sharing) or `owner` (only the creator)
 - Whether content may live forever (`ALLOW_UNLIMITED_RETENTION=true`) or must expire
@@ -73,6 +74,7 @@ Strings only (Wrangler). Committed defaults are company-shaped. Full table: [doc
 | Var | Typical company value |
 | --- | --- |
 | `PUBLIC_ORIGIN` | `https://energon.your.co` |
+| `CONTENT_ORIGIN` | `https://content.energon.your.co` |
 | `TOKEN_ENV` | match the rendered skill |
 | `SKILL_NAME` / `MARKETPLACE_NAME` | match the rendered skill |
 | `MARKETPLACE_REPO` | `your-org/energon` |
@@ -95,15 +97,15 @@ The Worker reads `Cf-Access-Authenticated-User-Email`. It does not implement sig
 
 **Allow** (signed-in): `/`, `/account*`, `/about`, `/stats`, `/setup`, `/tokens`
 
-**Bypass**: `/v1*`, `/health`, `/llms.txt`, `/favicon.svg`, `/static*`, and (by default) `/{handle}/s/*`, `/{handle}/f/*`
+**Bypass**: `/v1*`, `/health`, `/llms.txt`, `/favicon.svg`, `/static*`, and (by default) `/{handle}/s/*`, `/{handle}/f/*` on the content hostname
 
-Leave `/v1*` on Bypass — agents send a bearer token and have no Access cookie. Published links stay easy to open on purpose. To keep those links off the public web, put Access on **those paths only**. There is no `PUBLISH_VISIBILITY` var.
+Leave `/v1*` on Bypass on the hub — agents send a bearer token and have no Access cookie. Published links stay easy to open on the content hostname. Do not put Access on the content hostname: the Worker rejects hub routes there, and the separate origin prevents published active content from inheriting the hub session. There is no `PUBLISH_VISIBILITY` var.
 
 Disable or ignore `*.workers.dev` for humans; the Worker 403s the hub there.
 
 ### 6. Domain, secrets, deploy
 
-- Custom domain → uncomment `[[routes]]` in `wrangler.toml` (or add it in the dashboard).
+- Custom domains → uncomment both `[[routes]]` entries in `wrangler.toml` (hub and content), or add both in the dashboard. The hub is the only domain that gets Cloudflare Access.
 - GitHub Actions secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
 - GitHub Actions variable: `ENABLE_PRODUCTION_DEPLOY` = `true` if you want push-to-`main` to migrate D1 and deploy. Leave it unset so CI is tests only.
 - Apply migrations once: `npx wrangler d1 migrations apply energon --remote`
@@ -118,6 +120,7 @@ Workers Paid is required. At typical company volume that is the $5/month floor.
 ```bash
 npx wrangler d1 migrations apply energon --local
 # .dev.vars: PUBLIC_ORIGIN=http://127.0.0.1:8787
+#            CONTENT_ORIGIN=http://127.0.0.1:8787
 #            DEV_ACCESS_EMAIL=you@your.co
 npm run dev
 ```

@@ -238,6 +238,7 @@ export function helpBody(origin: string, env?: Env): unknown {
   return {
     product: PRODUCT,
     hub: origin,
+    content_origin: env?.CONTENT_ORIGIN?.trim() || null,
     account: `${origin}/account`,
     env: id.tokenEnv,
     skill: id.skill,

@@ -60,7 +60,8 @@ describe("putLooseFile", () => {
     const env = {
       DB: db,
       BUCKET: bucket,
-      PUBLIC_ORIGIN: "https://energon.example.com",
+      PUBLIC_ORIGIN: "https://hub.energon.example.com",
+      CONTENT_ORIGIN: "https://energon.example.com",
     } as unknown as Env;
     const purged: string[][] = [];
     const ctx = {
@@ -145,7 +146,8 @@ describe("putLooseFile", () => {
     const env = {
       DB: db,
       BUCKET: bucket,
-      PUBLIC_ORIGIN: "https://energon.example.com",
+      PUBLIC_ORIGIN: "https://hub.energon.example.com",
+      CONTENT_ORIGIN: "https://energon.example.com",
     } as unknown as Env;
     const actor: Actor = { email: "ada@esperlabs.app", via: "token" };
 

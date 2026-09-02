@@ -22,7 +22,7 @@ import {
 import { ensureHandle, ensureUser } from "./handles";
 import { listSitesFor } from "./sites";
 import { passwordEcho, passwordField, passwordHashFromInput, protectContent, readSetPasswordHeader } from "./gate";
-import { filePublicPath, filePublicUrl, isFileId, urlFilename } from "./urls";
+import { filePublicUrl, isFileId, urlFilename } from "./urls";
 import {
   ApiError,
   assertStorageRoom,
@@ -810,7 +810,7 @@ export async function serveLoose(
 
   const pretty = urlFilename(row.filename);
   if (filename !== pretty) {
-    return Response.redirect(`${publicOrigin(env)}${filePublicPath(handle, id, row.filename)}`, 302);
+    return Response.redirect(filePublicUrl(env, handle, id, row.filename), 302);
   }
   const obj = await env.BUCKET.get(fileKey(id, row.filename));
   if (!obj) return new Response("Not found", { status: 404, headers: { "cache-control": "no-store" } });

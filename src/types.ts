@@ -2,6 +2,7 @@ export interface Env {
   DB: D1Database;
   BUCKET: R2Bucket;
   PUBLIC_ORIGIN: string;
+  CONTENT_ORIGIN?: string;
   REQUIRE_ACCESS?: string;
   DEV_ACCESS_EMAIL?: string;
   INSTANCE_SLUG?: string;
