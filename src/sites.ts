@@ -349,30 +349,18 @@ export async function createSite(
   assertCanMutate(actor, existing);
   const ts = new Date().toISOString();
   const resolved = ttl === undefined ? null : resolveExpiresAt(policy, ttl);
-  if (hash === undefined && !resolved) {
-    await writeSite(env, actor, handle, slug, "updated_at = ?, last_written_by = ?", [ts, actor.email]);
-  } else if (hash === undefined && resolved) {
-    await writeSite(env, actor, handle, slug, "updated_at = ?, last_written_by = ?, expires_at = ?", [
-      ts,
-      actor.email,
-      resolved.expiresAt,
-    ]);
-  } else if (resolved) {
-    await writeSite(
-      env,
-      actor,
-      handle,
-      slug,
-      "updated_at = ?, last_written_by = ?, password_hash = ?, expires_at = ?",
-      [ts, actor.email, hash, resolved.expiresAt],
-    );
-    await purgeContent(ctx, [sitePrefix(handle, slug)]);
-  } else {
-    await writeSite(env, actor, handle, slug, "updated_at = ?, last_written_by = ?, password_hash = ?", [
-      ts,
-      actor.email,
-      hash,
-    ]);
+  const assignments = ["updated_at = ?", "last_written_by = ?"];
+  const values: unknown[] = [ts, actor.email];
+  if (hash !== undefined) {
+    assignments.push("password_hash = ?");
+    values.push(hash);
+  }
+  if (resolved) {
+    assignments.push("expires_at = ?");
+    values.push(resolved.expiresAt);
+  }
+  await writeSite(env, actor, handle, slug, assignments.join(", "), values);
+  if (hash !== undefined) {
     await purgeContent(ctx, [sitePrefix(handle, slug)]);
   }
   return {
