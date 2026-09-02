@@ -31,6 +31,7 @@ export type Actor = {
   via: "token" | "access";
   tokenId?: string;
   tokenLabel?: string;
+  tokenExpiresAt?: string | null;
 };
 
 export type SiteRow = {

@@ -733,12 +733,67 @@ describe("Energon", () => {
     expect(await got.text()).toContain("other session");
   });
 
-  it("whoami returns token label and owner email", async () => {
+  it("whoami returns token label, owner email, and expiry", async () => {
     const token = await mint("whoami-key", "who@esperlabs.app");
     const me = await json("/v1/whoami", { headers: auth(token) });
     expect(me.status).toBe(200);
     expect(me.body.email).toBe("who@esperlabs.app");
     expect(me.body.label).toBe("whoami-key");
+    expect(Date.parse(me.body.expires_at)).toBeGreaterThan(Date.now() + 89 * 86400 * 1000);
+
+    const forever = await mint("whoami-forever", "who@esperlabs.app", undefined, "never");
+    const meForever = await json("/v1/whoami", { headers: auth(forever) });
+    expect(meForever.body.expires_at).toBeNull();
+  });
+
+  it("expired token gets a terminal token_expired 401 and no usage bump", async () => {
+    const { env } = await import("cloudflare:test");
+    const email = "expired-writer@esperlabs.app";
+    const token = await mint("dead-key", email, undefined, "1d");
+    await env.DB.prepare(`UPDATE tokens SET expires_at = ? WHERE label = ? AND user_email = ?`)
+      .bind("2000-01-01T00:00:00.000Z", "dead-key", email)
+      .run();
+
+    const put = await json("/v1/sites/x/files/a.txt", {
+      method: "PUT",
+      headers: auth(token, { "content-type": "text/plain" }),
+      body: "late",
+    });
+    expect(put.status).toBe(401);
+    expect(put.body.error).toBe("token_expired");
+    for (const clause of ["/tokens", "ENERGON_TOKEN", "2000-01-01", "mint", "cannot be extended", "Do not retry", "Do not invent"]) {
+      expect(put.body.message).toContain(clause);
+    }
+    expect(put.body).toMatchObject({ expired_at: "2000-01-01T00:00:00.000Z", tokens_url: "https://hub.energon.example.com/tokens" });
+    expect(put.body.hub).toBeDefined();
+    for (const leak of ["token_hash", "token_hint", "user_email", "user_id"]) {
+      expect(put.body).not.toHaveProperty(leak);
+    }
+    const row = await env.DB.prepare(`SELECT last_used_at FROM tokens WHERE label = ? AND user_email = ?`)
+      .bind("dead-key", email)
+      .first<{ last_used_at: string | null }>();
+    expect(row?.last_used_at).toBeNull();
+  });
+
+  it("grandfathered NULL expiry still authenticates and revoked wins over expired", async () => {
+    const { env } = await import("cloudflare:test");
+    const email = "legacy-holder@esperlabs.app";
+    const legacy = await mint("legacy-key", email, undefined, "1d");
+    await env.DB.prepare(`UPDATE tokens SET expires_at = NULL, created_at = ? WHERE label = ? AND user_email = ?`)
+      .bind("2024-01-01T00:00:00.000Z", "legacy-key", email)
+      .run();
+    const me = await json("/v1/whoami", { headers: auth(legacy) });
+    expect(me.status).toBe(200);
+    expect(me.body.expires_at).toBeNull();
+
+    const both = await mint("both-key", email, undefined, "1d");
+    const listed = await json("/account/data", { headers: access(email) });
+    const id = listed.body.tokens.find((t: { label: string }) => t.label === "both-key").id;
+    await json(`/account/tokens/${id}/revoke`, { method: "POST", headers: access(email) });
+    await env.DB.prepare(`UPDATE tokens SET expires_at = ? WHERE id = ?`).bind("2000-01-01T00:00:00.000Z", id).run();
+    const res = await json("/v1/whoami", { headers: auth(both) });
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe("unauthorized");
   });
 
   it("rejects zip path traversal", async () => {

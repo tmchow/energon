@@ -217,8 +217,47 @@ describe("requireToken", () => {
       via: "token",
       tokenId: row.id,
       tokenLabel: row.label,
+      tokenExpiresAt: null,
     });
     expect(updateRun).toHaveBeenCalledOnce();
+  });
+
+  it("rejects an expired token with token_expired and never bumps last_used_at", async () => {
+    const updateRun = vi.fn();
+    const prepare = vi.fn((sql: string) => {
+      if (sql.includes("SELECT")) {
+        return { bind: () => ({ first: async () => ({ ...row, expires_at: "2000-01-01T00:00:00.000Z" }) }) };
+      }
+      return { bind: () => ({ run: updateRun }) };
+    });
+    const env = { DB: { prepare }, PUBLIC_ORIGIN: "https://energon.example.com" } as unknown as Env;
+
+    await expect(requireToken(request, env)).rejects.toMatchObject({
+      status: 401,
+      code: "token_expired",
+      extra: { expired_at: "2000-01-01T00:00:00.000Z", tokens_url: "https://energon.example.com/tokens" },
+    });
+    expect(updateRun).not.toHaveBeenCalled();
+  });
+
+  it("treats an unparseable expiry as expired", async () => {
+    const prepare = vi.fn(() => ({
+      bind: () => ({ first: async () => ({ ...row, expires_at: "not-a-date" }), run: async () => undefined }),
+    }));
+    const env = { DB: { prepare }, PUBLIC_ORIGIN: "https://energon.example.com" } as unknown as Env;
+
+    await expect(requireToken(request, env)).rejects.toMatchObject({ status: 401, code: "token_expired" });
+  });
+
+  it("reports revoked before expired", async () => {
+    const prepare = vi.fn(() => ({
+      bind: () => ({
+        first: async () => ({ ...row, revoked_at: "2026-08-27T01:00:00.000Z", expires_at: "2000-01-01T00:00:00.000Z" }),
+      }),
+    }));
+    const env = { DB: { prepare }, PUBLIC_ORIGIN: "https://energon.example.com" } as unknown as Env;
+
+    await expect(requireToken(request, env)).rejects.toMatchObject({ status: 401, code: "unauthorized" });
   });
 
   it("still rejects a revoked token", async () => {

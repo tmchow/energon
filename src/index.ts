@@ -306,7 +306,7 @@ async function api(
 ): Promise<Response> {
   if (path === "/v1/whoami" && method === "GET") {
     const actor = await requireToken(request, env);
-    return json({ email: actor.email, label: actor.tokenLabel });
+    return json({ email: actor.email, label: actor.tokenLabel, expires_at: actor.tokenExpiresAt ?? null });
   }
 
   if (path === "/v1/sites" && method === "GET") {

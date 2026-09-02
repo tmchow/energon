@@ -29,6 +29,18 @@ export function unauthorized(origin: string, detail?: string, env?: Env): ApiErr
   );
 }
 
+/** Terminal for agents: the token is dead, cannot be extended, and only a human can mint another. */
+export function tokenExpiredError(origin: string, expiredAt: string, env?: Env): ApiError {
+  const id = identityFromEnv(env || {});
+  const when = Number.isFinite(Date.parse(expiredAt)) ? ` on ${expiredAt}` : "";
+  return new ApiError(
+    401,
+    "token_expired",
+    `That API token expired${when}. Tokens cannot be extended. Tell the human to open ${origin}/tokens, mint a new one, and export it as ${id.tokenEnv}. Do not retry with this token. Do not invent a token.`,
+    { expired_at: expiredAt, tokens_url: `${origin}/tokens` },
+  );
+}
+
 export function humanUnauthorized(origin: string): ApiError {
   return new ApiError(
     401,
@@ -67,7 +79,7 @@ export async function requireToken(request: Request, env: Env): Promise<Actor> {
   }
   const tokenHash = await hashToken(token);
   const row = await env.DB.prepare(
-    `SELECT id, user_email, user_id, label, token_hash, created_at, last_used_at, revoked_at
+    `SELECT id, user_email, user_id, label, token_hash, created_at, last_used_at, revoked_at, expires_at
      FROM tokens WHERE token_hash = ?`,
   )
     .bind(tokenHash)
@@ -79,6 +91,7 @@ export async function requireToken(request: Request, env: Env): Promise<Actor> {
       env,
     );
   }
+  if (tokenExpired(row.expires_at)) throw tokenExpiredError(origin, row.expires_at ?? "", env);
   assertEmailAllowed(env, row.user_email);
   const user = row.user_id ? await getUserById(env, row.user_id) : await getUser(env, row.user_email);
   const last = row.last_used_at ? Date.parse(row.last_used_at) : 0;
@@ -98,6 +111,7 @@ export async function requireToken(request: Request, env: Env): Promise<Actor> {
     via: "token",
     tokenId: row.id,
     tokenLabel: row.label,
+    tokenExpiresAt: row.expires_at ?? null,
   };
 }
 
