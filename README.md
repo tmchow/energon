@@ -6,11 +6,6 @@ It is agent-native on purpose. The same skill works from Cursor, Claude Code, Co
 
 Team members authenticate to mint a token. Published URLs are open by default, because an agent has no login cookie and a preview for someone outside the company is the same URL. Anyone with the link can open it. Put a share password on a URL that should not be wide open. Token reads on `/v1` skip the password. Writing stays on tokens.
 
-- **Worker.** This repo. The hub, the `/v1` API, and the viewer. Repeat views can hit the edge cache.
-- **R2.** The files.
-- **D1.** Slugs, handles, token hashes, expiry, and who may write.
-- **Cloudflare Access.** Who can authenticate and mint a key. Published links skip it unless you put it on those paths.
-
 This repo is what you fork. The skill in the tree is bound to this instance. `npm run skill:init` names it for your host (`yourco-energon`, `YOURCO_ENERGON_TOKEN`) so it does not collide with another Energon you also use. Install that skill at user scope if this is the host you want in every project. If you belong to more than one organization, install each instance's skill. They have different names and different token env vars. Or pin one at project scope in that company's repos.
 
 A site is a named folder, like `/ada/s/lunch-poll/`. A file is one object with a short id, like `/ada/f/x7k2/brief.md`. POST once to mint the id, then PUT to replace it. The address does not move. `curl` and `?raw=1` stay the source. `index.md` is the homepage when `index.html` is missing. Last write wins on each path.
@@ -56,6 +51,10 @@ Ask me for our Energon origin (https://...) if it is not already in the environm
 ```
 
 `{origin}/setup` has the same block already filled in for your host.
+
+## What you deploy
+
+The Worker is this repo: the hub, the `/v1` API, and the viewer. Files live in R2. D1 holds slugs, handles, token hashes, expiry, and who may write. Cloudflare Access is who can authenticate and mint a key. Published links skip it unless you put it on those paths. Repeat views can hit the edge cache. The rest is in [INSTALL.md](./INSTALL.md) and [docs/DEPLOY.md](./docs/DEPLOY.md).
 
 ## Run it on your machine
 
