@@ -3,7 +3,7 @@ import xss, { getDefaultWhiteList, safeAttrValue } from "xss";
 import { privateCacheControl } from "./cache";
 import { brandMark, documentShell, escapeHtml } from "./chrome";
 import { PRODUCT } from "./config";
-import { basename, contentDisposition, wantsDownload } from "./http";
+import { applyIsolation, basename, contentDisposition, wantsDownload } from "./http";
 
 const MERMAID_FENCE = /^(```|~~~)[ \t]*mermaid\b/im;
 
@@ -66,38 +66,10 @@ export function renderMarkdown(md: string): { html: string; mermaid: boolean } {
   return { html, mermaid: MERMAID_FENCE.test(md) || html.includes('class="mermaid"') };
 }
 
-export function markdownPage(opts: {
-  title: string;
-  filename: string;
-  rawHref: string;
-  html: string;
-  mermaid: boolean;
-}): string {
-  const mermaidHead = opts.mermaid
-    ? `<script type="module">
-import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
-mermaid.initialize({
-  startOnLoad: true,
-  theme: "dark",
-  securityLevel: "strict",
-  themeVariables: {
-    darkMode: true,
-    background: "#070814",
-    primaryColor: "#16102a",
-    primaryTextColor: "#ece8f8",
-    primaryBorderColor: "#8a6cff",
-    lineColor: "#9a93b3",
-    secondaryColor: "#0d1220",
-    tertiaryColor: "#10162a",
-  },
-});
-</script>`
-    : "";
-
+export function markdownPage(opts: { title: string; filename: string; rawHref: string; html: string }): string {
   return documentShell({
     title: `${opts.title} — ${PRODUCT}`,
     bodyClass: "page-md",
-    extraHead: mermaidHead,
     body: `<header class="top"><div class="top-inner">
       <a class="brand" href="/"><div class="mark">${brandMark()}</div><div><div class="name">${escapeHtml(PRODUCT)}</div></div></a>
       <div class="top-end">
@@ -130,22 +102,21 @@ export async function respondMarkdown(
   }
   const rendered = renderMarkdown(await obj.text());
   const rawHref = `${new URL(request.url).pathname}?raw=1`;
+  const headers = new Headers({
+    "content-type": "text/html; charset=utf-8",
+    "x-content-type-options": "nosniff",
+    "cache-control": privateCacheControl(),
+    vary: "Accept",
+  });
+  applyIsolation(headers, "text/html");
   return new Response(
     markdownPage({
       title: filename,
       filename,
       rawHref,
       html: rendered.html,
-      mermaid: rendered.mermaid,
     }),
-    {
-      headers: {
-        "content-type": "text/html; charset=utf-8",
-        "x-content-type-options": "nosniff",
-        "cache-control": privateCacheControl(),
-        vary: "Accept",
-      },
-    },
+    { headers },
   );
 }
 

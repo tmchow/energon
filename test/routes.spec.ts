@@ -138,4 +138,52 @@ describe("hub account API", () => {
     expect(fileDel.status).toBe(200);
     expect((await req(path)).status).toBe(404);
   });
+
+  it("rejects account mutations from another origin and form bodies", async () => {
+    const email = "csrf@esperlabs.app";
+    const token = await mint("csrf-key", email);
+    await json("/v1/sites", {
+      method: "POST",
+      headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "csrf-site" }),
+    });
+
+    const missing = await json("/account/sites/csrf-site", {
+      method: "PATCH",
+      headers: {
+        "Cf-Access-Authenticated-User-Email": email,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ password: "stolen" }),
+    });
+    expect(missing.status).toBe(403);
+    expect(missing.body.error).toBe("bad_origin");
+
+    const cross = await json("/account/sites/csrf-site", {
+      method: "PATCH",
+      headers: access(email, {
+        origin: "https://energon.example.com",
+        "content-type": "application/json",
+      }),
+      body: JSON.stringify({ password: "stolen" }),
+    });
+    expect(cross.status).toBe(403);
+    expect(cross.body.error).toBe("bad_origin");
+
+    const form = await json("/account/sites/csrf-site", {
+      method: "PATCH",
+      headers: access(email, { "content-type": "application/x-www-form-urlencoded" }),
+      body: "password=stolen",
+    });
+    expect(form.status).toBe(415);
+    expect(form.body.error).toBe("bad_content_type");
+
+    const minted = await req("/account/tokens", {
+      method: "POST",
+      headers: access(email, { "content-type": "application/json" }),
+      body: JSON.stringify({ label: "no-store" }),
+    });
+    expect(minted.status).toBe(201);
+    expect(minted.headers.get("cache-control")).toMatch(/no-store/);
+  });
 });
