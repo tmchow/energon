@@ -45,6 +45,6 @@ Keep implementation details out of the map. Name only user paths, stable handles
 
 - [Publish a site](./publish-site.md) covers creating a named folder, writing files, serving the public URL, overwrite, duplicate, and mermaid on HTML markdown.
 - [Publish a file](./publish-file.md) covers minting a loose file with a stable id, replacing bytes, and downloading.
-- [Mint a token](./mint-token.md) covers mint, whoami, and revoke on the Tokens page and hub API.
+- [Mint a token](./mint-token.md) covers mint with a lifetime, whoami with `expires_at`, the expired-token `401 token_expired`, and revoke on the Tokens page and hub API.
 - [Share password](./share-password.md) covers setting a password, the public gate, header unlock, and clearing.
 - [Hub catalog](./hub-catalog.md) covers listing, search, scope, opening a public URL, and delete.

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Mint a token on the verification instance via the same hub endpoint the Tokens page uses.
-# Usage: .cursor/skills/verify-energon/bin/mint-token [label]
-# Prints the token on stdout. Saves it at $STATE_DIR/token. Do not invent a token.
+# Usage: .cursor/skills/verify-energon/bin/mint-token [label] [ttl]
+# ttl is a token preset (1d, 7d, 30d, 60d, 90d, 180d, 365d, never); omitted = instance default.
+# Prints the token on stdout. Saves it at $STATE_DIR/token and TOKEN_EXPIRES_AT in state.env.
+# Do not invent a token.
 
 set -euo pipefail
 _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,8 +12,15 @@ source "$_script_dir/_lib.sh"
 
 load_state
 label="${1:-verify}"
+ttl="${2:-}"
 
-payload="$(python3 -c 'import json,sys; print(json.dumps({"label": sys.argv[1]}))' "$label")"
+payload="$(python3 -c '
+import json, sys
+body = {"label": sys.argv[1]}
+if sys.argv[2]:
+    body["ttl"] = sys.argv[2]
+print(json.dumps(body))
+' "$label" "$ttl")"
 code="$(curl -sS -o /tmp/energon-verify-body.$$ -w '%{http_code}' \
   -X POST "$ORIGIN/account/tokens" \
   -H 'content-type: application/json' \
@@ -24,14 +33,16 @@ fi
 
 token="$(json_get "$body" "token")"
 [[ "$token" == ee_live_* ]] || die "minted value is not an ee_live_ token: $token"
+expires_at="$(json_get "$body" "expires_at" || true)"
 
 printf '%s\n' "$token" >"$(state_dir)/token"
-python3 - "$(state_file)" "$token" <<'PY'
+python3 - "$(state_file)" "$token" "$expires_at" <<'PY'
 from pathlib import Path
 import sys
-path, token = Path(sys.argv[1]), sys.argv[2]
-lines = [ln for ln in path.read_text().splitlines() if not ln.startswith("TOKEN=")]
+path, token, expires_at = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+lines = [ln for ln in path.read_text().splitlines() if not ln.startswith(("TOKEN=", "TOKEN_EXPIRES_AT="))]
 lines.append(f"TOKEN={token}")
+lines.append(f"TOKEN_EXPIRES_AT={expires_at or 'never'}")
 path.write_text("\n".join(lines) + "\n")
 PY
 

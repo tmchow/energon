@@ -71,7 +71,7 @@ source /tmp/energon-verify/$ENERGON_VERIFY_RUN/state.env
 TOKEN=$(.cursor/skills/verify-energon/bin/mint-token verify-run)
 ```
 
-`state.env` has `ORIGIN`, `PORT`, `PID`, `PERSIST`, `EVIDENCE`, `EMAIL`, and after doctor `HANDLE`. After mint-token, `TOKEN` and `$STATE_DIR/token`.
+`state.env` has `ORIGIN`, `PORT`, `PID`, `PERSIST`, `EVIDENCE`, `EMAIL`, and after doctor `HANDLE`. After mint-token, `TOKEN`, `TOKEN_EXPIRES_AT`, and `$STATE_DIR/token`.
 
 ### HTTP recipe shape
 
@@ -91,7 +91,7 @@ Playwright is not a repo dependency. Use the environment's browser tools, or a o
 - Choose files: click `Choose files`, then set files on `#filepick` (the click only opens a native picker).
 - One file stages a loose file (`#stage-loose` visible, `#stage-filename` filled). A folder or zip stages a site (`#stage-slug`).
 - Nothing is written until `Launch`. After success, `#messages` contains a flash with the public URL and the catalog lists the slug or filename.
-- Tokens: go to `/tokens`, fill the `Label` textbox, click `Mint token`. `#new-token` shows `export ENERGON_TOKEN=ee_live_…`.
+- Tokens: go to `/tokens`, fill the `Label` textbox, choose a lifetime in `#mint-ttl` (`aria-label="Token lifetime"`, default `3 months`), click `Mint token`. `#new-token` shows `export ENERGON_TOKEN=ee_live_…`. The list has an `Expires` column; expired rows are greyed (`tr.row-expired`) and keep only `Revoke`.
 
 ## Evidence
 
@@ -126,7 +126,7 @@ All executable, all from repo root:
 |---|---|
 | `bin/launch` | Isolated wrangler + migrations. Prints origin, pid, persist, evidence. |
 | `bin/doctor` | Read-only health/identity/ownership check. Exit 1 → do not drive. |
-| `bin/mint-token [label]` | `POST /account/tokens` with `Origin: $ORIGIN` (same path as the Tokens page). Prints `ee_live_…`. Saves `$STATE_DIR/token`. |
+| `bin/mint-token [label] [ttl]` | `POST /account/tokens` with `Origin: $ORIGIN` (same path as the Tokens page). Optional `ttl` preset (`1d`…`365d`, `never`); omitted = instance default (`90d`). Prints `ee_live_…`. Saves `$STATE_DIR/token` and `TOKEN_EXPIRES_AT` in `state.env`. |
 | `bin/cleanup` | Kill this run, remove persist, keep evidence. |
 
 `bin/_lib.sh` is sourced by those scripts; do not invoke it directly.
