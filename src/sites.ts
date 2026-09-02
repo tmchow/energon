@@ -476,45 +476,30 @@ export async function patchSite(
   const ts = new Date().toISOString();
   const resolved = patch.setTtl ? resolveExpiresAt(instancePolicy(env), patch.ttl) : null;
   const notClaimed = `last_written_by NOT LIKE ?`;
-  if (hash !== undefined && resolved) {
+  if (hash !== undefined || resolved || wantsWrite) {
+    const assignments = ["updated_at = ?", "last_written_by = ?"];
+    const values: unknown[] = [ts, actor.email];
+    if (hash !== undefined) {
+      assignments.push("password_hash = ?");
+      values.push(hash);
+    }
+    if (resolved) {
+      assignments.push("expires_at = ?");
+      values.push(resolved.expiresAt);
+    }
+    if (wantsWrite) {
+      assignments.push("write_policy = ?");
+      values.push(nextWrite);
+    }
     const updated = await env.DB.prepare(
-      `UPDATE sites SET updated_at = ?, last_written_by = ?, password_hash = ?, expires_at = ? WHERE handle = ? AND slug = ? AND ${notClaimed}`,
+      `UPDATE sites SET ${assignments.join(", ")} WHERE handle = ? AND slug = ? AND ${notClaimed}`,
     )
-      .bind(ts, actor.email, hash, resolved.expiresAt, site.handle, slug, PURGE_CLAIM_LIKE)
-      .run();
-    if (!Number(updated.meta?.changes ?? 0)) throw expiredError("site");
-    purgeContent(ctx, [sitePrefix(site.handle, slug)]);
-  } else if (hash !== undefined) {
-    const updated = await env.DB.prepare(
-      `UPDATE sites SET updated_at = ?, last_written_by = ?, password_hash = ? WHERE handle = ? AND slug = ? AND ${notClaimed}`,
-    )
-      .bind(ts, actor.email, hash, site.handle, slug, PURGE_CLAIM_LIKE)
-      .run();
-    if (!Number(updated.meta?.changes ?? 0)) throw expiredError("site");
-    purgeContent(ctx, [sitePrefix(site.handle, slug)]);
-  } else if (resolved) {
-    const updated = await env.DB.prepare(
-      `UPDATE sites SET updated_at = ?, last_written_by = ?, expires_at = ? WHERE handle = ? AND slug = ? AND ${notClaimed}`,
-    )
-      .bind(ts, actor.email, resolved.expiresAt, site.handle, slug, PURGE_CLAIM_LIKE)
-      .run();
-    if (!Number(updated.meta?.changes ?? 0)) throw expiredError("site");
-    purgeContent(ctx, [sitePrefix(site.handle, slug)]);
-  } else if (wantsWrite) {
-    const updated = await env.DB.prepare(
-      `UPDATE sites SET updated_at = ?, last_written_by = ? WHERE handle = ? AND slug = ? AND ${notClaimed}`,
-    )
-      .bind(ts, actor.email, site.handle, slug, PURGE_CLAIM_LIKE)
+      .bind(...values, site.handle, slug, PURGE_CLAIM_LIKE)
       .run();
     if (!Number(updated.meta?.changes ?? 0)) throw expiredError("site");
   }
-  if (wantsWrite) {
-    const updated = await env.DB.prepare(
-      `UPDATE sites SET write_policy = ? WHERE handle = ? AND slug = ? AND ${notClaimed}`,
-    )
-      .bind(nextWrite, site.handle, slug, PURGE_CLAIM_LIKE)
-      .run();
-    if (!Number(updated.meta?.changes ?? 0)) throw expiredError("site");
+  if (hash !== undefined || resolved) {
+    purgeContent(ctx, [sitePrefix(site.handle, slug)]);
   }
   const protectedNow = hash === undefined ? Boolean(site.password_hash) : Boolean(hash);
   return json({

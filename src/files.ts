@@ -12,6 +12,7 @@ import { FILE_ID_LEN, fileKey } from "./config";
 import {
   expiredError,
   expiredHtml,
+  claimLooseFileForDelete,
   claimLooseFileForWrite,
   isExpired,
   isPurgeClaimed,
@@ -57,6 +58,12 @@ import {
   writePolicyFromRequest,
 } from "./policy";
 import type { Actor, Env, LooseFileRow } from "./types";
+
+type R2Snapshot = {
+  bytes: Uint8Array;
+  httpMetadata: R2HTTPMetadata | undefined;
+  customMetadata: Record<string, string> | undefined;
+};
 
 export async function createLooseFile(
   env: Env,
@@ -448,21 +455,10 @@ export async function putLooseFile(
     }
     throw new ApiError(409, "file_busy", "Another write is in progress; retry this replacement.");
   }
-  let previousState: {
-    bytes: Uint8Array;
-    httpMetadata: R2HTTPMetadata | undefined;
-    customMetadata: Record<string, string> | undefined;
-  } | null = null;
+  let previousState: R2Snapshot | null = null;
   let metadataCommitted = false;
   try {
-    const previous = renamed ? null : await env.BUCKET.get(oldKey);
-    previousState = previous
-      ? {
-          bytes: await previous.bytes(),
-          httpMetadata: previous.httpMetadata,
-          customMetadata: previous.customMetadata,
-        }
-      : null;
+    previousState = renamed ? null : await snapshotR2Object(env.BUCKET, oldKey);
     await env.BUCKET.put(newKey, bytes, { httpMetadata: { contentType } });
     if (hash === undefined) {
       const updated = await env.DB.prepare(
@@ -491,14 +487,7 @@ export async function putLooseFile(
     if (renamed) await env.BUCKET.delete(oldKey).catch(() => undefined);
   } catch (err) {
     if (!metadataCommitted) {
-      if (renamed || !previousState) {
-        await env.BUCKET.delete(newKey).catch(() => undefined);
-      } else {
-        await env.BUCKET.put(oldKey, previousState.bytes, {
-          httpMetadata: previousState.httpMetadata,
-          customMetadata: previousState.customMetadata,
-        }).catch(() => undefined);
-      }
+      await restoreR2Object(env.BUCKET, newKey, renamed ? null : previousState).catch(() => undefined);
       await releaseLooseFileWriteClaim(env, id, claim.token, claim.restoreWriter).catch(() => undefined);
     }
     throw err;
@@ -583,45 +572,30 @@ export async function patchLoose(
   const resolved = patch.setTtl ? resolveExpiresAt(instancePolicy(env), patch.ttl) : null;
   const notClaimed = `ifnull(last_written_by, '') NOT LIKE ? AND (ifnull(last_written_by, '') NOT LIKE ? OR updated_at IS NULL OR updated_at <= ?)`;
   const claimGuards = [PURGE_CLAIM_LIKE, WRITE_CLAIM_LIKE, staleClaimCutoff()] as const;
-  if (hash !== undefined && resolved) {
+  if (hash !== undefined || resolved || wantsWrite) {
+    const assignments = ["updated_at = ?", "last_written_by = ?"];
+    const values: unknown[] = [ts, actor.email];
+    if (hash !== undefined) {
+      assignments.push("password_hash = ?");
+      values.push(hash);
+    }
+    if (resolved) {
+      assignments.push("expires_at = ?");
+      values.push(resolved.expiresAt);
+    }
+    if (wantsWrite) {
+      assignments.push("write_policy = ?");
+      values.push(nextWrite);
+    }
     const updated = await env.DB.prepare(
-      `UPDATE loose_files SET updated_at = ?, last_written_by = ?, password_hash = ?, expires_at = ? WHERE id = ? AND ${notClaimed}`,
+      `UPDATE loose_files SET ${assignments.join(", ")} WHERE id = ? AND ${notClaimed}`,
     )
-      .bind(ts, actor.email, hash, resolved.expiresAt, id, ...claimGuards)
-      .run();
-    if (!Number(updated.meta?.changes ?? 0)) await throwLooseFileMutationConflict(env, id);
-    purgeContent(ctx, [filePrefix(handle, id)]);
-  } else if (hash !== undefined) {
-    const updated = await env.DB.prepare(
-      `UPDATE loose_files SET updated_at = ?, last_written_by = ?, password_hash = ? WHERE id = ? AND ${notClaimed}`,
-    )
-      .bind(ts, actor.email, hash, id, ...claimGuards)
-      .run();
-    if (!Number(updated.meta?.changes ?? 0)) await throwLooseFileMutationConflict(env, id);
-    purgeContent(ctx, [filePrefix(handle, id)]);
-  } else if (resolved) {
-    const updated = await env.DB.prepare(
-      `UPDATE loose_files SET updated_at = ?, last_written_by = ?, expires_at = ? WHERE id = ? AND ${notClaimed}`,
-    )
-      .bind(ts, actor.email, resolved.expiresAt, id, ...claimGuards)
-      .run();
-    if (!Number(updated.meta?.changes ?? 0)) await throwLooseFileMutationConflict(env, id);
-    purgeContent(ctx, [filePrefix(handle, id)]);
-  } else if (wantsWrite) {
-    const updated = await env.DB.prepare(
-      `UPDATE loose_files SET updated_at = ?, last_written_by = ? WHERE id = ? AND ${notClaimed}`,
-    )
-      .bind(ts, actor.email, id, ...claimGuards)
+      .bind(...values, id, ...claimGuards)
       .run();
     if (!Number(updated.meta?.changes ?? 0)) await throwLooseFileMutationConflict(env, id);
   }
-  if (wantsWrite) {
-    const updated = await env.DB.prepare(
-      `UPDATE loose_files SET write_policy = ? WHERE id = ? AND ${notClaimed}`,
-    )
-      .bind(nextWrite, id, ...claimGuards)
-      .run();
-    if (!Number(updated.meta?.changes ?? 0)) await throwLooseFileMutationConflict(env, id);
+  if (hash !== undefined || resolved) {
+    purgeContent(ctx, [filePrefix(handle, id)]);
   }
   const origin = publicOrigin(env);
   const protectedNow = hash === undefined ? Boolean(existing.password_hash) : Boolean(hash);
@@ -744,22 +718,94 @@ export async function deleteLooseFile(
   if (!isFileId(id)) {
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
-  const row = await env.DB.prepare(`SELECT id, handle, filename, created_by, write_policy FROM loose_files WHERE id = ?`)
+  const row = await env.DB.prepare(
+    `SELECT id, handle, filename, expires_at, created_by, last_written_by, updated_at, write_policy FROM loose_files WHERE id = ?`,
+  )
     .bind(id)
     .first<{
       id: string;
       handle: string | null;
       filename: string;
+      expires_at: string | null;
       created_by: string;
+      last_written_by: string | null;
+      updated_at: string | null;
       write_policy: string | null;
     }>();
   if (!row) {
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
   assertCanMutate(actor, row);
-  await env.BUCKET.delete(fileKey(row.id, row.filename));
-  await env.DB.prepare(`DELETE FROM loose_files WHERE id = ?`).bind(id).run();
+  if (isWriteClaimed(row.last_written_by) && !isStaleClaim(row.updated_at)) {
+    throw new ApiError(409, "file_busy", "Another write is in progress; retry this deletion.");
+  }
+  if (isPurgeClaimed(row.last_written_by)) throw expiredError("file");
+  const claim = await claimLooseFileForDelete(
+    env,
+    id,
+    row.expires_at,
+    row.last_written_by,
+    row.created_by,
+  );
+  if (!claim) {
+    const current = await env.DB.prepare(`SELECT last_written_by FROM loose_files WHERE id = ?`)
+      .bind(id)
+      .first<{ last_written_by: string | null }>();
+    if (!current) throw expiredError("file");
+    if (isPurgeClaimed(current.last_written_by)) throw expiredError("file");
+    throw new ApiError(409, "file_busy", "The file changed during deletion; retry.");
+  }
+  const key = fileKey(row.id, row.filename);
+  let previousState: R2Snapshot | null = null;
+  let storageDeleted = false;
+  try {
+    previousState = await snapshotR2Object(env.BUCKET, key);
+    await env.BUCKET.delete(key);
+    storageDeleted = true;
+    const dropped = await env.DB.prepare(`DELETE FROM loose_files WHERE id = ? AND last_written_by = ?`)
+      .bind(id, claim.token)
+      .run();
+    if (!Number(dropped.meta?.changes ?? 0)) {
+      throw new ApiError(409, "file_delete_lost", "The file changed during deletion; retry.");
+    }
+  } catch (err) {
+    let failure = err;
+    if (storageDeleted) {
+      try {
+        await restoreR2Object(env.BUCKET, key, previousState);
+      } catch {
+        failure = new ApiError(
+          500,
+          "file_delete_rollback_failed",
+          "The file deletion failed and automatic rollback also failed. Retry after storage recovers.",
+        );
+      }
+    }
+    await releaseLooseFileWriteClaim(env, id, claim.token, claim.restoreWriter).catch(() => undefined);
+    throw failure;
+  }
   if (row.handle) purgeContent(ctx, [filePrefix(row.handle, id)]);
+}
+
+async function snapshotR2Object(bucket: R2Bucket, key: string): Promise<R2Snapshot | null> {
+  const object = await bucket.get(key);
+  if (!object) return null;
+  return {
+    bytes: await object.bytes(),
+    httpMetadata: object.httpMetadata,
+    customMetadata: object.customMetadata,
+  };
+}
+
+async function restoreR2Object(bucket: R2Bucket, key: string, snapshot: R2Snapshot | null): Promise<void> {
+  if (!snapshot) {
+    await bucket.delete(key);
+    return;
+  }
+  await bucket.put(key, snapshot.bytes, {
+    httpMetadata: snapshot.httpMetadata,
+    customMetadata: snapshot.customMetadata,
+  });
 }
 
 export async function listLooseJson(env: Env, email: string, query: ListQuery): Promise<Response> {

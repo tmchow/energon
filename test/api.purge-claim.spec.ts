@@ -2,6 +2,48 @@ import { describe, expect, it } from "vitest";
 import { auth, json, mint, req } from "./helpers";
 
 describe("TTL purge claims", () => {
+  it("blocks replacement while a loose-file deletion owns the write claim", async () => {
+    const { env } = await import("cloudflare:test");
+    const { deleteLooseFile, putLooseFile } = await import("../src/files");
+    const token = await mint("delete-write-claim");
+    const actor = { email: "ada@esperlabs.app", via: "token" } as const;
+    const uploaded = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "X-Filename": "delete-race.txt", "content-type": "text/plain" }),
+      body: "before",
+    });
+    const fileId = uploaded.body.id as string;
+    const key = `files/${fileId}/delete-race.txt`;
+    const bucket = env.BUCKET as R2Bucket & { delete: R2Bucket["delete"] };
+    const originalDelete = bucket.delete.bind(bucket);
+    let replacementError: unknown;
+    bucket.delete = async (objectKey) => {
+      const result = await originalDelete(objectKey);
+      if (objectKey === key) {
+        replacementError = await putLooseFile(
+          env,
+          undefined,
+          actor,
+          fileId,
+          new TextEncoder().encode("replacement"),
+          "delete-race.txt",
+          "text/plain",
+        ).catch((error: unknown) => error);
+      }
+      return result;
+    };
+
+    try {
+      await deleteLooseFile(env, undefined, actor, fileId);
+    } finally {
+      bucket.delete = originalDelete;
+    }
+
+    expect(replacementError).toMatchObject({ status: 409, code: "file_busy" });
+    expect(await env.DB.prepare(`SELECT id FROM loose_files WHERE id = ?`).bind(fileId).first()).toBeNull();
+    expect(await env.BUCKET.get(key)).toBeNull();
+  });
+
   it("keeps a replacement claim while purge observes the newly written bytes", async () => {
     const { env } = await import("cloudflare:test");
     const { purgeExpiredFile } = await import("../src/expire");
@@ -239,14 +281,14 @@ describe("TTL purge claims", () => {
       { name: "password", body: { password: "secret" }, sql: "password_hash = ? WHERE" },
       { name: "ttl", body: { ttl: "7d" }, sql: "expires_at = ? WHERE" },
       {
-        name: "write policy metadata",
+        name: "write policy",
         body: { write_policy: "owner" },
-        sql: "SET updated_at = ?, last_written_by = ? WHERE",
+        sql: "last_written_by = ?, write_policy = ? WHERE",
       },
       {
-        name: "write policy value",
+        name: "password and write policy",
         body: { password: "secret", write_policy: "owner" },
-        sql: "SET write_policy = ? WHERE",
+        sql: "password_hash = ?, write_policy = ? WHERE",
       },
     ];
 
@@ -297,6 +339,115 @@ describe("TTL purge claims", () => {
         db.prepare = originalPrepare;
       }
     }
+  });
+
+  it("does not partially apply a multi-field PATCH when a write claim wins", async () => {
+    const { env } = await import("cloudflare:test");
+    const { WRITE_CLAIM } = await import("../src/expire");
+    const token = await mint("ttl-patch-atomicity");
+    const uploaded = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "X-Filename": "atomic.txt", "content-type": "text/plain" }),
+      body: "before",
+    });
+    const fileId = uploaded.body.id as string;
+    const db = env.DB;
+    const originalPrepare = db.prepare.bind(db);
+    let injected = false;
+    db.prepare = ((sql: string) => {
+      const statement = originalPrepare(sql);
+      if (injected || !sql.includes("password_hash = ?, write_policy = ? WHERE")) return statement;
+      const originalBind = statement.bind.bind(statement);
+      return {
+        ...statement,
+        bind: (...bindArgs: unknown[]) => {
+          const bound = originalBind(...bindArgs);
+          const originalRun = bound.run.bind(bound);
+          return Object.assign(bound, {
+            run: async () => {
+              injected = true;
+              await originalPrepare(`UPDATE loose_files SET last_written_by = ?, updated_at = ? WHERE id = ?`)
+                .bind(`${WRITE_CLAIM}:atomicity`, new Date().toISOString(), fileId)
+                .run();
+              return originalRun();
+            },
+          });
+        },
+      };
+    }) as typeof db.prepare;
+
+    try {
+      const patched = await json(`/v1/files/${fileId}`, {
+        method: "PATCH",
+        headers: auth(token, { "content-type": "application/json" }),
+        body: JSON.stringify({ password: "secret", write_policy: "owner" }),
+      });
+      expect(patched.status).toBe(409);
+      expect(patched.body.error).toBe("file_busy");
+    } finally {
+      db.prepare = originalPrepare;
+    }
+
+    expect(injected).toBe(true);
+    const row = await env.DB.prepare(`SELECT password_hash, write_policy FROM loose_files WHERE id = ?`)
+      .bind(fileId)
+      .first<{ password_hash: string | null; write_policy: string }>();
+    expect(row?.password_hash).toBeNull();
+    expect(row?.write_policy).toBe("instance");
+  });
+
+  it("does not partially apply a multi-field site PATCH when purge claims", async () => {
+    const { env } = await import("cloudflare:test");
+    const { PURGE_CLAIM } = await import("../src/expire");
+    const token = await mint("ttl-site-patch-atomicity");
+    await json("/v1/sites", {
+      method: "POST",
+      headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "atomic-site" }),
+    });
+    const db = env.DB;
+    const originalPrepare = db.prepare.bind(db);
+    let injected = false;
+    db.prepare = ((sql: string) => {
+      const statement = originalPrepare(sql);
+      if (injected || !sql.includes("password_hash = ?, write_policy = ? WHERE")) return statement;
+      const originalBind = statement.bind.bind(statement);
+      return {
+        ...statement,
+        bind: (...bindArgs: unknown[]) => {
+          const bound = originalBind(...bindArgs);
+          const originalRun = bound.run.bind(bound);
+          return Object.assign(bound, {
+            run: async () => {
+              injected = true;
+              await originalPrepare(`UPDATE sites SET last_written_by = ? WHERE slug = ?`)
+                .bind(`${PURGE_CLAIM}:atomicity`, "atomic-site")
+                .run();
+              return originalRun();
+            },
+          });
+        },
+      };
+    }) as typeof db.prepare;
+
+    try {
+      const patched = await json("/v1/sites/atomic-site", {
+        method: "PATCH",
+        headers: auth(token, { "content-type": "application/json" }),
+        body: JSON.stringify({ password: "secret", write_policy: "owner" }),
+      });
+      expect(patched.status).toBe(410);
+      expect(patched.body.error).toBe("expired");
+    } finally {
+      db.prepare = originalPrepare;
+    }
+
+    expect(injected).toBe(true);
+    const row = await env.DB.prepare(`SELECT password_hash, write_policy FROM sites WHERE slug = ?`)
+      .bind("atomic-site")
+      .first<{ password_hash: string | null; write_policy: string }>();
+    expect(row?.password_hash).toBeNull();
+    expect(row?.write_policy).toBe("instance");
   });
 
   it("purge claims before deleting R2 so a concurrent PATCH ttl cannot orphan bytes", async () => {

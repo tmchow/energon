@@ -60,7 +60,13 @@ export function readCookie(request: Request, name: string): string | null {
   const raw = request.headers.get("cookie") || "";
   for (const part of raw.split(";")) {
     const [k, ...rest] = part.trim().split("=");
-    if (k === name) return decodeURIComponent(rest.join("="));
+    if (k === name) {
+      try {
+        return decodeURIComponent(rest.join("="));
+      } catch {
+        return null;
+      }
+    }
   }
   return null;
 }

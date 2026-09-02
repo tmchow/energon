@@ -72,6 +72,13 @@ describe("host and route contracts", () => {
     expect(created.status).toBe(400);
     expect(created.body.error).toBe("bad_slug");
   });
+
+  it("rejects malformed URL encoding without turning it into a 500", async () => {
+    const malformed = await json("/%/s/demo/");
+
+    expect(malformed.status).toBe(400);
+    expect(malformed.body.error).toBe("bad_path");
+  });
 });
 
 describe("hub account API", () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { TOKEN_PREFIX } from "../../src/config";
 import { actorFromAccess, helpBody, maskToken, mintToken, parseBearer, rejectWorkersDevForHumans, requireToken } from "../../src/auth";
+import { readCookie } from "../../src/gate";
 import type { Env, TokenRow } from "../../src/types";
 
 const env = { PUBLIC_ORIGIN: "https://energon.example.com" } as Env;
@@ -98,6 +99,17 @@ describe("parseBearer", () => {
       "ee_live_x",
     );
     expect(parseBearer(new Request("https://e.test"))).toBeNull();
+  });
+});
+
+describe("readCookie", () => {
+  it("ignores malformed percent encoding instead of crashing the request", () => {
+    const request = new Request("https://energon.example.com", {
+      headers: { cookie: "unrelated=ok; energon_gate=%; later=value" },
+    });
+
+    expect(readCookie(request, "energon_gate")).toBeNull();
+    expect(readCookie(request, "later")).toBe("value");
   });
 });
 
