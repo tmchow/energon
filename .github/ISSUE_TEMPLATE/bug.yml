@@ -1,0 +1,49 @@
+name: Bug
+description: Something in this Worker, skill, or docs is wrong.
+title: "[bug] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This tracker is for the **software in this repo**, not a hosted Energon service.
+        Do not paste tokens, Access credentials, or other people’s files.
+        Pull requests are not merged — see [CONTRIBUTING.md](https://github.com/tmchow/energon/blob/main/CONTRIBUTING.md).
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options:
+        - Worker / API
+        - Hub UI
+        - Skill / marketplace install
+        - Docs
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit or fork
+      description: SHA, tag, or “fork of tmchow/energon at …”
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should happen
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happens
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: Local `wrangler dev` or your instance. Redact secrets.
+    validations:
+      required: true

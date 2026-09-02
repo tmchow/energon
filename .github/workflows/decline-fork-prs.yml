@@ -1,0 +1,36 @@
+name: Decline fork pull requests
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  decline:
+    if: github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const body = [
+              "Thanks for the patch. `tmchow/energon` does not merge unsolicited pull requests.",
+              "",
+              "Please [open an issue](https://github.com/tmchow/energon/issues/new/choose) instead, and keep the work on your fork. See [CONTRIBUTING.md](https://github.com/tmchow/energon/blob/main/CONTRIBUTING.md).",
+            ].join("\n");
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+            await github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              state: "closed",
+            });
