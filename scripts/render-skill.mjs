@@ -27,7 +27,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -47,6 +47,65 @@ const OSS_DEFAULTS = {
   repo: "tmchow/energon",
   marketplaceUrl: "https://github.com/tmchow/energon",
 };
+
+const SAFE_IDENTIFIER = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const IDENTIFIER_FIELDS = ["skill", "plugin", "marketplace"];
+
+function hasPath(path) {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isContained(root, candidate) {
+  const rel = relative(root, candidate);
+  return rel !== "" && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+}
+
+function assertIdentifier(value, label) {
+  if (typeof value !== "string" || !SAFE_IDENTIFIER.test(value)) {
+    throw new Error(`${label} must be a safe single-segment slug`);
+  }
+}
+
+function assertPathInside(root, candidate, label) {
+  const rootPath = resolve(root);
+  const candidatePath = resolve(candidate);
+  if (!isContained(rootPath, candidatePath)) {
+    throw new Error(`${label} resolves outside ${rootPath}`);
+  }
+
+  const rootReal = realpathSync(rootPath);
+  let ancestor = candidatePath;
+  while (!hasPath(ancestor)) {
+    const parent = dirname(ancestor);
+    if (parent === ancestor) throw new Error(`${label} has no existing parent`);
+    ancestor = parent;
+  }
+  const candidateReal = resolve(realpathSync(ancestor), relative(ancestor, candidatePath));
+  if (!isContained(rootReal, candidateReal)) {
+    throw new Error(`${label} resolves outside ${rootReal}`);
+  }
+  return candidatePath;
+}
+
+function assertLexicallyInside(root, candidate, label) {
+  const rootPath = resolve(root);
+  const candidatePath = resolve(candidate);
+  if (!isContained(rootPath, candidatePath)) {
+    throw new Error(`${label} resolves outside ${rootPath}`);
+  }
+  return candidatePath;
+}
+
+function validateIdentifiers(opts, source) {
+  for (const field of IDENTIFIER_FIELDS) {
+    assertIdentifier(opts[field], `${source} ${field}`);
+  }
+}
 
 export function parseGitHubRepo(url) {
   if (!url) return "";
@@ -92,7 +151,9 @@ function loadInstance() {
   if (!existsSync(INSTANCE_PATH)) return { ...OSS_DEFAULTS };
   const raw = JSON.parse(readFileSync(INSTANCE_PATH, "utf8"));
   const repo = raw.repo || raw.marketplaceRepo || OSS_DEFAULTS.repo;
-  return { ...OSS_DEFAULTS, ...raw, repo, marketplaceRepo: repo };
+  const opts = { ...OSS_DEFAULTS, ...raw, repo, marketplaceRepo: repo };
+  validateIdentifiers(opts, "instance configuration");
+  return opts;
 }
 
 function parseArgs(argv) {
@@ -202,6 +263,8 @@ function parseArgs(argv) {
   if (out.init && (!set.has("skill") || !out.origin)) {
     throw new Error("skill:init requires --name (or --skill) and --origin");
   }
+  if (set.has("name")) assertIdentifier(out.name, "--name");
+  validateIdentifiers(out, "argument");
   return { opts: out, prev, set };
 }
 
@@ -317,12 +380,53 @@ function upsertPluginJson(path, opts, check, dirty) {
   writeOrCheck(path, `${JSON.stringify(json, null, 2)}\n`, check, dirty);
 }
 
+function validateMutationTargets(prev, opts) {
+  const pluginsRoot = join(ROOT, "plugins");
+  realpathSync(pluginsRoot);
+
+  const oldDir = join(pluginsRoot, prev.plugin);
+  const newDir = join(pluginsRoot, opts.plugin);
+  assertPathInside(pluginsRoot, oldDir, "previous plugin directory");
+  assertPathInside(pluginsRoot, newDir, "plugin directory");
+
+  if (prev.plugin !== opts.plugin) {
+    if (hasPath(newDir)) {
+      throw new Error(`refusing to replace existing plugin destination ${newDir}`);
+    }
+    assertPathInside(pluginsRoot, join(oldDir, "skills", prev.skill), "previous skill directory");
+    assertPathInside(pluginsRoot, join(newDir, "skills", opts.skill), "skill directory");
+  }
+
+  const skillDir = join(newDir, "skills", opts.skill);
+  assertPathInside(pluginsRoot, skillDir, "skill directory");
+  for (const file of readdirSync(TMPL_DIR)) {
+    if (!file.endsWith(".tmpl")) continue;
+    const name = file.replace(/\.tmpl$/, "");
+    const destination =
+      name === "api.md" ? join(skillDir, "references", "api.md") : join(skillDir, name);
+    assertPathInside(pluginsRoot, destination, "skill file");
+  }
+  assertPathInside(pluginsRoot, join(newDir, "plugin.json"), "plugin manifest");
+  for (const extra of [".claude-plugin/plugin.json", ".codex-plugin/plugin.json"]) {
+    assertPathInside(pluginsRoot, join(newDir, extra), "plugin manifest");
+  }
+
+  const agentsSkills = join(ROOT, ".agents", "skills");
+  if (!hasPath(agentsSkills)) return;
+  assertPathInside(ROOT, agentsSkills, "agent skills directory");
+  const link = join(agentsSkills, opts.skill);
+  assertLexicallyInside(agentsSkills, link, "agent skill link");
+  assertPathInside(pluginsRoot, resolve(dirname(link), "..", "..", "plugins", opts.plugin, "skills", opts.skill), "agent skill link target");
+  if (prev.skill !== opts.skill) {
+    assertLexicallyInside(agentsSkills, join(agentsSkills, prev.skill), "previous agent skill link");
+  }
+}
+
 function replacePluginTree(prev, opts, check) {
   if (check) return;
   const oldDir = join(ROOT, "plugins", prev.plugin);
   const newDir = join(ROOT, "plugins", opts.plugin);
   if (prev.plugin !== opts.plugin && existsSync(oldDir)) {
-    if (existsSync(newDir)) rmSync(newDir, { recursive: true, force: true });
     cpSync(oldDir, newDir, { recursive: true });
     const oldSkillDir = join(newDir, "skills", prev.skill);
     const newSkillDir = join(newDir, "skills", opts.skill);
@@ -356,6 +460,7 @@ function replacePluginTree(prev, opts, check) {
 
 function main() {
   const { opts, prev } = parseArgs(process.argv.slice(2));
+  validateMutationTargets(prev, opts);
   const vars = varsFrom(opts);
   const dirty = [];
 
