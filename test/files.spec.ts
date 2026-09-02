@@ -158,4 +158,50 @@ describe("putLooseFile", () => {
     expect(new TextDecoder().decode(objects.get(key)?.bytes)).toBe("original");
     expect(objects.get(key)?.contentType).toBe("text/plain");
   });
+
+  it("rejects a replacement before writing when the content origin is unavailable", async () => {
+    let writes = 0;
+    const bucket = {
+      async get() {
+        return null;
+      },
+      async put() {
+        writes += 1;
+      },
+      async delete() {},
+    };
+    const db = {
+      prepare(sql: string) {
+        return {
+          bind() {
+            return this;
+          },
+          async first() {
+            if (sql.includes("SELECT id, handle, filename, size")) {
+              return {
+                id: "Abc123",
+                handle: "ada",
+                filename: "notes.txt",
+                size: 8,
+                created_by: "ada@esperlabs.app",
+                write_policy: "owner",
+              };
+            }
+            return null;
+          },
+        };
+      },
+    };
+    const env = {
+      DB: db,
+      BUCKET: bucket,
+      PUBLIC_ORIGIN: "https://hub.energon.example.com",
+    } as unknown as Env;
+    const actor: Actor = { email: "ada@esperlabs.app", via: "token" };
+
+    await expect(
+      putLooseFile(env, undefined, actor, "Abc123", new TextEncoder().encode("replacement"), "notes.txt", "text/plain"),
+    ).rejects.toMatchObject({ status: 503, code: "content_origin_not_configured" });
+    expect(writes).toBe(0);
+  });
 });

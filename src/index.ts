@@ -17,7 +17,7 @@ import { identityFromEnv } from "./instance";
 import { MEMORABLE_WORDS } from "./memorable";
 import { deleteLooseFile, getLooseFile, hubLists, listLooseJson, patchLoose, postLooseFromRequest, putLooseFromRequest, serveLoose } from "./files";
 import { passwordField } from "./gate";
-import { ApiError, dedicatedContentOrigin, isLocalHost, isPublicContentPath, json, publicOrigin, readBodyCapped, wantsDownload } from "./http";
+import { ApiError, contentOrigin, dedicatedContentOrigin, isLocalHost, isPublicContentPath, json, publicOrigin, readBodyCapped, wantsDownload } from "./http";
 import { instancePolicy, policyPublic } from "./policy";
 import {
   createSite,
@@ -393,6 +393,7 @@ async function serveHub(request: Request, env: Env, ctx: ExecutionContext): Prom
     email: actor?.email ?? null,
     handle,
     origin: publicOrigin(env),
+    content_origin: contentOrigin(env),
     policy: policyPublic(instancePolicy(env)),
     identity: identityFromEnv(env),
     sites: lists.sites,
