@@ -226,4 +226,23 @@ describe("site mutation integrity", () => {
     const file = await req("/v1/sites/integrity-delete-site-r2/files/index.html", { headers: auth(token) });
     expect(await file.text()).toBe("original");
   });
+
+  it("does not turn a failed backup copy into a rollback failure", async () => {
+    const { env } = await import("cloudflare:test");
+    const token = await mint("site-integrity-delete-site-staging");
+    await createSite(token, "integrity-delete-site-staging");
+    const bucket = env.BUCKET;
+    const originalPut = bucket.put.bind(bucket);
+    bucket.put = async (key, ...args) => {
+      if (key.includes("sites/.integrity-backup/")) throw new Error("injected backup staging failure");
+      return originalPut(key, ...args);
+    };
+    try {
+      const response = await json("/v1/sites/integrity-delete-site-staging", { method: "DELETE", headers: auth(token) });
+      expect(response.status).toBe(500);
+      expect(response.body.error).not.toBe("site_delete_rollback_failed");
+    } finally {
+      bucket.put = originalPut;
+    }
+  });
 });

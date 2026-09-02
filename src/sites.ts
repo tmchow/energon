@@ -124,6 +124,12 @@ async function listR2Keys(bucket: R2Bucket, prefix: string): Promise<string[]> {
   return keys;
 }
 
+async function deleteR2Keys(bucket: R2Bucket, keys: string[]): Promise<void> {
+  for (let i = 0; i < keys.length; i += 1000) {
+    await bucket.delete(keys.slice(i, i + 1000));
+  }
+}
+
 async function restoreSiteFileRows(
   env: Env,
   handle: string,
@@ -132,37 +138,40 @@ async function restoreSiteFileRows(
   previousRows: Map<string, SiteFileRow>,
   previousSite: SiteRow,
 ): Promise<void> {
-  const statements: D1PreparedStatement[] = [];
-  for (const path of paths) {
-    statements.push(env.DB.prepare(`DELETE FROM site_files WHERE handle = ? AND slug = ? AND path = ?`).bind(handle, slug, path));
-    const previous = previousRows.get(path);
-    if (previous) {
+  const pathBatchSize = Math.floor((100 - 1) / 2);
+  for (let i = 0; i < paths.length || i === 0; i += pathBatchSize) {
+    const statements: D1PreparedStatement[] = [];
+    for (const path of paths.slice(i, i + pathBatchSize)) {
+      statements.push(env.DB.prepare(`DELETE FROM site_files WHERE handle = ? AND slug = ? AND path = ?`).bind(handle, slug, path));
+      const previous = previousRows.get(path);
+      if (previous) {
+        statements.push(
+          env.DB.prepare(
+            `INSERT INTO site_files (handle, slug, path, size, content_type, updated_at, last_written_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          ).bind(
+            previous.handle,
+            previous.slug,
+            previous.path,
+            previous.size,
+            previous.content_type,
+            previous.updated_at,
+            previous.last_written_by,
+          ),
+        );
+      }
+    }
+    if (i + pathBatchSize >= paths.length) {
       statements.push(
-        env.DB.prepare(
-          `INSERT INTO site_files (handle, slug, path, size, content_type, updated_at, last_written_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        ).bind(
-          previous.handle,
-          previous.slug,
-          previous.path,
-          previous.size,
-          previous.content_type,
-          previous.updated_at,
-          previous.last_written_by,
+        env.DB.prepare(`UPDATE sites SET updated_at = ?, last_written_by = ? WHERE handle = ? AND slug = ?`).bind(
+          previousSite.updated_at,
+          previousSite.last_written_by,
+          handle,
+          slug,
         ),
       );
     }
-  }
-  statements.push(
-    env.DB.prepare(`UPDATE sites SET updated_at = ?, last_written_by = ? WHERE handle = ? AND slug = ?`).bind(
-      previousSite.updated_at,
-      previousSite.last_written_by,
-      handle,
-      slug,
-    ),
-  );
-  for (let i = 0; i < statements.length; i += 100) {
-    await env.DB.batch(statements.slice(i, i + 100));
+    await env.DB.batch(statements);
   }
 }
 
@@ -397,8 +406,8 @@ export async function duplicateSite(
   try {
     for (const f of listed) {
       const destinationKey = siteKey(destHandle, destSlug, f.path);
-      copiedKeys.push(destinationKey);
       await copyR2Object(env.BUCKET, siteKey(source.handle, source.slug, f.path), destinationKey);
+      copiedKeys.push(destinationKey);
       await env.DB.prepare(
         `INSERT INTO site_files (handle, slug, path, size, content_type, updated_at, last_written_by)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -414,7 +423,7 @@ export async function duplicateSite(
   } catch (err) {
     let cleanupError = false;
     try {
-      await env.BUCKET.delete(copiedKeys);
+      await deleteR2Keys(env.BUCKET, copiedKeys);
     } catch {
       cleanupError = true;
     }
@@ -769,8 +778,8 @@ export async function deleteSite(env: Env, ctx: ExecutionContext | undefined, ac
   try {
     for (const sourceKey of listedKeys) {
       const backupKey = `${backupPrefix}${sourceKey.slice(sitePrefixKey.length)}`;
-      backups.push({ sourceKey, backupKey });
       await copyR2Object(env.BUCKET, sourceKey, backupKey);
+      backups.push({ sourceKey, backupKey });
     }
     await deletePrefix(env.BUCKET, `sites/${site.handle}/${slug}/`);
     await env.DB.batch([
@@ -780,14 +789,17 @@ export async function deleteSite(env: Env, ctx: ExecutionContext | undefined, ac
   } catch (err) {
     try {
       await Promise.all(backups.map(({ sourceKey, backupKey }) => copyR2Object(env.BUCKET, backupKey, sourceKey)));
-      await env.BUCKET.delete(backups.map(({ backupKey }) => backupKey));
+      await deleteR2Keys(env.BUCKET, backups.map(({ backupKey }) => backupKey));
     } catch {
       throw new ApiError(500, "site_delete_rollback_failed", "The site deletion failed and automatic rollback also failed. Retry after storage recovers.");
     }
     throw err;
   }
-  await env.BUCKET.delete(backups.map(({ backupKey }) => backupKey));
-  purgeContent(ctx, [sitePrefix(site.handle, slug)]);
+  try {
+    await deleteR2Keys(env.BUCKET, backups.map(({ backupKey }) => backupKey));
+  } finally {
+    purgeContent(ctx, [sitePrefix(site.handle, slug)]);
+  }
 }
 
 export async function deleteSiteFile(
