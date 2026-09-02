@@ -751,7 +751,7 @@ export async function deleteLooseFile(
     const current = await env.DB.prepare(`SELECT last_written_by FROM loose_files WHERE id = ?`)
       .bind(id)
       .first<{ last_written_by: string | null }>();
-    if (!current) throw new ApiError(404, "file_not_found", "No loose file with that id.");
+    if (!current) throw expiredError("file");
     if (isPurgeClaimed(current.last_written_by)) throw expiredError("file");
     throw new ApiError(409, "file_busy", "The file changed during deletion; retry.");
   }

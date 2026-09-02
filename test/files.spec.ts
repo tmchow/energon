@@ -211,6 +211,46 @@ describe("putLooseFile", () => {
 });
 
 describe("deleteLooseFile", () => {
+  it("reports a row removed during claim acquisition as expired", async () => {
+    const db = {
+      prepare(sql: string) {
+        return {
+          bind() {
+            return this;
+          },
+          async first() {
+            if (sql.includes("SELECT id, handle, filename")) {
+              return {
+                id: "Abc123",
+                handle: "ada",
+                filename: "notes.txt",
+                expires_at: null,
+                created_by: "ada@esperlabs.app",
+                last_written_by: "ada@esperlabs.app",
+                updated_at: "2026-09-02T00:00:00.000Z",
+                write_policy: "owner",
+              };
+            }
+            return null;
+          },
+          async run() {
+            return { meta: { changes: 0 } };
+          },
+        };
+      },
+    };
+    const env = {
+      DB: db,
+      BUCKET: { get: async () => null, delete: async () => undefined },
+    } as unknown as Env;
+    const actor: Actor = { email: "ada@esperlabs.app", via: "token" };
+
+    await expect(deleteLooseFile(env, undefined, actor, "Abc123")).rejects.toMatchObject({
+      status: 410,
+      code: "expired",
+    });
+  });
+
   it("restores file bytes when the D1 delete fails", async () => {
     const key = "files/Abc123/notes.txt";
     const original = new TextEncoder().encode("original");
