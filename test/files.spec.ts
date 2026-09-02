@@ -275,6 +275,56 @@ describe("putLooseFile", () => {
     ).rejects.toMatchObject({ status: 503, code: "content_origin_not_configured" });
     expect(writes).toBe(0);
   });
+
+  it("does not reserve storage when the write claim is lost", async () => {
+    let quotaIncrements = 0;
+    const db = {
+      prepare(sql: string) {
+        return {
+          bind() {
+            return this;
+          },
+          async first() {
+            if (sql.includes("SELECT id, handle, filename, size")) {
+              return {
+                id: "Abc123",
+                handle: "ada",
+                filename: "notes.txt",
+                size: 8,
+                expires_at: null,
+                created_by: "ada@esperlabs.app",
+                last_written_by: "ada@esperlabs.app",
+                updated_at: "2026-09-02T00:00:00.000Z",
+                write_policy: "instance",
+              };
+            }
+            if (sql.includes("SELECT expires_at, last_written_by")) {
+              return { expires_at: null, last_written_by: "ada@esperlabs.app" };
+            }
+            return null;
+          },
+          async run() {
+            if (sql.includes("platform_quota") && sql.includes("used + ?")) {
+              quotaIncrements += 1;
+              return { meta: { changes: 1 } };
+            }
+            return { meta: { changes: 0 } };
+          },
+        };
+      },
+    };
+    const env = {
+      DB: db,
+      BUCKET: { async get() { return null; }, async put() {}, async delete() {} },
+      PUBLIC_ORIGIN: "https://hub.energon.example.com",
+      CONTENT_ORIGIN: "https://energon.example.com",
+    } as unknown as Env;
+    const actor: Actor = { email: "ada@esperlabs.app", via: "token" };
+    await expect(
+      putLooseFile(env, undefined, actor, "Abc123", new TextEncoder().encode("replacement"), "notes.txt", "text/plain"),
+    ).rejects.toMatchObject({ status: 409, code: "file_busy" });
+    expect(quotaIncrements).toBe(0);
+  });
 });
 
 describe("deleteLooseFile", () => {

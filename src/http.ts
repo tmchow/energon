@@ -231,9 +231,13 @@ export async function usedStorage(db: D1Database): Promise<number> {
   return totalStoredBytes(db);
 }
 
-export async function releaseStorage(db: D1Database, delta: number): Promise<void> {
-  if (delta <= 0) return;
-  await db.prepare(`UPDATE platform_quota SET used = MAX(0, used - ?) WHERE id = 1`).bind(delta).run();
+export async function releaseStorage(db: D1Database, bytes: number): Promise<void> {
+  if (bytes <= 0) return;
+  await db
+    .prepare(`UPDATE platform_quota SET used = MAX(0, used - ?) WHERE id = 1`)
+    .bind(bytes)
+    .run()
+    .catch(() => undefined);
 }
 
 export async function assertStorageRoom(
@@ -241,24 +245,15 @@ export async function assertStorageRoom(
   additionalBytes: number,
   replacingBytes = 0,
   platformBytes = MAX_PLATFORM_BYTES,
-): Promise<boolean> {
+): Promise<number> {
   const delta = additionalBytes - replacingBytes;
-  if (delta <= 0) {
-    if (delta < 0) {
-      await db
-        .prepare(`UPDATE platform_quota SET used = MAX(0, used + ?) WHERE id = 1`)
-        .bind(delta)
-        .run()
-        .catch(() => undefined);
-    }
-    return false;
-  }
+  if (delta <= 0) return 0;
   try {
     const reserved = await db
       .prepare(`UPDATE platform_quota SET used = used + ? WHERE id = 1 AND used + ? <= ?`)
       .bind(delta, delta, platformBytes)
       .run();
-    if (Number(reserved.meta?.changes ?? 0) > 0) return true;
+    if (Number(reserved.meta?.changes ?? 0) > 0) return delta;
     const ledger = await db.prepare(`SELECT used FROM platform_quota WHERE id = 1`).first<{ used: number }>();
     if (ledger) throw storageCap(Number(ledger.used), delta, platformBytes);
   } catch (err) {
@@ -267,7 +262,7 @@ export async function assertStorageRoom(
   const used = await totalStoredBytes(db);
   const next = used - replacingBytes + additionalBytes;
   if (next > platformBytes) throw storageCap(used, delta, platformBytes);
-  return false;
+  return 0;
 }
 
 /** Same-bucket copy. Streams through the Worker once; does not go through the agent. */

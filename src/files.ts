@@ -85,7 +85,7 @@ export async function createLooseFile(
     throw new ApiError(400, "bad_filename", "Give a simple filename, not a path.");
   }
   contentOrigin(env);
-  const held = await assertStorageRoom(env.DB, bytes.byteLength, 0, policy.platformBytes);
+  const reserved = await assertStorageRoom(env.DB, bytes.byteLength, 0, policy.platformBytes);
   const user = await ensureUser(env, actor.email, actor.idpSub);
   const handle = user.handle;
   const id = await mintFileId(env);
@@ -96,8 +96,8 @@ export async function createLooseFile(
   const resolved = resolveExpiresAt(policy, ttl);
   const storedWrite = resolveCreateWritePolicy(env, writePolicy);
   const key = fileKey(id, filename);
-  await env.BUCKET.put(key, bytes, { httpMetadata: { contentType } });
   try {
+    await env.BUCKET.put(key, bytes, { httpMetadata: { contentType } });
     await env.DB.prepare(
       `INSERT INTO loose_files (id, handle, owner_id, filename, size, content_type, created_at, created_by, updated_at, last_written_by, password_hash, expires_at, write_policy)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -106,7 +106,7 @@ export async function createLooseFile(
       .run();
   } catch (err) {
     await env.BUCKET.delete(key).catch(() => undefined);
-    if (held) await releaseStorage(env.DB, bytes.byteLength);
+    await releaseStorage(env.DB, reserved);
     throw err;
   }
   const origin = publicOrigin(env);
@@ -171,14 +171,14 @@ export async function duplicateLooseFile(
   }
   contentOrigin(env);
   const policy = instancePolicy(env);
-  const held = await assertStorageRoom(env.DB, source.size, 0, policy.platformBytes);
-  const user = await ensureUser(env, actor.email, actor.idpSub);
-  const handle = user.handle;
-  const id = await mintFileId(env);
   const filename = basename(filenameRaw || source.filename).slice(0, 180) || source.filename;
   if (filename === "." || filename === ".." || filename.includes("/")) {
     throw new ApiError(400, "bad_filename", "Give a simple filename, not a path.");
   }
+  const reserved = await assertStorageRoom(env.DB, source.size, 0, policy.platformBytes);
+  const user = await ensureUser(env, actor.email, actor.idpSub);
+  const handle = user.handle;
+  const id = await mintFileId(env);
   const ts = new Date().toISOString();
   const hash = await passwordHashFromInput(password);
   const stored = hash === undefined ? null : hash;
@@ -195,7 +195,7 @@ export async function duplicateLooseFile(
       .run();
   } catch (err) {
     await env.BUCKET.delete(newKey).catch(() => undefined);
-    if (held) await releaseStorage(env.DB, source.size);
+    await releaseStorage(env.DB, reserved);
     throw err;
   }
   const origin = publicOrigin(env);
@@ -431,7 +431,6 @@ export async function putLooseFile(
     }
   }
   contentOrigin(env);
-  const held = await assertStorageRoom(env.DB, bytes.byteLength, existing.size, policy.platformBytes);
   const contentType = contentTypeFor(filename, bytes, hintType);
   const ts = new Date().toISOString();
   const hash = await passwordHashFromInput(password);
@@ -461,6 +460,7 @@ export async function putLooseFile(
     }
     throw new ApiError(409, "file_busy", "Another write is in progress; retry this replacement.");
   }
+  const reserved = await assertStorageRoom(env.DB, bytes.byteLength, existing.size, policy.platformBytes);
   let previousState: R2Snapshot | null = null;
   let metadataCommitted = false;
   try {
@@ -495,10 +495,11 @@ export async function putLooseFile(
     if (!metadataCommitted) {
       await restoreR2Object(env.BUCKET, newKey, renamed ? null : previousState).catch(() => undefined);
       await releaseLooseFileWriteClaim(env, id, claim.token, claim.restoreWriter).catch(() => undefined);
-      if (held) await releaseStorage(env.DB, bytes.byteLength - existing.size);
+      await releaseStorage(env.DB, reserved);
     }
     throw err;
   }
+  await releaseStorage(env.DB, existing.size - bytes.byteLength);
   await releaseLooseFileWriteClaim(env, id, claim.token, actor.email).catch((err) => {
     console.error("loose file write claim release failed", err);
   });
@@ -795,8 +796,11 @@ export async function deleteLooseFile(
     await releaseLooseFileWriteClaim(env, id, claim.token, claim.restoreWriter).catch(() => undefined);
     throw failure;
   }
-  await assertStorageRoom(env.DB, 0, row.size);
-  if (row.handle) await purgeContent(ctx, [filePrefix(row.handle, id)]);
+  try {
+    if (row.handle) await purgeContent(ctx, [filePrefix(row.handle, id)]);
+  } finally {
+    await releaseStorage(env.DB, row.size);
+  }
 }
 
 async function snapshotR2Object(bucket: R2Bucket, key: string): Promise<R2Snapshot | null> {

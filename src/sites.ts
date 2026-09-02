@@ -15,6 +15,7 @@ import {
   expiredHtml,
   isExpired,
   isPurgeClaimed,
+  isWriteClaimed,
   PURGE_CLAIM_LIKE,
   purgeExpiredSite,
   remainingCacheSeconds,
@@ -417,7 +418,7 @@ export async function duplicateSite(
     );
   }
   const total = listed.reduce((n, f) => n + Number(f.size || 0), 0);
-  const held = await assertStorageRoom(env.DB, total, 0, instancePolicy(env).platformBytes);
+  const reserved = await assertStorageRoom(env.DB, total, 0, instancePolicy(env).platformBytes);
   let destHandle = "";
   let destSlug = "";
   const copiedKeys: string[] = [];
@@ -450,7 +451,7 @@ export async function duplicateSite(
       },
     };
   } catch (err) {
-    if (held) await releaseStorage(env.DB, total);
+    await releaseStorage(env.DB, reserved);
     let cleanupError = false;
     try {
       await deleteR2Keys(env.BUCKET, copiedKeys);
@@ -519,7 +520,16 @@ export async function patchSite(
     )
       .bind(...values, site.handle, slug, PURGE_CLAIM_LIKE, ...ownerWriteBinds(actor))
       .run();
-    if (!Number(updated.meta?.changes ?? 0)) throw expiredError("site");
+    if (!Number(updated.meta?.changes ?? 0)) {
+      const still = await getSite(env, site.handle, slug);
+      if (!still || isPurgeClaimed(still.last_written_by) || isExpired(still.expires_at)) {
+        throw expiredError("site");
+      }
+      if (isWriteClaimed(still.last_written_by)) {
+        throw new ApiError(409, "site_busy", "Another write is in progress; retry this update.");
+      }
+      throw new ApiError(403, "forbidden_write", "Only the creator can write this.");
+    }
   }
   if (hash !== undefined || resolved) {
     await purgeContent(ctx, [sitePrefix(site.handle, slug)]);
@@ -592,28 +602,47 @@ export async function putSiteFile(
   if (bytes.byteLength > policy.fileBytes) throw tooLarge(bytes.byteLength, "", policy.fileBytes);
   const site = await requireSite(env, actor, slug, { ctx, mutate: true });
   const existing = await env.DB.prepare(
-    `SELECT size FROM site_files WHERE handle = ? AND slug = ? AND path = ?`,
+    `SELECT size, content_type, updated_at, last_written_by FROM site_files WHERE handle = ? AND slug = ? AND path = ?`,
   )
     .bind(site.handle, slug, path)
-    .first<{ size: number }>();
-  const held = await assertStorageRoom(env.DB, bytes.byteLength, existing?.size ?? 0, policy.platformBytes);
-
+    .first<{ size: number; content_type: string; updated_at: string; last_written_by: string }>();
   const contentType = contentTypeFor(path, bytes, hintType);
   const key = siteKey(site.handle, slug, path);
   const ts = new Date().toISOString();
   const previous = await snapshotR2Object(env.BUCKET, key);
-  await env.BUCKET.put(key, bytes, { httpMetadata: { contentType } });
+  const reserved = await assertStorageRoom(env.DB, bytes.byteLength, existing?.size ?? 0, policy.platformBytes);
   try {
-    await env.DB.batch([
+    await env.BUCKET.put(key, bytes, { httpMetadata: { contentType } });
+    const wrote = await env.DB.batch([
       siteFileUpsert(env, site.handle, slug, path, bytes.byteLength, contentType, ts, actor.email),
       env.DB.prepare(
         `UPDATE sites SET updated_at = ?, last_written_by = ? WHERE handle = ? AND slug = ? AND ${OWNER_WRITE_SQL}`,
       ).bind(ts, actor.email, site.handle, slug, ...ownerWriteBinds(actor)),
     ]);
+    if (!Number(wrote[1]?.meta?.changes ?? 0)) {
+      if (existing) {
+        await siteFileUpsert(
+          env,
+          site.handle,
+          slug,
+          path,
+          existing.size,
+          existing.content_type,
+          existing.updated_at,
+          existing.last_written_by,
+        ).run();
+      } else {
+        await env.DB.prepare(`DELETE FROM site_files WHERE handle = ? AND slug = ? AND path = ?`)
+          .bind(site.handle, slug, path)
+          .run();
+      }
+      throw new ApiError(403, "forbidden_write", "Only the creator can write this.");
+    }
   } catch (err) {
-    if (held) await releaseStorage(env.DB, bytes.byteLength - (existing?.size ?? 0));
+    await releaseStorage(env.DB, reserved);
     await rollbackSiteStorage(env, key, previous, err);
   }
+  await releaseStorage(env.DB, (existing?.size ?? 0) - bytes.byteLength);
 
   const origin = publicOrigin(env);
   await purgeContent(ctx, [sitePrefix(site.handle, slug)]);
@@ -670,7 +699,7 @@ export async function importSiteZip(
     additional += f.bytes.byteLength;
     replacing += existingMap.get(f.path) ?? 0;
   }
-  const held = await assertStorageRoom(env.DB, additional, replacing, policy.platformBytes);
+  const reserved = await assertStorageRoom(env.DB, additional, replacing, policy.platformBytes);
 
   const ts = new Date().toISOString();
   const written: string[] = [];
@@ -690,7 +719,7 @@ export async function importSiteZip(
     }
     await writeSite(env, actor, site.handle, slug, "updated_at = ?, last_written_by = ?", [ts, actor.email]);
   } catch (err) {
-    if (held) await releaseStorage(env.DB, additional - replacing);
+    await releaseStorage(env.DB, reserved);
     try {
       await restoreR2Snapshots(env.BUCKET, snapshots);
       await restoreSiteFileRows(env, site.handle, slug, affectedPaths, previousRows, site);
@@ -699,6 +728,7 @@ export async function importSiteZip(
     }
     throw err;
   }
+  await releaseStorage(env.DB, replacing - additional);
   await purgeContent(ctx, [sitePrefix(site.handle, slug)]);
   return { slug, url: sitePublicUrl(env, site.handle, slug), written };
 }
@@ -818,8 +848,11 @@ export async function deleteSite(env: Env, ctx: ExecutionContext | undefined, ac
   try {
     await deleteR2Keys(env.BUCKET, backups.map(({ backupKey }) => backupKey));
   } finally {
-    await assertStorageRoom(env.DB, 0, Number(usage?.total ?? 0));
-    await purgeContent(ctx, [sitePrefix(site.handle, slug)]);
+    try {
+      await purgeContent(ctx, [sitePrefix(site.handle, slug)]);
+    } finally {
+      await releaseStorage(env.DB, Number(usage?.total ?? 0));
+    }
   }
 }
 
@@ -846,17 +879,25 @@ export async function deleteSiteFile(
   await env.BUCKET.delete(key);
   const ts = new Date().toISOString();
   try {
-    await env.DB.batch([
-      env.DB.prepare(`DELETE FROM site_files WHERE handle = ? AND slug = ? AND path = ?`).bind(site.handle, slug, path),
+    const wrote = await env.DB.batch([
+      env.DB.prepare(
+        `DELETE FROM site_files WHERE handle = ? AND slug = ? AND path = ? AND EXISTS (SELECT 1 FROM sites WHERE handle = ? AND slug = ? AND ${OWNER_WRITE_SQL})`,
+      ).bind(site.handle, slug, path, site.handle, slug, ...ownerWriteBinds(actor)),
       env.DB.prepare(
         `UPDATE sites SET updated_at = ?, last_written_by = ? WHERE handle = ? AND slug = ? AND ${OWNER_WRITE_SQL}`,
       ).bind(ts, actor.email, site.handle, slug, ...ownerWriteBinds(actor)),
     ]);
+    if (!Number(wrote[1]?.meta?.changes ?? 0)) {
+      throw new ApiError(403, "forbidden_write", "Only the creator can write this.");
+    }
   } catch (err) {
     await rollbackSiteStorage(env, key, previous, err);
   }
-  await assertStorageRoom(env.DB, 0, existing.size);
-  await purgeContent(ctx, [sitePrefix(site.handle, slug)]);
+  try {
+    await purgeContent(ctx, [sitePrefix(site.handle, slug)]);
+  } finally {
+    await releaseStorage(env.DB, existing.size);
+  }
 }
 
 export async function listSiteJson(

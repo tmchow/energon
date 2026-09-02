@@ -1,6 +1,6 @@
 import { filePrefix, purgeContent, sitePrefix } from "./cache";
 import { fileKey } from "./config";
-import { ApiError, assertStorageRoom, deletePrefix, htmlPage } from "./http";
+import { ApiError, deletePrefix, htmlPage, releaseStorage } from "./http";
 import { OWNER_WRITE_SQL, ownerWriteBinds } from "./policy";
 import type { Actor, Env } from "./types";
 
@@ -194,8 +194,11 @@ export async function purgeExpiredSite(
       .bind(handle, slug, claim.token, claim.expiresAt)
       .run();
     if (!d1Changed(dropped)) return false;
-    await assertStorageRoom(env.DB, 0, Number(usage?.total ?? 0));
-    await purgeContent(ctx, [sitePrefix(handle, slug)]);
+    try {
+      await purgeContent(ctx, [sitePrefix(handle, slug)]);
+    } finally {
+      await releaseStorage(env.DB, Number(usage?.total ?? 0));
+    }
     return true;
   } finally {
     inFlight.delete(key);
@@ -231,8 +234,11 @@ export async function purgeExpiredFile(
       .bind(id, claim.token, claim.expiresAt)
       .run();
     if (!d1Changed(dropped)) return false;
-    await assertStorageRoom(env.DB, 0, claim.size ?? 0);
-    if (handle) await purgeContent(ctx, [filePrefix(handle, id)]);
+    try {
+      if (handle) await purgeContent(ctx, [filePrefix(handle, id)]);
+    } finally {
+      await releaseStorage(env.DB, claim.size ?? 0);
+    }
     return true;
   } finally {
     inFlight.delete(key);
