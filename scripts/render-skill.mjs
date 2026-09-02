@@ -22,7 +22,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SCRIPT_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -50,6 +50,67 @@ const OSS_DEFAULTS = {
   repo: "tmchow/energon",
   marketplaceUrl: "https://github.com/tmchow/energon",
 };
+
+const SAFE_IDENTIFIER = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const IDENTIFIER_FIELDS = ["skill", "plugin", "marketplace"];
+
+function hasPath(path) {
+  try {
+    lstatSync(path);
+    return true;
+  } catch (err) {
+    if (err && err.code === "ENOENT") return false;
+    throw err;
+  }
+}
+
+function isContained(root, candidate) {
+  const rel = relative(root, candidate);
+  return rel !== "" && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+}
+
+function assertIdentifier(value, label) {
+  if (typeof value !== "string" || !SAFE_IDENTIFIER.test(value)) {
+    throw new Error(`${label} must be a safe single-segment slug`);
+  }
+}
+
+/** Check lexical containment and resolve every existing ancestor for symlink escapes. */
+function assertPathInside(root, candidate, label) {
+  const rootPath = resolve(root);
+  const candidatePath = resolve(candidate);
+  if (!isContained(rootPath, candidatePath)) {
+    throw new Error(`${label} resolves outside ${rootPath}`);
+  }
+
+  const rootReal = realpathSync(rootPath);
+  let ancestor = candidatePath;
+  while (!hasPath(ancestor)) {
+    const parent = dirname(ancestor);
+    if (parent === ancestor) throw new Error(`${label} has no existing parent`);
+    ancestor = parent;
+  }
+  const candidateReal = resolve(realpathSync(ancestor), relative(ancestor, candidatePath));
+  if (!isContained(rootReal, candidateReal)) {
+    throw new Error(`${label} resolves outside ${rootReal}`);
+  }
+  return candidatePath;
+}
+
+function assertMutationPath(root, scope, candidate, label) {
+  const candidatePath = assertPathInside(root, candidate, label);
+  const scopePath = resolve(scope);
+  if (!isContained(scopePath, candidatePath)) {
+    throw new Error(`${label} resolves outside ${scopePath}`);
+  }
+  if (hasPath(scopePath)) assertPathInside(scopePath, candidatePath, label);
+}
+
+function validateIdentifiers(opts, source) {
+  for (const field of IDENTIFIER_FIELDS) {
+    assertIdentifier(opts[field], `${source} ${field}`);
+  }
+}
 
 export function parseGitHubRepo(url) {
   if (!url) return "";
@@ -99,7 +160,9 @@ function loadInstance(root) {
   try {
     const raw = JSON.parse(readFileSync(instancePath(root), "utf8"));
     const repo = raw.repo || raw.marketplaceRepo || OSS_DEFAULTS.repo;
-    return { ...OSS_DEFAULTS, ...raw, repo, marketplaceRepo: repo };
+    const opts = { ...OSS_DEFAULTS, ...raw, repo, marketplaceRepo: repo };
+    validateIdentifiers(opts, "instance configuration");
+    return opts;
   } catch (err) {
     if (err && err.code === "ENOENT") return { ...OSS_DEFAULTS };
     throw err;
@@ -173,6 +236,7 @@ function parseArgs(argv, root) {
   }
 
   if (set.has("name")) {
+    assertIdentifier(out.name, "--name");
     const brand = brandFromName(out.name);
     if (!brand) throw new Error("--name must be a slug, e.g. cybertron");
     if (!set.has("skill")) {
@@ -205,14 +269,13 @@ function parseArgs(argv, root) {
     }
   }
   if (!out.repo) out.repo = prev.repo || OSS_DEFAULTS.repo;
-  if (!set.has("marketplaceUrl")) {
-    out.marketplaceUrl = `https://github.com/${out.repo}`;
-  }
+  if (!set.has("marketplaceUrl")) out.marketplaceUrl = `https://github.com/${out.repo}`;
   out.marketplaceRepo = out.repo;
 
   if (out.init && (!set.has("skill") || !set.has("origin"))) {
     throw new Error("skill:init requires --name (or --skill) and --origin");
   }
+  validateIdentifiers(out, "argument");
   return { opts: out, prev };
 }
 
@@ -306,13 +369,7 @@ function isPlaceholder(opts) {
 }
 
 function entryExists(path) {
-  try {
-    lstatSync(path);
-    return true;
-  } catch (err) {
-    if (err && err.code === "ENOENT") return false;
-    throw err;
-  }
+  return hasPath(path);
 }
 
 const AUTOLOAD_SKILL_DIRS = [
@@ -334,13 +391,54 @@ function listTmplFiles(dir, prefix = "") {
   return out;
 }
 
+function templateDestinations(root, tmplDir, destPrefix) {
+  return listTmplFiles(tmplDir).map((file) =>
+    join(root, destPrefix, file.endsWith(".tmpl") ? file.replace(/\.tmpl$/, "") : file),
+  );
+}
+
+/** Validate every path that a render may delete or write before doing any mutation. */
+function validateMutationTargets(root, prev, opts, catalogsRequired) {
+  realpathSync(root);
+  const pluginsRoot = join(root, "plugins");
+  const pluginTargets = [
+    ...templateDestinations(root, PLUGIN_TMPL_DIR, pluginRel(opts)),
+    ...templateDestinations(root, SKILL_TMPL_DIR, pluginRel(opts, "skills", opts.skill)),
+  ];
+  const rootTargets = [];
+  if (opts.updateMarketplace) {
+    for (const { rel } of MARKETPLACES) {
+      const target = join(root, rel);
+      if (catalogsRequired || entryExists(target)) rootTargets.push(target);
+    }
+  }
+  if (opts.init) rootTargets.push(instancePath(root));
+
+  if (opts.init && prev.plugin !== opts.plugin) {
+    const destination = join(root, "plugins", opts.plugin);
+    if (entryExists(destination)) {
+      throw new Error(`refusing to replace existing plugin destination ${destination}`);
+    }
+    pluginTargets.push(join(root, "plugins", prev.plugin));
+  } else if (opts.init && prev.skill !== opts.skill) {
+    pluginTargets.push(join(root, "plugins", opts.plugin, "skills", prev.skill));
+  }
+
+  for (const name of new Set([prev.skill, opts.skill].filter(Boolean))) {
+    for (const parts of AUTOLOAD_SKILL_DIRS) {
+      const target = join(root, ...parts, name);
+      if (entryExists(target)) rootTargets.push(target);
+    }
+  }
+  for (const target of pluginTargets) assertMutationPath(root, pluginsRoot, target, "plugin render target");
+  for (const target of rootTargets) assertPathInside(root, target, "render target");
+}
+
 function removeStalePlugin(root, prev, opts, check) {
   if (check) return;
   if (prev.plugin !== opts.plugin) {
     rmSync(join(root, "plugins", prev.plugin), { recursive: true, force: true });
-    return;
-  }
-  if (prev.skill !== opts.skill) {
+  } else if (prev.skill !== opts.skill) {
     rmSync(join(root, "plugins", opts.plugin, "skills", prev.skill), { recursive: true, force: true });
   }
 }
@@ -369,12 +467,11 @@ function rejectPlaceholderCatalogs(root, check, dirty) {
 function writeTmplTree(root, tmplDir, destPrefix, vars, check, dirty) {
   for (const file of listTmplFiles(tmplDir)) {
     const src = join(tmplDir, file);
-    if (file.endsWith(".tmpl")) {
-      const dest = join(root, destPrefix, file.replace(/\.tmpl$/, ""));
-      writeOrCheck(root, dest, withTrailingNewline(render(readFileSync(src, "utf8"), vars)), check, dirty);
-    } else {
-      writeOrCheck(root, join(root, destPrefix, file), readFileSync(src), check, dirty);
-    }
+    const dest = join(root, destPrefix, file.endsWith(".tmpl") ? file.replace(/\.tmpl$/, "") : file);
+    const contents = file.endsWith(".tmpl")
+      ? withTrailingNewline(render(readFileSync(src, "utf8"), vars))
+      : readFileSync(src);
+    writeOrCheck(root, dest, contents, check, dirty);
   }
 }
 
@@ -408,49 +505,31 @@ export function runRender(argv, { root = SCRIPT_ROOT } = {}) {
   const dirty = [];
   const catalogsRequired = opts.init || (opts.updateMarketplace && !isPlaceholder(opts));
 
+  validateMutationTargets(root, prev, opts, catalogsRequired);
   if (opts.init && (prev.plugin !== opts.plugin || prev.skill !== opts.skill)) {
     removeStalePlugin(root, prev, opts, opts.check);
   }
   dropAutoloadSkills(root, [prev.skill, opts.skill], opts.check, dirty);
-
   writePluginTree(root, opts, vars, opts.check, dirty);
   writeMarketplaces(root, opts, vars, opts.check, dirty, catalogsRequired);
-
   if (opts.init) {
     writeOrCheck(root, instancePath(root), `${JSON.stringify(instancePayload(opts), null, 2)}\n`, opts.check, dirty);
   }
-
   return { opts, vars, dirty };
 }
 
 function main() {
-  const { opts, vars, dirty } = runRender(process.argv.slice(2));
-
+  const { opts, dirty } = runRender(process.argv.slice(2));
   if (opts.check) {
     if (dirty.length) {
-      console.error(`skill render is stale:\n  ${dirty.join("\n  ")}\nRun: npm run skill:render`);
-      process.exit(1);
+      console.error(`skill drift: ${dirty.join(", ")}`);
+      process.exitCode = 1;
+    } else {
+      console.log("skill is up to date");
     }
-    console.log("skill render is current");
-    return;
-  }
-  if (dirty.length) console.log(`wrote ${dirty.join(", ")}`);
-  else console.log("skill files already match the template");
-  console.log(`install ${vars.INSTALL_LINE}  origin ${vars.ORIGIN}  env ${vars.TOKEN_ENV}`);
-  if (opts.init) {
-    console.log(
-      `Set wrangler [vars] SKILL_NAME=${opts.skill} MARKETPLACE_NAME=${opts.marketplace} MARKETPLACE_REPO=${opts.marketplaceRepo} TOKEN_ENV=${opts.tokenEnv} PUBLIC_ORIGIN=${opts.origin}`,
-    );
+  } else {
+    console.log(`rendered ${opts.plugin}/${opts.skill}${dirty.length ? ` (${dirty.length} changed)` : ""}`);
   }
 }
 
-function isDirectRun() {
-  if (!process.argv[1]) return false;
-  try {
-    return fileURLToPath(import.meta.url) === realpathSync(process.argv[1]);
-  } catch {
-    return false;
-  }
-}
-
-if (isDirectRun()) main();
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) main();
