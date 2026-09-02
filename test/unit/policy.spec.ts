@@ -224,7 +224,9 @@ describe("write policy helpers", () => {
     const row = { created_by: "ada@esperlabs.app", write_policy: "owner", owner_id: "u-ada" };
     expect(canMutate(ada, row)).toBe(true);
     expect(canMutate(next, row)).toBe(false);
+    expect(canMutate(next, { created_by: "ada@esperlabs.app", write_policy: "owner" })).toBe(false);
     expect(() => assertCanSetWritePolicy(next, "ada@esperlabs.app", "u-ada")).toThrow(/Only the creator can change who can write/);
+    expect(() => assertCanSetWritePolicy(next, "ada@esperlabs.app")).toThrow(/Only the creator can change who can write/);
     expect(() => assertCanSetWritePolicy(ada, "ada@esperlabs.app", "u-ada")).not.toThrow();
   });
 });

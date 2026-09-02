@@ -1,7 +1,7 @@
 import { unzipSync, zipSync, strToU8 } from "fflate";
 import { describe, expect, it } from "vitest";
 import { GATE_COOKIE, hashSharePassword, unlockToken } from "../src/gate";
-import { auth, json, mint, req } from "./helpers";
+import { auth, access, json, mint, req } from "./helpers";
 
 describe("Energon", () => {
   it("GET /v1/health is unauthenticated", async () => {
@@ -28,7 +28,7 @@ describe("Energon", () => {
     const email = "reveal@esperlabs.app";
     const token = await mint("keep-me", email);
     const listed = await json("/account/data", {
-      headers: { "Cf-Access-Authenticated-User-Email": email },
+      headers: access(email),
     });
     const row = listed.body.tokens.find((t: { label: string }) => t.label === "keep-me");
     expect(row.recoverable).toBe(false);
@@ -102,6 +102,8 @@ describe("Energon", () => {
     expect(page.headers.get("content-type")).toMatch(/text\/html/);
     expect(page.headers.get("cache-control")).toMatch(/public/);
     expect(page.headers.get("cache-control")).toMatch(/s-maxage=31536000/);
+    expect(page.headers.get("content-security-policy")).toContain("sandbox");
+    expect(page.headers.get("content-security-policy")).not.toContain("allow-same-origin");
 
     const again = await json("/v1/sites", {
       method: "POST",
@@ -185,6 +187,7 @@ describe("Energon", () => {
     const html = await index.text();
     expect(html).toContain("No index.html or index.md");
     expect(html).toContain("notes.md");
+    expect(html).not.toMatch(/@esperlabs\.app/);
 
     const file = await req("/ada/s/notes-site/notes.md");
     expect(file.status).toBe(200);
@@ -350,12 +353,12 @@ describe("Energon", () => {
     const email = "revoker@esperlabs.app";
     const token = await mint("to-revoke", email);
     const listed = await json("/account/data", {
-      headers: { "Cf-Access-Authenticated-User-Email": email },
+      headers: access(email),
     });
     const id = listed.body.tokens.find((t: { label: string }) => t.label === "to-revoke").id;
     const revoked = await json(`/account/tokens/${id}/revoke`, {
       method: "POST",
-      headers: { "Cf-Access-Authenticated-User-Email": email },
+      headers: access(email),
     });
     expect(revoked.status).toBe(200);
     const put = await json("/v1/sites", {
@@ -464,6 +467,8 @@ describe("Energon", () => {
     });
     expect(stolen.status).toBe(403);
     expect(stolen.body.error).toBe("forbidden_write");
+    const catalog = await json("/v1/sites", { headers: auth(tokenB) });
+    expect((catalog.body.sites || []).map((s: { slug: string }) => s.slug)).not.toContain("owned-draft");
     const listed = await json("/account/data", {
       headers: {
         "Cf-Access-Authenticated-User-Email": email,
@@ -748,10 +753,7 @@ describe("Energon", () => {
   it("minting a token requires a label", async () => {
     const empty = await json("/account/tokens", {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "Cf-Access-Authenticated-User-Email": "label@esperlabs.app",
-      },
+      headers: access("label@esperlabs.app", { "content-type": "application/json" }),
       body: JSON.stringify({ label: "   " }),
     });
     expect(empty.status).toBe(400);
@@ -802,6 +804,7 @@ describe("Energon", () => {
     expect(unlocked.status).toBe(200);
     expect(await unlocked.text()).toContain("secret page");
     expect(unlocked.headers.get("cache-control")).toMatch(/no-store/);
+    expect(unlocked.headers.get("content-security-policy")).toContain("sandbox");
 
     const cookieVal = await unlockToken(await hashSharePassword("hunter2"));
     const viaCookie = await req("/ada/s/gated/", {
@@ -809,6 +812,31 @@ describe("Energon", () => {
     });
     expect(viaCookie.status).toBe(200);
     expect(await viaCookie.text()).toContain("secret page");
+
+    const formOk = await req("/ada/s/gated/", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "password=hunter2",
+      redirect: "manual",
+    });
+    expect(formOk.status).toBe(303);
+
+    const multipart = await req("/ada/s/gated/", {
+      method: "POST",
+      headers: { "content-type": "multipart/form-data; boundary=x" },
+      body: "--x\r\nContent-Disposition: form-data; name=\"password\"\r\n\r\nhunter2\r\n--x--",
+    });
+    expect(multipart.status).toBe(415);
+
+    const huge = await req("/ada/s/gated/", {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "content-length": "99999",
+      },
+      body: "password=hunter2",
+    });
+    expect(huge.status).toBe(413);
   }, 15_000);
 
   it("share password guesses are rate limited per object and source", async () => {
@@ -1012,7 +1040,9 @@ describe("Energon", () => {
     const html = await page.text();
     expect(html).toContain("<h1>Hello</h1>");
     expect(html).toContain('class="mermaid"');
-    expect(html).toContain("cdn.jsdelivr.net/npm/mermaid");
+    expect(html).not.toContain("jsdelivr");
+    expect(html).not.toContain("cdn.jsdelivr");
+    expect(page.headers.get("content-security-policy")).toContain("sandbox");
     expect(html).toContain('src="https://example.com/a.png"');
     expect(html).not.toContain("http://example.com/a.png");
     expect(html).not.toContain("<script>alert(1)</script>");
@@ -1397,10 +1427,7 @@ describe("Energon", () => {
     const { env } = await import("cloudflare:test");
     const { status, body } = await json("/account/tokens", {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "Cf-Access-Authenticated-User-Email": "ada@gmail.com",
-      },
+      headers: access("ada@gmail.com", { "content-type": "application/json" }),
       body: JSON.stringify({ label: "stranger" }),
     });
     expect(status).toBe(403);

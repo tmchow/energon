@@ -304,16 +304,16 @@ export function canMutate(
   row: { created_by: string; write_policy?: string | null; owner_id?: string | null },
 ): boolean {
   if (resolveWritePolicy(row.write_policy) === "instance") return true;
-  if (actor.userId && row.owner_id) return actor.userId === row.owner_id;
+  if (actor.userId) return Boolean(row.owner_id) && actor.userId === row.owner_id;
   return actor.email.toLowerCase() === String(row.created_by || "").toLowerCase();
 }
 
 /** Atomic D1 predicate matching canMutate. Bind ownerWriteBinds(actor). */
-export const OWNER_WRITE_SQL = `(ifnull(write_policy, 'instance') != 'owner' OR (? IS NOT NULL AND owner_id = ?) OR ((owner_id IS NULL OR owner_id = '') AND lower(created_by) = lower(?)))`;
+export const OWNER_WRITE_SQL = `(ifnull(write_policy, 'instance') != 'owner' OR (? IS NOT NULL AND owner_id = ?) OR (? IS NULL AND lower(created_by) = lower(?)))`;
 
-export function ownerWriteBinds(actor: Actor): [string | null, string, string] {
+export function ownerWriteBinds(actor: Actor): [string | null, string, string | null, string] {
   const id = actor.userId ?? null;
-  return [id, id ?? "", actor.email];
+  return [id, id ?? "", id, actor.email];
 }
 
 export function assertCanMutate(
@@ -325,8 +325,8 @@ export function assertCanMutate(
 }
 
 export function assertCanSetWritePolicy(actor: Actor, createdBy: string, ownerId?: string | null): void {
-  if (actor.userId && ownerId) {
-    if (actor.userId === ownerId) return;
+  if (actor.userId) {
+    if (ownerId && actor.userId === ownerId) return;
     throw new ApiError(403, "forbidden_write_policy", "Only the creator can change who can write this.");
   }
   if (actor.email.toLowerCase() === String(createdBy || "").toLowerCase()) return;

@@ -87,11 +87,45 @@ export function isPublicContentPath(path: string): boolean {
   }
 }
 
-export function json(data: unknown, status = 200): Response {
+export function json(data: unknown, status = 200, extra?: HeadersInit): Response {
   return Response.json(data, {
     status,
-    headers: { "content-type": "application/json; charset=utf-8" },
+    headers: { "content-type": "application/json; charset=utf-8", ...extra },
   });
+}
+
+export function secretJson(data: unknown, status = 200): Response {
+  return json(data, status, { "cache-control": "no-store, private", pragma: "no-cache" });
+}
+
+/** Unique origin for publisher HTML/SVG so a page cannot read other objects' cookies. */
+export const ACTIVE_DOCUMENT_CSP =
+  "sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads allow-top-navigation-by-user-activation";
+
+export function isolationCsp(contentType: string): string | null {
+  const type = contentType.split(";")[0].trim().toLowerCase();
+  if (type === "text/html" || type === "application/xhtml+xml" || type === "image/svg+xml") {
+    return ACTIVE_DOCUMENT_CSP;
+  }
+  return null;
+}
+
+export function applyIsolation(headers: Headers, contentType: string): void {
+  const csp = isolationCsp(contentType);
+  if (csp) headers.set("content-security-policy", csp);
+}
+
+export function assertTrustedAccountOrigin(request: Request): void {
+  const origin = request.headers.get("origin");
+  const host = new URL(request.url).origin;
+  if (!origin || origin !== host) {
+    throw new ApiError(403, "bad_origin", "This account action must come from the hub origin.");
+  }
+}
+
+export function accountOriginRequired(method: string, path: string): boolean {
+  if (!path.startsWith("/account")) return false;
+  return method !== "GET" && method !== "HEAD";
 }
 
 export async function sha256Hex(value: string): Promise<string> {

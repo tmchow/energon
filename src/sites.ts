@@ -23,7 +23,7 @@ import {
 import { isMarkdownName, respondMarkdown } from "./markdown";
 import { passwordEcho, passwordHashFromInput, protectContent } from "./gate";
 import { ensureHandle, ensureUser } from "./handles";
-import { ApiError, assertStorageRoom, basename, contentDisposition, copyR2Object, deletePrefix, htmlPage, json, nanoid, normalizeRelPath, publicOrigin, releaseStorage, tooLarge, wantsDownload } from "./http";
+import { ApiError, applyIsolation, assertStorageRoom, basename, contentDisposition, copyR2Object, deletePrefix, htmlPage, json, nanoid, normalizeRelPath, publicOrigin, releaseStorage, tooLarge, wantsDownload } from "./http";
 import { contentTypeFor } from "./mime";
 import {
   OWNER_WRITE_SQL,
@@ -893,8 +893,8 @@ export async function listSiteJson(
   });
 }
 
-export async function listSitesJson(env: Env, email: string, query: ListQuery): Promise<Response> {
-  const page = await listSitesFor(env, email, query);
+export async function listSitesJson(env: Env, email: string, query: ListQuery, ownerId?: string): Promise<Response> {
+  const page = await listSitesFor(env, email, query, ownerId);
   return json({ sites: page.items, total: page.total, next_cursor: page.next_cursor });
 }
 
@@ -902,6 +902,7 @@ export async function listSitesFor(
   env: Env,
   email: string,
   query: ListQuery,
+  ownerId?: string,
 ): Promise<
   ListPage<{
     slug: string;
@@ -918,7 +919,13 @@ export async function listSitesFor(
     write_policy: string;
   }>
 > {
-  const where = involvementSql("s.created_by", "s.last_written_by", email, query);
+  const where = involvementSql(
+    "s.created_by",
+    "s.last_written_by",
+    email,
+    query,
+    ownerId ? { col: "s.owner_id", id: ownerId } : undefined,
+  );
   const binds: unknown[] = [...where.binds];
   let search = "";
   const needle = likeNeedle(query.q);
@@ -1076,7 +1083,7 @@ async function fileListHtml(env: Env, site: SiteRow): Promise<string> {
     </div></header>
     <main class="wrap">
       <h1>/${escapeHtml(site.handle)}/s/${escapeHtml(site.slug)}/</h1>
-      <p class="crumb">No index.html or index.md. Last written by ${escapeHtml(site.last_written_by)} at ${escapeHtml(site.updated_at)}.</p>
+      <p class="crumb">No index.html or index.md. Updated ${escapeHtml(site.updated_at)}.</p>
       <section class="card"><div class="card-body tight">${list}</div></section>
     </main>`,
   });
@@ -1101,6 +1108,7 @@ function serveObject(
   const headers = new Headers();
   headers.set("content-type", contentType);
   headers.set("x-content-type-options", "nosniff");
+  applyIsolation(headers, contentType);
   headers.set("cache-control", cacheable ? publicCacheControl(remainingSeconds) : privateCacheControl());
   if (cacheable) headers.set("cache-tag", tag);
   headers.set("etag", obj.httpEtag);

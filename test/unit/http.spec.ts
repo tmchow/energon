@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { formatBytes, formatCount } from "../../src/config";
 import {
+  accountOriginRequired,
+  assertTrustedAccountOrigin,
   contentOrigin,
   contentDisposition,
   hasDedicatedContentOrigin,
+  isolationCsp,
   isPublicContentPath,
   isWorkersDev,
   normalizeRelPath,
@@ -65,6 +68,34 @@ describe("path and download helpers", () => {
     expect(err.message).toContain("5 MB");
     expect(err.message).not.toContain("25 MB");
     expect(err.extra.limit_bytes).toBe(5 * 1024 * 1024);
+  });
+
+  it("sandboxes HTML and SVG without allow-same-origin", () => {
+    expect(isolationCsp("text/html; charset=utf-8")).toContain("sandbox");
+    expect(isolationCsp("text/html")).not.toContain("allow-same-origin");
+    expect(isolationCsp("image/svg+xml")).toContain("sandbox");
+    expect(isolationCsp("text/plain")).toBeNull();
+    expect(isolationCsp("application/javascript")).toBeNull();
+  });
+
+  it("requires Origin on account mutations, not on GET", () => {
+    expect(accountOriginRequired("POST", "/account/tokens")).toBe(true);
+    expect(accountOriginRequired("PATCH", "/account/sites/demo")).toBe(true);
+    expect(accountOriginRequired("GET", "/account/tokens/abc")).toBe(false);
+    expect(accountOriginRequired("GET", "/account/data")).toBe(false);
+    expect(accountOriginRequired("GET", "/account/files/abc/download")).toBe(false);
+    const bad = new Request("http://127.0.0.1/account/tokens", { method: "POST" });
+    expect(() => assertTrustedAccountOrigin(bad)).toThrow(/hub origin/);
+    const cross = new Request("http://127.0.0.1/account/tokens", {
+      method: "POST",
+      headers: { origin: "https://energon.example.com" },
+    });
+    expect(() => assertTrustedAccountOrigin(cross)).toThrow(/hub origin/);
+    const ok = new Request("http://127.0.0.1/account/tokens", {
+      method: "POST",
+      headers: { origin: "http://127.0.0.1" },
+    });
+    expect(() => assertTrustedAccountOrigin(ok)).not.toThrow();
   });
 });
 
