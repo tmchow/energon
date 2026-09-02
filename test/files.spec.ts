@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { putLooseFile } from "../src/files";
+import { deleteLooseFile, putLooseFile } from "../src/files";
 import type { Actor, Env } from "../src/types";
 
 describe("putLooseFile", () => {
@@ -207,5 +207,60 @@ describe("putLooseFile", () => {
       putLooseFile(env, undefined, actor, "Abc123", new TextEncoder().encode("replacement"), "notes.txt", "text/plain"),
     ).rejects.toMatchObject({ status: 503, code: "content_origin_not_configured" });
     expect(writes).toBe(0);
+  });
+});
+
+describe("deleteLooseFile", () => {
+  it("restores file bytes when the D1 delete fails", async () => {
+    const key = "files/Abc123/notes.txt";
+    const original = new TextEncoder().encode("original");
+    const objects = new Map<string, Uint8Array>([[key, original]]);
+    const bucket = {
+      async get(objectKey: string) {
+        const bytes = objects.get(objectKey);
+        if (!bytes) return null;
+        return {
+          bytes: async () => bytes.slice(),
+          httpMetadata: { contentType: "text/plain" },
+          customMetadata: { retained: "yes" },
+        };
+      },
+      async delete(objectKey: string) {
+        objects.delete(objectKey);
+      },
+      async put(objectKey: string, value: Uint8Array) {
+        objects.set(objectKey, value.slice());
+      },
+    };
+    const db = {
+      prepare(sql: string) {
+        return {
+          bind() {
+            return this;
+          },
+          async first() {
+            if (!sql.includes("SELECT id, handle, filename")) return null;
+            return {
+              id: "Abc123",
+              handle: "ada",
+              filename: "notes.txt",
+              created_by: "ada@esperlabs.app",
+              write_policy: "owner",
+            };
+          },
+          async run() {
+            throw new Error("injected D1 delete failure");
+          },
+        };
+      },
+    };
+    const env = { DB: db, BUCKET: bucket } as unknown as Env;
+    const actor: Actor = { email: "ada@esperlabs.app", via: "token" };
+
+    await expect(deleteLooseFile(env, undefined, actor, "Abc123")).rejects.toThrow(
+      "injected D1 delete failure",
+    );
+
+    expect(new TextDecoder().decode(objects.get(key))).toBe("original");
   });
 });

@@ -43,6 +43,9 @@ export default {
     } catch (err) {
       const origin = publicOrigin(env);
       if (err instanceof ApiError) return err.toResponse(origin);
+      if (err instanceof URIError) {
+        return new ApiError(400, "bad_path", "That path is not valid URL encoding.").toResponse(origin);
+      }
       console.error(err instanceof Error ? err.stack || err.message : err);
       return json(
         {

@@ -13,6 +13,14 @@ A single path within a Site, with content bytes and catalog metadata that must r
 ### Site mutation
 An operation that changes one or more Site files or the Site itself. A mutation is complete only when its storage and catalog changes agree; a failed mutation must restore the prior state or report an explicit recovery failure.
 
+### Purge claim
+A temporary catalog marker that gives expiration cleanup exclusive permission to remove an expired Site or loose file from storage and the catalog.
+
+### Write claim
+A temporary leased catalog marker that gives one loose-file replacement exclusive permission to change storage and catalog state.
+
+A fresh Write claim blocks competing replacements and expiration cleanup. An abandoned claim becomes reclaimable after its lease is stale.
+
 ## Authentication
 
 ### API Token
@@ -32,6 +40,7 @@ An Instance Identity is resolved from deployment configuration with project defa
 
 - An Instance Identity defines the Token Prefix used by an API Token.
 - An API Token authenticates against the Instance Identity that issued it.
+- Purge claims and Write claims make competing content mutations resolve before storage changes begin.
 
 ## Schema lifecycle
 
