@@ -451,7 +451,6 @@ export async function duplicateSite(
       },
     };
   } catch (err) {
-    await releaseStorage(env.DB, reserved);
     let cleanupError = false;
     try {
       await deleteR2Keys(env.BUCKET, copiedKeys);
@@ -468,6 +467,7 @@ export async function duplicateSite(
     if (cleanupError) {
       throw new ApiError(500, "site_copy_rollback_failed", "The site copy failed and automatic cleanup also failed. Retry after storage recovers.");
     }
+    await releaseStorage(env.DB, reserved);
     throw err;
   }
 }
@@ -639,8 +639,17 @@ export async function putSiteFile(
       throw new ApiError(403, "forbidden_write", "Only the creator can write this.");
     }
   } catch (err) {
+    try {
+      await restoreR2State(env.BUCKET, key, previous);
+    } catch {
+      throw new ApiError(
+        500,
+        "storage_rollback_failed",
+        "The request failed and storage rollback also failed. Retry after storage recovers.",
+      );
+    }
     await releaseStorage(env.DB, reserved);
-    await rollbackSiteStorage(env, key, previous, err);
+    throw err;
   }
   await releaseStorage(env.DB, (existing?.size ?? 0) - bytes.byteLength);
 
@@ -719,13 +728,13 @@ export async function importSiteZip(
     }
     await writeSite(env, actor, site.handle, slug, "updated_at = ?, last_written_by = ?", [ts, actor.email]);
   } catch (err) {
-    await releaseStorage(env.DB, reserved);
     try {
       await restoreR2Snapshots(env.BUCKET, snapshots);
       await restoreSiteFileRows(env, site.handle, slug, affectedPaths, previousRows, site);
     } catch {
       throw new ApiError(500, "site_import_rollback_failed", "The site import failed and automatic rollback also failed. Retry after storage recovers.");
     }
+    await releaseStorage(env.DB, reserved);
     throw err;
   }
   await releaseStorage(env.DB, replacing - additional);
@@ -815,6 +824,7 @@ export async function deleteSite(env: Env, ctx: ExecutionContext | undefined, ac
   )
     .bind(site.handle, slug)
     .first<{ total: number }>();
+  let siteDeleted = false;
   try {
     for (const sourceKey of listedKeys) {
       const backupKey = `${backupPrefix}${sourceKey.slice(sitePrefixKey.length)}`;
@@ -822,7 +832,7 @@ export async function deleteSite(env: Env, ctx: ExecutionContext | undefined, ac
       backups.push({ sourceKey, backupKey });
     }
     await deletePrefix(env.BUCKET, `sites/${site.handle}/${slug}/`);
-    await env.DB.batch([
+    const wrote = await env.DB.batch([
       env.DB.prepare(
         `DELETE FROM site_files WHERE handle = ? AND slug = ? AND EXISTS (SELECT 1 FROM sites WHERE handle = ? AND slug = ? AND ${OWNER_WRITE_SQL})`,
       ).bind(site.handle, slug, site.handle, slug, ...ownerWriteBinds(actor)),
@@ -832,6 +842,7 @@ export async function deleteSite(env: Env, ctx: ExecutionContext | undefined, ac
         ...ownerWriteBinds(actor),
       ),
     ]);
+    siteDeleted = Number(wrote[1]?.meta?.changes ?? 0) > 0;
     const still = await getSite(env, site.handle, slug);
     if (still) {
       throw new ApiError(403, "forbidden_write", "Only the creator can write this.");
@@ -851,7 +862,7 @@ export async function deleteSite(env: Env, ctx: ExecutionContext | undefined, ac
     try {
       await purgeContent(ctx, [sitePrefix(site.handle, slug)]);
     } finally {
-      await releaseStorage(env.DB, Number(usage?.total ?? 0));
+      if (siteDeleted) await releaseStorage(env.DB, Number(usage?.total ?? 0));
     }
   }
 }
@@ -890,6 +901,7 @@ export async function deleteSiteFile(
     if (!Number(wrote[1]?.meta?.changes ?? 0)) {
       throw new ApiError(403, "forbidden_write", "Only the creator can write this.");
     }
+    if (!Number(wrote[0]?.meta?.changes ?? 0)) return;
   } catch (err) {
     await rollbackSiteStorage(env, key, previous, err);
   }

@@ -85,7 +85,6 @@ export async function createLooseFile(
     throw new ApiError(400, "bad_filename", "Give a simple filename, not a path.");
   }
   contentOrigin(env);
-  const reserved = await assertStorageRoom(env.DB, bytes.byteLength, 0, policy.platformBytes);
   const user = await ensureUser(env, actor.email, actor.idpSub);
   const handle = user.handle;
   const id = await mintFileId(env);
@@ -96,6 +95,7 @@ export async function createLooseFile(
   const resolved = resolveExpiresAt(policy, ttl);
   const storedWrite = resolveCreateWritePolicy(env, writePolicy);
   const key = fileKey(id, filename);
+  const reserved = await assertStorageRoom(env.DB, bytes.byteLength, 0, policy.platformBytes);
   try {
     await env.BUCKET.put(key, bytes, { httpMetadata: { contentType } });
     await env.DB.prepare(
@@ -175,7 +175,6 @@ export async function duplicateLooseFile(
   if (filename === "." || filename === ".." || filename.includes("/")) {
     throw new ApiError(400, "bad_filename", "Give a simple filename, not a path.");
   }
-  const reserved = await assertStorageRoom(env.DB, source.size, 0, policy.platformBytes);
   const user = await ensureUser(env, actor.email, actor.idpSub);
   const handle = user.handle;
   const id = await mintFileId(env);
@@ -184,6 +183,7 @@ export async function duplicateLooseFile(
   const stored = hash === undefined ? null : hash;
   const resolved = resolveExpiresAt(policy, ttl);
   const storedWrite = resolveCreateWritePolicy(env, writePolicy);
+  const reserved = await assertStorageRoom(env.DB, source.size, 0, policy.platformBytes);
   const newKey = fileKey(id, filename);
   try {
     await copyR2Object(env.BUCKET, fileKey(source.id, source.filename), newKey);
@@ -460,12 +460,15 @@ export async function putLooseFile(
     }
     throw new ApiError(409, "file_busy", "Another write is in progress; retry this replacement.");
   }
-  const reserved = await assertStorageRoom(env.DB, bytes.byteLength, existing.size, policy.platformBytes);
+  let reserved = 0;
   let previousState: R2Snapshot | null = null;
   let metadataCommitted = false;
+  let wroteObject = false;
   try {
+    reserved = await assertStorageRoom(env.DB, bytes.byteLength, existing.size, policy.platformBytes);
     previousState = renamed ? null : await snapshotR2Object(env.BUCKET, oldKey);
     await env.BUCKET.put(newKey, bytes, { httpMetadata: { contentType } });
+    wroteObject = true;
     if (hash === undefined) {
       const updated = await env.DB.prepare(
         `UPDATE loose_files
@@ -493,7 +496,7 @@ export async function putLooseFile(
     if (renamed) await env.BUCKET.delete(oldKey).catch(() => undefined);
   } catch (err) {
     if (!metadataCommitted) {
-      await restoreR2Object(env.BUCKET, newKey, renamed ? null : previousState).catch(() => undefined);
+      if (wroteObject) await restoreR2Object(env.BUCKET, newKey, renamed ? null : previousState).catch(() => undefined);
       await releaseLooseFileWriteClaim(env, id, claim.token, claim.restoreWriter).catch(() => undefined);
       await releaseStorage(env.DB, reserved);
     }
