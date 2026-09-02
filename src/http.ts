@@ -1,4 +1,4 @@
-import { DEFAULT_PUBLIC_ORIGIN, MAX_FILE_BYTES, MAX_PLATFORM_BYTES, PRODUCT, formatBytes } from "./config";
+import { DEFAULT_PUBLIC_ORIGIN, MAX_FILE_BYTES, MAX_PLATFORM_BYTES, PRODUCT, RESERVED_HANDLES, formatBytes } from "./config";
 import type { Env } from "./types";
 
 export class ApiError extends Error {
@@ -27,6 +27,64 @@ export class ApiError extends Error {
 
 export function publicOrigin(env: Env): string {
   return (env.PUBLIC_ORIGIN || DEFAULT_PUBLIC_ORIGIN).replace(/\/$/, "");
+}
+
+const contentOriginCache = new WeakMap<object, string>();
+
+export function contentOrigin(env: Env): string {
+  const cached = contentOriginCache.get(env);
+  if (cached) return cached;
+  const configured = (env.CONTENT_ORIGIN || "").trim();
+  if (!configured) {
+    throw new ApiError(
+      503,
+      "content_origin_not_configured",
+      "Set CONTENT_ORIGIN to a separate custom hostname before publishing content.",
+    );
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(configured);
+  } catch {
+    throw new ApiError(503, "content_origin_not_configured", "CONTENT_ORIGIN must be a valid HTTP(S) origin.");
+  }
+  if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || parsed.pathname !== "/" || parsed.search || parsed.hash) {
+    throw new ApiError(503, "content_origin_not_configured", "CONTENT_ORIGIN must be an HTTP(S) origin without a path.");
+  }
+  let hub: URL;
+  try {
+    hub = new URL(publicOrigin(env));
+  } catch {
+    throw new ApiError(503, "content_origin_not_configured", "PUBLIC_ORIGIN must be a valid origin.");
+  }
+  if (parsed.origin === hub.origin && !isLocalHost(parsed.hostname)) {
+    throw new ApiError(503, "content_origin_not_configured", "CONTENT_ORIGIN must differ from PUBLIC_ORIGIN.");
+  }
+  contentOriginCache.set(env, parsed.origin);
+  return parsed.origin;
+}
+
+export function hasDedicatedContentOrigin(env: Env): boolean {
+  return dedicatedContentOrigin(env) !== null;
+}
+
+export function dedicatedContentOrigin(env: Env): string | null {
+  try {
+    const content = contentOrigin(env);
+    return content === new URL(publicOrigin(env)).origin ? null : content;
+  } catch {
+    return null;
+  }
+}
+
+export function isPublicContentPath(path: string): boolean {
+  const match = path.match(/^\/([^/]+)\/(?:f|s)(?:\/|$)/);
+  if (!match) return false;
+  try {
+    return !RESERVED_HANDLES.has(decodeURIComponent(match[1]).toLowerCase());
+  } catch {
+    return false;
+  }
 }
 
 export function json(data: unknown, status = 200): Response {

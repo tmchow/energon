@@ -21,3 +21,14 @@ An Instance Identity is resolved from deployment configuration with project defa
 
 - An Instance Identity defines the Token Prefix used by an API Token.
 - An API Token authenticates against the Instance Identity that issued it.
+
+## Schema lifecycle
+
+### Schema bootstrap
+The startup process that makes the database structure available to the application, including creating absent tables and completing supported additive upgrades.
+
+### Legacy schema upgrade
+An additive schema bootstrap path that brings an earlier supported database shape forward without rebuilding its existing tables or changing their persisted identity relationships.
+
+### Index phase
+The final schema-bootstrap stage that creates indexes after every table and column required by those indexes exists.

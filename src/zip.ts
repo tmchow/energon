@@ -28,14 +28,29 @@ function hasUnsafeSegments(path: string): boolean {
 }
 
 export function unpackZip(buf: Uint8Array, maxBytes = MAX_FILE_BYTES): UnpackedFile[] {
+  let importedEntries = 0;
+  let importedBytes = 0;
   let raw: Record<string, Uint8Array>;
   try {
     raw = unzipSync(buf, {
       filter: (file) => {
+        if (!file.name || file.name.endsWith("/") || skipZipJunk(file.name)) return false;
         const size = file.originalSize ?? 0;
         if (size > maxBytes) {
           throw tooLarge(size, "", maxBytes);
         }
+        if (importedEntries >= MAX_IMPORT_FILES) {
+          throw new ApiError(
+            400,
+            "too_many_files",
+            `That zip has more than ${MAX_IMPORT_FILES} files. ${PRODUCT} imports at most ${MAX_IMPORT_FILES} files per zip to prevent accidents. Split the site, then retry.`,
+          );
+        }
+        if (importedBytes + size > maxBytes) {
+          throw tooLarge(importedBytes + size, "", maxBytes);
+        }
+        importedEntries += 1;
+        importedBytes += size;
         return true;
       },
     });
@@ -71,9 +86,12 @@ export function unpackZip(buf: Uint8Array, maxBytes = MAX_FILE_BYTES): UnpackedF
 
   const strip = stripWrappingFolder(names);
   const out: UnpackedFile[] = [];
+  let actualBytes = 0;
   for (const name of names) {
     const bytes = raw[name];
     if (bytes.byteLength > maxBytes) throw tooLarge(bytes.byteLength, "", maxBytes);
+    actualBytes += bytes.byteLength;
+    if (actualBytes > maxBytes) throw tooLarge(actualBytes, "", maxBytes);
     const stripped = strip(name);
     const path = normalizeRelPath(stripped);
     if (!path) {

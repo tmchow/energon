@@ -1,4 +1,4 @@
-const STATEMENTS = [
+const TABLE_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     email TEXT NOT NULL UNIQUE,
@@ -58,6 +58,9 @@ const STATEMENTS = [
     last_used_at TEXT,
     revoked_at TEXT
   )`,
+];
+
+const INDEX_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_site_files_site ON site_files(handle, slug)`,
   `CREATE INDEX IF NOT EXISTS idx_loose_files_created ON loose_files(created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_sites_updated ON sites(updated_at DESC)`,
@@ -86,23 +89,20 @@ export async function ensureSchema(db: D1Database): Promise<void> {
   const existing = await db
     .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tokens'`)
     .first();
-  if (!existing) {
-    for (const sql of STATEMENTS) {
-      await db.prepare(sql).run();
-    }
-    columnsReady = true;
-    return;
-  }
-  if (columnsReady) return;
-  // tokens already exists (0001 or an earlier boot). Still CREATE IF NOT
-  // EXISTS so users / handle_reservations appear, then add missing columns.
+  if (columnsReady && existing) return;
+  // Existing tokens marks an older schema that needs additive column upgrades.
   // CREATE TABLE does not reshape an old sites PK.
-  for (const sql of STATEMENTS) {
+  for (const sql of TABLE_STATEMENTS) {
     await db.prepare(sql).run();
   }
-  await ensureColumns(db, "loose_files", ["updated_at", "last_written_by", "password_hash", "handle", "owner_id", "expires_at", "write_policy"]);
-  await ensureColumns(db, "sites", ["password_hash", "handle", "owner_id", "expires_at", "write_policy"]);
-  await ensureColumns(db, "tokens", ["token_secret"]);
+  if (existing) {
+    await ensureColumns(db, "loose_files", ["updated_at", "last_written_by", "password_hash", "handle", "owner_id", "expires_at", "write_policy"]);
+    await ensureColumns(db, "sites", ["password_hash", "handle", "owner_id", "expires_at", "write_policy"]);
+    await ensureColumns(db, "tokens", ["token_secret"]);
+  }
+  for (const sql of INDEX_STATEMENTS) {
+    await db.prepare(sql).run();
+  }
   columnsReady = true;
 }
 

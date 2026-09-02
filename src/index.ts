@@ -17,7 +17,7 @@ import { identityFromEnv } from "./instance";
 import { MEMORABLE_WORDS } from "./memorable";
 import { deleteLooseFile, getLooseFile, hubLists, listLooseJson, patchLoose, postLooseFromRequest, putLooseFromRequest, serveLoose } from "./files";
 import { passwordField } from "./gate";
-import { ApiError, json, publicOrigin, readBodyCapped, wantsDownload } from "./http";
+import { ApiError, contentOrigin, dedicatedContentOrigin, isLocalHost, isPublicContentPath, json, publicOrigin, readBodyCapped, wantsDownload } from "./http";
 import { instancePolicy, policyPublic } from "./policy";
 import {
   createSite,
@@ -33,6 +33,7 @@ import {
   putSiteFile,
   serveSite,
 } from "./sites";
+import { sitePublicUrl } from "./urls";
 import type { Actor, Env } from "./types";
 
 export default {
@@ -77,6 +78,22 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   if (path === "/v1/help") {
     if (method === "GET") return json(helpBody(publicOrigin(env), env));
     return methodNotAllowed();
+  }
+
+  const configuredContentOrigin = dedicatedContentOrigin(env);
+  const contentHost = configuredContentOrigin !== null && url.origin === configuredContentOrigin;
+  if (isPublicContentPath(path)) {
+    if (!contentHost && !isLocalHost(url.hostname)) {
+      if (!configuredContentOrigin) {
+        return json(
+          { error: "content_origin_not_configured", message: "Set CONTENT_ORIGIN to a separate custom hostname before serving content." },
+          503,
+        );
+      }
+      return Response.redirect(`${configuredContentOrigin}${path}${url.search}`, 302);
+    }
+  } else if (contentHost) {
+    return json({ error: "not_found", message: "This hostname serves published content only." }, 404);
   }
 
   if ((path === "/favicon.svg" || path === "/static/logo.svg") && (method === "GET" || method === "HEAD")) {
@@ -231,7 +248,11 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   if (pubFile && (method === "GET" || method === "POST")) {
     const handle = decodeURIComponent(pubFile[1]).toLowerCase();
     if (!RESERVED_HANDLES.has(handle)) {
-      return serveLoose(env, ctx, handle, decodeURIComponent(pubFile[2]), pubFile[3], request);
+      return contentResponse(
+        await serveLoose(env, ctx, handle, decodeURIComponent(pubFile[2]), pubFile[3], request),
+        env,
+        contentHost,
+      );
     }
   }
 
@@ -241,9 +262,13 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     const slug = decodeURIComponent(pubSite[2]);
     if (!RESERVED_HANDLES.has(handle)) {
       if (method === "GET" && !pubSite[3] && !path.endsWith("/")) {
-        return Response.redirect(`${publicOrigin(env)}/${handle}/s/${slug}/`, 302);
+        return Response.redirect(sitePublicUrl(env, handle, slug), 302);
       }
-      return serveSite(env, ctx, handle, slug, pubSite[3] || "", request);
+      return contentResponse(
+        await serveSite(env, ctx, handle, slug, pubSite[3] || "", request),
+        env,
+        contentHost,
+      );
     }
   }
 
@@ -255,6 +280,13 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     },
     404,
   );
+}
+
+function contentResponse(response: Response, env: Env, contentHost: boolean): Response {
+  if (!contentHost) return response;
+  const headers = new Headers(response.headers);
+  headers.set("access-control-allow-origin", publicOrigin(env));
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
 async function api(
@@ -376,6 +408,7 @@ async function serveHub(request: Request, env: Env, ctx: ExecutionContext): Prom
     email: actor?.email ?? null,
     handle,
     origin: publicOrigin(env),
+    content_origin: contentOrigin(env),
     policy: policyPublic(instancePolicy(env)),
     identity: identityFromEnv(env),
     sites: lists.sites,

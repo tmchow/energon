@@ -18,7 +18,7 @@ export type InstanceIdentity = {
 
 /**
  * Runtime identity for one deployed Worker. Must match the skill committed
- * under plugins/ (OSS ships /energon; a fork runs `npm run skill:init`).
+ * under plugins/ (OSS ships plugins/energon; a fork runs `npm run skill:init`).
  */
 export function identityFromEnv(
   env: Partial<

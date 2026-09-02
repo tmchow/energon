@@ -1,14 +1,36 @@
 import { describe, expect, it } from "vitest";
 import { formatBytes, formatCount } from "../../src/config";
 import {
+  contentOrigin,
   contentDisposition,
+  hasDedicatedContentOrigin,
+  isPublicContentPath,
   isWorkersDev,
   normalizeRelPath,
   tooLarge,
   wantsDownload,
 } from "../../src/http";
+import type { Env } from "../../src/types";
+
+const originEnv = (overrides: Partial<Pick<Env, "PUBLIC_ORIGIN" | "CONTENT_ORIGIN">> = {}) =>
+  ({ PUBLIC_ORIGIN: "https://hub.example.com", CONTENT_ORIGIN: "https://content.example.com", ...overrides }) as Env;
 
 describe("path and download helpers", () => {
+  it("requires a separate content origin", () => {
+    expect(contentOrigin(originEnv())).toBe("https://content.example.com");
+    expect(hasDedicatedContentOrigin(originEnv())).toBe(true);
+    expect(hasDedicatedContentOrigin(originEnv({ CONTENT_ORIGIN: "https://hub.example.com" }))).toBe(false);
+    expect(() => contentOrigin(originEnv({ CONTENT_ORIGIN: "https://hub.example.com" }))).toThrow(
+      "CONTENT_ORIGIN must differ from PUBLIC_ORIGIN",
+    );
+    expect(contentOrigin(originEnv({ PUBLIC_ORIGIN: "http://127.0.0.1:8787", CONTENT_ORIGIN: "http://127.0.0.1:8787" }))).toBe(
+      "http://127.0.0.1:8787",
+    );
+    expect(isPublicContentPath("/ada/s/demo/")).toBe(true);
+    expect(isPublicContentPath("/account/s/demo/")).toBe(false);
+    expect(isPublicContentPath("/%61ccount/f/abc123/file.html")).toBe(false);
+  });
+
   it("rejects traversal and junk path segments", () => {
     expect(normalizeRelPath("css/app.css")).toBe("css/app.css");
     expect(normalizeRelPath("./css/./app.css")).toBe("css/app.css");
