@@ -7,11 +7,15 @@ workers_dev = true
 # [[routes]]
 # pattern = "energon.example.com"
 # custom_domain = true
+# [[routes]]
+# pattern = "content.energon.example.com"
+# custom_domain = true
 
 [vars]
 # Placeholder host. Run `npm run skill:init` with your real origin, then
 # set PUBLIC_ORIGIN / TOKEN_ENV / SKILL_NAME / MARKETPLACE_* to match.
 PUBLIC_ORIGIN = "https://energon.example.com"
+CONTENT_ORIGIN = "https://content.energon.example.com"
 TOKEN_ENV = "ENERGON_TOKEN"
 SKILL_NAME = "energon"
 MARKETPLACE_NAME = "energon"

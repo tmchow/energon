@@ -28,11 +28,40 @@ describe("host and route contracts", () => {
     expect(res.headers.get("location")).toBe("https://energon.example.com/ada/s/slash-me/");
   });
 
+  it("redirects hub content links and keeps account routes off the content origin", async () => {
+    const hub = await req("https://hub.energon.example.com/ada/s/content-origin/", { redirect: "manual" });
+    expect(hub.status).toBe(302);
+    expect(hub.headers.get("location")).toBe("https://energon.example.com/ada/s/content-origin/");
+
+    const content = await req("https://energon.example.com/ada/s/content-origin/");
+    expect(content.headers.get("access-control-allow-origin")).toBe("https://hub.energon.example.com");
+
+    const token = await mint("cors-file");
+    const created = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "X-Filename": "space file.txt", "content-type": "text/plain" }),
+      body: "content",
+    });
+    const file = await req(`https://energon.example.com/ada/f/${created.body.id}/space%20file.txt`, { redirect: "manual" });
+    expect(file.status).toBe(302);
+    expect(file.headers.get("location")).toBe(`https://energon.example.com/ada/f/${created.body.id}/space_file.txt`);
+    expect(file.headers.get("access-control-allow-origin")).toBe("https://hub.energon.example.com");
+
+    const account = await req("https://energon.example.com/account/tokens", {
+      headers: { "Cf-Access-Authenticated-User-Email": "ada@esperlabs.app" },
+    });
+    expect(account.status).toBe(404);
+  });
+
   it("rejects a non-Energon bearer and a bad site slug", async () => {
     const bad = await json("/v1/sites", { headers: { authorization: "Bearer not-a-token" } });
     expect(bad.status).toBe(401);
     expect(bad.body.error).toBe("unauthorized");
     expect(bad.body.message).toContain("ee_live_");
+
+    const help = await json("/v1/help");
+    expect(help.body.auth).toBe("Authorization: Bearer ee_live_<secret>");
+    expect(help.body.token_prefix).toBe("ee_live_");
 
     const token = await mint("bad-slug");
     const created = await json("/v1/sites", {

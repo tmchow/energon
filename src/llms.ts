@@ -7,12 +7,13 @@ import type { Env } from "./types";
 export function llmsTxt(origin: string, env?: Env): string {
   const id = identityFromEnv(env || {});
   const policy = instancePolicy(env || {});
+  const content = env?.CONTENT_ORIGIN?.trim() || origin;
   const presets = policy.presets.map((p) => `${p.id} (${p.label})`).join(", ");
   return `# ${PRODUCT}
 
 > ${PRODUCT} is a file and static-site host for a company. Humans open a URL. Agents publish and fetch the same bytes over HTTP. The hub is behind Cloudflare Access. Published \`/sites\` and \`/files\` URLs are not, unless a share password is set. Do not invent a token.
 
-The API lives on this origin. There are no accounts in the API — humans mint a bearer token at ${origin}/tokens while signed in, then export it as \`${id.tokenEnv}\`. Tokens look like \`${id.tokenPrefix}…\`.
+The API and authenticated hub live on ${origin}. Published content is served from ${content}, which must be a separate hostname in production. There are no accounts in the API — humans mint a bearer token at ${origin}/tokens while signed in, then export it as \`${id.tokenEnv}\`. Tokens look like \`${id.tokenPrefix}…\`.
 
 Do not put secrets, tokens, or share passwords in published files. Last write wins on a single path. Never default to overwrite.
 

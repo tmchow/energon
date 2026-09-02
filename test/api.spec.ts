@@ -49,6 +49,7 @@ describe("Energon", () => {
     const { status, body } = await json("/v1/help");
     expect(status).toBe(200);
     expect(body.env).toBe("ENERGON_TOKEN");
+    expect(body.content_origin).toBe("https://energon.example.com");
     expect(body.account).toContain("/account");
     expect(body.limits.file_bytes).toBe(25 * 1024 * 1024);
     expect(body.limits.zip_bytes).toBe(25 * 1024 * 1024);
@@ -67,7 +68,7 @@ describe("Energon", () => {
     const { status, body } = await json("/v1/sites");
     expect(status).toBe(401);
     expect(body.error).toBe("unauthorized");
-    expect(body.hub).toBe("https://energon.example.com/account");
+    expect(body.hub).toBe("https://hub.energon.example.com/account");
     expect(body.message).toContain("/tokens");
     expect(body.message).toContain("ENERGON_TOKEN");
   });
@@ -92,7 +93,7 @@ describe("Energon", () => {
     });
     expect(put.status).toBe(201);
     expect(put.body.url).toBe("https://energon.example.com/ada/s/demo/index.html");
-    expect(put.body.api_url).toBe("https://energon.example.com/v1/sites/demo/files/index.html");
+    expect(put.body.api_url).toBe("https://hub.energon.example.com/v1/sites/demo/files/index.html");
 
     const viaApi = await req("/v1/sites/demo/files/index.html", { headers: auth(token) });
     expect(viaApi.status).toBe(200);
@@ -204,7 +205,7 @@ describe("Energon", () => {
     expect(a.status).toBe(201);
     expect(a.body.url).toMatch(/^https:\/\/energon\.example\.com\/ada\/f\/[A-Za-z0-9]{6}\/hello\.txt$/);
     expect(a.body.handle).toBe("ada");
-    expect(a.body.api_url).toBe(`https://energon.example.com/v1/files/${a.body.id}`);
+    expect(a.body.api_url).toBe(`https://hub.energon.example.com/v1/files/${a.body.id}`);
     const viaApi = await req(`/v1/files/${a.body.id}`, { headers: auth(token) });
     expect(viaApi.status).toBe(200);
     expect(await viaApi.text()).toBe("hello world");

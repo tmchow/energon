@@ -14,6 +14,7 @@ describe("signed-in pages", () => {
     expect(html).toContain("/favicon.svg");
     expect(html).toContain("/f/{id}/");
     expect(html).toContain('"handle":"dev"');
+    expect(html).toContain('"content_origin":"https://energon.example.com"');
     expect(html).toContain('"file_bytes":');
     expect(html).toContain('"write_policy":"instance"');
     expect(html).toContain('href="/tokens"');
