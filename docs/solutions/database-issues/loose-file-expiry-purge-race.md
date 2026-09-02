@@ -9,7 +9,7 @@ component: database
 symptoms:
   - A replacement can overwrite an active expiry-purge marker.
   - The purge can delete replacement bytes while retaining the catalog row.
-  - A failed delete rollback can overwrite a concurrent replacement.
+  - A failed rollback can overwrite a concurrent replacement or retain the temporary claim timestamp.
   - A stale write claim can keep a live file permanently busy.
   - A PATCH race can report an active writer as an expired file.
 root_cause: concurrency
@@ -39,6 +39,7 @@ The initial claim fix also needed a lifecycle beyond acquisition and release. A 
 - The failure requires an interleaving between replacement, expiry claim, and R2 deletion, so sequential tests do not expose it.
 - A live file returns `409 file_busy` forever after an abandoned write marker.
 - A PATCH racing with an active replacement returns `410 expired`, misleading clients into treating a temporary conflict as deletion.
+- In the pre-fix path, a failed replacement or deletion could restore the R2 bytes and rollback writer but leave `updated_at` advanced to the temporary claim-acquisition time.
 
 ## What Didn't Work
 
@@ -47,6 +48,8 @@ The existing purge marker only protected PATCH TTL updates. It did not protect t
 Adding compensation to deletion was not sufficient on its own. The snapshot and restore steps preserved sequential failure behavior, but without a claim they could race a replacement and turn rollback itself into the corrupting write.
 
 Rejecting every write marker was safe only while release was assumed to succeed. Logging a failed release without a stale-claim recovery rule turned the marker into a permanent lock. Likewise, mapping a zero-row PATCH UPDATE directly to `expiredError` relied on the initial snapshot even though another writer could claim the row before the guarded statement ran.
+
+JavaScript method-interception tests proved the compensation sequence, but their hand-built row fixtures did not include every persisted field. Because they asserted restored bytes and writer rather than the complete D1 row, they did not expose that rollback left the claim's `updated_at` behind. A native D1 trigger that aborts the real metadata statement did expose it when the test compared full pre- and post-request snapshots (`test/files.spec.ts:163-230`, `test/d1-r2-claim-mutation.spec.ts:14-50`).
 
 ## Solution
 
@@ -67,19 +70,21 @@ WHERE id = ?
   )
 ```
 
-`putLooseFile` keeps this marker through the R2 replacement, the guarded metadata update, and renamed-object cleanup. It releases the marker with `WHERE id = ? AND last_written_by = ?`; failed pre-commit operations restore the previous object and writer with the same CAS discipline. `claimExpiredFile` treats a fresh write marker like a fresh purge marker and takes its filename from the claimed row before deleting R2.
+`putLooseFile` keeps this marker through the R2 replacement, the guarded metadata update, and renamed-object cleanup. Claim acquisition records both the rollback writer and the observed `updated_at`, because it temporarily overwrites both fields (`src/expire.ts:74-75`, `src/expire.ts:105-134`). For an ordinary row the rollback writer is the observed writer; reclaiming an abandoned write claim deliberately normalizes ownership to the file creator rather than reinstalling the stale marker (`src/expire.ts:130-134`). Failed pre-commit operations attempt to restore the previous object, rollback writer, and timestamp with the same CAS discipline. Successful finalization changes only the writer, preserving the timestamp committed by the replacement (`src/expire.ts:137-157`, `src/files.ts:466-506`). `claimExpiredFile` treats a fresh write marker like a fresh purge marker and takes its filename from the claimed row before deleting R2.
 
-`deleteLooseFile` acquires the same leased marker before it snapshots or deletes R2. Its claim variant permits an already-expired row so an authorized delete can still complete, while the compare-and-swap predicates continue to reject active purge and write claims (`src/expire.ts:75-129`). The catalog delete requires the unique claim token. On failure, deletion restores R2 before releasing the marker; a missing row after failed acquisition remains `410 expired`, while a competing writer remains `409 file_busy` (`src/files.ts:712-787`).
+`deleteLooseFile` acquires the same leased marker before it snapshots or deletes R2. Its claim variant permits an already-expired row so an authorized delete can still complete, while the compare-and-swap predicates continue to reject active purge and write claims (`src/expire.ts:86-128`). The catalog delete requires the unique claim token. On failure, deletion attempts to restore R2 before restoring the rollback writer and observed timestamp; a missing row after failed acquisition remains `410 expired`, while a competing writer remains `409 file_busy` (`src/files.ts:740-797`).
 
-Write markers are leases. Their `updated_at` timestamp makes an abandoned marker reclaimable after the shared stale-claim interval, while the unique token and writer snapshot keep reclamation compare-and-swap safe (`src/expire.ts:63-118`). When a stale marker is replaced, rollback restores the file creator rather than reinstalling the abandoned marker (`src/expire.ts:106-107`). PUT and PATCH reject only fresh write claims in their initial snapshots (`src/files.ts:396-398`, `src/files.ts:552-554`).
+Write markers are leases. Their `updated_at` timestamp makes an abandoned marker reclaimable after the shared stale-claim interval, while the unique token and writer snapshot keep reclamation compare-and-swap safe (`src/expire.ts:64-71`, `src/expire.ts:102-134`). When a stale marker is replaced, rollback restores the file creator rather than reinstalling the abandoned marker (`src/expire.ts:130-134`). PUT and PATCH reject only fresh write claims in their initial snapshots (`src/files.ts:415-416`, `src/files.ts:557-559`).
 
-Every PATCH UPDATE applies the same predicate: purge claims always block the mutation, while write claims block it only while their lease is fresh (`src/files.ts:580-620`). If a guarded UPDATE changes zero rows, PATCH reads the current marker and returns `409 file_busy` for a write claim; purge, expiry, or row removal remains `410 expired` (`src/files.ts:638-645`).
+Every PATCH UPDATE applies the same predicate: purge claims always block the mutation, while write claims block it only while their lease is fresh (`src/files.ts:584-606`). If a guarded UPDATE changes zero rows, PATCH reads the current marker and returns `409 file_busy` for a write claim; purge, expiry, or row removal remains `410 expired` (`src/files.ts:627-635`).
 
 ## Why This Works
 
-The purge, replacement, and manual deletion now compete for the same D1 row claim before any operation can mutate R2. If replacement claims first, purge and deletion cannot touch its bytes. If purge or deletion claims first, replacement's CAS fails before any R2 write. Deterministic tests cover the replacement/purge orderings and attempt a replacement during deletion, verifying that storage and catalog state move together (`test/api.purge-claim.spec.ts:5-45`).
+The purge, replacement, and manual deletion now compete for the same D1 row claim before any operation can mutate R2. If replacement claims first, purge and deletion cannot touch its bytes. If purge or deletion claims first, replacement's CAS fails before any R2 write. Deterministic tests cover the replacement/purge orderings and attempt a replacement during deletion, verifying that storage and catalog state move together (`test/api.purge-claim.spec.ts:47-185`).
 
-Keeping the deletion claim through compensation closes the rollback race. A failed catalog delete cannot restore old bytes while another request commits new metadata, because replacement stays blocked until rollback finishes and the marker is released. The failure-path test also verifies that a successful rollback restores the prior writer (`test/files.spec.ts:254-320`).
+Keeping the deletion claim through compensation closes the rollback race. A failed catalog delete cannot restore old bytes while another request commits new metadata, because replacement stays blocked until rollback finishes and the marker is released. Failure-path tests verify that successful rollback restores the rollback writer (`test/files.spec.ts:470-537`, `test/d1-r2-claim-mutation.spec.ts:55-89`).
+
+Restoring the observed timestamp makes an ordinary-owner failed mutation equivalent to no mutation at the catalog boundary. Native D1 abort tests require exact equality across the full catalog row, R2 object and metadata, and quota accounting for both replacement and deletion (`src/expire.ts:148-157`, `test/d1-r2-claim-mutation.spec.ts:14-89`, `test/mutation-harness.ts:106-122`).
 
 The lease closes the crash/release-failure state without weakening active concurrency protection: only a marker whose stored timestamp has crossed the stale cutoff can be replaced. The post-UPDATE read closes the separate PATCH snapshot race by classifying the state that actually defeated the conditional write, rather than guessing from the earlier snapshot.
 
@@ -88,12 +93,17 @@ The lease closes the crash/release-failure state without weakening active concur
 - Claim a catalog generation with a conditional D1 update before touching external storage.
 - Keep the claim through every storage mutation and release it only after catalog commit and cleanup.
 - Keep the claim through compensation too; releasing it before rollback reopens the race the claim was meant to prevent.
+- Snapshot every catalog field changed by claim acquisition and restore each rollback field after a pre-commit failure, while preserving the rule that a reclaimed stale claim normalizes writer ownership to the creator.
+- Keep success finalization separate from failure restoration when the two paths intentionally preserve different timestamps.
 - Give temporary claims a bounded lease, and use the current token plus timestamp in the reclamation predicate.
 - After a guarded mutation loses, classify the current state before choosing a permanent (`410`) or retryable (`409`) response.
 - Test both claim orderings with deferred R2 operations, asserting both catalog presence and object presence together.
 - Test stale recovery and fresh rejection on every mutation surface, plus each guarded UPDATE variant that can lose after its snapshot.
+- Use native D1 triggers for metadata aborts and compare complete D1/R2 snapshots; object-only assertions can miss catalog drift.
 
 ## Related Issues
 
 - `test/api.purge-claim.spec.ts` contains the deletion/replacement race, deferred replacement/purge interleavings, stale and active claim cases, and the PATCH race matrix.
-- PR #12 established the leased write-claim lifecycle. The deletion and rollback extension is in PR #28, open as of 2026-09-02.
+- `test/d1-r2-claim-mutation.spec.ts` covers native D1 replacement and delete aborts, fresh-versus-stale ownership, and repeated concurrent replacement outcomes against real local bindings.
+- `site-storage-mutation-rollback.md` documents the corresponding cross-store compensation invariant for multi-file Site mutations.
+- PR #12 established the leased write-claim lifecycle. PR #28 merged the deletion and rollback extension on 2026-09-02.

@@ -2,7 +2,7 @@ import { filePrefix, purgeContent, sitePrefix } from "./cache";
 import { fileKey } from "./config";
 import { ApiError, deletePrefix, htmlPage, releaseStorage } from "./http";
 import { OWNER_WRITE_SQL, ownerWriteBinds } from "./policy";
-import type { Actor, Env } from "./types";
+import type { Actor, Env, LooseFileRow } from "./types";
 
 const SWEEP_BATCH = 100;
 const STALE_CLAIM_MS = 60_000;
@@ -71,36 +71,31 @@ export function isStaleClaim(updatedAt: string | null | undefined, now = Date.no
   return Number.isFinite(t) && now - t >= STALE_CLAIM_MS;
 }
 
-export type LooseFileWriteClaim = { restoreWriter: string; token: string };
+export type LooseFileWriteClaim = { restoreWriter: string; restoreUpdatedAt: string | null; token: string };
+type LooseFileClaimState = Pick<LooseFileRow, "expires_at" | "last_written_by" | "updated_at" | "created_by">;
 
 export async function claimLooseFileForWrite(
   env: Env,
   id: string,
-  expiresAt: string | null,
-  lastWrittenBy: string | null,
-  createdBy: string,
+  state: LooseFileClaimState,
   actor: Actor,
 ): Promise<LooseFileWriteClaim | null> {
-  return claimLooseFile(env, id, expiresAt, lastWrittenBy, createdBy, false, actor);
+  return claimLooseFile(env, id, state, false, actor);
 }
 
 export async function claimLooseFileForDelete(
   env: Env,
   id: string,
-  expiresAt: string | null,
-  lastWrittenBy: string | null,
-  createdBy: string,
+  state: LooseFileClaimState,
   actor: Actor,
 ): Promise<LooseFileWriteClaim | null> {
-  return claimLooseFile(env, id, expiresAt, lastWrittenBy, createdBy, true, actor);
+  return claimLooseFile(env, id, state, true, actor);
 }
 
 async function claimLooseFile(
   env: Env,
   id: string,
-  expiresAt: string | null,
-  lastWrittenBy: string | null,
-  createdBy: string,
+  state: LooseFileClaimState,
   allowExpired: boolean,
   actor: Actor,
 ): Promise<LooseFileWriteClaim | null> {
@@ -122,9 +117,9 @@ async function claimLooseFile(
       id,
       allowExpired ? 1 : 0,
       now,
-      expiresAt,
-      expiresAt,
-      lastWrittenBy ?? "",
+      state.expires_at,
+      state.expires_at,
+      state.last_written_by ?? "",
       PURGE_CLAIM_LIKE,
       WRITE_CLAIM_LIKE,
       staleBefore,
@@ -132,10 +127,14 @@ async function claimLooseFile(
     )
     .run();
   if (!d1Changed(claimed)) return null;
-  return { restoreWriter: isWriteClaimed(lastWrittenBy) ? createdBy : lastWrittenBy || createdBy, token };
+  return {
+    restoreWriter: isWriteClaimed(state.last_written_by) ? state.created_by : state.last_written_by || state.created_by,
+    restoreUpdatedAt: state.updated_at,
+    token,
+  };
 }
 
-export async function releaseLooseFileWriteClaim(
+export async function finalizeLooseFileWriteClaim(
   env: Env,
   id: string,
   token: string,
@@ -143,6 +142,18 @@ export async function releaseLooseFileWriteClaim(
 ): Promise<void> {
   await env.DB.prepare(`UPDATE loose_files SET last_written_by = ? WHERE id = ? AND last_written_by = ?`)
     .bind(lastWrittenBy, id, token)
+    .run();
+}
+
+export async function restoreLooseFileWriteClaim(
+  env: Env,
+  id: string,
+  claim: LooseFileWriteClaim,
+): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE loose_files SET last_written_by = ?, updated_at = ? WHERE id = ? AND last_written_by = ?`,
+  )
+    .bind(claim.restoreWriter, claim.restoreUpdatedAt, id, claim.token)
     .run();
 }
 

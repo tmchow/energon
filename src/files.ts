@@ -14,13 +14,14 @@ import {
   expiredHtml,
   claimLooseFileForDelete,
   claimLooseFileForWrite,
+  finalizeLooseFileWriteClaim,
   isExpired,
   isPurgeClaimed,
   isStaleClaim,
   isWriteClaimed,
   PURGE_CLAIM_LIKE,
   purgeExpiredFile,
-  releaseLooseFileWriteClaim,
+  restoreLooseFileWriteClaim,
   remainingCacheSeconds,
   schedulePurgeExpiredFile,
   staleClaimCutoff,
@@ -465,9 +466,7 @@ export async function putLooseFile(
   const claim = await claimLooseFileForWrite(
     env,
     id,
-    existing.expires_at,
-    existing.last_written_by,
-    existing.created_by,
+    existing,
     actor,
   );
   if (!claim) {
@@ -521,13 +520,13 @@ export async function putLooseFile(
   } catch (err) {
     if (!metadataCommitted) {
       if (wroteObject) await restoreR2Object(env.BUCKET, newKey, renamed ? null : previousState).catch(() => undefined);
-      await releaseLooseFileWriteClaim(env, id, claim.token, claim.restoreWriter).catch(() => undefined);
+      await restoreLooseFileWriteClaim(env, id, claim).catch(() => undefined);
       await releaseStorage(env.DB, reserved);
     }
     throw err;
   }
   await releaseStorage(env.DB, existing.size - bytes.byteLength);
-  await releaseLooseFileWriteClaim(env, id, claim.token, actor.email).catch((err) => {
+  await finalizeLooseFileWriteClaim(env, id, claim.token, actor.email).catch((err) => {
     console.error("loose file write claim release failed", err);
   });
   const origin = publicOrigin(env);
@@ -778,9 +777,7 @@ export async function deleteLooseFile(
   const claim = await claimLooseFileForDelete(
     env,
     id,
-    row.expires_at,
-    row.last_written_by,
-    row.created_by,
+    row,
     actor,
   );
   if (!claim) {
@@ -817,7 +814,7 @@ export async function deleteLooseFile(
         );
       }
     }
-    await releaseLooseFileWriteClaim(env, id, claim.token, claim.restoreWriter).catch(() => undefined);
+    await restoreLooseFileWriteClaim(env, id, claim).catch(() => undefined);
     throw failure;
   }
   try {
