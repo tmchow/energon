@@ -114,6 +114,12 @@ export async function ensureSchema(db: D1Database): Promise<void> {
     await db.prepare(
       `UPDATE tokens SET user_id = (SELECT id FROM users WHERE users.email = tokens.user_email) WHERE user_id IS NULL`,
     ).run();
+    await db.prepare(
+      `UPDATE sites SET owner_id = (SELECT id FROM users WHERE users.email = sites.created_by) WHERE owner_id IS NULL OR owner_id = ''`,
+    ).run();
+    await db.prepare(
+      `UPDATE loose_files SET owner_id = (SELECT id FROM users WHERE users.email = loose_files.created_by) WHERE owner_id IS NULL OR owner_id = ''`,
+    ).run();
   }
   for (const sql of INDEX_STATEMENTS) {
     await db.prepare(sql).run();

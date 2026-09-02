@@ -859,8 +859,8 @@ export async function listSiteJson(
   });
 }
 
-export async function listSitesJson(env: Env, email: string, query: ListQuery): Promise<Response> {
-  const page = await listSitesFor(env, email, query);
+export async function listSitesJson(env: Env, email: string, query: ListQuery, ownerId?: string): Promise<Response> {
+  const page = await listSitesFor(env, email, query, ownerId);
   return json({ sites: page.items, total: page.total, next_cursor: page.next_cursor });
 }
 
@@ -868,6 +868,7 @@ export async function listSitesFor(
   env: Env,
   email: string,
   query: ListQuery,
+  ownerId?: string,
 ): Promise<
   ListPage<{
     slug: string;
@@ -884,7 +885,13 @@ export async function listSitesFor(
     write_policy: string;
   }>
 > {
-  const where = involvementSql("s.created_by", "s.last_written_by", email, query);
+  const where = involvementSql(
+    "s.created_by",
+    "s.last_written_by",
+    email,
+    query,
+    ownerId ? { col: "s.owner_id", id: ownerId } : undefined,
+  );
   const binds: unknown[] = [...where.binds];
   let search = "";
   const needle = likeNeedle(query.q);

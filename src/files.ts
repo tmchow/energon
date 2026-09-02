@@ -812,8 +812,8 @@ async function restoreR2Object(bucket: R2Bucket, key: string, snapshot: R2Snapsh
   });
 }
 
-export async function listLooseJson(env: Env, email: string, query: ListQuery): Promise<Response> {
-  const page = await listLooseFor(env, email, query);
+export async function listLooseJson(env: Env, email: string, query: ListQuery, ownerId?: string): Promise<Response> {
+  const page = await listLooseFor(env, email, query, ownerId);
   return json({ files: page.items, total: page.total, next_cursor: page.next_cursor });
 }
 
@@ -821,6 +821,7 @@ export async function listLooseFor(
   env: Env,
   email: string,
   query: ListQuery,
+  ownerId?: string,
 ): Promise<
   ListPage<{
     id: string;
@@ -839,7 +840,13 @@ export async function listLooseFor(
   }>
 > {
   const origin = publicOrigin(env);
-  const where = involvementSql("created_by", "last_written_by", email, query);
+  const where = involvementSql(
+    "created_by",
+    "last_written_by",
+    email,
+    query,
+    ownerId ? { col: "owner_id", id: ownerId } : undefined,
+  );
   const binds: unknown[] = [...where.binds];
   let search = "";
   const needle = likeNeedle(query.q);
@@ -968,6 +975,7 @@ export async function hubLists(
   env: Env,
   email: string,
   query: ListQuery,
+  ownerId?: string,
 ): Promise<{
   sites: Awaited<ReturnType<typeof listSitesFor>>["items"];
   files: Awaited<ReturnType<typeof listLooseFor>>["items"];
@@ -976,7 +984,10 @@ export async function hubLists(
   sites_cursor: string | null;
   files_cursor: string | null;
 }> {
-  const [sites, files] = await Promise.all([listSitesFor(env, email, query), listLooseFor(env, email, query)]);
+  const [sites, files] = await Promise.all([
+    listSitesFor(env, email, query, ownerId),
+    listLooseFor(env, email, query, ownerId),
+  ]);
   return {
     sites: sites.items,
     files: files.items,

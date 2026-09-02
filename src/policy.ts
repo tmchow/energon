@@ -304,7 +304,7 @@ export function canMutate(
   row: { created_by: string; write_policy?: string | null; owner_id?: string | null },
 ): boolean {
   if (resolveWritePolicy(row.write_policy) === "instance") return true;
-  if (actor.userId && row.owner_id) return actor.userId === row.owner_id;
+  if (actor.userId) return Boolean(row.owner_id) && actor.userId === row.owner_id;
   return actor.email.toLowerCase() === String(row.created_by || "").toLowerCase();
 }
 
@@ -317,8 +317,8 @@ export function assertCanMutate(
 }
 
 export function assertCanSetWritePolicy(actor: Actor, createdBy: string, ownerId?: string | null): void {
-  if (actor.userId && ownerId) {
-    if (actor.userId === ownerId) return;
+  if (actor.userId) {
+    if (ownerId && actor.userId === ownerId) return;
     throw new ApiError(403, "forbidden_write_policy", "Only the creator can change who can write this.");
   }
   if (actor.email.toLowerCase() === String(createdBy || "").toLowerCase()) return;

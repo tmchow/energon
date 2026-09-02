@@ -48,11 +48,23 @@ export function involvementSql(
   writtenCol: string,
   me: string,
   query: ListQuery,
+  owner?: { col: string; id: string },
 ): { sql: string; binds: string[] } {
   const written = `COALESCE(${writtenCol}, ${createdCol})`;
   const parts: string[] = [];
   const binds: string[] = [];
-  if (query.scope === "created") {
+  if (owner) {
+    if (query.scope === "created") {
+      parts.push(`${owner.col} = ?`);
+      binds.push(owner.id);
+    } else if (query.scope === "edited") {
+      parts.push(`${written} = ? AND ${owner.col} != ?`);
+      binds.push(me, owner.id);
+    } else {
+      parts.push(`(${owner.col} = ? OR ${written} = ?)`);
+      binds.push(owner.id, me);
+    }
+  } else if (query.scope === "created") {
     parts.push(`${createdCol} = ?`);
     binds.push(me);
   } else if (query.scope === "edited") {

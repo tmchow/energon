@@ -111,6 +111,18 @@ async function revokeUserTokens(env: Env, userId: string, email: string): Promis
   ]);
 }
 
+async function retireUserEmail(env: Env, user: User): Promise<void> {
+  const next = revokedEmail(user.id);
+  await revokeUserTokens(env, user.id, user.email);
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE sites SET created_by = ? WHERE owner_id = ?`).bind(next, user.id),
+    env.DB.prepare(`UPDATE sites SET last_written_by = ? WHERE last_written_by = ?`).bind(next, user.email),
+    env.DB.prepare(`UPDATE loose_files SET created_by = ? WHERE owner_id = ?`).bind(next, user.id),
+    env.DB.prepare(`UPDATE loose_files SET last_written_by = ? WHERE last_written_by = ?`).bind(next, user.email),
+    env.DB.prepare(`UPDATE users SET email = ? WHERE id = ?`).bind(next, user.id),
+  ]);
+}
+
 export async function ensureUser(env: Env, email: string, idpSub?: string | null): Promise<User> {
   const sub = (idpSub || "").trim() || null;
   if (sub) {
@@ -119,8 +131,7 @@ export async function ensureUser(env: Env, email: string, idpSub?: string | null
       if (bySub.email !== email) {
         const occupant = await getUser(env, email);
         if (occupant && occupant.id !== bySub.id) {
-          await revokeUserTokens(env, occupant.id, occupant.email);
-          await env.DB.prepare(`UPDATE users SET email = ? WHERE id = ?`).bind(revokedEmail(occupant.id), occupant.id).run();
+          await retireUserEmail(env, occupant);
         }
         await env.DB.prepare(`UPDATE users SET email = ? WHERE id = ?`).bind(email, bySub.id).run();
       }
@@ -134,8 +145,7 @@ export async function ensureUser(env: Env, email: string, idpSub?: string | null
       return { ...byEmail, idp_sub: sub };
     }
     if (sub && byEmail.idp_sub && byEmail.idp_sub !== sub) {
-      await revokeUserTokens(env, byEmail.id, byEmail.email);
-      await env.DB.prepare(`UPDATE users SET email = ? WHERE id = ?`).bind(revokedEmail(byEmail.id), byEmail.id).run();
+      await retireUserEmail(env, byEmail);
       return insertUser(env, email, sub);
     }
     return byEmail;

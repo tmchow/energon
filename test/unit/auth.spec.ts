@@ -193,6 +193,24 @@ describe("actorFromAccess", () => {
     ).resolves.toEqual({ email: "ada@esperlabs.app", idpSub: "local:ada@esperlabs.app", via: "access" });
   });
 
+  it("ignores client Access subject headers once getIdentity has verified the session", async () => {
+    const access = {
+      aud: "configured-access-audience",
+      getIdentity: async () => ({ email: "Ada@EsperLabs.app", user_uuid: "uuid-ada" }),
+    };
+    const request = new Request("https://energon.example.com/account", {
+      headers: {
+        "Cf-Access-Authenticated-User-Sub": "stolen-sub",
+        "Cf-Access-Jwt-Assertion": `x.${btoa(JSON.stringify({ sub: "jwt-stolen" }))}.x`,
+      },
+    });
+    await expect(actorFromAccess(request, env, { access })).resolves.toEqual({
+      email: "ada@esperlabs.app",
+      idpSub: "uuid-ada",
+      via: "access",
+    });
+  });
+
   it("uses the Access subject when the JWT or header carries one", async () => {
     const request = new Request("http://127.0.0.1/account", {
       headers: {

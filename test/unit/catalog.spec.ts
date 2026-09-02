@@ -79,6 +79,18 @@ describe("list helpers", () => {
       sql: "COALESCE(last_written_by, created_by) = ? AND created_by != ?",
       binds: [me, me],
     });
+    expect(involvementSql("created_by", "last_written_by", me, q(""), { col: "owner_id", id: "u-ada" })).toEqual({
+      sql: "(owner_id = ? OR COALESCE(last_written_by, created_by) = ?)",
+      binds: ["u-ada", me],
+    });
+    expect(involvementSql("created_by", "last_written_by", me, q("?scope=created"), { col: "owner_id", id: "u-ada" })).toEqual({
+      sql: "owner_id = ?",
+      binds: ["u-ada"],
+    });
+    expect(involvementSql("created_by", "last_written_by", me, q("?scope=edited"), { col: "owner_id", id: "u-ada" })).toEqual({
+      sql: "COALESCE(last_written_by, created_by) = ? AND owner_id != ?",
+      binds: [me, "u-ada"],
+    });
   });
 
   it("takePage leaves a cursor when one extra row was fetched", () => {

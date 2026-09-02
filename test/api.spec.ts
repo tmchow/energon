@@ -466,6 +466,8 @@ describe("Energon", () => {
     });
     expect(stolen.status).toBe(403);
     expect(stolen.body.error).toBe("forbidden_write");
+    const catalog = await json("/v1/sites", { headers: auth(tokenB) });
+    expect((catalog.body.sites || []).map((s: { slug: string }) => s.slug)).not.toContain("owned-draft");
     const listed = await json("/account/data", {
       headers: {
         "Cf-Access-Authenticated-User-Email": email,
