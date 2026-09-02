@@ -78,10 +78,10 @@ describe("path and download helpers", () => {
     expect(isolationCsp("application/javascript")).toBeNull();
   });
 
-  it("requires Origin on account mutations and token reveal", () => {
+  it("requires Origin on account mutations, not on GET", () => {
     expect(accountOriginRequired("POST", "/account/tokens")).toBe(true);
     expect(accountOriginRequired("PATCH", "/account/sites/demo")).toBe(true);
-    expect(accountOriginRequired("GET", "/account/tokens/abc")).toBe(true);
+    expect(accountOriginRequired("GET", "/account/tokens/abc")).toBe(false);
     expect(accountOriginRequired("GET", "/account/data")).toBe(false);
     expect(accountOriginRequired("GET", "/account/files/abc/download")).toBe(false);
     const bad = new Request("http://127.0.0.1/account/tokens", { method: "POST" });

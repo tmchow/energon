@@ -39,6 +39,11 @@ describe("Energon", () => {
     const shown = { status: shownRes.status, body: (await shownRes.json()) as { token: string } };
     expect(shown.status).toBe(200);
     expect(shown.body.token).toBe(token);
+    const noOrigin = await json(`/account/tokens/${row.id}`, {
+      headers: { "Cf-Access-Authenticated-User-Email": email },
+    });
+    expect(noOrigin.status).toBe(200);
+    expect(noOrigin.body.token).toBe(token);
     const other = await json(`/account/tokens/${row.id}`, {
       headers: access("not-owner@esperlabs.app"),
     });

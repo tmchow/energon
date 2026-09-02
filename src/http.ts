@@ -125,10 +125,7 @@ export function assertTrustedAccountOrigin(request: Request): void {
 
 export function accountOriginRequired(method: string, path: string): boolean {
   if (!path.startsWith("/account")) return false;
-  if (method === "GET" || method === "HEAD") {
-    return /^\/account\/tokens\/[^/]+$/.test(path);
-  }
-  return true;
+  return method !== "GET" && method !== "HEAD";
 }
 
 export async function sha256Hex(value: string): Promise<string> {
