@@ -32,6 +32,7 @@ import { passwordEcho, passwordField, passwordHashFromInput, protectContent, rea
 import { filePublicUrl, isFileId, urlFilename } from "./urls";
 import {
   ApiError,
+  applyIsolation,
   assertStorageRoom,
   basename,
   contentOrigin,
@@ -939,8 +940,10 @@ export async function serveLoose(
   const remaining = remainingCacheSeconds(row.expires_at);
   const cacheable = !row.password_hash;
   const headers = new Headers();
-  headers.set("content-type", obj.httpMetadata?.contentType || "application/octet-stream");
+  const contentType = obj.httpMetadata?.contentType || "application/octet-stream";
+  headers.set("content-type", contentType);
   headers.set("x-content-type-options", "nosniff");
+  applyIsolation(headers, contentType);
   headers.set(
     "content-disposition",
     contentDisposition(wantsDownload(request) ? "attachment" : "inline", row.filename),

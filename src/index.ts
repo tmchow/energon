@@ -17,7 +17,7 @@ import { identityFromEnv } from "./instance";
 import { MEMORABLE_WORDS } from "./memorable";
 import { deleteLooseFile, getLooseFile, hubLists, listLooseJson, patchLoose, postLooseFromRequest, putLooseFromRequest, serveLoose } from "./files";
 import { passwordField } from "./gate";
-import { ApiError, contentOrigin, dedicatedContentOrigin, isLocalHost, isPublicContentPath, json, publicOrigin, readBodyCapped, wantsDownload } from "./http";
+import { ApiError, accountOriginRequired, assertTrustedAccountOrigin, contentOrigin, dedicatedContentOrigin, isLocalHost, isPublicContentPath, json, publicOrigin, readBodyCapped, secretJson, wantsDownload } from "./http";
 import { instancePolicy, policyPublic } from "./policy";
 import {
   createSite,
@@ -116,6 +116,10 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
 
   if (path.startsWith("/v1/")) return api(request, env, ctx, path, method);
 
+  if (accountOriginRequired(method, path)) {
+    assertTrustedAccountOrigin(request);
+  }
+
   const blocked = rejectWorkersDevForHumans(request, env);
   if (blocked) return blocked;
 
@@ -155,7 +159,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     const actor = await requireHuman(request, env, ctx);
     const body = await readJson(request);
     const minted = await mintToken(env, actor.email, String(body.label ?? ""), actor.userId);
-    return json({ id: minted.id, label: minted.label, token: minted.token, recoverable: false }, 201);
+    return secretJson({ id: minted.id, label: minted.label, token: minted.token, recoverable: false }, 201);
   }
 
   const revokeMatch = path.match(/^\/account\/tokens\/([^/]+)\/revoke$/);
@@ -511,11 +515,8 @@ function contentPatch(body: Record<string, unknown>): {
 
 async function readJson(request: Request): Promise<Record<string, unknown>> {
   const ctype = request.headers.get("content-type") || "";
-  if (ctype.includes("application/x-www-form-urlencoded")) {
-    const form = await request.formData();
-    const obj: Record<string, unknown> = {};
-    for (const [k, v] of form.entries()) obj[k] = typeof v === "string" ? v : v.name;
-    return obj;
+  if (ctype.includes("application/x-www-form-urlencoded") || ctype.includes("multipart/form-data")) {
+    throw new ApiError(415, "bad_content_type", "Send a JSON object body.");
   }
   const text = await request.text();
   if (!text) return {};

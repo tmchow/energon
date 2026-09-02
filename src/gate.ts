@@ -84,14 +84,33 @@ export function wantsJsonGate(request: Request): boolean {
   return accept.includes("application/json") && !accept.includes("text/html");
 }
 
+const GATE_BODY_MAX = 2048;
+
 export async function parseFormPassword(request: Request): Promise<string | null> {
   const ctype = request.headers.get("content-type") || "";
-  if (!ctype.includes("application/x-www-form-urlencoded") && !ctype.includes("multipart/form-data")) {
+  if (ctype.includes("multipart/form-data")) {
+    throw new ApiError(415, "bad_content_type", "Password form must be application/x-www-form-urlencoded.");
+  }
+  if (!ctype.includes("application/x-www-form-urlencoded")) {
     return null;
   }
-  const form = await request.formData();
-  const v = form.get("password");
-  return typeof v === "string" ? v : null;
+  const headerLen = request.headers.get("content-length");
+  if (headerLen) {
+    const n = Number(headerLen);
+    if (Number.isFinite(n) && n > GATE_BODY_MAX) {
+      throw new ApiError(413, "too_large", "Password request is too large.");
+    }
+  }
+  const buf = new Uint8Array(await request.arrayBuffer());
+  if (buf.byteLength > GATE_BODY_MAX) {
+    throw new ApiError(413, "too_large", "Password request is too large.");
+  }
+  const params = new URLSearchParams(new TextDecoder().decode(buf));
+  const v = params.get("password");
+  if (v !== null && v.length > 128) {
+    throw new ApiError(400, "bad_password", "Share password is too long (max 128 characters).");
+  }
+  return v;
 }
 
 export function gateCookieHeader(token: string, cookiePath: string, hostname: string): string {

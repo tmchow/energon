@@ -19,6 +19,7 @@ export async function mint(label: string, email = "ada@esperlabs.app", extra?: H
     headers: {
       "content-type": "application/json",
       "Cf-Access-Authenticated-User-Email": email,
+      origin,
       ...extra,
     },
     body: JSON.stringify({ label }),
@@ -33,7 +34,7 @@ export function auth(token: string, extra?: HeadersInit): HeadersInit {
 }
 
 export function access(email: string, extra?: HeadersInit): HeadersInit {
-  return { "Cf-Access-Authenticated-User-Email": email, ...extra };
+  return { "Cf-Access-Authenticated-User-Email": email, origin, ...extra };
 }
 
 /** Every `$("id")` / getElementById("id") in page JS (inlined from `*.client.js` or a `<script>`) must exist in the HTML. */

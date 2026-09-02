@@ -23,7 +23,7 @@ import {
 import { isMarkdownName, respondMarkdown } from "./markdown";
 import { passwordEcho, passwordHashFromInput, protectContent } from "./gate";
 import { ensureHandle, ensureUser } from "./handles";
-import { ApiError, assertStorageRoom, basename, contentDisposition, copyR2Object, deletePrefix, htmlPage, json, nanoid, normalizeRelPath, publicOrigin, tooLarge, wantsDownload } from "./http";
+import { ApiError, applyIsolation, assertStorageRoom, basename, contentDisposition, copyR2Object, deletePrefix, htmlPage, json, nanoid, normalizeRelPath, publicOrigin, tooLarge, wantsDownload } from "./http";
 import { contentTypeFor } from "./mime";
 import {
   assertCanMutate,
@@ -1042,7 +1042,7 @@ async function fileListHtml(env: Env, site: SiteRow): Promise<string> {
     </div></header>
     <main class="wrap">
       <h1>/${escapeHtml(site.handle)}/s/${escapeHtml(site.slug)}/</h1>
-      <p class="crumb">No index.html or index.md. Last written by ${escapeHtml(site.last_written_by)} at ${escapeHtml(site.updated_at)}.</p>
+      <p class="crumb">No index.html or index.md. Updated ${escapeHtml(site.updated_at)}.</p>
       <section class="card"><div class="card-body tight">${list}</div></section>
     </main>`,
   });
@@ -1067,6 +1067,7 @@ function serveObject(
   const headers = new Headers();
   headers.set("content-type", contentType);
   headers.set("x-content-type-options", "nosniff");
+  applyIsolation(headers, contentType);
   headers.set("cache-control", cacheable ? publicCacheControl(remainingSeconds) : privateCacheControl());
   if (cacheable) headers.set("cache-tag", tag);
   headers.set("etag", obj.httpEtag);

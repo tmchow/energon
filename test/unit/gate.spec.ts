@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { GATE_MAX_FAILS, GATE_WINDOW_MS, clearGateAttempts, gateIsBlocked, gateScopes, recordGateFailures } from "../../src/gate";
+import {
+  GATE_MAX_FAILS,
+  GATE_WINDOW_MS,
+  clearGateAttempts,
+  gateIsBlocked,
+  gateScopes,
+  parseFormPassword,
+  recordGateFailures,
+} from "../../src/gate";
 import type { Env } from "../../src/types";
 
 function memGateDb() {
@@ -63,5 +71,40 @@ describe("gate attempt limits", () => {
     for (let i = 0; i < GATE_MAX_FAILS; i++) await recordGateFailures(env, scopes, start);
     expect(await gateIsBlocked(env, scopes, start + GATE_WINDOW_MS - 1)).toBe(true);
     expect(await gateIsBlocked(env, scopes, start + GATE_WINDOW_MS)).toBe(false);
+  });
+});
+
+describe("parseFormPassword", () => {
+  it("reads a urlencoded password", async () => {
+    const request = new Request("https://content.example.com/a/s/x/", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "password=hunter2",
+    });
+    await expect(parseFormPassword(request)).resolves.toBe("hunter2");
+  });
+
+  it("rejects multipart before parsing", async () => {
+    const request = new Request("https://content.example.com/a/s/x/", {
+      method: "POST",
+      headers: { "content-type": "multipart/form-data; boundary=x" },
+      body: "--x--",
+    });
+    await expect(parseFormPassword(request)).rejects.toMatchObject({
+      status: 415,
+      code: "bad_content_type",
+    });
+  });
+
+  it("rejects a body over the gate cap", async () => {
+    const request = new Request("https://content.example.com/a/s/x/", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: `password=${"x".repeat(3000)}`,
+    });
+    await expect(parseFormPassword(request)).rejects.toMatchObject({
+      status: 413,
+      code: "too_large",
+    });
   });
 });
