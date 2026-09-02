@@ -9,7 +9,16 @@ import {
   type ListQuery,
 } from "./catalog";
 import { FILE_ID_LEN, fileKey } from "./config";
-import { expiredError, expiredHtml, isExpired, purgeExpiredFile, remainingCacheSeconds, schedulePurgeExpiredFile } from "./expire";
+import {
+  expiredError,
+  expiredHtml,
+  isExpired,
+  isPurgeClaimed,
+  PURGE_CLAIM_LIKE,
+  purgeExpiredFile,
+  remainingCacheSeconds,
+  schedulePurgeExpiredFile,
+} from "./expire";
 import { ensureHandle, ensureUser } from "./handles";
 import { listSitesFor } from "./sites";
 import { passwordEcho, passwordField, passwordHashFromInput, protectContent, readSetPasswordHeader } from "./gate";
@@ -473,7 +482,7 @@ export async function patchLoose(
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
   const existing = await env.DB.prepare(
-    `SELECT id, handle, filename, password_hash, expires_at, created_by, write_policy FROM loose_files WHERE id = ?`,
+    `SELECT id, handle, filename, password_hash, expires_at, created_by, last_written_by, write_policy FROM loose_files WHERE id = ?`,
   )
     .bind(id)
     .first<{
@@ -483,12 +492,13 @@ export async function patchLoose(
       password_hash: string | null;
       expires_at: string | null;
       created_by: string;
+      last_written_by: string | null;
       write_policy: string | null;
     }>();
   if (!existing) {
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
-  if (isExpired(existing.expires_at) && !patch.setTtl) {
+  if (isPurgeClaimed(existing.last_written_by) || (isExpired(existing.expires_at) && !patch.setTtl)) {
     try {
       await purgeExpiredFile(env, ctx, existing.id, existing.handle, existing.filename);
     } catch (err) {
@@ -512,30 +522,46 @@ export async function patchLoose(
   const ts = new Date().toISOString();
   const handle = existing.handle || (await ensureHandle(env, actor.email));
   const resolved = patch.setTtl ? resolveExpiresAt(instancePolicy(env), patch.ttl) : null;
+  const notClaimed = `ifnull(last_written_by, '') NOT LIKE ?`;
   if (hash !== undefined && resolved) {
-    await env.DB.prepare(
-      `UPDATE loose_files SET updated_at = ?, last_written_by = ?, password_hash = ?, expires_at = ? WHERE id = ?`,
+    const updated = await env.DB.prepare(
+      `UPDATE loose_files SET updated_at = ?, last_written_by = ?, password_hash = ?, expires_at = ? WHERE id = ? AND ${notClaimed}`,
     )
-      .bind(ts, actor.email, hash, resolved.expiresAt, id)
+      .bind(ts, actor.email, hash, resolved.expiresAt, id, PURGE_CLAIM_LIKE)
       .run();
+    if (!Number(updated.meta?.changes ?? 0)) throw expiredError("file");
     purgeContent(ctx, [filePrefix(handle, id)]);
   } else if (hash !== undefined) {
-    await env.DB.prepare(`UPDATE loose_files SET updated_at = ?, last_written_by = ?, password_hash = ? WHERE id = ?`)
-      .bind(ts, actor.email, hash, id)
+    const updated = await env.DB.prepare(
+      `UPDATE loose_files SET updated_at = ?, last_written_by = ?, password_hash = ? WHERE id = ? AND ${notClaimed}`,
+    )
+      .bind(ts, actor.email, hash, id, PURGE_CLAIM_LIKE)
       .run();
+    if (!Number(updated.meta?.changes ?? 0)) throw expiredError("file");
     purgeContent(ctx, [filePrefix(handle, id)]);
   } else if (resolved) {
-    await env.DB.prepare(`UPDATE loose_files SET updated_at = ?, last_written_by = ?, expires_at = ? WHERE id = ?`)
-      .bind(ts, actor.email, resolved.expiresAt, id)
+    const updated = await env.DB.prepare(
+      `UPDATE loose_files SET updated_at = ?, last_written_by = ?, expires_at = ? WHERE id = ? AND ${notClaimed}`,
+    )
+      .bind(ts, actor.email, resolved.expiresAt, id, PURGE_CLAIM_LIKE)
       .run();
+    if (!Number(updated.meta?.changes ?? 0)) throw expiredError("file");
     purgeContent(ctx, [filePrefix(handle, id)]);
   } else if (wantsWrite) {
-    await env.DB.prepare(`UPDATE loose_files SET updated_at = ?, last_written_by = ? WHERE id = ?`)
-      .bind(ts, actor.email, id)
+    const updated = await env.DB.prepare(
+      `UPDATE loose_files SET updated_at = ?, last_written_by = ? WHERE id = ? AND ${notClaimed}`,
+    )
+      .bind(ts, actor.email, id, PURGE_CLAIM_LIKE)
       .run();
+    if (!Number(updated.meta?.changes ?? 0)) throw expiredError("file");
   }
   if (wantsWrite) {
-    await env.DB.prepare(`UPDATE loose_files SET write_policy = ? WHERE id = ?`).bind(nextWrite, id).run();
+    const updated = await env.DB.prepare(
+      `UPDATE loose_files SET write_policy = ? WHERE id = ? AND ${notClaimed}`,
+    )
+      .bind(nextWrite, id, PURGE_CLAIM_LIKE)
+      .run();
+    if (!Number(updated.meta?.changes ?? 0)) throw expiredError("file");
   }
   const origin = publicOrigin(env);
   const protectedNow = hash === undefined ? Boolean(existing.password_hash) : Boolean(hash);
