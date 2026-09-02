@@ -221,3 +221,65 @@ export async function createSite(
     },
   };
 }
+
+export async function duplicateSite(
+  env: Env,
+  actor: Actor,
+  fromSlugRaw: string,
+  newSlugRaw: string,
+  ctx?: ExecutionContext,
+  ttl?: unknown,
+  writePolicy?: unknown,
+  password?: string,
+): Promise<{ body: Record<string, unknown>; status: number }> {
+  const fromSlug = assertSlug(fromSlugRaw);
+  const source = await requireSite(env, actor, fromSlug, { ctx });
+  const files = await env.DB.prepare(
+    `SELECT path, size, content_type FROM site_files WHERE handle = ? AND slug = ? ORDER BY path`,
+  )
+    .bind(source.handle, source.slug)
+    .all<{ path: string; size: number; content_type: string }>();
+  const listed = files.results || [];
+  if (listed.length > MAX_IMPORT_FILES) {
+    throw new ApiError(
+      400,
+      "too_many_files",
+      `That site has ${listed.length} files. ${PRODUCT} copies at most ${MAX_IMPORT_FILES} files. Split the site, then retry.`,
+    );
+  }
+  const total = listed.reduce((n, f) => n + Number(f.size || 0), 0);
+  await assertStorageRoom(env.DB, total, 0, instancePolicy(env).platformBytes);
+
+  const created = await createSite(env, actor, newSlugRaw, false, password, ctx, ttl, writePolicy);
+  const destHandle = String(created.body.handle);
+  const destSlug = String(created.body.slug);
+  const ts = new Date().toISOString();
+  try {
+    for (const f of listed) {
+      await copyR2Object(env.BUCKET, siteKey(source.handle, source.slug, f.path), siteKey(destHandle, destSlug, f.path));
+      await env.DB.prepare(
+        `INSERT INTO site_files (handle, slug, path, size, content_type, updated_at, last_written_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+        .bind(destHandle, destSlug, f.path, f.size, f.content_type, ts, actor.email)
+        .run();
+    }
+    if (listed.length) {
+      await env.DB.prepare(`UPDATE sites SET updated_at = ?, last_written_by = ? WHERE handle = ? AND slug = ?`)
+        .bind(ts, actor.email, destHandle, destSlug)
+        .run();
+    }
+  } catch (err) {
+    await deleteSite(env, ctx, actor, destSlug).catch(() => undefined);
+    throw err;
+  }
+  return {
+    status: 201,
+    body: {
+      ...created.body,
+      duplicated: true,
+      duplicated_from: source.slug,
+      file_count: listed.length,
+    },
+  };
+}
