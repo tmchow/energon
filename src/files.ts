@@ -223,6 +223,131 @@ export async function duplicateLooseFile(
   );
 }
 
+function duplicateFromHeader(request: Request): string {
+  return (request.headers.get("X-Energon-Duplicate-From") || request.headers.get("x-energon-duplicate-from") || "").trim();
+}
+
+function filenameHeader(request: Request): string | null {
+  return request.headers.get("X-Filename") || request.headers.get("x-filename");
+}
+
+function formPassword(request: Request, form: FormData): string | undefined {
+  const formPw = form.get("password");
+  return readSetPasswordHeader(request) ?? (typeof formPw === "string" ? formPw : undefined);
+}
+
+async function postLooseJson(
+  env: Env,
+  ctx: ExecutionContext | undefined,
+  actor: Actor,
+  request: Request,
+  origin: string,
+): Promise<Response> {
+  const text = await request.text();
+  const filename = filenameHeader(request);
+  const fromHeader = duplicateFromHeader(request);
+  // X-Filename means the body is file bytes (including application/json).
+  // duplicate_from in that JSON is content, not a copy request, unless the header is set.
+  if (filename && !fromHeader) {
+    const bytes = new TextEncoder().encode(text);
+    const policy = instancePolicy(env);
+    if (bytes.byteLength > policy.fileBytes) throw tooLarge(bytes.byteLength, origin, policy.fileBytes);
+    return createLooseFile(
+      env,
+      ctx,
+      actor,
+      filename,
+      bytes,
+      "application/json",
+      readSetPasswordHeader(request),
+      ttlFromRequest(request),
+      writePolicyFromRequest(request),
+    );
+  }
+  let body: Record<string, unknown> | null = null;
+  try {
+    const parsed: unknown = text ? JSON.parse(text) : {};
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      body = parsed as Record<string, unknown>;
+    }
+  } catch {
+    body = null;
+  }
+  const fromBody = body && typeof body.duplicate_from === "string" ? body.duplicate_from.trim() : "";
+  const from = fromHeader || fromBody || "";
+  if (from) {
+    return duplicateLooseFile(
+      env,
+      ctx,
+      actor,
+      from,
+      (body && typeof body.filename === "string" ? body.filename : null) || filename || null,
+      body ? passwordField(body) : readSetPasswordHeader(request),
+      body ? body.ttl : ttlFromRequest(request),
+      body ? body.write_policy : writePolicyFromRequest(request),
+    );
+  }
+  throw new ApiError(
+    400,
+    "missing_file",
+    'Send duplicate_from to copy an existing file, or upload bytes (multipart field "file" / raw body plus X-Filename).',
+  );
+}
+
+async function postLooseMultipart(
+  env: Env,
+  ctx: ExecutionContext | undefined,
+  actor: Actor,
+  request: Request,
+  origin: string,
+): Promise<Response> {
+  const form = await request.formData();
+  const formDup = form.get("duplicate_from");
+  const from = (typeof formDup === "string" && formDup.trim()) || duplicateFromHeader(request) || "";
+  if (from) {
+    if (form.get("file") instanceof File) {
+      throw new ApiError(
+        400,
+        "bad_duplicate",
+        "Send duplicate_from or a file, not both. duplicate_from copies existing bytes.",
+      );
+    }
+    const formName = form.get("filename");
+    return duplicateLooseFile(
+      env,
+      ctx,
+      actor,
+      from,
+      typeof formName === "string" ? formName : null,
+      formPassword(request, form),
+      ttlFromRequest(request, form),
+      writePolicyFromRequest(request, form),
+    );
+  }
+  const file = form.get("file");
+  if (!(file instanceof File)) {
+    throw new ApiError(
+      400,
+      "missing_file",
+      'Send multipart form field "file", or a raw body with header X-Filename.',
+    );
+  }
+  const policy = instancePolicy(env);
+  if (file.size > policy.fileBytes) throw tooLarge(file.size, origin, policy.fileBytes);
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  return createLooseFile(
+    env,
+    ctx,
+    actor,
+    file.name,
+    bytes,
+    file.type || null,
+    formPassword(request, form),
+    ttlFromRequest(request, form),
+    writePolicyFromRequest(request, form),
+  );
+}
+
 export async function postLooseFromRequest(
   env: Env,
   ctx: ExecutionContext | undefined,
@@ -230,128 +355,27 @@ export async function postLooseFromRequest(
   request: Request,
 ): Promise<Response> {
   const origin = publicOrigin(env);
-  const headerDup =
-    request.headers.get("X-Energon-Duplicate-From") || request.headers.get("x-energon-duplicate-from");
   const ctype = request.headers.get("content-type") || "";
   if (ctype.includes("application/json")) {
-    const text = await request.text();
-    const filename = request.headers.get("X-Filename") || request.headers.get("x-filename");
-    let body: Record<string, unknown> | null = null;
-    try {
-      const parsed: unknown = text ? JSON.parse(text) : {};
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        body = parsed as Record<string, unknown>;
-      }
-    } catch {
-      body = null;
-    }
-    const fromHeader = headerDup && headerDup.trim();
-    const fromBody = body && typeof body.duplicate_from === "string" ? body.duplicate_from.trim() : "";
-    // X-Filename means the body is file bytes (including application/json).
-    // duplicate_from in that JSON is content, not a copy request, unless the header is set.
-    const from = fromHeader || (!filename && fromBody) || "";
-    if (from) {
-      return duplicateLooseFile(
-        env,
-        ctx,
-        actor,
-        from,
-        (body && typeof body.filename === "string" ? body.filename : null) || filename || null,
-        body ? passwordField(body) : readSetPasswordHeader(request),
-        body ? body.ttl : ttlFromRequest(request),
-        body ? body.write_policy : writePolicyFromRequest(request),
-      );
-    }
-    if (filename) {
-      const bytes = new TextEncoder().encode(text);
-      const policy = instancePolicy(env);
-      if (bytes.byteLength > policy.fileBytes) throw tooLarge(bytes.byteLength, origin, policy.fileBytes);
-      return createLooseFile(
-        env,
-        ctx,
-        actor,
-        filename,
-        bytes,
-        "application/json",
-        readSetPasswordHeader(request),
-        ttlFromRequest(request),
-        writePolicyFromRequest(request),
-      );
-    }
-    throw new ApiError(
-      400,
-      "missing_file",
-      'Send duplicate_from to copy an existing file, or upload bytes (multipart field "file" / raw body plus X-Filename).',
-    );
+    return postLooseJson(env, ctx, actor, request, origin);
   }
   if (ctype.includes("multipart/form-data")) {
-    const form = await request.formData();
-    const formDup = form.get("duplicate_from");
-    const from =
-      (typeof formDup === "string" && formDup.trim()) || (headerDup && headerDup.trim()) || "";
-    if (from) {
-      if (form.get("file") instanceof File) {
-        throw new ApiError(
-          400,
-          "bad_duplicate",
-          "Send duplicate_from or a file, not both. duplicate_from copies existing bytes.",
-        );
-      }
-      const formName = form.get("filename");
-      const formPw = form.get("password");
-      const password =
-        readSetPasswordHeader(request) ?? (typeof formPw === "string" ? formPw : undefined);
-      return duplicateLooseFile(
-        env,
-        ctx,
-        actor,
-        from,
-        typeof formName === "string" ? formName : null,
-        password,
-        ttlFromRequest(request, form),
-        writePolicyFromRequest(request, form),
-      );
-    }
-    const file = form.get("file");
-    if (!(file instanceof File)) {
-      throw new ApiError(
-        400,
-        "missing_file",
-        'Send multipart form field "file", or a raw body with header X-Filename.',
-      );
-    }
-    const policy = instancePolicy(env);
-    if (file.size > policy.fileBytes) throw tooLarge(file.size, origin, policy.fileBytes);
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const formPw = form.get("password");
-    const password =
-      readSetPasswordHeader(request) ?? (typeof formPw === "string" ? formPw : undefined);
-    return createLooseFile(
-      env,
-      ctx,
-      actor,
-      file.name,
-      bytes,
-      file.type || null,
-      password,
-      ttlFromRequest(request, form),
-      writePolicyFromRequest(request, form),
-    );
+    return postLooseMultipart(env, ctx, actor, request, origin);
   }
-  if (headerDup && headerDup.trim()) {
-    const filename = request.headers.get("X-Filename") || request.headers.get("x-filename");
+  const from = duplicateFromHeader(request);
+  if (from) {
     return duplicateLooseFile(
       env,
       ctx,
       actor,
-      headerDup.trim(),
-      filename,
+      from,
+      filenameHeader(request),
       readSetPasswordHeader(request),
       ttlFromRequest(request),
       writePolicyFromRequest(request),
     );
   }
-  const filename = request.headers.get("X-Filename") || request.headers.get("x-filename");
+  const filename = filenameHeader(request);
   if (!filename) {
     throw new ApiError(
       400,
@@ -657,12 +681,9 @@ export async function putLooseFromRequest(
     const policy = instancePolicy(env);
     if (file.size > policy.fileBytes) throw tooLarge(file.size, origin, policy.fileBytes);
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const formPw = form.get("password");
-    const password =
-      readSetPasswordHeader(request) ?? (typeof formPw === "string" ? formPw : undefined);
-    return putLooseFile(env, ctx, actor, id, bytes, file.name || null, file.type || null, password);
+    return putLooseFile(env, ctx, actor, id, bytes, file.name || null, file.type || null, formPassword(request, form));
   }
-  const filename = request.headers.get("X-Filename") || request.headers.get("x-filename");
+  const filename = filenameHeader(request);
   const bytes = await readBodyCapped(request, instancePolicy(env).fileBytes, origin);
   return putLooseFile(
     env,
