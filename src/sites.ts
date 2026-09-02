@@ -23,7 +23,7 @@ import {
 import { isMarkdownName, respondMarkdown } from "./markdown";
 import { passwordEcho, passwordHashFromInput, protectContent } from "./gate";
 import { ensureHandle, ensureUser } from "./handles";
-import { ApiError, assertStorageRoom, basename, contentDisposition, copyR2Object, deletePrefix, htmlPage, json, normalizeRelPath, publicOrigin, tooLarge, wantsDownload } from "./http";
+import { ApiError, assertStorageRoom, basename, contentDisposition, copyR2Object, deletePrefix, htmlPage, json, nanoid, normalizeRelPath, publicOrigin, tooLarge, wantsDownload } from "./http";
 import { contentTypeFor } from "./mime";
 import {
   assertCanMutate,
@@ -40,6 +40,154 @@ import { packZip, unpackZip } from "./zip";
 
 const SITE_SELECT =
   `handle, slug, created_at, updated_at, created_by, last_written_by, password_hash, expires_at, write_policy`;
+
+type R2Snapshot = {
+  key: string;
+  bytes: Uint8Array;
+  httpMetadata?: R2HTTPMetadata;
+  customMetadata?: Record<string, string>;
+};
+type R2State = { key: string; snapshot: R2Snapshot | null };
+
+async function snapshotR2Object(bucket: R2Bucket, key: string): Promise<R2Snapshot | null> {
+  const object = await bucket.get(key);
+  if (!object) return null;
+  return {
+    key,
+    bytes: await object.bytes(),
+    httpMetadata: object.httpMetadata,
+    customMetadata: object.customMetadata,
+  };
+}
+
+async function restoreR2Snapshots(bucket: R2Bucket, states: R2State[]): Promise<void> {
+  let failed = false;
+  for (const { key, snapshot } of states) {
+    try {
+      if (snapshot) {
+        await bucket.put(snapshot.key, snapshot.bytes, {
+          httpMetadata: snapshot.httpMetadata,
+          customMetadata: snapshot.customMetadata,
+        });
+      } else {
+        await bucket.delete(key);
+      }
+    } catch {
+      failed = true;
+    }
+  }
+  if (failed) {
+    throw new ApiError(500, "storage_rollback_failed", "The request failed and storage rollback also failed. Retry after storage recovers.");
+  }
+}
+
+async function restoreR2State(bucket: R2Bucket, key: string, snapshot: R2Snapshot | null): Promise<void> {
+  await restoreR2Snapshots(bucket, [{ key, snapshot }]);
+}
+
+function siteFileUpsert(
+  env: Env,
+  handle: string,
+  slug: string,
+  path: string,
+  size: number,
+  contentType: string,
+  updatedAt: string,
+  lastWrittenBy: string,
+): D1PreparedStatement {
+  return env.DB.prepare(
+    `INSERT INTO site_files (handle, slug, path, size, content_type, updated_at, last_written_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(handle, slug, path) DO UPDATE SET
+       size = excluded.size,
+       content_type = excluded.content_type,
+       updated_at = excluded.updated_at,
+       last_written_by = excluded.last_written_by`,
+  ).bind(handle, slug, path, size, contentType, updatedAt, lastWrittenBy);
+}
+
+async function deleteCreatedSiteMetadata(env: Env, handle: string, slug: string): Promise<void> {
+  await env.DB.batch([
+    env.DB.prepare(`DELETE FROM site_files WHERE handle = ? AND slug = ?`).bind(handle, slug),
+    env.DB.prepare(`DELETE FROM sites WHERE handle = ? AND slug = ?`).bind(handle, slug),
+  ]);
+}
+
+async function listR2Keys(bucket: R2Bucket, prefix: string): Promise<string[]> {
+  const keys: string[] = [];
+  let cursor: string | undefined;
+  do {
+    const listed = await bucket.list({ prefix, cursor, limit: 1000 });
+    keys.push(...listed.objects.map((object) => object.key));
+    cursor = listed.truncated ? listed.cursor : undefined;
+  } while (cursor);
+  return keys;
+}
+
+async function deleteR2Keys(bucket: R2Bucket, keys: string[]): Promise<void> {
+  for (let i = 0; i < keys.length; i += 1000) {
+    await bucket.delete(keys.slice(i, i + 1000));
+  }
+}
+
+async function restoreSiteFileRows(
+  env: Env,
+  handle: string,
+  slug: string,
+  paths: string[],
+  previousRows: Map<string, SiteFileRow>,
+  previousSite: SiteRow,
+): Promise<void> {
+  const pathBatchSize = Math.floor((100 - 1) / 2);
+  for (let i = 0; i < paths.length || i === 0; i += pathBatchSize) {
+    const statements: D1PreparedStatement[] = [];
+    for (const path of paths.slice(i, i + pathBatchSize)) {
+      statements.push(env.DB.prepare(`DELETE FROM site_files WHERE handle = ? AND slug = ? AND path = ?`).bind(handle, slug, path));
+      const previous = previousRows.get(path);
+      if (previous) {
+        statements.push(
+          env.DB.prepare(
+            `INSERT INTO site_files (handle, slug, path, size, content_type, updated_at, last_written_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          ).bind(
+            previous.handle,
+            previous.slug,
+            previous.path,
+            previous.size,
+            previous.content_type,
+            previous.updated_at,
+            previous.last_written_by,
+          ),
+        );
+      }
+    }
+    if (i + pathBatchSize >= paths.length) {
+      statements.push(
+        env.DB.prepare(`UPDATE sites SET updated_at = ?, last_written_by = ? WHERE handle = ? AND slug = ?`).bind(
+          previousSite.updated_at,
+          previousSite.last_written_by,
+          handle,
+          slug,
+        ),
+      );
+    }
+    await env.DB.batch(statements);
+  }
+}
+
+async function rollbackSiteStorage(
+  env: Env,
+  key: string,
+  snapshot: R2Snapshot | null,
+  originalError: unknown,
+): Promise<never> {
+  try {
+    await restoreR2State(env.BUCKET, key, snapshot);
+  } catch {
+    throw new ApiError(500, "storage_rollback_failed", "The request failed and storage rollback also failed. Retry after storage recovers.");
+  }
+  throw originalError;
+}
 
 export function assertSlug(slug: string): string {
   const s = slug.trim().toLowerCase();
@@ -254,9 +402,12 @@ export async function duplicateSite(
   const destHandle = String(created.body.handle);
   const destSlug = String(created.body.slug);
   const ts = new Date().toISOString();
+  const copiedKeys: string[] = [];
   try {
     for (const f of listed) {
-      await copyR2Object(env.BUCKET, siteKey(source.handle, source.slug, f.path), siteKey(destHandle, destSlug, f.path));
+      const destinationKey = siteKey(destHandle, destSlug, f.path);
+      await copyR2Object(env.BUCKET, siteKey(source.handle, source.slug, f.path), destinationKey);
+      copiedKeys.push(destinationKey);
       await env.DB.prepare(
         `INSERT INTO site_files (handle, slug, path, size, content_type, updated_at, last_written_by)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -270,7 +421,20 @@ export async function duplicateSite(
         .run();
     }
   } catch (err) {
-    await deleteSite(env, ctx, actor, destSlug).catch(() => undefined);
+    let cleanupError = false;
+    try {
+      await deleteR2Keys(env.BUCKET, copiedKeys);
+    } catch {
+      cleanupError = true;
+    }
+    try {
+      await deleteCreatedSiteMetadata(env, destHandle, destSlug);
+    } catch {
+      cleanupError = true;
+    }
+    if (cleanupError) {
+      throw new ApiError(500, "site_copy_rollback_failed", "The site copy failed and automatic cleanup also failed. Retry after storage recovers.");
+    }
     throw err;
   }
   return {
@@ -429,21 +593,21 @@ export async function putSiteFile(
   const contentType = contentTypeFor(path, bytes, hintType);
   const key = siteKey(site.handle, slug, path);
   const ts = new Date().toISOString();
+  const previous = await snapshotR2Object(env.BUCKET, key);
   await env.BUCKET.put(key, bytes, { httpMetadata: { contentType } });
-  await env.DB.prepare(
-    `INSERT INTO site_files (handle, slug, path, size, content_type, updated_at, last_written_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(handle, slug, path) DO UPDATE SET
-       size = excluded.size,
-       content_type = excluded.content_type,
-       updated_at = excluded.updated_at,
-       last_written_by = excluded.last_written_by`,
-  )
-    .bind(site.handle, slug, path, bytes.byteLength, contentType, ts, actor.email)
-    .run();
-  await env.DB.prepare(`UPDATE sites SET updated_at = ?, last_written_by = ? WHERE handle = ? AND slug = ?`)
-    .bind(ts, actor.email, site.handle, slug)
-    .run();
+  try {
+    await env.DB.batch([
+      siteFileUpsert(env, site.handle, slug, path, bytes.byteLength, contentType, ts, actor.email),
+      env.DB.prepare(`UPDATE sites SET updated_at = ?, last_written_by = ? WHERE handle = ? AND slug = ?`).bind(
+        ts,
+        actor.email,
+        site.handle,
+        slug,
+      ),
+    ]);
+  } catch (err) {
+    await rollbackSiteStorage(env, key, previous, err);
+  }
 
   const origin = publicOrigin(env);
   purgeContent(ctx, [sitePrefix(site.handle, slug)]);
@@ -490,9 +654,9 @@ export async function importSiteZip(
   const slug = assertSlug(slugRaw);
   const site = await requireSite(env, actor, slug, { ctx, mutate: true });
   const files = unpackZip(zipBytes, policy.fileBytes);
-  const existingRows = await env.DB.prepare(`SELECT path, size FROM site_files WHERE handle = ? AND slug = ?`)
+  const existingRows = await env.DB.prepare(`SELECT handle, slug, path, size, content_type, updated_at, last_written_by FROM site_files WHERE handle = ? AND slug = ?`)
     .bind(site.handle, slug)
-    .all<{ path: string; size: number }>();
+    .all<SiteFileRow>();
   const existingMap = new Map((existingRows.results || []).map((r) => [r.path, r.size]));
   let additional = 0;
   let replacing = 0;
@@ -504,25 +668,32 @@ export async function importSiteZip(
 
   const ts = new Date().toISOString();
   const written: string[] = [];
-  for (const f of files) {
-    const contentType = contentTypeFor(f.path, f.bytes, null);
-    await env.BUCKET.put(siteKey(site.handle, slug, f.path), f.bytes, { httpMetadata: { contentType } });
-    await env.DB.prepare(
-      `INSERT INTO site_files (handle, slug, path, size, content_type, updated_at, last_written_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(handle, slug, path) DO UPDATE SET
-         size = excluded.size,
-         content_type = excluded.content_type,
-         updated_at = excluded.updated_at,
-         last_written_by = excluded.last_written_by`,
-    )
-      .bind(site.handle, slug, f.path, f.bytes.byteLength, contentType, ts, actor.email)
+  const previousRows = new Map<string, SiteFileRow>();
+  const snapshots: R2State[] = [];
+  const affectedPaths = files.map((f) => f.path);
+  for (const row of existingRows.results || []) previousRows.set(row.path, row);
+  try {
+    for (const f of files) {
+      const key = siteKey(site.handle, slug, f.path);
+      const previous = await snapshotR2Object(env.BUCKET, key);
+      snapshots.push({ key, snapshot: previous });
+      const contentType = contentTypeFor(f.path, f.bytes, null);
+      await env.BUCKET.put(key, f.bytes, { httpMetadata: { contentType } });
+      await siteFileUpsert(env, site.handle, slug, f.path, f.bytes.byteLength, contentType, ts, actor.email).run();
+      written.push(f.path);
+    }
+    await env.DB.prepare(`UPDATE sites SET updated_at = ?, last_written_by = ? WHERE handle = ? AND slug = ?`)
+      .bind(ts, actor.email, site.handle, slug)
       .run();
-    written.push(f.path);
+  } catch (err) {
+    try {
+      await restoreR2Snapshots(env.BUCKET, snapshots);
+      await restoreSiteFileRows(env, site.handle, slug, affectedPaths, previousRows, site);
+    } catch {
+      throw new ApiError(500, "site_import_rollback_failed", "The site import failed and automatic rollback also failed. Retry after storage recovers.");
+    }
+    throw err;
   }
-  await env.DB.prepare(`UPDATE sites SET updated_at = ?, last_written_by = ? WHERE handle = ? AND slug = ?`)
-    .bind(ts, actor.email, site.handle, slug)
-    .run();
   purgeContent(ctx, [sitePrefix(site.handle, slug)]);
   return { slug, url: sitePublicUrl(env, site.handle, slug), written };
 }
@@ -600,10 +771,35 @@ export async function deleteSite(env: Env, ctx: ExecutionContext | undefined, ac
     }
     return;
   }
-  await deletePrefix(env.BUCKET, `sites/${site.handle}/${slug}/`);
-  await env.DB.prepare(`DELETE FROM site_files WHERE handle = ? AND slug = ?`).bind(site.handle, slug).run();
-  await env.DB.prepare(`DELETE FROM sites WHERE handle = ? AND slug = ?`).bind(site.handle, slug).run();
-  purgeContent(ctx, [sitePrefix(site.handle, slug)]);
+  const sitePrefixKey = `sites/${site.handle}/${slug}/`;
+  const listedKeys = await listR2Keys(env.BUCKET, sitePrefixKey);
+  const backupPrefix = `sites/.integrity-backup/${nanoid(16)}/`;
+  const backups: { sourceKey: string; backupKey: string }[] = [];
+  try {
+    for (const sourceKey of listedKeys) {
+      const backupKey = `${backupPrefix}${sourceKey.slice(sitePrefixKey.length)}`;
+      await copyR2Object(env.BUCKET, sourceKey, backupKey);
+      backups.push({ sourceKey, backupKey });
+    }
+    await deletePrefix(env.BUCKET, `sites/${site.handle}/${slug}/`);
+    await env.DB.batch([
+      env.DB.prepare(`DELETE FROM site_files WHERE handle = ? AND slug = ?`).bind(site.handle, slug),
+      env.DB.prepare(`DELETE FROM sites WHERE handle = ? AND slug = ?`).bind(site.handle, slug),
+    ]);
+  } catch (err) {
+    try {
+      await Promise.all(backups.map(({ sourceKey, backupKey }) => copyR2Object(env.BUCKET, backupKey, sourceKey)));
+      await deleteR2Keys(env.BUCKET, backups.map(({ backupKey }) => backupKey));
+    } catch {
+      throw new ApiError(500, "site_delete_rollback_failed", "The site deletion failed and automatic rollback also failed. Retry after storage recovers.");
+    }
+    throw err;
+  }
+  try {
+    await deleteR2Keys(env.BUCKET, backups.map(({ backupKey }) => backupKey));
+  } finally {
+    purgeContent(ctx, [sitePrefix(site.handle, slug)]);
+  }
 }
 
 export async function deleteSiteFile(
@@ -624,14 +820,23 @@ export async function deleteSiteFile(
   if (!existing) {
     throw new ApiError(404, "file_not_found", `No file at ${sitePublicPathHint(site.handle, slug, path)}.`);
   }
-  await env.BUCKET.delete(siteKey(site.handle, slug, path));
-  await env.DB.prepare(`DELETE FROM site_files WHERE handle = ? AND slug = ? AND path = ?`)
-    .bind(site.handle, slug, path)
-    .run();
+  const key = siteKey(site.handle, slug, path);
+  const previous = await snapshotR2Object(env.BUCKET, key);
+  await env.BUCKET.delete(key);
   const ts = new Date().toISOString();
-  await env.DB.prepare(`UPDATE sites SET updated_at = ?, last_written_by = ? WHERE handle = ? AND slug = ?`)
-    .bind(ts, actor.email, site.handle, slug)
-    .run();
+  try {
+    await env.DB.batch([
+      env.DB.prepare(`DELETE FROM site_files WHERE handle = ? AND slug = ? AND path = ?`).bind(site.handle, slug, path),
+      env.DB.prepare(`UPDATE sites SET updated_at = ?, last_written_by = ? WHERE handle = ? AND slug = ?`).bind(
+        ts,
+        actor.email,
+        site.handle,
+        slug,
+      ),
+    ]);
+  } catch (err) {
+    await rollbackSiteStorage(env, key, previous, err);
+  }
   purgeContent(ctx, [sitePrefix(site.handle, slug)]);
 }
 
