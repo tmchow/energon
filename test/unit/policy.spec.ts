@@ -217,6 +217,16 @@ describe("write policy helpers", () => {
     expect(() => assertCanSetWritePolicy(bob, "ada@esperlabs.app")).toThrow(/Only the creator can change who can write/);
     expect(() => assertCanSetWritePolicy(ada, "ada@esperlabs.app")).not.toThrow();
   });
+
+  it("owner_id beats a reused email when both identities are present", () => {
+    const ada = { email: "ada@esperlabs.app", userId: "u-ada", via: "token" as const };
+    const next = { email: "ada@esperlabs.app", userId: "u-next", via: "token" as const };
+    const row = { created_by: "ada@esperlabs.app", write_policy: "owner", owner_id: "u-ada" };
+    expect(canMutate(ada, row)).toBe(true);
+    expect(canMutate(next, row)).toBe(false);
+    expect(() => assertCanSetWritePolicy(next, "ada@esperlabs.app", "u-ada")).toThrow(/Only the creator can change who can write/);
+    expect(() => assertCanSetWritePolicy(ada, "ada@esperlabs.app", "u-ada")).not.toThrow();
+  });
 });
 
 describe("formatDuration", () => {

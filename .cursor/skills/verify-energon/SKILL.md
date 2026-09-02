@@ -59,7 +59,7 @@ Two surfaces, same data:
 1. **HTTP** — the agent path. `curl` against `$ORIGIN`. Mint with `bin/mint-token`; then `Authorization: Bearer $TOKEN` on `/v1`. Public content URLs need no token unless a share password is set (`X-Energon-Password`).
 2. **Browser** — the human path. Open `$ORIGIN/`. Stable handles: `#pick-files` (Choose files), `#pick-folder` (Choose folder), `#filepick` / `#folderpick` (hidden file inputs), `#stage-go` (Launch), `#stage-cancel` (Cancel), `#stage-slug` (`aria-label="Site slug"`), `#stage-filename` (`aria-label="Filename"`), `#stage-password`, `#q` (placeholder `Search slugs and filenames`), nav `aria-label="Pages"` with Hub / Tokens / Setup / About / Stats. Catalog row actions: `Copy URL`, `Set password` / `Change or remove password`, `Delete`, `More actions`, `Download zip` / `Download`.
 
-Prefer HTTP for publish/read proofs; it is the documented agent user path, not a test-only API. Use the browser when the feature is hub-only (Tokens mint/reveal/revoke, drop/stage, catalog buttons, password dialogs).
+Prefer HTTP for publish/read proofs; it is the documented agent user path, not a test-only API. Use the browser when the feature is hub-only (Tokens mint/revoke, drop/stage, catalog buttons, password dialogs).
 
 Do not invent a token. Do not default to `"overwrite": true`. Do not PUT to production origins.
 

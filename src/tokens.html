@@ -31,7 +31,7 @@
 
   <main class="wrap">
     <h1 class="display">Tokens</h1>
-    <p class="lede">Agents send this as <code>__TOKEN_ENV__</code>. The list shows the last four characters. Reveal returns the full secret.</p>
+    <p class="lede">Agents send this as <code>__TOKEN_ENV__</code>. The secret is shown once when you mint. The list shows the last four characters.</p>
     <div id="messages"></div>
     <section class="card">
       <div class="card-head">
@@ -172,14 +172,6 @@ function render(data) {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td>${esc(tok.label)}</td><td class="token-hint">${esc(tok.hint || "—")}</td><td>${esc(fmtTime(tok.created_at))}</td><td>${esc(fmtTime(tok.last_used_at) || "never")}</td><td class="actions"></td>`;
     const actions = [];
-    if (tok.recoverable) {
-      const show = document.createElement("button");
-      show.type = "button";
-      show.className = "btn-ghost btn-sm";
-      show.textContent = "Reveal";
-      show.addEventListener("click", () => reveal(tok.id, tok.label));
-      actions.push(show);
-    }
     const b = document.createElement("button");
     b.type = "button";
     b.className = "btn-danger btn-sm";
@@ -227,17 +219,6 @@ $("mint").addEventListener("submit", async (e) => {
     msg(esc(err.message), true);
   }
 });
-
-async function reveal(id, label) {
-  try {
-    const data = await api("/account/tokens/" + encodeURIComponent(id));
-    $("new-token").innerHTML = `<div class="flash" style="margin-top:1rem">
-      <p class="token"><code>export ${tokenEnv}=${esc(data.token)}</code></p></div>`;
-    $("new-token").scrollIntoView({ behavior: "smooth", block: "nearest" });
-  } catch (err) {
-    msg(esc(err.message), true);
-  }
-}
 
 async function revoke(id, label) {
   const ok = await openDialog({

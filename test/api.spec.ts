@@ -24,25 +24,21 @@ describe("Energon", () => {
     expect(text).not.toMatch(/ee_live_[A-Za-z0-9]+/);
   });
 
-  it("hub owner can reveal a minted token", async () => {
+  it("minted tokens are shown once and cannot be recovered", async () => {
     const email = "reveal@esperlabs.app";
     const token = await mint("keep-me", email);
     const listed = await json("/account/data", {
       headers: { "Cf-Access-Authenticated-User-Email": email },
     });
     const row = listed.body.tokens.find((t: { label: string }) => t.label === "keep-me");
-    expect(row.recoverable).toBe(true);
+    expect(row.recoverable).toBe(false);
     expect(row.hint).toBe(`ee_live_…${token.slice(-4)}`);
     expect(JSON.stringify(listed.body)).not.toContain(token);
     const shown = await json(`/account/tokens/${row.id}`, {
       headers: { "Cf-Access-Authenticated-User-Email": email },
     });
-    expect(shown.status).toBe(200);
-    expect(shown.body.token).toBe(token);
-    const other = await json(`/account/tokens/${row.id}`, {
-      headers: { "Cf-Access-Authenticated-User-Email": "not-owner@esperlabs.app" },
-    });
-    expect(other.status).toBe(404);
+    expect(shown.status).toBe(404);
+    expect(shown.body.token).toBeUndefined();
   });
 
   it("GET /v1/help is unauthenticated and describes the API", async () => {
@@ -448,6 +444,38 @@ describe("Energon", () => {
     expect(bobDelete.status).toBe(403);
   });
 
+  it("a new IdP subject with a reused email cannot write owner-only objects or keep old tokens", async () => {
+    const email = "reused@esperlabs.app";
+    const tokenA = await mint("keep-a", email, { "Cf-Access-Authenticated-User-Sub": "sub-a" });
+    const created = await json("/v1/sites", {
+      method: "POST",
+      headers: auth(tokenA, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "owned-draft", write_policy: "owner" }),
+    });
+    expect(created.status).toBe(201);
+    const tokenB = await mint("keep-b", email, { "Cf-Access-Authenticated-User-Sub": "sub-b" });
+    const whoA = await json("/v1/whoami", { headers: auth(tokenA) });
+    expect(whoA.status).toBe(401);
+    const stolen = await json("/v1/sites/owned-draft/files/b.txt", {
+      method: "PUT",
+      headers: auth(tokenB),
+      body: "nope",
+    });
+    expect(stolen.status).toBe(403);
+    expect(stolen.body.error).toBe("forbidden_write");
+    const listed = await json("/account/data", {
+      headers: {
+        "Cf-Access-Authenticated-User-Email": email,
+        "Cf-Access-Authenticated-User-Sub": "sub-b",
+      },
+    });
+    const labels = (listed.body.tokens || [])
+      .filter((t: { revoked: boolean }) => !t.revoked)
+      .map((t: { label: string }) => t.label);
+    expect(labels).toContain("keep-b");
+    expect(labels).not.toContain("keep-a");
+  });
+
   it("duplicate_from copies a site without password or write policy and the duplicator owns it", async () => {
     const ada = await mint("ada-dup", "ada-dup@esperlabs.app");
     const bob = await mint("bob-dup", "bob-dup@esperlabs.app");
@@ -781,6 +809,48 @@ describe("Energon", () => {
     expect(viaCookie.status).toBe(200);
     expect(await viaCookie.text()).toContain("secret page");
   }, 15_000);
+
+  it("share password guesses are rate limited per object and source", async () => {
+    const token = await mint("pw-limit", "limit@esperlabs.app");
+    await json("/v1/sites", {
+      method: "POST",
+      headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "gated-limit", password: "correct-horse" }),
+    });
+    await json("/v1/sites/gated-limit/files/index.html", {
+      method: "PUT",
+      headers: auth(token, { "content-type": "text/html" }),
+      body: "<h1>limited</h1>",
+    });
+    const ip = { "CF-Connecting-IP": "203.0.113.88", accept: "application/json", "X-Energon-Password": "wrong" };
+    for (let i = 0; i < 20; i++) {
+      const wrong = await json("/limit/s/gated-limit/", { headers: ip });
+      expect(wrong.status).toBe(401);
+    }
+    const blocked = await json("/limit/s/gated-limit/", { headers: ip });
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.error).toBe("rate_limited");
+    const lockedCorrect = await json("/limit/s/gated-limit/", {
+      headers: { "CF-Connecting-IP": "203.0.113.88", accept: "application/json", "X-Energon-Password": "correct-horse" },
+    });
+    expect(lockedCorrect.status).toBe(429);
+    const other = await json("/v1/sites", {
+      method: "POST",
+      headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "gated-limit-b", password: "correct-horse" }),
+    });
+    expect(other.status).toBe(201);
+    await json("/v1/sites/gated-limit-b/files/index.html", {
+      method: "PUT",
+      headers: auth(token, { "content-type": "text/html" }),
+      body: "<h1>other</h1>",
+    });
+    const otherIp = await req("/limit/s/gated-limit-b/", {
+      headers: { "CF-Connecting-IP": "203.0.113.90", "X-Energon-Password": "correct-horse" },
+    });
+    expect(otherIp.status).toBe(200);
+    expect(await otherIp.text()).toContain("other");
+  }, 20_000);
 
   it("optional share password on a loose file", async () => {
     const token = await mint("pw-file");

@@ -8,7 +8,7 @@ describe("memorable passwords", () => {
     expect(new Set(MEMORABLE_WORDS).size).toBe(MEMORABLE_WORDS.length);
   });
 
-  it("joins three words from the list", () => {
+  it("joins three words from the list when asked", () => {
     const pw = memorablePassword(3, (buf) => {
       buf[0] = 0;
       buf[1] = 1;
@@ -22,6 +22,15 @@ describe("memorable passwords", () => {
       buf[2] = 2;
       return buf;
     })).toEqual([MEMORABLE_WORDS[0], MEMORABLE_WORDS[1], MEMORABLE_WORDS[2]]);
+  });
+
+  it("defaults to five words and will not pick more than six", () => {
+    const fill = (buf: Uint32Array) => {
+      for (let i = 0; i < buf.length; i++) buf[i] = i;
+      return buf;
+    };
+    expect(memorablePassword(undefined, fill).split("-")).toHaveLength(5);
+    expect(pickMemorableWords(99, fill)).toHaveLength(6);
   });
 });
 

@@ -33,9 +33,11 @@ describe("mintToken", () => {
     } as Env;
     let storedHash = "";
     let lookedUpHash = "";
+    const user = { id: "user-id", email: "agent@esperlabs.app", handle: "agent", idp_sub: null };
     const row: TokenRow = {
       id: "token-id",
       user_email: "agent@esperlabs.app",
+      user_id: user.id,
       label: "custom",
       token_hash: "",
       created_at: "2026-08-27T00:00:00.000Z",
@@ -43,15 +45,18 @@ describe("mintToken", () => {
       revoked_at: null,
     };
     const prepare = vi.fn((sql: string) => {
-      if (sql.includes("INSERT")) {
+      if (sql.includes("INSERT INTO tokens")) {
         return {
           bind: (...args: unknown[]) => ({
             run: async () => {
-              storedHash = String(args[3]);
+              storedHash = String(args[4]);
               row.token_hash = storedHash;
             },
           }),
         };
+      }
+      if (sql.includes("FROM users")) {
+        return { bind: () => ({ first: async () => user }) };
       }
       if (sql.includes("SELECT")) {
         return {
@@ -129,11 +134,11 @@ describe("requireToken", () => {
 
   it("accepts a valid token when refreshing last_used_at fails", async () => {
     const updateRun = vi.fn().mockRejectedValue(new Error("D1 is read-only"));
-    const prepare = vi.fn((sql: string) =>
-      sql.includes("SELECT")
-        ? { bind: () => ({ first: async () => row }) }
-        : { bind: () => ({ run: updateRun }) },
-    );
+    const prepare = vi.fn((sql: string) => {
+      if (sql.includes("FROM users")) return { bind: () => ({ first: async () => null }) };
+      if (sql.includes("SELECT")) return { bind: () => ({ first: async () => row }) };
+      return { bind: () => ({ run: updateRun }) };
+    });
     const env = {
       DB: { prepare },
       PUBLIC_ORIGIN: "https://energon.example.com",
@@ -141,6 +146,8 @@ describe("requireToken", () => {
 
     await expect(requireToken(request, env)).resolves.toEqual({
       email: row.user_email,
+      userId: undefined,
+      idpSub: undefined,
       via: "token",
       tokenId: row.id,
       tokenLabel: row.label,
@@ -183,7 +190,35 @@ describe("actorFromAccess", () => {
 
     await expect(
       actorFromAccess(new Request("https://energon.example.com/account"), env, { access }),
-    ).resolves.toEqual({ email: "ada@esperlabs.app", via: "access" });
+    ).resolves.toEqual({ email: "ada@esperlabs.app", idpSub: "local:ada@esperlabs.app", via: "access" });
+  });
+
+  it("uses the Access subject when the JWT or header carries one", async () => {
+    const request = new Request("http://127.0.0.1/account", {
+      headers: {
+        "Cf-Access-Authenticated-User-Email": "ada@esperlabs.app",
+        "Cf-Access-Authenticated-User-Sub": "idp-ada",
+      },
+    });
+    await expect(actorFromAccess(request, env)).resolves.toEqual({
+      email: "ada@esperlabs.app",
+      idpSub: "idp-ada",
+      via: "access",
+    });
+
+    const jwt = `x.${btoa(JSON.stringify({ sub: "jwt-ada" }))}.x`;
+    const fromJwt = new Request("http://127.0.0.1/account", {
+      headers: {
+        "Cf-Access-Authenticated-User-Email": "ada@esperlabs.app",
+        "Cf-Access-Jwt-Assertion": jwt,
+        "Cf-Access-Authenticated-User-Sub": "header-ada",
+      },
+    });
+    await expect(actorFromAccess(fromJwt, env)).resolves.toEqual({
+      email: "ada@esperlabs.app",
+      idpSub: "jwt-ada",
+      via: "access",
+    });
   });
 });
 

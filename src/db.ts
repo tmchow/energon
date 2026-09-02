@@ -3,7 +3,8 @@ const TABLE_STATEMENTS = [
     id TEXT PRIMARY KEY,
     email TEXT NOT NULL UNIQUE,
     handle TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    idp_sub TEXT UNIQUE
   )`,
   `CREATE TABLE IF NOT EXISTS handle_reservations (
     handle TEXT PRIMARY KEY,
@@ -51,12 +52,19 @@ const TABLE_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS tokens (
     id TEXT PRIMARY KEY,
     user_email TEXT NOT NULL,
+    user_id TEXT,
     label TEXT NOT NULL,
     token_hash TEXT NOT NULL UNIQUE,
     token_secret TEXT,
+    token_hint TEXT,
     created_at TEXT NOT NULL,
     last_used_at TEXT,
     revoked_at TEXT
+  )`,
+  `CREATE TABLE IF NOT EXISTS gate_attempts (
+    scope TEXT PRIMARY KEY,
+    fails INTEGER NOT NULL,
+    window_start TEXT NOT NULL
   )`,
 ];
 
@@ -66,7 +74,9 @@ const INDEX_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_sites_updated ON sites(updated_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_tokens_hash ON tokens(token_hash)`,
   `CREATE INDEX IF NOT EXISTS idx_tokens_user ON tokens(user_email)`,
+  `CREATE INDEX IF NOT EXISTS idx_tokens_user_id ON tokens(user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_idp_sub ON users(idp_sub)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_handle_unique ON users(handle)`,
   `CREATE INDEX IF NOT EXISTS idx_handle_reservations_user ON handle_reservations(user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_sites_owner ON sites(owner_id)`,
@@ -98,7 +108,12 @@ export async function ensureSchema(db: D1Database): Promise<void> {
   if (existing) {
     await ensureColumns(db, "loose_files", ["updated_at", "last_written_by", "password_hash", "handle", "owner_id", "expires_at", "write_policy"]);
     await ensureColumns(db, "sites", ["password_hash", "handle", "owner_id", "expires_at", "write_policy"]);
-    await ensureColumns(db, "tokens", ["token_secret"]);
+    await ensureColumns(db, "tokens", ["token_secret", "token_hint", "user_id"]);
+    await ensureColumns(db, "users", ["idp_sub"]);
+    await db.prepare(`UPDATE tokens SET token_secret = NULL WHERE token_secret IS NOT NULL`).run();
+    await db.prepare(
+      `UPDATE tokens SET user_id = (SELECT id FROM users WHERE users.email = tokens.user_email) WHERE user_id IS NULL`,
+    ).run();
   }
   for (const sql of INDEX_STATEMENTS) {
     await db.prepare(sql).run();

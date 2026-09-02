@@ -65,7 +65,9 @@ describe("schema upgrades", () => {
     expect([...db.tables.get("loose_files") || []]).toEqual(
       expect.arrayContaining(["updated_at", "last_written_by", "password_hash", "handle", "owner_id", "expires_at", "write_policy"]),
     );
-    expect([...db.tables.get("tokens") || []]).toEqual(expect.arrayContaining(["token_secret"]));
+    expect([...db.tables.get("tokens") || []]).toEqual(expect.arrayContaining(["token_secret", "token_hint", "user_id"]));
+    expect([...db.tables.get("users") || []]).toEqual(expect.arrayContaining(["idp_sub"]));
+    expect([...db.tables.get("gate_attempts") || []]).toEqual(expect.arrayContaining(["scope", "fails", "window_start"]));
     expect([...db.indexes]).toEqual(
       expect.arrayContaining([
         "idx_site_files_site",
@@ -75,6 +77,8 @@ describe("schema upgrades", () => {
         "idx_loose_updated_id",
         "idx_sites_expires_at",
         "idx_loose_expires_at",
+        "idx_tokens_user_id",
+        "idx_users_idp_sub",
       ]),
     );
   });

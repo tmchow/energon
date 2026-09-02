@@ -212,7 +212,7 @@ copilot plugin install energon@energon
 ### 2. Mint a token
 
 1. Human opens `{origin}/tokens` while signed in through Access.
-2. Mint a key. The secret is shown once in the UI and can be revealed again by the owner on the hub.
+2. Mint a key. The secret is shown once. Store it. It cannot be revealed later.
 3. Export it. Do **not** invent a token. Do **not** commit it.
 
 ```

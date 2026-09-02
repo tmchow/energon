@@ -18,6 +18,7 @@ export type User = {
   id: string;
   email: string;
   handle: string;
+  idp_sub?: string | null;
 };
 
 export function handleFromEmail(email: string): string {
@@ -29,9 +30,55 @@ export function handleFromEmail(email: string): string {
 }
 
 export async function getUser(env: Env, email: string): Promise<User | null> {
-  return env.DB.prepare(`SELECT id, email, handle FROM users WHERE email = ?`)
+  return env.DB.prepare(`SELECT id, email, handle, idp_sub FROM users WHERE email = ?`)
     .bind(email)
     .first<User>();
+}
+
+export async function getUserBySub(env: Env, idpSub: string): Promise<User | null> {
+  return env.DB.prepare(`SELECT id, email, handle, idp_sub FROM users WHERE idp_sub = ?`)
+    .bind(idpSub)
+    .first<User>();
+}
+
+export async function getUserById(env: Env, id: string): Promise<User | null> {
+  return env.DB.prepare(`SELECT id, email, handle, idp_sub FROM users WHERE id = ?`)
+    .bind(id)
+    .first<User>();
+}
+
+function revokedEmail(id: string): string {
+  return `revoked-${id}@invalid.invalid`;
+}
+
+async function insertUser(env: Env, email: string, idpSub: string | null): Promise<User> {
+  const base = handleFromEmail(email);
+  for (let i = 0; i < 20; i++) {
+    const candidate = i === 0 ? base : `${base}-${i + 1}`;
+    const handle = SLUG_RE.test(candidate) && !RESERVED_HANDLES.has(candidate) ? candidate : `u-${nanoid(6).toLowerCase()}`;
+    if (await handleOccupied(env, handle)) continue;
+    const id = nanoid(16);
+    const ts = new Date().toISOString();
+    try {
+      await env.DB.batch([
+        env.DB.prepare(`INSERT INTO users (id, email, handle, created_at, idp_sub) VALUES (?, ?, ?, ?, ?)`).bind(
+          id,
+          email,
+          handle,
+          ts,
+          idpSub,
+        ),
+        env.DB.prepare(`INSERT INTO handle_reservations (handle, user_id, created_at) VALUES (?, ?, ?)`).bind(handle, id, ts),
+      ]);
+      return { id, email, handle, idp_sub: idpSub };
+    } catch {
+      const raced = idpSub ? await getUserBySub(env, idpSub) : null;
+      if (raced) return raced;
+      const byEmail = await getUser(env, email);
+      if (byEmail && (!idpSub || !byEmail.idp_sub || byEmail.idp_sub === idpSub)) return byEmail;
+    }
+  }
+  throw new ApiError(500, "handle_failed", "Could not claim a URL handle.");
 }
 
 export async function handleOccupied(env: Env, handle: string, exceptUserId?: string): Promise<boolean> {
@@ -53,33 +100,51 @@ export async function releaseHandleIfUnused(env: Env, handle: string): Promise<b
   return true;
 }
 
-export async function ensureUser(env: Env, email: string): Promise<User> {
-  const existing = await getUser(env, email);
-  if (existing) return existing;
-  const base = handleFromEmail(email);
-  for (let i = 0; i < 20; i++) {
-    const candidate = i === 0 ? base : `${base}-${i + 1}`;
-    const handle = SLUG_RE.test(candidate) && !RESERVED_HANDLES.has(candidate) ? candidate : `u-${nanoid(6).toLowerCase()}`;
-    if (await handleOccupied(env, handle)) continue;
-    const id = nanoid(16);
-    const ts = new Date().toISOString();
-    try {
-      await env.DB.batch([
-        env.DB.prepare(`INSERT INTO users (id, email, handle, created_at) VALUES (?, ?, ?, ?)`).bind(id, email, handle, ts),
-        env.DB.prepare(`INSERT INTO handle_reservations (handle, user_id, created_at) VALUES (?, ?, ?)`).bind(handle, id, ts),
-      ]);
-      return { id, email, handle };
-    } catch {
-      const raced = await getUser(env, email);
-      if (raced) return raced;
-    }
-  }
-  throw new ApiError(500, "handle_failed", "Could not claim a URL handle.");
+async function revokeUserTokens(env: Env, userId: string, email: string): Promise<void> {
+  const now = new Date().toISOString();
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE tokens SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL`).bind(now, userId),
+    env.DB.prepare(`UPDATE tokens SET revoked_at = ? WHERE user_id IS NULL AND user_email = ? AND revoked_at IS NULL`).bind(
+      now,
+      email,
+    ),
+  ]);
 }
 
-/** Current handle for new publishes. Not the snapshot on existing objects. */
-export async function ensureHandle(env: Env, email: string): Promise<string> {
-  return (await ensureUser(env, email)).handle;
+export async function ensureUser(env: Env, email: string, idpSub?: string | null): Promise<User> {
+  const sub = (idpSub || "").trim() || null;
+  if (sub) {
+    const bySub = await getUserBySub(env, sub);
+    if (bySub) {
+      if (bySub.email !== email) {
+        const occupant = await getUser(env, email);
+        if (occupant && occupant.id !== bySub.id) {
+          await revokeUserTokens(env, occupant.id, occupant.email);
+          await env.DB.prepare(`UPDATE users SET email = ? WHERE id = ?`).bind(revokedEmail(occupant.id), occupant.id).run();
+        }
+        await env.DB.prepare(`UPDATE users SET email = ? WHERE id = ?`).bind(email, bySub.id).run();
+      }
+      return { ...bySub, email };
+    }
+  }
+  const byEmail = await getUser(env, email);
+  if (byEmail) {
+    if (sub && !byEmail.idp_sub) {
+      await env.DB.prepare(`UPDATE users SET idp_sub = ? WHERE id = ? AND idp_sub IS NULL`).bind(sub, byEmail.id).run();
+      return { ...byEmail, idp_sub: sub };
+    }
+    if (sub && byEmail.idp_sub && byEmail.idp_sub !== sub) {
+      await revokeUserTokens(env, byEmail.id, byEmail.email);
+      await env.DB.prepare(`UPDATE users SET email = ? WHERE id = ?`).bind(revokedEmail(byEmail.id), byEmail.id).run();
+      return insertUser(env, email, sub);
+    }
+    return byEmail;
+  }
+  return insertUser(env, email, sub);
+}
+
+export async function ensureHandle(env: Env, email: string, idpSub?: string | null): Promise<string> {
+  return (await ensureUser(env, email, idpSub)).handle;
 }
 
 export function assertHandle(raw: string): string | null {

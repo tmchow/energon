@@ -39,7 +39,7 @@ import { sitePublicUrl } from "./urls";
 import { packZip, unpackZip } from "./zip";
 
 const SITE_SELECT =
-  `handle, slug, created_at, updated_at, created_by, last_written_by, password_hash, expires_at, write_policy`;
+  `handle, slug, owner_id, created_at, updated_at, created_by, last_written_by, password_hash, expires_at, write_policy`;
 
 type R2Snapshot = {
   key: string;
@@ -239,7 +239,7 @@ export async function getSite(env: Env, handle: string, slug: string): Promise<S
 }
 
 async function findSiteForActor(env: Env, actor: Actor, slug: string): Promise<SiteRow | null> {
-  const handle = await ensureHandle(env, actor.email);
+  const handle = await ensureHandle(env, actor.email, actor.idpSub);
   const mine = await getSite(env, handle, slug);
   if (mine) return mine;
   const rows = await env.DB.prepare(`SELECT ${SITE_SELECT} FROM sites WHERE slug = ?`)
@@ -268,7 +268,7 @@ export async function createSite(
   writePolicy?: unknown,
 ): Promise<{ body: Record<string, unknown>; status: number }> {
   const slug = assertSlug(slugRaw);
-  const user = await ensureUser(env, actor.email);
+  const user = await ensureUser(env, actor.email, actor.idpSub);
   const handle = user.handle;
   let existing = await getSite(env, handle, slug);
   if (existing && (isExpired(existing.expires_at) || isPurgeClaimed(existing.last_written_by))) {
@@ -465,7 +465,7 @@ export async function patchSite(
   });
   let nextWrite = resolveWritePolicy(site.write_policy);
   if (wantsWrite) {
-    assertCanSetWritePolicy(actor, site.created_by);
+    assertCanSetWritePolicy(actor, site.created_by, site.owner_id);
     const parsed = requestedWritePolicy(patch.write_policy);
     if (parsed === "invalid" || parsed === null) {
       throw new ApiError(400, "bad_write_policy", "write_policy must be owner or instance.");
@@ -974,7 +974,7 @@ export async function serveSite(
   }
 
   const cookiePath = `/${handle}/s/${slug}/`;
-  const gated = await protectContent(request, site.password_hash, cookiePath, slug);
+  const gated = await protectContent(request, site.password_hash, cookiePath, slug, env);
   if (gated) return gated;
   if (request.method === "POST") {
     return json({ error: "method_not_allowed", message: "Method not allowed." }, 405);

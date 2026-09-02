@@ -134,7 +134,7 @@ describe("TTL purge claims", () => {
     let purgePromise: Promise<boolean> | undefined;
     db.prepare = ((sql: string) => {
       const statement = originalPrepare(sql);
-      if (snapshotPaused || !sql.includes("SELECT id, handle, filename, size, expires_at, created_by, last_written_by, updated_at, write_policy FROM loose_files WHERE id = ?")) {
+      if (snapshotPaused || !sql.includes("SELECT id, handle, filename, size, expires_at, created_by, last_written_by, updated_at, write_policy, owner_id FROM loose_files WHERE id = ?")) {
         return statement;
       }
       snapshotPaused = true;
