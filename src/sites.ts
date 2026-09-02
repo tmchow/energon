@@ -14,6 +14,8 @@ import {
   expiredError,
   expiredHtml,
   isExpired,
+  isPurgeClaimed,
+  PURGE_CLAIM_LIKE,
   purgeExpiredSite,
   remainingCacheSeconds,
   schedulePurgeExpiredSite,
@@ -121,9 +123,12 @@ export async function createSite(
   const user = await ensureUser(env, actor.email);
   const handle = user.handle;
   let existing = await getSite(env, handle, slug);
-  if (existing && isExpired(existing.expires_at)) {
+  if (existing && (isExpired(existing.expires_at) || isPurgeClaimed(existing.last_written_by))) {
     const purged = await purgeExpiredSite(env, ctx, handle, slug);
     existing = purged ? null : await getSite(env, handle, slug);
+    if (existing && isPurgeClaimed(existing.last_written_by)) {
+      throw expiredError("site");
+    }
   }
   const url = sitePublicUrl(env, handle, slug);
   const hash = await passwordHashFromInput(password);
@@ -306,36 +311,46 @@ export async function patchSite(
   const hash = await passwordHashFromInput(patch.password);
   const ts = new Date().toISOString();
   const resolved = patch.setTtl ? resolveExpiresAt(instancePolicy(env), patch.ttl) : null;
+  const notClaimed = `last_written_by NOT LIKE ?`;
   if (hash !== undefined && resolved) {
-    await env.DB.prepare(
-      `UPDATE sites SET updated_at = ?, last_written_by = ?, password_hash = ?, expires_at = ? WHERE handle = ? AND slug = ?`,
+    const updated = await env.DB.prepare(
+      `UPDATE sites SET updated_at = ?, last_written_by = ?, password_hash = ?, expires_at = ? WHERE handle = ? AND slug = ? AND ${notClaimed}`,
     )
-      .bind(ts, actor.email, hash, resolved.expiresAt, site.handle, slug)
+      .bind(ts, actor.email, hash, resolved.expiresAt, site.handle, slug, PURGE_CLAIM_LIKE)
       .run();
+    if (!Number(updated.meta?.changes ?? 0)) throw expiredError("site");
     purgeContent(ctx, [sitePrefix(site.handle, slug)]);
   } else if (hash !== undefined) {
-    await env.DB.prepare(
-      `UPDATE sites SET updated_at = ?, last_written_by = ?, password_hash = ? WHERE handle = ? AND slug = ?`,
+    const updated = await env.DB.prepare(
+      `UPDATE sites SET updated_at = ?, last_written_by = ?, password_hash = ? WHERE handle = ? AND slug = ? AND ${notClaimed}`,
     )
-      .bind(ts, actor.email, hash, site.handle, slug)
+      .bind(ts, actor.email, hash, site.handle, slug, PURGE_CLAIM_LIKE)
       .run();
+    if (!Number(updated.meta?.changes ?? 0)) throw expiredError("site");
     purgeContent(ctx, [sitePrefix(site.handle, slug)]);
   } else if (resolved) {
-    await env.DB.prepare(
-      `UPDATE sites SET updated_at = ?, last_written_by = ?, expires_at = ? WHERE handle = ? AND slug = ?`,
+    const updated = await env.DB.prepare(
+      `UPDATE sites SET updated_at = ?, last_written_by = ?, expires_at = ? WHERE handle = ? AND slug = ? AND ${notClaimed}`,
     )
-      .bind(ts, actor.email, resolved.expiresAt, site.handle, slug)
+      .bind(ts, actor.email, resolved.expiresAt, site.handle, slug, PURGE_CLAIM_LIKE)
       .run();
+    if (!Number(updated.meta?.changes ?? 0)) throw expiredError("site");
     purgeContent(ctx, [sitePrefix(site.handle, slug)]);
   } else if (wantsWrite) {
-    await env.DB.prepare(`UPDATE sites SET updated_at = ?, last_written_by = ? WHERE handle = ? AND slug = ?`)
-      .bind(ts, actor.email, site.handle, slug)
+    const updated = await env.DB.prepare(
+      `UPDATE sites SET updated_at = ?, last_written_by = ? WHERE handle = ? AND slug = ? AND ${notClaimed}`,
+    )
+      .bind(ts, actor.email, site.handle, slug, PURGE_CLAIM_LIKE)
       .run();
+    if (!Number(updated.meta?.changes ?? 0)) throw expiredError("site");
   }
   if (wantsWrite) {
-    await env.DB.prepare(`UPDATE sites SET write_policy = ? WHERE handle = ? AND slug = ?`)
-      .bind(nextWrite, site.handle, slug)
+    const updated = await env.DB.prepare(
+      `UPDATE sites SET write_policy = ? WHERE handle = ? AND slug = ? AND ${notClaimed}`,
+    )
+      .bind(nextWrite, site.handle, slug, PURGE_CLAIM_LIKE)
       .run();
+    if (!Number(updated.meta?.changes ?? 0)) throw expiredError("site");
   }
   const protectedNow = hash === undefined ? Boolean(site.password_hash) : Boolean(hash);
   return json({
@@ -365,6 +380,18 @@ export async function requireSite(
       `Site '${slug}' does not exist. Create it first with POST /v1/sites {"slug":"${slug}"}, then PUT files. See ${origin}/v1/help.`,
       { hint: `POST ${origin}/v1/sites with {"slug":"${slug}"}` },
     );
+  }
+  if (isPurgeClaimed(site.last_written_by)) {
+    try {
+      await purgeExpiredSite(env, opts?.ctx, site.handle, site.slug);
+    } catch (err) {
+      console.error("purgeExpiredSite failed", err);
+    }
+    if (!opts?.allowExpired) throw expiredError("site");
+    const still = await findSiteForActor(env, actor, slug);
+    if (!still) throw expiredError("site");
+    if (opts.mutate) assertCanMutate(actor, still);
+    return still;
   }
   if (isExpired(site.expires_at) && !opts?.allowExpired) {
     try {
@@ -558,7 +585,21 @@ export async function exportSiteZip(
 
 export async function deleteSite(env: Env, ctx: ExecutionContext | undefined, actor: Actor, slugRaw: string): Promise<void> {
   const slug = assertSlug(slugRaw);
-  const site = await requireSite(env, actor, slug, { allowExpired: true, mutate: true });
+  let site: SiteRow;
+  try {
+    site = await requireSite(env, actor, slug, { allowExpired: true, mutate: true, ctx });
+  } catch (err) {
+    if (err instanceof ApiError && (err.status === 404 || err.status === 410)) return;
+    throw err;
+  }
+  if (isPurgeClaimed(site.last_written_by)) {
+    try {
+      await purgeExpiredSite(env, ctx, site.handle, site.slug);
+    } catch (err) {
+      console.error("purgeExpiredSite failed", err);
+    }
+    return;
+  }
   await deletePrefix(env.BUCKET, `sites/${site.handle}/${slug}/`);
   await env.DB.prepare(`DELETE FROM site_files WHERE handle = ? AND slug = ?`).bind(site.handle, slug).run();
   await env.DB.prepare(`DELETE FROM sites WHERE handle = ? AND slug = ?`).bind(site.handle, slug).run();
