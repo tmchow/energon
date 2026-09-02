@@ -51,3 +51,15 @@ Do not run the full suite after every edit. GitHub CI runs `typecheck`, `test:un
 `test:unit` is Node, no Miniflare. `test:worker` boots the Worker once and hits it over `SELF.fetch`. Prefer the matching file while iterating; run `npm test` before you commit.
 
 Page tests check that the HTML still has the right contracts (nav, copy, element IDs the JS calls). They are not pixel tests. If you add `$("some-id")` or `getElementById("some-id")`, put that id on the page or `pages.spec.ts` fails.
+
+## Verify like a user
+
+`.cursor/skills/verify-energon/` is how an agent drives a **local** hub and `/v1` the way a user does (isolated `wrangler dev`, not the human’s port 8787). Use it to prove a publish, token, password, catalog, or public-URL change. Follow that skill’s Launch / Doctor / Drive / Cleanup. Do not invent a token.
+
+Those tests above do not keep the feature map honest. The map lives in `.cursor/skills/verify-energon/features/` and rots when a user-facing handle moves.
+
+**Same PR:** if you change a path, header, hub control, or proof string that the map or `verify-energon` Drive section names (element ids, ARIA labels, `/v1` routes, `X-Energon-Password`, token prefix/env, public `/{handle}/s|f/…` URLs), update those files in this change. Do not leave stale selectors for a later audit.
+
+**`/maintain-verification-skill`:** run it when user-facing behavior moved and you are not sure the map still covers it (new hub flow, new `/v1` route, gate/token/catalog change), or when a verify drive failed because the skill was wrong. That pass only edits `.cursor/skills/verify-energon/`. If the app is wrong, report a product bug — do not “fix” it by changing the map.
+
+Skip maintain for internal refactors, tests-only, migrations with no user path change, or copy that `pages.spec.ts` already covers and the map never names. Do not run it after every edit.
