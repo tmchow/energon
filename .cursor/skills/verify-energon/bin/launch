@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Start an isolated local Energon for verification.
 # Usage (from repo root): .cursor/skills/verify-energon/bin/launch
-# Env: ENERGON_VERIFY_RUN, ENERGON_VERIFY_PORT (default 18787)
+# Env: ENERGON_VERIFY_RUN, ENERGON_VERIFY_PORT (default 18787),
+#      ENERGON_VERIFY_VARS (optional, space-separated KEY:VALUE pairs passed as extra --var,
+#      e.g. "ALLOW_UNLIMITED_TOKENS:false" to drive an instance-policy branch)
 
 set -euo pipefail
 _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -49,6 +51,9 @@ wrangler_args=(
   --var "CONTENT_ORIGIN:${ORIGIN}"
   --show-interactive-dev-session false
 )
+for extra in ${ENERGON_VERIFY_VARS:-}; do
+  wrangler_args+=(--var "$extra")
+done
 
 # doctor and cleanup identify this run by process group: every listener on
 # $PORT must have pgid == $PID. setsid gives that on Linux; macOS has no setsid,
@@ -75,6 +80,7 @@ fi
   printf 'EMAIL=%s\n' "$EMAIL"
   printf 'EVIDENCE=%s\n' "$EVIDENCE_ROOT/$RUN"
   printf 'REPO_ROOT=%s\n' "$REPO_ROOT"
+  printf 'VARS=%s\n' "${ENERGON_VERIFY_VARS:-}"
 } >"$DIR/state.env"
 
 cleanup_failed_launch() {

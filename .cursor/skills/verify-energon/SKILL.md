@@ -36,6 +36,8 @@ Ready when launch prints `verify-energon launch ok` and `GET $ORIGIN/health` is 
 
 Two instances can run side by side: different `ENERGON_VERIFY_RUN` and `ENERGON_VERIFY_PORT` values, each with its own persist dir. If port 18787 is taken, set another free port — do not reuse 8787 unless doctor proves it is this run.
 
+To drive an instance-policy branch, set `ENERGON_VERIFY_VARS` to space-separated `KEY:VALUE` pairs before launch; each becomes an extra `--var`. Example: `ENERGON_VERIFY_VARS="ALLOW_UNLIMITED_TOKENS:false"` for the strict-tokens recipe. Launch records the pairs as `VARS=` in `state.env`.
+
 If launch dies with an origin mismatch, a project `.dev.vars` overrode `--var`. Align `PUBLIC_ORIGIN` and `CONTENT_ORIGIN` with the verification port, or drop those keys from `.dev.vars` for the run.
 
 Teardown is `bin/cleanup` (kills the recorded pid / process group and the listener on that port only, deletes persist, leaves evidence).

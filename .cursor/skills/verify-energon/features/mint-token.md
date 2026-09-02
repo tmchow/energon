@@ -9,6 +9,7 @@ Mint a token lets a signed-in human create an `ee_live_` secret for agents with 
 - `token-whoami` accepts the secret and returns the owner email, label, and `expires_at` (`null` = never).
 - `token-list` shows the last four characters, not the full secret, plus `expires_at` and `expired` in `/account/data`; the Tokens page shows an `Expires` column.
 - `token-expired` rejects a token past its lifetime with `401 token_expired`; the row is greyed on `/tokens` with only `Revoke`.
+- `token-never-disabled` removes `Never` from the menu and rejects `ttl: never` when the instance sets `ALLOW_UNLIMITED_TOKENS=false`; tokens minted earlier keep working.
 - `token-revoke` disables the secret after typing the label to confirm.
 
 ## How to get to it (user POV)
@@ -33,6 +34,7 @@ Preconditions:
 - **Expired token (fixture, then proof).** Mint a second token: `EXPIRED=$(.cursor/skills/verify-energon/bin/mint-token verify-expired 1d)`. Backdate it on **this run's** database only: `npx wrangler d1 execute energon --local --persist-to "$PERSIST" --command "UPDATE tokens SET expires_at = '2000-01-01T00:00:00.000Z' WHERE label = 'verify-expired'"`. That command is setup, not proof. Then run `curl -sS -o "$EVIDENCE/mint-token/expired.json" -w '%{http_code}' "$ORIGIN/v1/whoami" -H "Authorization: Bearer $EXPIRED"`. Status `401`. Body `error` is `token_expired`; `message` contains `/tokens`, `cannot be extended`, and `Do not retry`; body has `expired_at` and `tokens_url`. Reload `$ORIGIN/tokens`: the `verify-expired` row is greyed (`tr.row-expired`), its `Expires` cell reads `Expired`, and its only action is `Revoke`.
 - **No reveal.** `GET /account/tokens/{id}` is 404. The Tokens page has no Reveal control.
 - **Unauthenticated /v1.** Run `curl -sS -o "$EVIDENCE/mint-token/noauth.json" -w '%{http_code}' "$ORIGIN/v1/sites"`. Status `401`. Body `error` is `unauthorized` and `message` mentions `/tokens` and `ENERGON_TOKEN`.
+- **Never disabled (second instance).** Launch a strict instance beside this one: `ENERGON_VERIFY_RUN=$ENERGON_VERIFY_RUN-strict ENERGON_VERIFY_PORT=18788 ENERGON_VERIFY_VARS="ALLOW_UNLIMITED_TOKENS:false" .cursor/skills/verify-energon/bin/launch`, then `ENERGON_VERIFY_RUN=$ENERGON_VERIFY_RUN-strict .cursor/skills/verify-energon/bin/doctor`. Against `http://127.0.0.1:18788`: `GET /v1/help` has `tokens.allow_never` false and `tokens.presets` ending in `365d` with no `never`; `POST /account/tokens` with `{"label":"verify-strict","ttl":"never"}` and `Origin: http://127.0.0.1:18788` is `400 bad_ttl` and the message does not contain `never`; the same POST with `ttl` omitted is `201` with `expires_at` about 90 days out; on `/tokens`, `#mint-ttl` has no `Never` option and `#mint-ttl-note` says the instance does not allow never-expiring tokens. Save `help.json`, `never-400.json`, and `default-201.json` under `$EVIDENCE/mint-token/strict/`. Run `ENERGON_VERIFY_RUN=$ENERGON_VERIFY_RUN-strict .cursor/skills/verify-energon/bin/cleanup` when done and return to the primary run.
 - **Revoke.** Choose `Revoke`. Dialog title `Revoke token`. Type `verify-run` into the field (custom validity is `Type the exact name.` on mismatch). Confirm. `GET /v1/whoami` with the old secret is 401.
 - **Proof.** Save whoami JSON, bad-ttl JSON, expired JSON, account/data excerpt (redact nothing in evidence — this is a disposable local token), and screenshots of `#new-token` and the greyed `verify-expired` row on `/tokens`.
 
@@ -44,4 +46,5 @@ Preconditions:
 - After revoke, mint a new token before continuing other recipes. Do not keep using the revoked secret.
 - There is no seconds preset, so expiry proof needs the backdate step against `$PERSIST`. Never run that `d1 execute` against `.wrangler/state` or a remote database.
 - `token_expired` is distinct from `unauthorized`. A revoked token that is also expired reports `unauthorized`; only a live-but-expired token reports `token_expired`.
-- `ALLOW_UNLIMITED_TOKENS=false` removes `Never` from `#mint-ttl` and makes `ttl: never` a `400 bad_ttl`; the default `wrangler.toml` allows it, so `Never` is present on a normal run.
+- The primary run uses the committed `wrangler.toml`, which allows Never. Do not report the strict branch as verified from the primary run; it needs the second instance with `ENERGON_VERIFY_VARS`.
+- The strict instance shares nothing with the primary one (own port, own persist). Tokens minted on one do not authenticate on the other.
