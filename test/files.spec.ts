@@ -43,7 +43,9 @@ describe("putLooseFile", () => {
                 handle: "ada",
                 filename: "old.txt",
                 size: 8,
+                expires_at: null,
                 created_by: "ada@esperlabs.app",
+                last_written_by: "ada@esperlabs.app",
                 write_policy: "instance",
               };
             }
@@ -52,7 +54,7 @@ describe("putLooseFile", () => {
             return null;
           },
           async run() {
-            return {};
+            return sql.includes("UPDATE loose_files") ? { meta: { changes: 1 } } : {};
           },
         };
       },
@@ -129,7 +131,9 @@ describe("putLooseFile", () => {
                 handle: "ada",
                 filename: "notes.txt",
                 size: 8,
+                expires_at: null,
                 created_by: "ada@esperlabs.app",
+                last_written_by: "ada@esperlabs.app",
                 write_policy: "instance",
               };
             }

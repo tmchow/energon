@@ -10,9 +10,15 @@ const inFlight = new Set<string>();
 /** In-place lock so a concurrent PATCH ttl cannot revive bytes we are about to delete. */
 export const PURGE_CLAIM = "__energon_purging__";
 export const PURGE_CLAIM_LIKE = `${PURGE_CLAIM}%`;
+export const WRITE_CLAIM = "__energon_writing__";
+export const WRITE_CLAIM_LIKE = `${WRITE_CLAIM}%`;
 
 export function isPurgeClaimed(lastWrittenBy: string | null | undefined): boolean {
   return typeof lastWrittenBy === "string" && lastWrittenBy.startsWith(PURGE_CLAIM);
+}
+
+export function isWriteClaimed(lastWrittenBy: string | null | undefined): boolean {
+  return typeof lastWrittenBy === "string" && lastWrittenBy.startsWith(WRITE_CLAIM);
 }
 
 export function isExpired(expiresAt: string | null | undefined, now = Date.now()): boolean {
@@ -44,16 +50,55 @@ function d1Changed(result: { meta?: { changes?: number } }): boolean {
   return Number(result.meta?.changes ?? 0) > 0;
 }
 
-type Claim = { expiresAt: string; restoreWriter: string; token: string };
+type Claim = { expiresAt: string; restoreWriter: string; token: string; filename?: string };
 
 function newPurgeToken(): string {
   return `${PURGE_CLAIM}:${crypto.randomUUID()}`;
+}
+
+function newWriteToken(): string {
+  return `${WRITE_CLAIM}:${crypto.randomUUID()}`;
 }
 
 function isStaleClaim(updatedAt: string | null | undefined, now = Date.now()): boolean {
   if (!updatedAt) return true;
   const t = Date.parse(updatedAt);
   return Number.isFinite(t) && now - t >= STALE_CLAIM_MS;
+}
+
+export type LooseFileWriteClaim = { restoreWriter: string; token: string };
+
+export async function claimLooseFileForWrite(
+  env: Env,
+  id: string,
+  expiresAt: string | null,
+  lastWrittenBy: string | null,
+  createdBy: string,
+): Promise<LooseFileWriteClaim | null> {
+  const now = new Date().toISOString();
+  const token = newWriteToken();
+  const claimed = await env.DB.prepare(
+    `UPDATE loose_files SET last_written_by = ?, updated_at = ?
+     WHERE id = ? AND (expires_at IS NULL OR expires_at > ?)
+       AND ((expires_at = ?) OR (expires_at IS NULL AND ? IS NULL))
+       AND ifnull(last_written_by, '') = ?
+       AND ifnull(last_written_by, '') NOT LIKE ? AND ifnull(last_written_by, '') NOT LIKE ?`,
+  )
+    .bind(token, now, id, now, expiresAt, expiresAt, lastWrittenBy ?? "", PURGE_CLAIM_LIKE, WRITE_CLAIM_LIKE)
+    .run();
+  if (!d1Changed(claimed)) return null;
+  return { restoreWriter: lastWrittenBy || createdBy, token };
+}
+
+export async function releaseLooseFileWriteClaim(
+  env: Env,
+  id: string,
+  token: string,
+  lastWrittenBy: string,
+): Promise<void> {
+  await env.DB.prepare(`UPDATE loose_files SET last_written_by = ? WHERE id = ? AND last_written_by = ?`)
+    .bind(lastWrittenBy, id, token)
+    .run();
 }
 
 /**
@@ -121,7 +166,7 @@ export async function purgeExpiredFile(
     if (!claim) return false;
 
     try {
-      await env.BUCKET.delete(fileKey(id, filename));
+      await env.BUCKET.delete(fileKey(id, claim.filename || filename));
     } catch (err) {
       await env.DB.prepare(`UPDATE loose_files SET last_written_by = ? WHERE id = ? AND last_written_by = ?`)
         .bind(claim.restoreWriter, id, claim.token)
@@ -169,18 +214,19 @@ async function claimExpiredSite(env: Env, handle: string, slug: string): Promise
 async function claimExpiredFile(env: Env, id: string): Promise<Claim | null> {
   const now = new Date().toISOString();
   const row = await env.DB.prepare(
-    `SELECT expires_at, last_written_by, created_by, updated_at FROM loose_files
+    `SELECT expires_at, filename, last_written_by, created_by, updated_at FROM loose_files
      WHERE id = ? AND expires_at IS NOT NULL AND expires_at <= ?`,
   )
     .bind(id, now)
     .first<{
       expires_at: string;
+      filename: string;
       last_written_by: string | null;
       created_by: string;
       updated_at: string | null;
     }>();
   if (!row) return null;
-  if (isPurgeClaimed(row.last_written_by) && !isStaleClaim(row.updated_at)) {
+  if ((isPurgeClaimed(row.last_written_by) || isWriteClaimed(row.last_written_by)) && !isStaleClaim(row.updated_at)) {
     return null;
   }
   const token = newPurgeToken();
@@ -191,10 +237,10 @@ async function claimExpiredFile(env: Env, id: string): Promise<Claim | null> {
     .bind(token, now, id, row.expires_at, now, row.last_written_by ?? "")
     .run();
   if (!d1Changed(claimed)) return null;
-  const restoreWriter = isPurgeClaimed(row.last_written_by)
+  const restoreWriter = isPurgeClaimed(row.last_written_by) || isWriteClaimed(row.last_written_by)
     ? row.created_by
     : row.last_written_by || row.created_by;
-  return { expiresAt: row.expires_at, restoreWriter, token };
+  return { expiresAt: row.expires_at, restoreWriter, token, filename: row.filename };
 }
 
 export function schedulePurgeExpiredSite(
