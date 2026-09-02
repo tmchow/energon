@@ -19,6 +19,8 @@ You need a Cloudflare account (Workers Paid — unzip + 25 MB uploads), a hostna
 
 Fork [`tmchow/energon`](https://github.com/tmchow/energon) into your org (or clone and add your own `origin`). The marketplace lives in this same tree. Point `origin` at **your** repo before you render the skill.
 
+`tmchow/energon` accepts [issues](https://github.com/tmchow/energon/issues/new/choose) and does not merge unsolicited pull requests. Keep your instance on the fork. See [CONTRIBUTING.md](./CONTRIBUTING.md).
+
 ```
 your-org/energon
 ```
