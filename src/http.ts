@@ -115,6 +115,34 @@ export function applyIsolation(headers: Headers, contentType: string): void {
   if (csp) headers.set("content-security-policy", csp);
 }
 
+/** ESM entry + lazy chunks. Served from assets, not the Worker isolate. */
+export const MERMAID_SCRIPT_PATH = "/static/mermaid/mermaid.esm.min.mjs";
+
+export function isMermaidAssetPath(path: string): boolean {
+  return path === MERMAID_SCRIPT_PATH || path.startsWith("/static/mermaid/");
+}
+
+/** Unique-origin sandbox makes `'self'` unreliable; name the serving origin. */
+export function mermaidDocumentCsp(origin: string): string {
+  return `${ACTIVE_DOCUMENT_CSP}; script-src ${origin} 'unsafe-inline'`;
+}
+
+export async function serveMermaidAsset(env: Env, request: Request): Promise<Response> {
+  const asset = await env.ASSETS.fetch(request);
+  if (asset.status === 404) {
+    return json({ error: "not_found", message: "Mermaid runtime is not on this host." }, 404);
+  }
+  const headers = new Headers(asset.headers);
+  headers.set("access-control-allow-origin", "*");
+  headers.set("x-content-type-options", "nosniff");
+  const type = headers.get("content-type") || "";
+  if (!/javascript|ecmascript/i.test(type)) {
+    headers.set("content-type", "text/javascript; charset=utf-8");
+  }
+  if (!headers.has("cache-control")) headers.set("cache-control", "public, max-age=86400");
+  return new Response(asset.body, { status: asset.status, headers });
+}
+
 export function assertTrustedAccountOrigin(request: Request): void {
   const origin = request.headers.get("origin");
   const host = new URL(request.url).origin;

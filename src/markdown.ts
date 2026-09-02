@@ -3,7 +3,7 @@ import xss, { getDefaultWhiteList, safeAttrValue } from "xss";
 import { privateCacheControl } from "./cache";
 import { brandMark, documentShell, escapeHtml } from "./chrome";
 import { PRODUCT } from "./config";
-import { applyIsolation, basename, contentDisposition, wantsDownload } from "./http";
+import { applyIsolation, basename, contentDisposition, mermaidDocumentCsp, MERMAID_SCRIPT_PATH, wantsDownload } from "./http";
 
 const MERMAID_FENCE = /^(```|~~~)[ \t]*mermaid\b/im;
 
@@ -66,10 +66,17 @@ export function renderMarkdown(md: string): { html: string; mermaid: boolean } {
   return { html, mermaid: MERMAID_FENCE.test(md) || html.includes('class="mermaid"') };
 }
 
-export function markdownPage(opts: { title: string; filename: string; rawHref: string; html: string }): string {
+export function markdownPage(opts: {
+  title: string;
+  filename: string;
+  rawHref: string;
+  html: string;
+  mermaid: boolean;
+}): string {
   return documentShell({
     title: `${opts.title} — ${PRODUCT}`,
     bodyClass: "page-md",
+    extraHead: opts.mermaid ? mermaidHead() : "",
     body: `<header class="top"><div class="top-inner">
       <a class="brand" href="/"><div class="mark">${brandMark()}</div><div><div class="name">${escapeHtml(PRODUCT)}</div></div></a>
       <div class="top-end">
@@ -109,15 +116,38 @@ export async function respondMarkdown(
     vary: "Accept",
   });
   applyIsolation(headers, "text/html");
+  if (rendered.mermaid) headers.set("content-security-policy", mermaidDocumentCsp(new URL(request.url).origin));
   return new Response(
     markdownPage({
       title: filename,
       filename,
       rawHref,
       html: rendered.html,
+      mermaid: rendered.mermaid,
     }),
     { headers },
   );
+}
+
+function mermaidHead(): string {
+  return `<script type="module">
+import mermaid from "${MERMAID_SCRIPT_PATH}";
+mermaid.initialize({
+  startOnLoad: true,
+  theme: "dark",
+  securityLevel: "strict",
+  themeVariables: {
+    darkMode: true,
+    background: "#070814",
+    primaryColor: "#16102a",
+    primaryTextColor: "#ece8f8",
+    primaryBorderColor: "#8a6cff",
+    lineColor: "#9a93b3",
+    secondaryColor: "#0d1220",
+    tertiaryColor: "#10162a",
+  },
+});
+</script>`;
 }
 
 function escapeCode(text: string): string {

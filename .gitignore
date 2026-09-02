@@ -8,3 +8,5 @@ node_modules/
 dist/
 .clawpatch/
 worker-configuration.d.ts
+# Copied from node_modules/mermaid by scripts/vendor-mermaid.mjs
+public/static/mermaid/

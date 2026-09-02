@@ -1039,9 +1039,13 @@ describe("Energon", () => {
     const html = await page.text();
     expect(html).toContain("<h1>Hello</h1>");
     expect(html).toContain('class="mermaid"');
+    expect(html).toContain("/static/mermaid/mermaid.esm.min.mjs");
+    expect(html).toContain('securityLevel: "strict"');
     expect(html).not.toContain("jsdelivr");
     expect(html).not.toContain("cdn.jsdelivr");
     expect(page.headers.get("content-security-policy")).toContain("sandbox");
+    expect(page.headers.get("content-security-policy")).toContain("script-src http://127.0.0.1");
+    expect(page.headers.get("content-security-policy")).not.toContain("jsdelivr");
     expect(html).toContain('src="https://example.com/a.png"');
     expect(html).not.toContain("http://example.com/a.png");
     expect(html).not.toContain("<script>alert(1)</script>");
@@ -1049,7 +1053,9 @@ describe("Energon", () => {
     expect(html).toContain("?raw=1");
 
     const home = await req("/ada/s/docs/", { headers: { accept: "text/html" } });
-    expect(await home.text()).toContain("<h1>Docs home</h1>");
+    const homeHtml = await home.text();
+    expect(homeHtml).toContain("<h1>Docs home</h1>");
+    expect(homeHtml).not.toContain("/static/mermaid/");
 
     await json("/v1/sites/docs/files/index.html", {
       method: "PUT",

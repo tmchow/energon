@@ -7,7 +7,10 @@ import {
   contentDisposition,
   hasDedicatedContentOrigin,
   isolationCsp,
+  isMermaidAssetPath,
   isPublicContentPath,
+  mermaidDocumentCsp,
+  MERMAID_SCRIPT_PATH,
   isWorkersDev,
   normalizeRelPath,
   tooLarge,
@@ -76,6 +79,17 @@ describe("path and download helpers", () => {
     expect(isolationCsp("image/svg+xml")).toContain("sandbox");
     expect(isolationCsp("text/plain")).toBeNull();
     expect(isolationCsp("application/javascript")).toBeNull();
+  });
+
+  it("locks mermaid pages to the serving origin and serves the ESM under /static/mermaid/", () => {
+    const csp = mermaidDocumentCsp("https://energon.example.com");
+    expect(csp).toContain("sandbox");
+    expect(csp).not.toContain("allow-same-origin");
+    expect(csp).toContain("script-src https://energon.example.com 'unsafe-inline'");
+    expect(isMermaidAssetPath(MERMAID_SCRIPT_PATH)).toBe(true);
+    expect(isMermaidAssetPath("/static/mermaid/chunks/mermaid.esm.min/chunk-abc.mjs")).toBe(true);
+    expect(isMermaidAssetPath("/static/logo.svg")).toBe(false);
+    expect(isMermaidAssetPath("/ada/s/docs/notes.md")).toBe(false);
   });
 
   it("requires Origin on account mutations, not on GET", () => {

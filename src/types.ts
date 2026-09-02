@@ -1,6 +1,7 @@
 export interface Env {
   DB: D1Database;
   BUCKET: R2Bucket;
+  ASSETS: Fetcher;
   PUBLIC_ORIGIN: string;
   CONTENT_ORIGIN?: string;
   REQUIRE_ACCESS?: string;
