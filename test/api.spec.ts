@@ -21,6 +21,7 @@ describe("Energon", () => {
     expect(text).toContain("/v1/help");
     expect(text).toContain("user (global) scope");
     expect(text).toContain("unless the human asked for that");
+    expect(text).toContain("token_expired");
     expect(text).not.toMatch(/ee_live_[A-Za-z0-9]+/);
   });
 
@@ -59,6 +60,11 @@ describe("Energon", () => {
     );
     expect(body.retention.presets.at(-1)).toMatchObject({ id: "never", label: "Never" });
     expect(body.retention.write_policy).toBe("instance");
+    expect(body.tokens.default).toBe("90d");
+    expect(body.tokens.allow_never).toBe(true);
+    expect(body.tokens.tokens_url).toBe("https://hub.energon.example.com/tokens");
+    expect(body.tokens.presets.map((p: { id: string }) => p.id)).toEqual(["1d", "7d", "30d", "60d", "90d", "180d", "365d", "never"]);
+    expect(body.sop.some((line: string) => line.includes("token_expired") && line.includes("/tokens"))).toBe(true);
   });
 
   it("curl without token to /v1/sites is 401 pointing at hub", async () => {
@@ -370,6 +376,86 @@ describe("Energon", () => {
     expect(put.body.message).toContain("/account");
   });
 
+  describe("token lifetime", () => {
+    const DAY = 86400 * 1000;
+    const near = (iso: string, expectedMs: number) => Math.abs(Date.parse(iso) - expectedMs) < 60 * 1000;
+
+    it("stores the chosen preset and authenticates until it passes", async () => {
+      const email = "ttl-seven@esperlabs.app";
+      const before = Date.now();
+      const created = await json("/account/tokens", {
+        method: "POST",
+        headers: access(email, { "content-type": "application/json" }),
+        body: JSON.stringify({ label: "ci", ttl: "7d" }),
+      });
+      expect(created.status).toBe(201);
+      expect(near(created.body.expires_at, before + 7 * DAY)).toBe(true);
+      const me = await json("/v1/whoami", { headers: auth(created.body.token) });
+      expect(me.status).toBe(200);
+    });
+
+    it("defaults to 90 days when ttl is omitted", async () => {
+      const email = "ttl-default@esperlabs.app";
+      const before = Date.now();
+      await mint("default-life", email);
+      const listed = await json("/account/data", { headers: access(email) });
+      const row = listed.body.tokens.find((t: { label: string }) => t.label === "default-life");
+      expect(near(row.expires_at, before + 90 * DAY)).toBe(true);
+      expect(row.expired).toBe(false);
+    });
+
+    it("rejects a ttl outside the preset list", async () => {
+      const bad = await json("/account/tokens", {
+        method: "POST",
+        headers: access("ttl-bad@esperlabs.app", { "content-type": "application/json" }),
+        body: JSON.stringify({ label: "odd", ttl: "3h" }),
+      });
+      expect(bad.status).toBe(400);
+      expect(bad.body.error).toBe("bad_ttl");
+      expect(bad.body.message).toContain("1d, 7d, 30d, 60d, 90d, 180d, 365d, never");
+    });
+
+    it("mints a never-expiring token on the default instance", async () => {
+      const email = "ttl-never@esperlabs.app";
+      await mint("forever", email, undefined, "never");
+      const listed = await json("/account/data", { headers: access(email) });
+      const row = listed.body.tokens.find((t: { label: string }) => t.label === "forever");
+      expect(row.expires_at).toBeNull();
+      expect(row.expired).toBe(false);
+    });
+
+    it("lists an expired token as expired and still lets its owner revoke it", async () => {
+      const { env } = await import("cloudflare:test");
+      const email = "ttl-expired@esperlabs.app";
+      await mint("stale", email, undefined, "1d");
+      await env.DB.prepare(`UPDATE tokens SET expires_at = ? WHERE label = ? AND user_email = ?`)
+        .bind("2000-01-01T00:00:00.000Z", "stale", email)
+        .run();
+      await mint("garbled", email);
+      await env.DB.prepare(`UPDATE tokens SET expires_at = ? WHERE label = ? AND user_email = ?`)
+        .bind("not-a-date", "garbled", email)
+        .run();
+
+      const listed = await json("/account/data", { headers: access(email) });
+      const stale = listed.body.tokens.find((t: { label: string }) => t.label === "stale");
+      const garbled = listed.body.tokens.find((t: { label: string }) => t.label === "garbled");
+      expect(stale.expired).toBe(true);
+      expect(garbled.expired).toBe(true);
+
+      const foreign = await json(`/account/tokens/${stale.id}/revoke`, {
+        method: "POST",
+        headers: access("someone-else@esperlabs.app"),
+      });
+      expect(foreign.status).toBe(404);
+      expect(foreign.body.error).toBe("token_not_found");
+
+      const revoked = await json(`/account/tokens/${stale.id}/revoke`, { method: "POST", headers: access(email) });
+      expect(revoked.status).toBe(200);
+      const after = await json("/account/data", { headers: access(email) });
+      expect(after.body.tokens.find((t: { label: string }) => t.label === "stale").revoked).toBe(true);
+    });
+  });
+
   it("two users' tokens can both write the same site", async () => {
     const ada = await mint("ada-key", "ada-two@esperlabs.app");
     const bob = await mint("bob-key", "bob@esperlabs.app");
@@ -653,12 +739,67 @@ describe("Energon", () => {
     expect(await got.text()).toContain("other session");
   });
 
-  it("whoami returns token label and owner email", async () => {
+  it("whoami returns token label, owner email, and expiry", async () => {
     const token = await mint("whoami-key", "who@esperlabs.app");
     const me = await json("/v1/whoami", { headers: auth(token) });
     expect(me.status).toBe(200);
     expect(me.body.email).toBe("who@esperlabs.app");
     expect(me.body.label).toBe("whoami-key");
+    expect(Date.parse(me.body.expires_at)).toBeGreaterThan(Date.now() + 89 * 86400 * 1000);
+
+    const forever = await mint("whoami-forever", "who@esperlabs.app", undefined, "never");
+    const meForever = await json("/v1/whoami", { headers: auth(forever) });
+    expect(meForever.body.expires_at).toBeNull();
+  });
+
+  it("expired token gets a terminal token_expired 401 and no usage bump", async () => {
+    const { env } = await import("cloudflare:test");
+    const email = "expired-writer@esperlabs.app";
+    const token = await mint("dead-key", email, undefined, "1d");
+    await env.DB.prepare(`UPDATE tokens SET expires_at = ? WHERE label = ? AND user_email = ?`)
+      .bind("2000-01-01T00:00:00.000Z", "dead-key", email)
+      .run();
+
+    const put = await json("/v1/sites/x/files/a.txt", {
+      method: "PUT",
+      headers: auth(token, { "content-type": "text/plain" }),
+      body: "late",
+    });
+    expect(put.status).toBe(401);
+    expect(put.body.error).toBe("token_expired");
+    for (const clause of ["/tokens", "ENERGON_TOKEN", "2000-01-01", "mint", "cannot be extended", "Do not retry", "Do not invent"]) {
+      expect(put.body.message).toContain(clause);
+    }
+    expect(put.body).toMatchObject({ expired_at: "2000-01-01T00:00:00.000Z", tokens_url: "https://hub.energon.example.com/tokens" });
+    expect(put.body.hub).toBeDefined();
+    for (const leak of ["token_hash", "token_hint", "user_email", "user_id"]) {
+      expect(put.body).not.toHaveProperty(leak);
+    }
+    const row = await env.DB.prepare(`SELECT last_used_at FROM tokens WHERE label = ? AND user_email = ?`)
+      .bind("dead-key", email)
+      .first<{ last_used_at: string | null }>();
+    expect(row?.last_used_at).toBeNull();
+  });
+
+  it("grandfathered NULL expiry still authenticates and revoked wins over expired", async () => {
+    const { env } = await import("cloudflare:test");
+    const email = "legacy-holder@esperlabs.app";
+    const legacy = await mint("legacy-key", email, undefined, "1d");
+    await env.DB.prepare(`UPDATE tokens SET expires_at = NULL, created_at = ? WHERE label = ? AND user_email = ?`)
+      .bind("2024-01-01T00:00:00.000Z", "legacy-key", email)
+      .run();
+    const me = await json("/v1/whoami", { headers: auth(legacy) });
+    expect(me.status).toBe(200);
+    expect(me.body.expires_at).toBeNull();
+
+    const both = await mint("both-key", email, undefined, "1d");
+    const listed = await json("/account/data", { headers: access(email) });
+    const id = listed.body.tokens.find((t: { label: string }) => t.label === "both-key").id;
+    await json(`/account/tokens/${id}/revoke`, { method: "POST", headers: access(email) });
+    await env.DB.prepare(`UPDATE tokens SET expires_at = ? WHERE id = ?`).bind("2000-01-01T00:00:00.000Z", id).run();
+    const res = await json("/v1/whoami", { headers: auth(both) });
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe("unauthorized");
   });
 
   it("rejects zip path traversal", async () => {

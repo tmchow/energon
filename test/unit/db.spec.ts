@@ -11,15 +11,21 @@ const LEGACY_0005_COLUMNS = {
 class SchemaDb {
   readonly tables = new Map(Object.entries(LEGACY_0005_COLUMNS).map(([name, columns]) => [name, new Set(columns)]));
   readonly indexes = new Set<string>();
+  readonly executed: string[] = [];
+
+  constructor(private readonly fresh = false) {
+    if (fresh) this.tables.clear();
+  }
 
   prepare(sql: string) {
     return {
-      first: async () => ({ name: "tokens" }),
+      first: async (): Promise<{ name: string } | null> => (this.fresh ? null : { name: "tokens" }),
       all: async () => {
         const table = sql.match(/^PRAGMA table_info\((\w+)\)/)?.[1];
         return { results: [...(this.tables.get(table || "") || [])].map((name) => ({ name })) };
       },
       run: async () => {
+        this.executed.push(sql);
         this.run(sql);
         return {};
       },
@@ -65,7 +71,7 @@ describe("schema upgrades", () => {
     expect([...db.tables.get("loose_files") || []]).toEqual(
       expect.arrayContaining(["updated_at", "last_written_by", "password_hash", "handle", "owner_id", "expires_at", "write_policy"]),
     );
-    expect([...db.tables.get("tokens") || []]).toEqual(expect.arrayContaining(["token_secret", "token_hint", "user_id"]));
+    expect([...db.tables.get("tokens") || []]).toEqual(expect.arrayContaining(["token_secret", "token_hint", "user_id", "expires_at"]));
     expect([...db.tables.get("users") || []]).toEqual(expect.arrayContaining(["idp_sub"]));
     expect([...db.tables.get("gate_attempts") || []]).toEqual(expect.arrayContaining(["scope", "fails", "window_start"]));
     expect([...db.tables.get("platform_quota") || []]).toEqual(expect.arrayContaining(["id", "used"]));
@@ -82,5 +88,23 @@ describe("schema upgrades", () => {
         "idx_users_idp_sub",
       ]),
     );
+  });
+
+  it("does not re-add a tokens column the database already has", async () => {
+    const db = new SchemaDb();
+    db.tables.get("tokens")?.add("expires_at");
+
+    await ensureSchema(db as unknown as D1Database);
+
+    expect(db.executed.filter((sql) => /ALTER TABLE tokens ADD COLUMN expires_at/.test(sql))).toHaveLength(0);
+  });
+
+  it("gives a fresh database the tokens expiry column from the table statement alone", async () => {
+    const db = new SchemaDb(true);
+
+    await ensureSchema(db as unknown as D1Database);
+
+    expect([...db.tables.get("tokens") || []]).toContain("expires_at");
+    expect(db.executed.filter((sql) => /ALTER TABLE/.test(sql))).toHaveLength(0);
   });
 });

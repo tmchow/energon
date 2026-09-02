@@ -44,6 +44,8 @@ Two paths, on purpose:
 
 R2 lifecycle rules cannot do per-object `expires_at`. The Worker owns the clock.
 
+API tokens expire on their own clock, separate from content. A human picks a lifetime on `/tokens` when minting (`1d`, `7d`, `30d`, `60d`, `90d`, `180d`, `365d`; default `90d`; `never` only when `ALLOW_UNLIMITED_TOKENS` allows it). Auth rejects an expired token with `401 token_expired`; the row stays listed on `/tokens` as expired so the owner can see why an agent stopped, and can still revoke it. There is no renew: the human mints a new token. Tokens minted before this column existed have no expiry.
+
 ## Skill: init writes the installable package; forks commit it
 
 The installable skill is the **committed files** under `plugins/{name}/` plus the harness catalogs `skill:init` writes. That is what `/plugin install` reads. Source templates live in `templates/`.
@@ -96,6 +98,7 @@ Strings only (Wrangler).
 | `DEFAULT_TTL` | `never` | `7d` (`never` if unlimited is on and this is unset) |
 | `MAX_TTL` | `never` | `30d` (`never` if unlimited) |
 | `TTL_PRESETS` | omit (full catalog) | code catalog ∩ `MAX_TTL` |
+| `ALLOW_UNLIMITED_TOKENS` | `true` | `true` (Never on the token lifetime menu; `false` removes it). Only affects future mints — tokens minted before, and Never tokens minted before you flip it, keep working until revoked on `/tokens`. |
 | `ALLOWED_EMAIL_DOMAINS` | `your.co,your.com` | empty (any Access email) |
 | `TOKEN_ENV` | match the rendered skill | `ENERGON_TOKEN` |
 | `TOKEN_PREFIX` | `ee_live_` | `ee_live_` |
@@ -114,7 +117,24 @@ The catalog in code is:
 
 The hub shows those that fit under `MAX_TTL`, with human labels (**3 months**, not 90 days), plus **Never** only if unlimited is on. `TTL_PRESETS` is an optional hide-list, not how you invent new windows.
 
-`GET /v1/help` echoes origin, token env, skill, install line, retention, and the instance file / platform caps.
+`GET /v1/help` echoes origin, token env, skill, install line, retention, token lifetime policy (`tokens`), and the instance file / platform caps.
+
+## Migrations after a deploy
+
+The Worker adds missing columns itself at startup (`ensureSchema`), and `migrations/` carries the same change for `wrangler d1 migrations apply`. `ADD COLUMN` is not idempotent, so order matters:
+
+1. Apply migrations first: `npx wrangler d1 migrations apply energon --remote` (or let the deploy job do it).
+2. Then deploy the Worker.
+
+If the Worker deployed first, the next `migrations apply` fails with `duplicate column name`. Confirm the column is there (`PRAGMA table_info(tokens)` via the D1 console), then record the migration by hand as a human operator: insert its filename into `d1_migrations` so wrangler stops retrying it. Agents must not do this step.
+
+**Rollback floor for token expiry.** Once any token has a non-null `expires_at`, do not roll back below the first build that enforces expiry: an older Worker ignores the column, so every finite-lifetime token, including expired ones, authenticates again. If you must roll back that far, revoke those tokens first:
+
+```sql
+SELECT id, user_email, label, expires_at FROM tokens WHERE expires_at IS NOT NULL AND revoked_at IS NULL;
+```
+
+The same query with `expires_at IS NULL` lists never-expiring tokens, which is what to review after setting `ALLOW_UNLIMITED_TOKENS=false`: the flag stops new ones; revoke is the only lever for existing ones.
 
 `MAX_FILE_BYTES` is one file, one zip upload, and one site zip export. Accepts `25mb`, `5mb`, or a raw byte count. `MAX_PLATFORM_BYTES` is the whole-bucket safety valve (default 20 GB).
 

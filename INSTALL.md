@@ -44,6 +44,7 @@ Ask the human for:
 - Email domains that may mint tokens (example: `your.co,your.com`)
 - Write default: `instance` (any token on this host — usual for coworker/agent sharing) or `owner` (only the creator)
 - Whether content may live forever (`ALLOW_UNLIMITED_RETENTION=true`) or must expire
+- Whether API tokens may be minted with no expiry (`ALLOW_UNLIMITED_TOKENS`, default allowed). Every token still gets a lifetime picked at mint (default 90 days); this only decides whether Never is on the menu for future mints. Tokens already minted keep working until revoked on `/tokens`.
 
 ### 3. Render this host’s skill
 
@@ -79,6 +80,7 @@ Strings only (Wrangler). Committed defaults are company-shaped. Full table: [doc
 | `SKILL_NAME` / `MARKETPLACE_NAME` | match the rendered skill |
 | `MARKETPLACE_REPO` | `your-org/energon` |
 | `ALLOW_UNLIMITED_RETENTION` | `true` |
+| `ALLOW_UNLIMITED_TOKENS` | `true` (Never stays on the token lifetime menu; only affects future mints) |
 | `DEFAULT_TTL` / `MAX_TTL` | `never` |
 | `WRITE_POLICY` | `instance` |
 | `ALLOWED_EMAIL_DOMAINS` | `your.co,your.com` |

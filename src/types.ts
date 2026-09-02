@@ -16,6 +16,7 @@ export interface Env {
   DEFAULT_TTL?: string;
   MAX_TTL?: string;
   TTL_PRESETS?: string;
+  ALLOW_UNLIMITED_TOKENS?: string;
   ALLOWED_EMAIL_DOMAINS?: string;
   MAX_FILE_BYTES?: string;
   MAX_PLATFORM_BYTES?: string;
@@ -30,6 +31,7 @@ export type Actor = {
   via: "token" | "access";
   tokenId?: string;
   tokenLabel?: string;
+  tokenExpiresAt?: string | null;
 };
 
 export type SiteRow = {
@@ -81,4 +83,5 @@ export type TokenRow = {
   created_at: string;
   last_used_at: string | null;
   revoked_at: string | null;
+  expires_at?: string | null;
 };

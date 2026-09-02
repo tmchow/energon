@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Start an isolated local Energon for verification.
 # Usage (from repo root): .cursor/skills/verify-energon/bin/launch
-# Env: ENERGON_VERIFY_RUN, ENERGON_VERIFY_PORT (default 18787)
+# Env: ENERGON_VERIFY_RUN, ENERGON_VERIFY_PORT (default 18787),
+#      ENERGON_VERIFY_VARS (optional, space-separated KEY:VALUE pairs passed as extra --var,
+#      e.g. "ALLOW_UNLIMITED_TOKENS:false" to drive an instance-policy branch)
 
 set -euo pipefail
 _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -38,17 +40,34 @@ npx wrangler d1 migrations apply energon --local --persist-to "$PERSIST" </dev/n
 
 # --var wins over wrangler.toml [vars] so published URLs match this port.
 # Do not pass --remote. Do not use the default .wrangler/state directory.
-setsid npx wrangler dev \
-  --ip 127.0.0.1 \
-  --port "$PORT" \
-  --inspector-port "$INSPECTOR_PORT" \
-  --local \
-  --persist-to "$PERSIST" \
-  --var "PUBLIC_ORIGIN:${ORIGIN}" \
-  --var "CONTENT_ORIGIN:${ORIGIN}" \
-  --show-interactive-dev-session false \
-  >"$LOG" 2>&1 &
-PID=$!
+wrangler_args=(
+  dev
+  --ip 127.0.0.1
+  --port "$PORT"
+  --inspector-port "$INSPECTOR_PORT"
+  --local
+  --persist-to "$PERSIST"
+  --var "PUBLIC_ORIGIN:${ORIGIN}"
+  --var "CONTENT_ORIGIN:${ORIGIN}"
+  --show-interactive-dev-session false
+)
+for extra in ${ENERGON_VERIFY_VARS:-}; do
+  wrangler_args+=(--var "$extra")
+done
+
+# doctor and cleanup identify this run by process group: every listener on
+# $PORT must have pgid == $PID. setsid gives that on Linux; macOS has no setsid,
+# so fall back to bash job control, which also starts a background job as the
+# leader of a fresh process group.
+if command -v setsid >/dev/null 2>&1; then
+  setsid npx wrangler "${wrangler_args[@]}" >"$LOG" 2>&1 &
+  PID=$!
+else
+  set -m
+  npx wrangler "${wrangler_args[@]}" >"$LOG" 2>&1 &
+  PID=$!
+  set +m
+fi
 
 {
   printf 'RUN=%s\n' "$RUN"
@@ -61,6 +80,8 @@ PID=$!
   printf 'EMAIL=%s\n' "$EMAIL"
   printf 'EVIDENCE=%s\n' "$EVIDENCE_ROOT/$RUN"
   printf 'REPO_ROOT=%s\n' "$REPO_ROOT"
+  # Space-separated pairs; quote so `source state.env` does not run the second pair as a command.
+  printf 'VARS=%q\n' "${ENERGON_VERIFY_VARS:-}"
 } >"$DIR/state.env"
 
 cleanup_failed_launch() {

@@ -7,7 +7,16 @@ import {
 } from "./config";
 import { ApiError, decodeJwtPayload, isLocalHost, isWorkersDev, nanoid, publicOrigin, sha256Hex } from "./http";
 import { identityFromEnv, installLine } from "./instance";
-import { emailAllowed, forbiddenDomain, instancePolicy, policyPublic } from "./policy";
+import {
+  emailAllowed,
+  forbiddenDomain,
+  instancePolicy,
+  policyPublic,
+  resolveTokenExpiresAt,
+  tokenExpired,
+  tokenPolicy,
+  tokenPolicyPublic,
+} from "./policy";
 import { ensureUser, getUser, getUserById } from "./handles";
 import type { Actor, Env, TokenRow } from "./types";
 
@@ -18,6 +27,18 @@ export function unauthorized(origin: string, detail?: string, env?: Env): ApiErr
     "unauthorized",
     detail ||
       `${PRODUCT} needs an API token. Open ${origin}/tokens while logged in, mint a token, and send it as Authorization: Bearer ${id.tokenPrefix}…. Export it as ${id.tokenEnv}. Do not invent a token.`,
+  );
+}
+
+/** Terminal for agents: the token is dead, cannot be extended, and only a human can mint another. */
+export function tokenExpiredError(origin: string, expiredAt: string, env?: Env): ApiError {
+  const id = identityFromEnv(env || {});
+  const when = Number.isFinite(Date.parse(expiredAt)) ? ` on ${expiredAt}` : "";
+  return new ApiError(
+    401,
+    "token_expired",
+    `That API token expired${when}. Tokens cannot be extended. Tell the human to open ${origin}/tokens, mint a new one, and export it as ${id.tokenEnv}. Do not retry with this token. Do not invent a token.`,
+    { expired_at: expiredAt, tokens_url: `${origin}/tokens` },
   );
 }
 
@@ -59,7 +80,7 @@ export async function requireToken(request: Request, env: Env): Promise<Actor> {
   }
   const tokenHash = await hashToken(token);
   const row = await env.DB.prepare(
-    `SELECT id, user_email, user_id, label, token_hash, created_at, last_used_at, revoked_at
+    `SELECT id, user_email, user_id, label, token_hash, created_at, last_used_at, revoked_at, expires_at
      FROM tokens WHERE token_hash = ?`,
   )
     .bind(tokenHash)
@@ -71,6 +92,7 @@ export async function requireToken(request: Request, env: Env): Promise<Actor> {
       env,
     );
   }
+  if (tokenExpired(row.expires_at)) throw tokenExpiredError(origin, row.expires_at ?? "", env);
   assertEmailAllowed(env, row.user_email);
   const user = row.user_id ? await getUserById(env, row.user_id) : await getUser(env, row.user_email);
   const last = row.last_used_at ? Date.parse(row.last_used_at) : 0;
@@ -90,6 +112,7 @@ export async function requireToken(request: Request, env: Env): Promise<Actor> {
     via: "token",
     tokenId: row.id,
     tokenLabel: row.label,
+    tokenExpiresAt: row.expires_at ?? null,
   };
 }
 
@@ -179,24 +202,27 @@ export async function mintToken(
   email: string,
   label: string,
   userId?: string,
-): Promise<{ id: string; token: string; label: string }> {
+  ttl?: unknown,
+): Promise<{ id: string; token: string; label: string; expires_at: string | null }> {
   const trimmed = label.trim().slice(0, 64);
   if (!trimmed) {
     throw new ApiError(400, "bad_label", "Give the token a label, like laptop or ci.");
   }
+  const now = new Date();
+  const expiresAt = resolveTokenExpiresAt(tokenPolicy(env), ttl, now);
   const user = (userId ? await getUserById(env, userId) : null) || (await ensureUser(env, email));
   const id = nanoid(12);
   const token = `${identityFromEnv(env).tokenPrefix}${nanoid(TOKEN_SECRET_LEN)}`;
   const tokenHash = await hashToken(token);
-  const created = new Date().toISOString();
+  const created = now.toISOString();
   const hint = maskToken(token, env);
   await env.DB.prepare(
-    `INSERT INTO tokens (id, user_email, user_id, label, token_hash, token_secret, token_hint, created_at, last_used_at, revoked_at)
-     VALUES (?, ?, ?, ?, ?, NULL, ?, ?, NULL, NULL)`,
+    `INSERT INTO tokens (id, user_email, user_id, label, token_hash, token_secret, token_hint, created_at, last_used_at, revoked_at, expires_at)
+     VALUES (?, ?, ?, ?, ?, NULL, ?, ?, NULL, NULL, ?)`,
   )
-    .bind(id, user.email, user.id, trimmed, tokenHash, hint, created)
+    .bind(id, user.email, user.id, trimmed, tokenHash, hint, created, expiresAt)
     .run();
-  return { id, token, label: trimmed };
+  return { id, token, label: trimmed, expires_at: expiresAt };
 }
 
 export function maskToken(token: string, env?: Env): string {
@@ -206,6 +232,16 @@ export function maskToken(token: string, env?: Env): string {
   return `${prefix}…${token.slice(-4)}`;
 }
 
+type TokenListRow = {
+  id: string;
+  label: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  token_hint: string | null;
+  expires_at: string | null;
+};
+
 export async function listTokens(env: Env, email: string, userId?: string): Promise<
   {
     id: string;
@@ -213,39 +249,29 @@ export async function listTokens(env: Env, email: string, userId?: string): Prom
     hint: string | null;
     created_at: string;
     last_used_at: string | null;
+    expires_at: string | null;
+    expired: boolean;
     revoked: boolean;
     recoverable: boolean;
   }[]
 > {
+  const columns = `id, label, created_at, last_used_at, revoked_at, token_hint, expires_at`;
   const rows = userId
     ? await env.DB.prepare(
-        `SELECT id, label, created_at, last_used_at, revoked_at, token_hint FROM tokens
+        `SELECT ${columns} FROM tokens
          WHERE user_id = ? OR (user_id IS NULL AND user_email = ?) ORDER BY created_at DESC`,
-      ).bind(userId, email).all<{
-        id: string;
-        label: string;
-        created_at: string;
-        last_used_at: string | null;
-        revoked_at: string | null;
-        token_hint: string | null;
-      }>()
-    : await env.DB.prepare(
-        `SELECT id, label, created_at, last_used_at, revoked_at, token_hint FROM tokens
-         WHERE user_email = ? ORDER BY created_at DESC`,
-      ).bind(email).all<{
-        id: string;
-        label: string;
-        created_at: string;
-        last_used_at: string | null;
-        revoked_at: string | null;
-        token_hint: string | null;
-      }>();
+      ).bind(userId, email).all<TokenListRow>()
+    : await env.DB.prepare(`SELECT ${columns} FROM tokens WHERE user_email = ? ORDER BY created_at DESC`)
+        .bind(email)
+        .all<TokenListRow>();
   return (rows.results || []).map((r) => ({
     id: r.id,
     label: r.label,
     hint: r.token_hint,
     created_at: r.created_at,
     last_used_at: r.last_used_at,
+    expires_at: r.expires_at ?? null,
+    expired: tokenExpired(r.expires_at),
     revoked: Boolean(r.revoked_at),
     recoverable: false,
   }));
@@ -284,6 +310,7 @@ export function helpBody(origin: string, env?: Env): unknown {
       max_import_files: MAX_IMPORT_FILES,
     },
     retention: policyPublic(policy),
+    tokens: tokenPolicyPublic(tokenPolicy(env || {}), origin),
     identity: {
       origin: id.origin,
       skill: id.skill,
@@ -292,7 +319,8 @@ export function helpBody(origin: string, env?: Env): unknown {
       repo: id.repo,
     },
     sop: [
-      `Look for env ${id.tokenEnv}. If missing, tell the human to open ${origin}/tokens, mint a key, and export it. The secret is shown once. Do not invent a token.`,
+      `Look for env ${id.tokenEnv}. If missing, tell the human to open ${origin}/tokens, mint a token, and export it. The secret is shown once. Do not invent a token.`,
+      `Tokens expire after the lifetime the human picked at mint (default 90 days; see tokens.presets). A 401 with error token_expired is terminal: stop, tell the human to mint a new token at ${origin}/tokens, and do not retry. Tokens cannot be extended. GET /v1/whoami shows your token's expires_at.`,
       `This instance's skill is ${id.skill} (install ${installLine(id)}). The origin is ${origin}. Do not guess another host.`,
       `Decide: a site (named folder of files) vs a file (one file, short id). Public URLs are /{handle}/s/{slug}/ and /{handle}/f/{id}/{filename}. Both stay put when you PUT again.`,
       `New site: POST /v1/sites with the human's slug and optional ttl (${policy.presets.map((p) => p.id).join(", ")}). Omit ttl to use ${policy.defaultTtl}. On 409, show the existing URL and ask: new slug, or retry with overwrite: true.`,
@@ -313,7 +341,7 @@ export function helpBody(origin: string, env?: Env): unknown {
       "GET /llms.txt": "agent-readable overview, no auth",
       "GET /v1/help": "this document, no auth",
       "GET /v1/health": "liveness, no auth",
-      "GET /v1/whoami": "token label and owner email",
+      "GET /v1/whoami": "token label, owner email, and expires_at (null = never)",
       "POST /v1/sites": '{ "slug", "overwrite": false, "password"?: string, "ttl"?: string, "write_policy"?: "owner"|"instance", "duplicate_from"?: slug }',
       "PATCH /v1/sites/{slug}": '{ "password"?: string, "ttl"?: string, "write_policy"?: "owner"|"instance" } — empty password clears. ttl resets expiry from now. write_policy is creator-only.',
       "GET /v1/sites/{slug}/files/{path}": "raw file bytes (token)",

@@ -181,6 +181,64 @@ export function instancePolicy(
   };
 }
 
+/** Token lifetimes are their own catalog. Content retention vars never apply to tokens. */
+export const TOKEN_TTL_CATALOG = ["1d", "7d", "30d", "60d", "90d", "180d", "365d"] as const;
+export const TOKEN_DEFAULT_TTL = "90d";
+
+export type TokenPolicy = {
+  allowUnlimited: boolean;
+  defaultTtl: string;
+  presets: TtlPreset[];
+};
+
+/** Unset keeps Never available on existing deployments; once set, only an explicit truthy value allows it. */
+function allowUnlimitedTokens(value: string | undefined): boolean {
+  return value === undefined ? true : flag(value);
+}
+
+export function tokenPolicy(env: Pick<Env, "ALLOW_UNLIMITED_TOKENS">): TokenPolicy {
+  const allowUnlimited = allowUnlimitedTokens(env.ALLOW_UNLIMITED_TOKENS);
+  const presets: TtlPreset[] = TOKEN_TTL_CATALOG.map((id) => ({
+    id,
+    seconds: parseDuration(id),
+    label: formatTtlLabel(id),
+  }));
+  if (allowUnlimited) presets.push({ id: "never", seconds: null, label: formatTtlLabel("never") });
+  return { allowUnlimited, defaultTtl: TOKEN_DEFAULT_TTL, presets };
+}
+
+export function tokenPolicyPublic(policy: TokenPolicy, origin: string): Record<string, unknown> {
+  return {
+    presets: policy.presets,
+    default: policy.defaultTtl,
+    allow_never: policy.allowUnlimited,
+    tokens_url: `${origin}/tokens`,
+  };
+}
+
+/** Mint-time lifetime. Omitted or empty means the default; anything not in the preset list is 400. */
+export function resolveTokenExpiresAt(policy: TokenPolicy, input: unknown, now = new Date()): string | null {
+  const omitted = input === undefined || input === null || (typeof input === "string" && input.trim() === "");
+  const id = omitted ? policy.defaultTtl : typeof input === "string" ? input.trim().toLowerCase() : "";
+  const preset = policy.presets.find((p) => p.id === id);
+  const ids = policy.presets.map((p) => p.id);
+  if (!preset) {
+    throw new ApiError(400, "bad_ttl", `ttl must be one of: ${ids.join(", ")}.`, {
+      presets: ids,
+      default_ttl: policy.defaultTtl,
+    });
+  }
+  if (preset.seconds == null) return null;
+  return new Date(now.getTime() + preset.seconds * 1000).toISOString();
+}
+
+/** Credential expiry fails closed: a non-null value that does not parse counts as expired. */
+export function tokenExpired(expiresAt: string | null | undefined, now = Date.now()): boolean {
+  if (expiresAt === null || expiresAt === undefined) return false;
+  const t = Date.parse(expiresAt);
+  return !Number.isFinite(t) || t <= now;
+}
+
 export function policyPublic(policy: InstancePolicy): Record<string, unknown> {
   return {
     allow_unlimited: policy.allowUnlimited,

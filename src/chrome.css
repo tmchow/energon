@@ -380,7 +380,8 @@ body.drop-active .drop-overlay { display: grid; }
 .stage-ttl,
 .stage-write { margin-top: 1rem; text-align: left; color: #b8b0ce; }
 .stage-ttl select,
-.stage-write select {
+.stage-write select,
+.mint .field select {
   width: 100%;
   height: 40px;
   background: #0a0d18;
@@ -520,11 +521,13 @@ a.btn { text-decoration: none; color: inherit; }
 }
 .mint {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr minmax(9rem, auto) auto;
   gap: .55rem;
   align-items: end;
 }
+.mint .mint-ttl .pw-note { display: none; }
 .mint .field input,
+.mint .field select,
 .mint button {
   height: 40px;
   min-height: 40px;
@@ -597,6 +600,9 @@ table.data a.icon-btn {
 }
 table.data a.icon-btn:hover { color: var(--fg); text-decoration: none; }
 table.data td.when { font-variant-numeric: tabular-nums; color: var(--muted); font-family: var(--mono); font-size: .78rem; }
+table.data tr.row-expired td { color: var(--muted); }
+table.data tr.row-expired td.when { color: #f3d2a8; }
+.page-tokens table.data th, .page-tokens table.data td { padding-left: .75rem; padding-right: .75rem; }
 table.data td.token-hint {
   font-family: var(--mono);
   font-size: .78rem;
@@ -1053,6 +1059,7 @@ dialog.sheet {
   .diagram svg { max-height: 6.4rem; }
   .mint { grid-template-columns: 1fr; }
   .mint button { width: 100%; }
+  .mint .mint-ttl .pw-note { display: block; }
   .drop-actions { flex-direction: column; }
   .drop-actions .btn, .drop-actions button { width: 100%; }
   .card-head { flex-wrap: wrap; }

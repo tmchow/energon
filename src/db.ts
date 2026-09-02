@@ -59,7 +59,8 @@ const TABLE_STATEMENTS = [
     token_hint TEXT,
     created_at TEXT NOT NULL,
     last_used_at TEXT,
-    revoked_at TEXT
+    revoked_at TEXT,
+    expires_at TEXT
   )`,
   `CREATE TABLE IF NOT EXISTS gate_attempts (
     scope TEXT PRIMARY KEY,
@@ -112,7 +113,7 @@ export async function ensureSchema(db: D1Database): Promise<void> {
   if (existing) {
     await ensureColumns(db, "loose_files", ["updated_at", "last_written_by", "password_hash", "handle", "owner_id", "expires_at", "write_policy"]);
     await ensureColumns(db, "sites", ["password_hash", "handle", "owner_id", "expires_at", "write_policy"]);
-    await ensureColumns(db, "tokens", ["token_secret", "token_hint", "user_id"]);
+    await ensureColumns(db, "tokens", ["token_secret", "token_hint", "user_id", "expires_at"]);
     await ensureColumns(db, "users", ["idp_sub"]);
     await db.prepare(`UPDATE tokens SET token_secret = NULL WHERE token_secret IS NOT NULL`).run();
     await db.prepare(

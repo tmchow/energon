@@ -15,7 +15,12 @@ import {
   resolveCreateWritePolicy,
   resolveExpiresAt,
   resolveWritePolicy,
+  resolveTokenExpiresAt,
+  tokenExpired,
+  tokenPolicy,
+  tokenPolicyPublic,
   TTL_CATALOG,
+  TOKEN_TTL_CATALOG,
 } from "../../src/policy";
 
 function env(overrides: Record<string, string | undefined> = {}) {
@@ -24,6 +29,7 @@ function env(overrides: Record<string, string | undefined> = {}) {
     DEFAULT_TTL: undefined,
     MAX_TTL: undefined,
     TTL_PRESETS: undefined,
+    ALLOW_UNLIMITED_TOKENS: undefined,
     ALLOWED_EMAIL_DOMAINS: undefined,
     MAX_FILE_BYTES: undefined,
     MAX_PLATFORM_BYTES: undefined,
@@ -248,5 +254,116 @@ describe("formatTtlLabel", () => {
     expect(formatTtlLabel("365d")).toBe("1 year");
     expect(formatTtlLabel("never")).toBe("Never");
     expect(formatTtlLabel("7d")).toBe("7 days");
+  });
+});
+
+describe("tokenPolicy", () => {
+  const ids = (policy: ReturnType<typeof tokenPolicy>) => policy.presets.map((p) => p.id);
+
+  it("offers the fixed catalog plus never when the var is unset", () => {
+    const policy = tokenPolicy(env());
+    expect(ids(policy)).toEqual([...TOKEN_TTL_CATALOG, "never"]);
+    expect(policy.allowUnlimited).toBe(true);
+    expect(policy.defaultTtl).toBe("90d");
+    expect(policy.presets.find((p) => p.id === "90d")?.label).toBe("3 months");
+  });
+
+  it.each(["true", "1", "YES"])("keeps never when ALLOW_UNLIMITED_TOKENS=%s", (value) => {
+    const policy = tokenPolicy(env({ ALLOW_UNLIMITED_TOKENS: value }));
+    expect(ids(policy)).toContain("never");
+    expect(policy.allowUnlimited).toBe(true);
+  });
+
+  it.each(["false", "0", "no", "maybe", "off", "disabled", ""])("forbids never when ALLOW_UNLIMITED_TOKENS=%j", (value) => {
+    const policy = tokenPolicy(env({ ALLOW_UNLIMITED_TOKENS: value }));
+    expect(ids(policy)).toEqual([...TOKEN_TTL_CATALOG]);
+    expect(policy.allowUnlimited).toBe(false);
+    expect(policy.defaultTtl).toBe("90d");
+  });
+
+  it.each([
+    { MAX_TTL: "1d" },
+    { ALLOW_UNLIMITED_RETENTION: "false" },
+    { DEFAULT_TTL: "7d" },
+    { TTL_PRESETS: "1h,7d" },
+  ])("ignores content retention var %o", (overrides) => {
+    const policy = tokenPolicy(env(overrides));
+    expect(ids(policy)).toEqual([...TOKEN_TTL_CATALOG, "never"]);
+    expect(policy.defaultTtl).toBe("90d");
+  });
+
+  it("projects presets, default, allow_never, and the tokens page URL", () => {
+    const pub = tokenPolicyPublic(tokenPolicy(env({ ALLOW_UNLIMITED_TOKENS: "false" })), "https://energon.example.com");
+    expect(pub).toMatchObject({ default: "90d", allow_never: false, tokens_url: "https://energon.example.com/tokens" });
+    expect((pub.presets as { id: string }[]).map((p) => p.id)).toEqual([...TOKEN_TTL_CATALOG]);
+  });
+});
+
+describe("resolveTokenExpiresAt", () => {
+  const now = new Date("2026-09-02T12:00:00.000Z");
+  const policy = tokenPolicy(env());
+
+  it("uses the 90 day default when ttl is omitted or empty", () => {
+    const expected = new Date(now.getTime() + 90 * 86400 * 1000).toISOString();
+    expect(resolveTokenExpiresAt(policy, undefined, now)).toBe(expected);
+    expect(resolveTokenExpiresAt(policy, "", now)).toBe(expected);
+    expect(resolveTokenExpiresAt(policy, "  ", now)).toBe(expected);
+  });
+
+  it("matches preset ids case-insensitively", () => {
+    expect(resolveTokenExpiresAt(policy, "7D", now)).toBe(resolveTokenExpiresAt(policy, "7d", now));
+    expect(resolveTokenExpiresAt(policy, "1d", now)).toBe("2026-09-03T12:00:00.000Z");
+  });
+
+  it.each(["3h", 86400, "none", "unlimited", "never-ish"])("rejects %j with bad_ttl", (input) => {
+    expect(() => resolveTokenExpiresAt(policy, input, now)).toThrow(
+      expect.objectContaining({ status: 400, code: "bad_ttl" }),
+    );
+  });
+
+  it("returns null for never only when the instance allows it", () => {
+    expect(resolveTokenExpiresAt(policy, "never", now)).toBeNull();
+    const strict = tokenPolicy(env({ ALLOW_UNLIMITED_TOKENS: "false" }));
+    let error: unknown;
+    try {
+      resolveTokenExpiresAt(strict, "never", now);
+    } catch (err) {
+      error = err;
+    }
+    expect(error).toMatchObject({ status: 400, code: "bad_ttl" });
+    expect(String((error as Error).message)).not.toContain("never");
+  });
+
+  it("writes a parseable ISO value for every preset that is live at mint time", () => {
+    for (const preset of policy.presets) {
+      const value = resolveTokenExpiresAt(policy, preset.id, now);
+      if (preset.id === "never") {
+        expect(value).toBeNull();
+        continue;
+      }
+      expect(Number.isFinite(Date.parse(String(value)))).toBe(true);
+      expect(tokenExpired(value, now.getTime())).toBe(false);
+    }
+  });
+});
+
+describe("tokenExpired", () => {
+  const now = Date.parse("2026-09-02T12:00:00.000Z");
+
+  it("treats null as never expiring", () => {
+    expect(tokenExpired(null, now)).toBe(false);
+    expect(tokenExpired(undefined, now)).toBe(false);
+  });
+
+  it("fails closed on empty or unparseable values", () => {
+    expect(tokenExpired("", now)).toBe(true);
+    expect(tokenExpired("not-a-date", now)).toBe(true);
+  });
+
+  it("compares parsed instants, honoring offsets and the at-or-before boundary", () => {
+    expect(tokenExpired("2026-09-02T13:59:00+02:00", now)).toBe(true);
+    expect(tokenExpired("2026-09-02T15:00:00+02:00", now)).toBe(false);
+    expect(tokenExpired("2026-09-02T12:00:00.000Z", now)).toBe(true);
+    expect(tokenExpired("2026-09-02T12:00:00.001Z", now)).toBe(false);
   });
 });

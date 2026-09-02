@@ -114,6 +114,7 @@ describe("skill:init", () => {
     expect(skillMd.startsWith("---\nname: yourco-energon\n")).toBe(true);
     expect(skillMd).toContain("https://energon.your.co");
     expect(skillMd).toContain("YOURCO_ENERGON_TOKEN");
+    expect(skillMd).toContain("token_expired");
     const plugin = JSON.parse(readFileSync(join(pluginDir, "plugin.json"), "utf8"));
     expect(plugin.$schema).toContain("agent-plugins.org");
     expect(plugin.name).toBe("yourco-energon");
