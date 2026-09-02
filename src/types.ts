@@ -16,6 +16,7 @@ export interface Env {
   DEFAULT_TTL?: string;
   MAX_TTL?: string;
   TTL_PRESETS?: string;
+  ALLOW_UNLIMITED_TOKENS?: string;
   ALLOWED_EMAIL_DOMAINS?: string;
   MAX_FILE_BYTES?: string;
   MAX_PLATFORM_BYTES?: string;
