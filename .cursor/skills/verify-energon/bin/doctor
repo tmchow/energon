@@ -65,13 +65,15 @@ if [[ "$content" == "$ORIGIN" ]]; then ok "GET /v1/help content_origin=$content"
 if [[ "$env_name" == "ENERGON_TOKEN" ]]; then ok "token env ENERGON_TOKEN"; else bad "token env is $env_name"; fi
 if [[ "$prefix" == "ee_live_" ]]; then ok "token prefix ee_live_"; else bad "token prefix is $prefix"; fi
 
-hub_html="$(curl -sS "$ORIGIN/" || true)"
-if printf '%s' "$hub_html" | grep -q 'Ship a file or a site in seconds.'; then
+hub_file="$(state_dir)/hub.html"
+curl -sS -o "$hub_file" "$ORIGIN/" || true
+# grep -q on a pipe trips pipefail (writer gets SIGPIPE). Read a file instead.
+if grep -F -q 'Ship a file or a site in seconds.' "$hub_file"; then
   ok "GET / is the Energon hub"
 else
   bad "GET / is not the Energon hub"
 fi
-if printf '%s' "$hub_html" | grep -q 'id="pick-files"'; then
+if grep -F -q 'id="pick-files"' "$hub_file"; then
   ok "hub has Choose files control"
 else
   bad "hub HTML is missing id=pick-files"
@@ -85,14 +87,14 @@ else
   bad "GET /account/data has no email (localhost identity missing)"
 fi
 
-handle="$(printf '%s' "$hub_html" | python3 -c '
-import json,re,sys
-html=sys.stdin.read()
-m=re.search(r"<script id=\"bootstrap\" type=\"application/json\">(.*?)</script>", html, re.S)
-if not m: sys.exit(1)
-boot=json.loads(m.group(1))
-print(boot.get("handle") or "")
-' 2>/dev/null || true)"
+handle="$(python3 -c '
+import json, re, sys
+html = open(sys.argv[1], encoding="utf-8").read()
+m = re.search(r"<script id=\"bootstrap\" type=\"application/json\">(.*?)</script>", html, re.S)
+if not m:
+    raise SystemExit(1)
+print(json.loads(m.group(1)).get("handle") or "")
+' "$hub_file")" || true
 if [[ -n "$handle" ]]; then
   ok "handle=$handle"
 else

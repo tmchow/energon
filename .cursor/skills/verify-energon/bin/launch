@@ -34,7 +34,7 @@ if port_in_use "$INSPECTOR_PORT"; then
   INSPECTOR_PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
 fi
 
-npx wrangler d1 migrations apply energon --local --persist-to "$PERSIST"
+npx wrangler d1 migrations apply energon --local --persist-to "$PERSIST" </dev/null
 
 # --var wins over wrangler.toml [vars] so published URLs match this port.
 # Do not pass --remote. Do not use the default .wrangler/state directory.
@@ -83,7 +83,7 @@ for _ in $(seq 1 90); do
     cleanup_failed_launch
     die "wrangler exited before becoming ready. See $LOG"
   fi
-  code="$(curl -sS -o /tmp/energon-verify-body.$$ -w '%{http_code}' "$ORIGIN/health" || true)"
+  code="$(curl -sS -o /tmp/energon-verify-body.$$ -w '%{http_code}' "$ORIGIN/health" 2>/dev/null || true)"
   if [[ "$code" == "200" ]] && grep -q '"ok":true' /tmp/energon-verify-body.$$; then
     ok=1
     break
