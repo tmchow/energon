@@ -712,6 +712,7 @@ export async function importSiteZip(
 
   const ts = new Date().toISOString();
   const written: string[] = [];
+  const upserts: D1PreparedStatement[] = [];
   const previousRows = new Map<string, SiteFileRow>();
   const snapshots: R2State[] = [];
   const affectedPaths = files.map((f) => f.path);
@@ -723,9 +724,10 @@ export async function importSiteZip(
       snapshots.push({ key, snapshot: previous });
       const contentType = contentTypeFor(f.path, f.bytes, null);
       await env.BUCKET.put(key, f.bytes, { httpMetadata: { contentType } });
-      await siteFileUpsert(env, site.handle, slug, f.path, f.bytes.byteLength, contentType, ts, actor.email).run();
+      upserts.push(siteFileUpsert(env, site.handle, slug, f.path, f.bytes.byteLength, contentType, ts, actor.email));
       written.push(f.path);
     }
+    await env.DB.batch(upserts);
     await writeSite(env, actor, site.handle, slug, "updated_at = ?, last_written_by = ?", [ts, actor.email]);
   } catch (err) {
     try {

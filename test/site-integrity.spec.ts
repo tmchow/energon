@@ -81,11 +81,15 @@ describe("site mutation integrity", () => {
     const token = await mint("site-integrity-import-db");
     await createSite(token, "integrity-import-db", { "a.txt": "old-a", "b.txt": "old-b" });
     const db = env.DB;
-    const originalPrepare = db.prepare.bind(db);
-    db.prepare = ((sql: string) => {
-      if (sql.includes("ON CONFLICT(handle, slug, path)")) throw new Error("injected import metadata failure");
-      return originalPrepare(sql);
-    }) as typeof db.prepare;
+    const originalBatch = db.batch.bind(db);
+    let failed = false;
+    db.batch = async (statements) => {
+      if (!failed) {
+        failed = true;
+        throw new Error("injected import metadata failure");
+      }
+      return originalBatch(statements);
+    };
     try {
       const zipped = zipSync({ "a.txt": strToU8("new-a"), "b.txt": strToU8("new-b") });
       const response = await json("/v1/sites/integrity-import-db/import", {
@@ -95,7 +99,7 @@ describe("site mutation integrity", () => {
       });
       expect(response.status).toBe(500);
     } finally {
-      db.prepare = originalPrepare;
+      db.batch = originalBatch;
     }
     const listing = await json("/v1/sites/integrity-import-db", { headers: auth(token) });
     expect(listing.body.files.map((file: { path: string; size: number }) => [file.path, file.size])).toEqual([
