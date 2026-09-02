@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# Read-only check: is this verification instance worth driving?
+# Usage: .cursor/skills/verify-energon/bin/doctor
+
+set -euo pipefail
+_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$_script_dir/_lib.sh"
+
+load_state
+fail=0
+say() { printf '  %s\n' "$*"; }
+bad() { printf '  FAIL %s\n' "$*"; fail=1; }
+ok() { printf '  ok   %s\n' "$*"; }
+
+printf 'verify-energon doctor\n'
+say "run=$RUN origin=$ORIGIN pid=$PID persist=$PERSIST"
+
+if [[ "$PERSIST" != "$VERIFY_ROOT/"* ]]; then
+  bad "persist $PERSIST is not under $VERIFY_ROOT — refusing to drive a shared instance"
+fi
+if [[ "$PERSIST" == *".wrangler/state"* ]]; then
+  bad "persist points at the default wrangler state — refusing to drive a shared instance"
+fi
+
+if ! pid_alive "$PID"; then
+  bad "recorded pid $PID is not running"
+else
+  ok "pid $PID is alive"
+fi
+
+listeners="$(listen_pids "$PORT")"
+if [[ -z "$listeners" ]]; then
+  bad "nothing is listening on $PORT"
+else
+  owned=0
+  for lp in $listeners; do
+    if [[ "$lp" == "$PID" ]]; then owned=1; fi
+    # wrangler spawns workerd in the same session; accept children of our pid.
+    ppid="$(ps -o ppid= -p "$lp" 2>/dev/null | tr -d ' ' || true)"
+    pgid="$(ps -o pgid= -p "$lp" 2>/dev/null | tr -d ' ' || true)"
+    if [[ "$ppid" == "$PID" || "$pgid" == "$PID" ]]; then owned=1; fi
+  done
+  if [[ "$owned" != "1" ]]; then
+    bad "port $PORT is owned by pid(s) $listeners, not verification pid $PID — do not drive this instance"
+  else
+    ok "port $PORT is owned by this run (pids $listeners)"
+  fi
+fi
+
+code="$(curl -sS -o /tmp/energon-verify-body.$$ -w '%{http_code}' "$ORIGIN/health" || true)"
+if [[ "$code" == "200" ]] && grep -q '"ok":true' /tmp/energon-verify-body.$$; then
+  ok "GET /health -> 200 {ok:true}"
+else
+  bad "GET /health -> $code $(curl_body | head -c 200)"
+fi
+
+help_json="$(curl -sS "$ORIGIN/v1/help" || true)"
+hub="$(json_get "$help_json" "hub" 2>/dev/null || true)"
+content="$(json_get "$help_json" "content_origin" 2>/dev/null || true)"
+env_name="$(json_get "$help_json" "env" 2>/dev/null || true)"
+prefix="$(json_get "$help_json" "token_prefix" 2>/dev/null || true)"
+if [[ "$hub" == "$ORIGIN" ]]; then ok "GET /v1/help hub=$hub"; else bad "GET /v1/help hub=$hub expected $ORIGIN"; fi
+if [[ "$content" == "$ORIGIN" ]]; then ok "GET /v1/help content_origin=$content"; else bad "GET /v1/help content_origin=$content expected $ORIGIN"; fi
+if [[ "$env_name" == "ENERGON_TOKEN" ]]; then ok "token env ENERGON_TOKEN"; else bad "token env is $env_name"; fi
+if [[ "$prefix" == "ee_live_" ]]; then ok "token prefix ee_live_"; else bad "token prefix is $prefix"; fi
+
+hub_file="$(state_dir)/hub.html"
+curl -sS -o "$hub_file" "$ORIGIN/" || true
+# grep -q on a pipe trips pipefail (writer gets SIGPIPE). Read a file instead.
+if grep -F -q 'Ship a file or a site in seconds.' "$hub_file"; then
+  ok "GET / is the Energon hub"
+else
+  bad "GET / is not the Energon hub"
+fi
+if grep -F -q 'id="pick-files"' "$hub_file"; then
+  ok "hub has Choose files control"
+else
+  bad "hub HTML is missing id=pick-files"
+fi
+
+account="$(curl -sS "$ORIGIN/account/data" || true)"
+email="$(json_get "$account" "email" 2>/dev/null || true)"
+if [[ -n "$email" && "$email" != "null" ]]; then
+  ok "signed in as $email"
+else
+  bad "GET /account/data has no email (localhost identity missing)"
+fi
+
+handle="$(python3 -c '
+import json, re, sys
+html = open(sys.argv[1], encoding="utf-8").read()
+m = re.search(r"<script id=\"bootstrap\" type=\"application/json\">(.*?)</script>", html, re.S)
+if not m:
+    raise SystemExit(1)
+print(json.loads(m.group(1)).get("handle") or "")
+' "$hub_file")" || true
+if [[ -n "$handle" ]]; then
+  ok "handle=$handle"
+else
+  bad "bootstrap JSON has no handle"
+fi
+
+python3 - "$(state_file)" "$handle" <<'PY'
+from pathlib import Path
+import sys
+path, handle = Path(sys.argv[1]), sys.argv[2]
+lines = [ln for ln in path.read_text().splitlines() if not ln.startswith("HANDLE=")]
+lines.append(f"HANDLE={handle}")
+path.write_text("\n".join(lines) + "\n")
+PY
+
+if [[ "$fail" -ne 0 ]]; then
+  printf 'doctor: instance is not safe to drive\n' >&2
+  exit 1
+fi
+printf 'doctor: ok — drive this origin only (%s)\n' "$ORIGIN"

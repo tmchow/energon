@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Mint a token on the verification instance via the same hub endpoint the Tokens page uses.
+# Usage: .cursor/skills/verify-energon/bin/mint-token [label]
+# Prints the token on stdout. Saves it at $STATE_DIR/token. Do not invent a token.
+
+set -euo pipefail
+_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$_script_dir/_lib.sh"
+
+load_state
+label="${1:-verify}"
+
+payload="$(python3 -c 'import json,sys; print(json.dumps({"label": sys.argv[1]}))' "$label")"
+code="$(curl -sS -o /tmp/energon-verify-body.$$ -w '%{http_code}' \
+  -X POST "$ORIGIN/account/tokens" \
+  -H 'content-type: application/json' \
+  --data "$payload")"
+body="$(curl_body)"
+if [[ "$code" != "201" ]]; then
+  die "POST /account/tokens -> $code $body"
+fi
+
+token="$(json_get "$body" "token")"
+[[ "$token" == ee_live_* ]] || die "minted value is not an ee_live_ token: $token"
+
+printf '%s\n' "$token" >"$(state_dir)/token"
+python3 - "$(state_file)" "$token" <<'PY'
+from pathlib import Path
+import sys
+path, token = Path(sys.argv[1]), sys.argv[2]
+lines = [ln for ln in path.read_text().splitlines() if not ln.startswith("TOKEN=")]
+lines.append(f"TOKEN={token}")
+path.write_text("\n".join(lines) + "\n")
+PY
+
+printf '%s\n' "$token"
