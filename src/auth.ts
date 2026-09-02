@@ -2,7 +2,6 @@ import {
   DEFAULT_PUBLIC_ORIGIN,
   MAX_IMPORT_FILES,
   PRODUCT,
-  TOKEN_PREFIX,
   TOKEN_SECRET_LEN,
   formatBytes,
 } from "./config";
@@ -149,7 +148,7 @@ export async function mintToken(
     throw new ApiError(400, "bad_label", "Give the token a label, like laptop or ci.");
   }
   const id = nanoid(12);
-  const token = `${TOKEN_PREFIX}${nanoid(TOKEN_SECRET_LEN)}`;
+  const token = `${identityFromEnv(env).tokenPrefix}${nanoid(TOKEN_SECRET_LEN)}`;
   const tokenHash = await hashToken(token);
   const created = new Date().toISOString();
   await env.DB.prepare(
@@ -161,9 +160,10 @@ export async function mintToken(
   return { id, token, label: trimmed };
 }
 
-export function maskToken(token: string): string {
-  if (token.length < 8) return `${TOKEN_PREFIX}…`;
-  const prefix = token.startsWith(TOKEN_PREFIX) ? TOKEN_PREFIX : "";
+export function maskToken(token: string, env?: Env): string {
+  const tokenPrefix = identityFromEnv(env || {}).tokenPrefix;
+  if (token.length < 8) return `${tokenPrefix}…`;
+  const prefix = token.startsWith(tokenPrefix) ? tokenPrefix : "";
   return `${prefix}…${token.slice(-4)}`;
 }
 
@@ -194,7 +194,7 @@ export async function listTokens(env: Env, email: string): Promise<
   return (rows.results || []).map((r) => ({
     id: r.id,
     label: r.label,
-    hint: r.token_secret ? maskToken(r.token_secret) : null,
+    hint: r.token_secret ? maskToken(r.token_secret, env) : null,
     created_at: r.created_at,
     last_used_at: r.last_used_at,
     revoked: Boolean(r.revoked_at),

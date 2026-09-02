@@ -34,6 +34,10 @@ describe("host and route contracts", () => {
     expect(bad.body.error).toBe("unauthorized");
     expect(bad.body.message).toContain("ee_live_");
 
+    const help = await json("/v1/help");
+    expect(help.body.auth).toBe("Authorization: Bearer ee_live_<secret>");
+    expect(help.body.token_prefix).toBe("ee_live_");
+
     const token = await mint("bad-slug");
     const created = await json("/v1/sites", {
       method: "POST",
