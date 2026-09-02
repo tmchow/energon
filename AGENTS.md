@@ -2,7 +2,7 @@
 
 Energon is a company-hosted file and small-site Worker. Humans open the instance origin. Agents publish and fetch through `/v1`.
 
-This repository is the **source you fork**. The committed skill (`plugins/energon`) is a placeholder bound to `https://energon.example.com` until someone runs `npm run skill:init` for a real host.
+This repository is the **source you fork**. `plugins/energon` is a placeholder package bound to `https://energon.example.com`. Marketplace catalogs are not in this tree until someone runs `npm run skill:init` for a real host.
 
 Humans and agents: [INSTALL.md](./INSTALL.md). Copy-paste prompts: [README.md](./README.md). A running host also has `/setup`.
 
@@ -41,7 +41,7 @@ Do not run the full suite after every edit. GitHub CI runs `typecheck`, `test:un
 
 | You changed | Run this (seconds) |
 |---|---|
-| `src/catalog.ts`, `src/handles.ts`, `src/urls.ts`, `src/http.ts`, `src/auth.ts` (helpers), `src/zip.ts`, `src/config.ts`, `src/memorable.ts`, `src/slugs.ts`, `src/policy.ts`, `src/instance.ts`, `src/expire.ts`, `templates/skill` | `npm run test:unit` — or one file: `npm run test:unit -- test/unit/catalog.spec.ts` |
+| `src/catalog.ts`, `src/handles.ts`, `src/urls.ts`, `src/http.ts`, `src/auth.ts` (helpers), `src/zip.ts`, `src/config.ts`, `src/memorable.ts`, `src/slugs.ts`, `src/policy.ts`, `src/instance.ts`, `src/expire.ts`, `templates/skill`, `templates/plugin`, `templates/marketplace`, `scripts/render-skill.mjs` | `npm run test:unit` — or one file: `npm run test:unit -- test/unit/catalog.spec.ts` |
 | `src/hub.html`, `src/hub.client.js`, `src/tokens.html`, `src/chrome.ts`, `src/about.ts`, `src/setup.ts`, `src/stats.ts` | `npx vitest run test/pages.spec.ts` |
 | `src/index.ts` routes, host rules, hub `/account` API | `npx vitest run test/routes.spec.ts` |
 | `src/sites.ts`, `src/files.ts`, `src/auth.ts` (DB), `src/markdown.ts`, `src/gate.ts`, publish/delete/list API | `npx vitest run test/api.spec.ts` |

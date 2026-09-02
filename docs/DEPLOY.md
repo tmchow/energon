@@ -44,11 +44,11 @@ Two paths, on purpose:
 
 R2 lifecycle rules cannot do per-object `expires_at`. The Worker owns the clock.
 
-## Skill: committed files are installable; forks replace them
+## Skill: init writes the installable package; forks commit it
 
-The installable skill is the **committed files** under `plugins/`. That is what `/plugin install` reads.
+The installable skill is the **committed files** under `plugins/{name}/` plus the harness catalogs `skill:init` writes. That is what `/plugin install` reads. Source templates live in `templates/`.
 
-This upstream ships a placeholder skill named **`energon`** (`energon@energon`) bound to `https://energon.example.com` and `ENERGON_TOKEN`. That is not a live host. After you fork:
+This upstream ships a placeholder package named **`energon`** under `plugins/energon`, bound to `https://energon.example.com` and `ENERGON_TOKEN`. It is not a marketplace — there is no `.claude-plugin/marketplace.json` until you init. After you fork:
 
 ```bash
 npm run skill:init -- --name yourco --origin https://energon.your.co
@@ -56,11 +56,13 @@ npm run skill:init -- --name yourco --origin https://energon.your.co
 
 That sets skill **and** marketplace to `yourco-energon`, token env `YOURCO_ENERGON_TOKEN`, and the GitHub repo from `git remote get-url origin`. `--repo owner/energon` only if origin is still `tmchow/energon`.
 
-It **replaces** the shipped plugin folder, rewrites `marketplace.json`, and writes `instance-skill.json`. Commit that. Point wrangler `SKILL_NAME`, `MARKETPLACE_NAME`, `MARKETPLACE_REPO`, `TOKEN_ENV`, and `PUBLIC_ORIGIN` at the same values.
+It writes `plugins/yourco-energon/`, `.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`, the Copilot/root catalog copies, and `instance-skill.json`. Commit that. Point wrangler `SKILL_NAME`, `MARKETPLACE_NAME`, `MARKETPLACE_REPO`, `TOKEN_ENV`, and `PUBLIC_ORIGIN` at the same values.
+
+Do not put the skill in `.agents/skills` or `.claude/skills` — those autoload it in this Worker repo. Keep the plugin in `plugins/{name}/` so `claude plugin validate .` treats the fork as a marketplace, not the whole Worker as a plugin.
 
 Skill name and marketplace name match so a second Energon catalog does not collide. Claude Code has one marketplace `name` slot.
 
-`npm run skill:render -- --check` fails if `SKILL.md` drifted from `instance-skill.json` + the template.
+`npm run skill:render -- --check` fails if committed files drifted from `instance-skill.json` + `templates/`.
 
 Do not ship `{{placeholders}}` in `SKILL.md`. Do not tell a private host to install the placeholder `tmchow/energon` skill.
 
