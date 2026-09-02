@@ -4,7 +4,7 @@ import hubTemplate from "./hub.html";
 import hubScript from "./hub.client.js";
 import tokensTemplate from "./tokens.html";
 import logoSvg from "./logo.svg";
-import { actorFromAccess, assertEmailAllowed, helpBody, listTokens, mintToken, rejectWorkersDevForHumans, requireHuman, requireToken, revealToken, revokeToken, unauthorized } from "./auth";
+import { actorFromAccess, assertEmailAllowed, helpBody, listTokens, mintToken, rejectWorkersDevForHumans, requireHuman, requireToken, revokeToken, unauthorized } from "./auth";
 import { setupResponse } from "./setup";
 import { statsResponse } from "./stats";
 import { parseListQuery } from "./catalog";
@@ -12,7 +12,7 @@ import { llmsResponse } from "./llms";
 import { ENV_TOKEN, PRODUCT, RESERVED_HANDLES } from "./config";
 import { ensureSchema } from "./db";
 import { sweepExpired } from "./expire";
-import { ensureHandle } from "./handles";
+import { ensureUser } from "./handles";
 import { identityFromEnv } from "./instance";
 import { MEMORABLE_WORDS } from "./memorable";
 import { deleteLooseFile, getLooseFile, hubLists, listLooseJson, patchLoose, postLooseFromRequest, putLooseFromRequest, serveLoose } from "./files";
@@ -147,31 +147,25 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     const actor = await actorFromAccess(request, env, ctx);
     if (actor) assertEmailAllowed(env, actor.email);
     const query = parseListQuery(url);
+    const user = actor ? await ensureUser(env, actor.email, actor.idpSub) : null;
     const lists = actor
-      ? await hubLists(env, actor.email, query)
+      ? await hubLists(env, actor.email, query, user?.id)
       : { sites: [], files: [], sites_total: 0, files_total: 0, sites_cursor: null, files_cursor: null };
-    const tokens = actor ? await listTokens(env, actor.email) : [];
+    const tokens = user ? await listTokens(env, user.email, user.id) : [];
     return json({ email: actor?.email ?? null, ...lists, tokens });
   }
 
   if (path === "/account/tokens" && method === "POST") {
     const actor = await requireHuman(request, env, ctx);
     const body = await readJson(request);
-    const minted = await mintToken(env, actor.email, String(body.label ?? ""));
-    return secretJson({ id: minted.id, label: minted.label, token: minted.token, recoverable: true }, 201);
-  }
-
-  const revealMatch = path.match(/^\/account\/tokens\/([^/]+)$/);
-  if (revealMatch && method === "GET") {
-    const actor = await requireHuman(request, env, ctx);
-    const token = await revealToken(env, actor.email, decodeURIComponent(revealMatch[1]));
-    return secretJson({ id: decodeURIComponent(revealMatch[1]), token, recoverable: true });
+    const minted = await mintToken(env, actor.email, String(body.label ?? ""), actor.userId);
+    return secretJson({ id: minted.id, label: minted.label, token: minted.token, recoverable: false }, 201);
   }
 
   const revokeMatch = path.match(/^\/account\/tokens\/([^/]+)\/revoke$/);
   if (revokeMatch && method === "POST") {
     const actor = await requireHuman(request, env, ctx);
-    await revokeToken(env, actor.email, decodeURIComponent(revokeMatch[1]));
+    await revokeToken(env, actor.email, decodeURIComponent(revokeMatch[1]), actor.userId);
     return json({ ok: true, revoked: true });
   }
 
@@ -310,7 +304,7 @@ async function api(
 
   if (path === "/v1/sites" && method === "GET") {
     const actor = await requireToken(request, env);
-    return listSitesJson(env, actor.email, parseListQuery(new URL(request.url)));
+    return listSitesJson(env, actor.email, parseListQuery(new URL(request.url)), actor.userId);
   }
 
   if (path === "/v1/sites" && method === "POST") {
@@ -322,7 +316,7 @@ async function api(
 
   if (path === "/v1/files" && method === "GET") {
     const actor = await requireToken(request, env);
-    return listLooseJson(env, actor.email, parseListQuery(new URL(request.url)));
+    return listLooseJson(env, actor.email, parseListQuery(new URL(request.url)), actor.userId);
   }
 
   if (path === "/v1/files" && method === "POST") {
@@ -407,13 +401,13 @@ async function api(
 async function serveHub(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const actor = await actorFromAccess(request, env, ctx);
   if (actor) assertEmailAllowed(env, actor.email);
+  const user = actor ? await ensureUser(env, actor.email, actor.idpSub) : null;
   const lists = actor
-    ? await hubLists(env, actor.email, parseListQuery(new URL(request.url)))
+    ? await hubLists(env, actor.email, parseListQuery(new URL(request.url)), user?.id)
     : { sites: [], files: [], sites_total: 0, files_total: 0, sites_cursor: null, files_cursor: null };
-  const handle = actor ? await ensureHandle(env, actor.email) : null;
   const bootstrap = JSON.stringify({
     email: actor?.email ?? null,
-    handle,
+    handle: user?.handle ?? null,
     origin: publicOrigin(env),
     content_origin: contentOrigin(env),
     policy: policyPublic(instancePolicy(env)),
@@ -430,7 +424,7 @@ async function serveHub(request: Request, env: Env, ctx: ExecutionContext): Prom
 
 async function serveTokens(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const actor = await requireHuman(request, env, ctx);
-  const tokens = await listTokens(env, actor.email);
+  const tokens = await listTokens(env, actor.email, actor.userId);
   const bootstrap = JSON.stringify({
     email: actor.email,
     tokens,

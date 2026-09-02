@@ -97,9 +97,9 @@ function memorablePassword() {
   let list = [];
   try { list = JSON.parse($("pw-words").textContent || "[]"); } catch { list = []; }
   if (!list.length) return "";
-  const buf = new Uint32Array(3);
+  const buf = new Uint32Array(5);
   crypto.getRandomValues(buf);
-  return [0, 1, 2].map((i) => list[buf[i] % list.length]).join("-");
+  return [0, 1, 2, 3, 4].map((i) => list[buf[i] % list.length]).join("-");
 }
 function selectAllOnFocus(input) {
   input.addEventListener("focus", () => {

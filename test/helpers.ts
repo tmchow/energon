@@ -13,13 +13,14 @@ export async function json(path: string, init?: RequestInit): Promise<{ status: 
   return { status: res.status, body: await res.json() };
 }
 
-export async function mint(label: string, email = "ada@esperlabs.app"): Promise<string> {
+export async function mint(label: string, email = "ada@esperlabs.app", extra?: HeadersInit): Promise<string> {
   const { status, body } = await json("/account/tokens", {
     method: "POST",
     headers: {
       "content-type": "application/json",
       "Cf-Access-Authenticated-User-Email": email,
       origin,
+      ...extra,
     },
     body: JSON.stringify({ label }),
   });

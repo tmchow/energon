@@ -2,7 +2,8 @@ CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,
   handle TEXT NOT NULL,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  idp_sub TEXT UNIQUE
 );
 
 CREATE TABLE IF NOT EXISTS handle_reservations (
@@ -55,12 +56,20 @@ CREATE TABLE IF NOT EXISTS loose_files (
 CREATE TABLE IF NOT EXISTS tokens (
   id TEXT PRIMARY KEY,
   user_email TEXT NOT NULL,
+  user_id TEXT,
   label TEXT NOT NULL,
   token_hash TEXT NOT NULL UNIQUE,
   token_secret TEXT,
+  token_hint TEXT,
   created_at TEXT NOT NULL,
   last_used_at TEXT,
   revoked_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS gate_attempts (
+  scope TEXT PRIMARY KEY,
+  fails INTEGER NOT NULL,
+  window_start TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_site_files_site ON site_files(handle, slug);
@@ -68,7 +77,9 @@ CREATE INDEX IF NOT EXISTS idx_loose_files_created ON loose_files(created_at DES
 CREATE INDEX IF NOT EXISTS idx_sites_updated ON sites(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tokens_hash ON tokens(token_hash);
 CREATE INDEX IF NOT EXISTS idx_tokens_user ON tokens(user_email);
+CREATE INDEX IF NOT EXISTS idx_tokens_user_id ON tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_idp_sub ON users(idp_sub);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_handle_unique ON users(handle);
 CREATE INDEX IF NOT EXISTS idx_handle_reservations_user ON handle_reservations(user_id);
 CREATE INDEX IF NOT EXISTS idx_sites_owner ON sites(owner_id);

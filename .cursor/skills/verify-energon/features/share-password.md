@@ -43,5 +43,5 @@ Preconditions:
 - Do not write the password into the published file.
 - `/v1` GET skipping the password is intended. It does not prove the public link is open.
 - Empty string clears. Omitting `"password"` on PATCH leaves the existing hash.
-- Hub generate copies a three-word memorable phrase. The field is `type="text"` (not `password`) so the human can see it.
+- Hub generate copies a five-word memorable phrase. The field is `type="text"` (not `password`) so the human can see it.
 - Cookie unlock (`energon_gate`) is set after a successful form POST. A later GET in the same browser may skip the form; curl without cookies will not.

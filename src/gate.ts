@@ -1,6 +1,7 @@
 import { brandMark, documentShell, productName } from "./chrome";
 import { PASSWORD_HEADER, SET_PASSWORD_HEADER } from "./config";
 import { ApiError, htmlPage, isLocalHost, sha256Hex } from "./http";
+import type { Env } from "./types";
 
 export { PASSWORD_HEADER, SET_PASSWORD_HEADER };
 export const GATE_COOKIE = "energon_gate";
@@ -149,28 +150,110 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
 
+export const GATE_WINDOW_MS = 15 * 60 * 1000;
+export const GATE_MAX_FAILS = 20;
+
+export function gateScopes(request: Request, cookiePath: string): string[] {
+  const ip = (request.headers.get("cf-connecting-ip") || request.headers.get("CF-Connecting-IP") || "unknown").trim() || "unknown";
+  return [`obj:${cookiePath}`, `ip:${ip}`];
+}
+
+async function loadGateAttempt(env: Env, scope: string): Promise<{ fails: number; window_start: string } | null> {
+  return env.DB.prepare(`SELECT fails, window_start FROM gate_attempts WHERE scope = ?`)
+    .bind(scope)
+    .first<{ fails: number; window_start: string }>();
+}
+
+export async function gateIsBlocked(env: Env, scopes: string[], now = Date.now()): Promise<boolean> {
+  for (const scope of scopes) {
+    const row = await loadGateAttempt(env, scope);
+    if (!row) continue;
+    const start = Date.parse(row.window_start);
+    if (!Number.isFinite(start) || now - start >= GATE_WINDOW_MS) continue;
+    if (row.fails >= GATE_MAX_FAILS) return true;
+  }
+  return false;
+}
+
+export async function recordGateFailures(env: Env, scopes: string[], now = Date.now()): Promise<void> {
+  const iso = new Date(now).toISOString();
+  for (const scope of scopes) {
+    const row = await loadGateAttempt(env, scope);
+    const start = row ? Date.parse(row.window_start) : NaN;
+    const fresh = !row || !Number.isFinite(start) || now - start >= GATE_WINDOW_MS;
+    if (fresh) {
+      await env.DB.prepare(`INSERT OR REPLACE INTO gate_attempts (scope, fails, window_start) VALUES (?, 1, ?)`).bind(scope, iso).run();
+    } else {
+      await env.DB.prepare(`UPDATE gate_attempts SET fails = fails + 1 WHERE scope = ?`).bind(scope).run();
+    }
+  }
+}
+
+export async function clearGateAttempts(env: Env, scopes: string[]): Promise<void> {
+  for (const scope of scopes) {
+    await env.DB.prepare(`DELETE FROM gate_attempts WHERE scope = ?`).bind(scope).run();
+  }
+}
+
+function gateLimited(request: Request, title: string): Response {
+  if (wantsJsonGate(request) || offeredPassword(request) !== null) {
+    return Response.json(
+      {
+        error: "rate_limited",
+        message: "Too many password attempts. Try again later.",
+      },
+      { status: 429, headers: { "cache-control": "no-store" } },
+    );
+  }
+  return gateHtml(
+    documentShell({
+      title: `Password — ${title}`,
+      bodyClass: "page-gate",
+      body: `<div class="card gate">
+      <a class="brand" href="/">${brandMark()}</a>
+      <h1>${escapeHtml(productName())}</h1>
+      <p class="lede">This link is password-protected.</p>
+      <p class="err">Too many password attempts. Try again later.</p>
+      <p class="lede" style="margin-top:1rem">Agents: send header <code>${PASSWORD_HEADER}</code>.</p>
+    </div>`,
+    }),
+    429,
+  );
+}
+
 export async function protectContent(
   request: Request,
   passwordHash: string | null | undefined,
   cookiePath: string,
   title: string,
+  env: Env,
 ): Promise<Response | null> {
   if (!passwordHash) return null;
   const url = new URL(request.url);
   const offered = offeredPassword(request);
   const expected = await unlockToken(passwordHash);
+  const scopes = gateScopes(request, cookiePath);
 
   if (request.method === "POST") {
     const formPw = await parseFormPassword(request);
     const candidate = formPw ?? offered;
-    if (candidate !== null && hashesEqual(await hashSharePassword(candidate), passwordHash)) {
-      return new Response(null, {
-        status: 303,
-        headers: {
-          location: url.pathname + url.search,
-          "set-cookie": gateCookieHeader(expected, cookiePath, url.hostname),
-        },
-      });
+    if (candidate !== null) {
+      if (await gateIsBlocked(env, scopes)) return gateLimited(request, title);
+      if (hashesEqual(await hashSharePassword(candidate), passwordHash)) {
+        await clearGateAttempts(env, scopes);
+        return new Response(null, {
+          status: 303,
+          headers: {
+            location: url.pathname + url.search,
+            "set-cookie": gateCookieHeader(expected, cookiePath, url.hostname),
+          },
+        });
+      }
+      await recordGateFailures(env, scopes);
+      if (wantsJsonGate(request) || offered !== null) {
+        return gateJson();
+      }
+      return gateHtml(passwordPromptHtml(title, url.pathname, true), 401);
     }
     if (wantsJsonGate(request) || offered !== null) {
       return gateJson();
@@ -178,7 +261,17 @@ export async function protectContent(
     return gateHtml(passwordPromptHtml(title, url.pathname, true), 401);
   }
 
-  if (offered !== null && hashesEqual(await hashSharePassword(offered), passwordHash)) return null;
+  if (offered !== null) {
+    if (await gateIsBlocked(env, scopes)) return gateLimited(request, title);
+    if (hashesEqual(await hashSharePassword(offered), passwordHash)) {
+      await clearGateAttempts(env, scopes);
+      return null;
+    }
+    await recordGateFailures(env, scopes);
+    if (wantsJsonGate(request)) return gateJson();
+    return gateHtml(passwordPromptHtml(title, url.pathname, true), 401);
+  }
+
   if (await cookieUnlocks(request, passwordHash)) return null;
 
   if (wantsJsonGate(request)) {

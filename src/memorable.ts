@@ -1,4 +1,4 @@
-/** Short common words. Three hyphenated picks is enough for an internal share link. */
+/** Short common words. Five hyphenated picks is the default share-link entropy. */
 export const MEMORABLE_WORDS = [
   "acorn", "amber", "anchor", "apple", "apron", "arrow", "atlas", "attic",
   "badge", "baker", "bamboo", "basin", "beach", "beacon", "beaver", "berry",
@@ -41,7 +41,7 @@ export const MEMORABLE_WORDS = [
 ] as const;
 
 export function pickMemorableWords(count: number, random = defaultRandom): string[] {
-  const n = Math.max(2, Math.min(3, count | 0));
+  const n = Math.max(2, Math.min(6, count | 0));
   const out: string[] = [];
   const buf = new Uint32Array(n);
   random(buf);
@@ -49,7 +49,7 @@ export function pickMemorableWords(count: number, random = defaultRandom): strin
   return out;
 }
 
-export function memorablePassword(count = 3, random = defaultRandom): string {
+export function memorablePassword(count = 5, random = defaultRandom): string {
   return pickMemorableWords(count, random).join("-");
 }
 

@@ -108,6 +108,9 @@ describe("signed-in pages", () => {
     const tokensHtml = await tokens.text();
     expect(tokensHtml).toContain("Mint token");
     expect(tokensHtml).toContain("ENERGON_TOKEN");
+    expect(tokensHtml).toContain("shown once");
+    expect(tokensHtml).not.toContain("Reveal returns the full secret");
+    expect(tokensHtml).not.toContain("function reveal(");
     expect(tokensHtml).toContain("boot.token_env");
     expect(tokensHtml).toContain("Type the exact label");
     expect(tokensHtml).toContain('href="/setup"');

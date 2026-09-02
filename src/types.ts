@@ -24,6 +24,8 @@ export interface Env {
 
 export type Actor = {
   email: string;
+  userId?: string;
+  idpSub?: string;
   via: "token" | "access";
   tokenId?: string;
   tokenLabel?: string;
@@ -71,9 +73,10 @@ export type LooseFileRow = {
 export type TokenRow = {
   id: string;
   user_email: string;
+  user_id?: string | null;
   label: string;
   token_hash: string;
-  token_secret?: string | null;
+  token_hint?: string | null;
   created_at: string;
   last_used_at: string | null;
   revoked_at: string | null;

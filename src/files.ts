@@ -85,7 +85,7 @@ export async function createLooseFile(
   }
   contentOrigin(env);
   await assertStorageRoom(env.DB, bytes.byteLength, 0, policy.platformBytes);
-  const user = await ensureUser(env, actor.email);
+  const user = await ensureUser(env, actor.email, actor.idpSub);
   const handle = user.handle;
   const id = await mintFileId(env);
   const contentType = contentTypeFor(filename, bytes, hintType);
@@ -170,7 +170,7 @@ export async function duplicateLooseFile(
   contentOrigin(env);
   const policy = instancePolicy(env);
   await assertStorageRoom(env.DB, source.size, 0, policy.platformBytes);
-  const user = await ensureUser(env, actor.email);
+  const user = await ensureUser(env, actor.email, actor.idpSub);
   const handle = user.handle;
   const id = await mintFileId(env);
   const filename = basename(filenameRaw || source.filename).slice(0, 180) || source.filename;
@@ -386,7 +386,7 @@ export async function putLooseFile(
   const policy = instancePolicy(env);
   if (bytes.byteLength > policy.fileBytes) throw tooLarge(bytes.byteLength, "", policy.fileBytes);
   const existing = await env.DB.prepare(
-    `SELECT id, handle, filename, size, expires_at, created_by, last_written_by, updated_at, write_policy FROM loose_files WHERE id = ?`,
+    `SELECT id, handle, filename, size, expires_at, created_by, last_written_by, updated_at, write_policy, owner_id FROM loose_files WHERE id = ?`,
   )
     .bind(id)
     .first<{
@@ -399,6 +399,7 @@ export async function putLooseFile(
       last_written_by: string | null;
       updated_at: string | null;
       write_policy: string | null;
+      owner_id: string | null;
     }>();
   if (!existing) {
     throw new ApiError(
@@ -431,7 +432,7 @@ export async function putLooseFile(
   const contentType = contentTypeFor(filename, bytes, hintType);
   const ts = new Date().toISOString();
   const hash = await passwordHashFromInput(password);
-  const handle = existing.handle || (await ensureHandle(env, actor.email));
+  const handle = existing.handle || (await ensureHandle(env, actor.email, actor.idpSub));
   const oldKey = fileKey(id, existing.filename);
   const newKey = fileKey(id, filename);
   const renamed = newKey !== oldKey;
@@ -527,7 +528,7 @@ export async function patchLoose(
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
   const existing = await env.DB.prepare(
-    `SELECT id, handle, filename, password_hash, expires_at, created_by, last_written_by, updated_at, write_policy FROM loose_files WHERE id = ?`,
+    `SELECT id, handle, filename, password_hash, expires_at, created_by, last_written_by, updated_at, write_policy, owner_id FROM loose_files WHERE id = ?`,
   )
     .bind(id)
     .first<{
@@ -540,6 +541,7 @@ export async function patchLoose(
       last_written_by: string | null;
       updated_at: string | null;
       write_policy: string | null;
+      owner_id: string | null;
     }>();
   if (!existing) {
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
@@ -560,7 +562,7 @@ export async function patchLoose(
   if (wantsOther) assertCanMutate(actor, existing);
   let nextWrite = resolveWritePolicy(existing.write_policy);
   if (wantsWrite) {
-    assertCanSetWritePolicy(actor, existing.created_by);
+    assertCanSetWritePolicy(actor, existing.created_by, existing.owner_id);
     const parsed = requestedWritePolicy(patch.write_policy);
     if (parsed === "invalid" || parsed === null) {
       throw new ApiError(400, "bad_write_policy", "write_policy must be owner or instance.");
@@ -569,7 +571,7 @@ export async function patchLoose(
   }
   const hash = await passwordHashFromInput(patch.password);
   const ts = new Date().toISOString();
-  const handle = existing.handle || (await ensureHandle(env, actor.email));
+  const handle = existing.handle || (await ensureHandle(env, actor.email, actor.idpSub));
   const resolved = patch.setTtl ? resolveExpiresAt(instancePolicy(env), patch.ttl) : null;
   const notClaimed = `ifnull(last_written_by, '') NOT LIKE ? AND (ifnull(last_written_by, '') NOT LIKE ? OR updated_at IS NULL OR updated_at <= ?)`;
   const claimGuards = [PURGE_CLAIM_LIKE, WRITE_CLAIM_LIKE, staleClaimCutoff()] as const;
@@ -720,7 +722,7 @@ export async function deleteLooseFile(
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
   const row = await env.DB.prepare(
-    `SELECT id, handle, filename, expires_at, created_by, last_written_by, updated_at, write_policy FROM loose_files WHERE id = ?`,
+    `SELECT id, handle, filename, expires_at, created_by, last_written_by, updated_at, write_policy, owner_id FROM loose_files WHERE id = ?`,
   )
     .bind(id)
     .first<{
@@ -732,6 +734,7 @@ export async function deleteLooseFile(
       last_written_by: string | null;
       updated_at: string | null;
       write_policy: string | null;
+      owner_id: string | null;
     }>();
   if (!row) {
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
@@ -809,8 +812,8 @@ async function restoreR2Object(bucket: R2Bucket, key: string, snapshot: R2Snapsh
   });
 }
 
-export async function listLooseJson(env: Env, email: string, query: ListQuery): Promise<Response> {
-  const page = await listLooseFor(env, email, query);
+export async function listLooseJson(env: Env, email: string, query: ListQuery, ownerId?: string): Promise<Response> {
+  const page = await listLooseFor(env, email, query, ownerId);
   return json({ files: page.items, total: page.total, next_cursor: page.next_cursor });
 }
 
@@ -818,6 +821,7 @@ export async function listLooseFor(
   env: Env,
   email: string,
   query: ListQuery,
+  ownerId?: string,
 ): Promise<
   ListPage<{
     id: string;
@@ -836,7 +840,13 @@ export async function listLooseFor(
   }>
 > {
   const origin = publicOrigin(env);
-  const where = involvementSql("created_by", "last_written_by", email, query);
+  const where = involvementSql(
+    "created_by",
+    "last_written_by",
+    email,
+    query,
+    ownerId ? { col: "owner_id", id: ownerId } : undefined,
+  );
   const binds: unknown[] = [...where.binds];
   let search = "";
   const needle = likeNeedle(query.q);
@@ -919,7 +929,7 @@ export async function serveLoose(
   }
 
   const cookiePath = `/${handle}/f/${id}/`;
-  const gated = await protectContent(request, row.password_hash, cookiePath, row.filename);
+  const gated = await protectContent(request, row.password_hash, cookiePath, row.filename, env);
   if (gated) return gated;
   if (request.method === "POST") {
     return json({ error: "method_not_allowed", message: "Method not allowed." }, 405);
@@ -965,6 +975,7 @@ export async function hubLists(
   env: Env,
   email: string,
   query: ListQuery,
+  ownerId?: string,
 ): Promise<{
   sites: Awaited<ReturnType<typeof listSitesFor>>["items"];
   files: Awaited<ReturnType<typeof listLooseFor>>["items"];
@@ -973,7 +984,10 @@ export async function hubLists(
   sites_cursor: string | null;
   files_cursor: string | null;
 }> {
-  const [sites, files] = await Promise.all([listSitesFor(env, email, query), listLooseFor(env, email, query)]);
+  const [sites, files] = await Promise.all([
+    listSitesFor(env, email, query, ownerId),
+    listLooseFor(env, email, query, ownerId),
+  ]);
   return {
     sites: sites.items,
     files: files.items,
