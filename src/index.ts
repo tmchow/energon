@@ -283,8 +283,10 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
 }
 
 function contentResponse(response: Response, env: Env, contentHost: boolean): Response {
-  if (contentHost) response.headers.set("access-control-allow-origin", publicOrigin(env));
-  return response;
+  if (!contentHost) return response;
+  const headers = new Headers(response.headers);
+  headers.set("access-control-allow-origin", publicOrigin(env));
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
 async function api(

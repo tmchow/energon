@@ -36,6 +36,17 @@ describe("host and route contracts", () => {
     const content = await req("https://energon.example.com/ada/s/content-origin/");
     expect(content.headers.get("access-control-allow-origin")).toBe("https://hub.energon.example.com");
 
+    const token = await mint("cors-file");
+    const created = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "X-Filename": "space file.txt", "content-type": "text/plain" }),
+      body: "content",
+    });
+    const file = await req(`https://energon.example.com/ada/f/${created.body.id}/space%20file.txt`, { redirect: "manual" });
+    expect(file.status).toBe(302);
+    expect(file.headers.get("location")).toBe(`https://energon.example.com/ada/f/${created.body.id}/space_file.txt`);
+    expect(file.headers.get("access-control-allow-origin")).toBe("https://hub.energon.example.com");
+
     const account = await req("https://energon.example.com/account/tokens", {
       headers: { "Cf-Access-Authenticated-User-Email": "ada@esperlabs.app" },
     });
