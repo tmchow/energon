@@ -1,65 +1,97 @@
-# Energon — agent SOP
+# Energon
 
-Energon is a company-hosted file and small-site Worker. Humans open the instance origin. Agents publish and fetch through `/v1`.
+Cloudflare Worker: company file and small-site host. Hub + `/v1` on `PUBLIC_ORIGIN`. Published bytes on `CONTENT_ORIGIN` (a separate hostname in production). D1 catalog, R2 objects.
 
-This repository is the **source you fork**. `plugins/energon` is a placeholder package bound to `https://energon.example.com`. Marketplace catalogs are not in this tree until someone runs `npm run skill:init` for a real host.
+This file is how to **change this tree**. It is not a product README and not the publish SOP.
 
-Humans and agents: [INSTALL.md](./INSTALL.md). Copy-paste prompts: [README.md](./README.md). A running host also has `/setup`.
+| Job | Go here |
+| --- | --- |
+| Edit the Worker, hub, tests, or skill templates | rest of this file |
+| Publish or fetch against a live host | the installed plugin skill; `GET {origin}/v1/help` and `{origin}/llms.txt`. Never invent a token. |
+| Stand up or connect a host | [INSTALL.md](./INSTALL.md) |
+| Deploy vars, Access, fork hygiene | [docs/DEPLOY.md](./docs/DEPLOY.md) |
+| Domain terms (purge claim, write claim, instance identity) | [CONCEPTS.md](./CONCEPTS.md) |
 
-If you are **connecting to an existing host**, follow INSTALL.md “Connect an agent”. Use `GET {origin}/v1/help` for `repo`, `install`, and `env`. Then follow the rendered skill under `plugins/`. Do not invent a token.
+## Hard stops
 
-If you are **publishing to a host you already have a token for**:
+- Do not invent a token. Humans mint at `{origin}/tokens`.
+- Never default to `overwrite: true`. Never claim a guessed slug that already exists without the human confirming.
+- Do not `wrangler login`, `wrangler deploy`, `npm run db:remote`, stamp `d1_migrations`, or `d1 execute` against production. New schema belongs in `migrations/` first.
+- Do not `pkill -f wrangler` / `workerd`. Do not delete `.wrangler/state` (the human's local DB).
+- Do not hand-edit `plugins/energon/` (or `plugins/{name}/` on a fork). Source is `templates/` + `instance-skill.json`. Render with `npm run skill:render`.
+- Do not put the skill under `.agents/skills` or `.claude/skills` — those autoload it inside this Worker repo.
+- `tmchow/energon` does not merge unsolicited or fork PRs (a workflow closes fork PRs). Same-repo PRs from the owner are fine. On a company fork, follow that repo's humans. [CONTRIBUTING.md](./CONTRIBUTING.md).
 
-1. Look for the token env named by `GET {origin}/v1/help` (placeholder: `ENERGON_TOKEN`). If missing, tell the human to open `{origin}/tokens`, mint a key, and export it. Do not invent a token.
-2. Decide: a site (named folder of files) vs a loose file (one file, stable id). Both stay at the same URL when you PUT.
-3. New site: `POST /v1/sites` with the human’s slug. On `409`, show the existing URL and ask: new slug, or retry with `overwrite: true`.
-4. Write with `PUT /v1/sites/{slug}/files/{path}`. Last write wins on that path only.
-5. Read with `GET /v1/sites/{slug}/files/{path}` or `GET /v1/files/{id}` (token; no share password needed). You can also GET the human `/{handle}/s/{slug}/` or `/{handle}/f/{id}/{filename}` URL. If it is password-protected, send `X-Energon-Password`.
-6. Optional share password: `"password"` on `POST /v1/sites` or `PATCH /v1/sites/{slug}`; `X-Energon-Set-Password` on `POST`/`PUT /v1/files`. Default is no password. Empty string clears. Write responses echo the password you just set. GET never returns it — only a hash is stored. Tell the human the password; do not write it into the file.
-7. One file: `POST /v1/files`, then `PUT /v1/files/{id}` to replace it. Same `url` and `api_url`.
-8. Give humans `url` (and the password, if any). Agents can use that URL plus the header, or `api_url` with their token.
-9. Who can write is per object (`write_policy`: `owner` or `instance`). New objects copy the instance default unless the request sets it. `PATCH write_policy` is creator-only. A 403 on PUT means only the creator can write that object — do not retry as overwrite.
-10. Make a copy with `duplicate_from` on `POST /v1/sites` or `POST /v1/files`. You become the owner. If you already have replacement bytes this turn, POST/PUT those instead.
+## Layout
 
-Never default to overwrite. Never use a guessed slug that already exists without the human confirming.
+| Path | What |
+| --- | --- |
+| `src/index.ts` | Router |
+| `src/sites.ts`, `src/files.ts`, `src/gate.ts`, `src/auth.ts` | Publish API, share passwords, Access identity, tokens |
+| `src/hub.html`, `src/hub.client.js`, `src/tokens.html`, `src/chrome.ts`, `src/setup.ts`, `src/about.ts`, `src/stats.ts` | Signed-in UI |
+| `src/auth.ts` `helpBody`, `src/llms.ts` | Runtime agent docs (`/v1/help`, `/llms.txt`). Update both when `/v1` behavior changes; then `templates/skill/` if the SOP changed. |
+| `src/db.ts`, `src/schema.sql`, `migrations/` | Schema (see below) |
+| `src/catalog.ts`, `src/handles.ts`, `src/urls.ts`, `src/http.ts`, `src/policy.ts`, `src/instance.ts`, `src/expire.ts`, `src/cache.ts`, `src/zip.ts`, `src/markdown.ts`, `src/mime.ts`, `src/memorable.ts`, `src/slugs.ts`, `src/config.ts` | Helpers — prefer `test:unit` |
+| `templates/`, `scripts/render-skill.mjs`, `instance-skill.json` | Skill / plugin source |
+| `plugins/energon/` | Rendered placeholder bound to `https://energon.example.com`. Not a marketplace until `npm run skill:init`. |
+| `.cursor/skills/verify-energon/` | Isolated local hub + `/v1` user-path verification |
 
-`GET /v1/sites` and `GET /v1/files` list only what you created or last wrote (`?scope=created|edited|involved`, `?q=`, `?created_by=`). They are not a company catalog.
+## Schema
 
-Machine-readable help lives at `GET /v1/help` and `GET /llms.txt` (no auth).
+Three representations. One change updates all that apply:
 
-## Pull requests to tmchow/energon
+1. A **new file** under `migrations/` (do not rewrite old ones; `migrations/0001_init.sql` is frozen history, not a live copy of `src/schema.sql`).
+2. `src/db.ts` `TABLE_STATEMENTS` / `INDEX_STATEMENTS` / `ensureColumns` — request/cron bootstrap and legacy upgrades. Indexes after columns. A 0005-shaped DB must still start.
+3. `src/schema.sql` — documented current `CREATE` shape. Not applied at runtime; keep aligned with `ensureSchema`.
 
-The canonical repo `tmchow/energon` accepts [issues](https://github.com/tmchow/energon/issues/new/choose) and does not merge unsolicited pull requests. Humans: [CONTRIBUTING.md](./CONTRIBUTING.md).
+`CREATE` / `ADD COLUMN` in migrations are not idempotent. Do not stamp production `d1_migrations` to skip a file you already applied by hand.
 
-- Do not open a PR against `tmchow/energon` unless the human owns that repo and asked for the PR in this conversation. Do not push a branch there, and do not @ the maintainer asking them to merge.
-- File or draft a GitHub issue instead, or keep changes on a fork.
-- If you are working in some other clone (a company fork, a private copy), follow that repo’s humans. This file does not forbid PRs there.
+## Commands
 
-## Working on this repository
+```bash
+npm install
+npx wrangler d1 migrations apply energon --local
+cp .dev.vars.example .dev.vars    # DEV_ACCESS_EMAIL; default identity dev@example.com
+npm run dev                       # http://127.0.0.1:8787 — do not steal this port for verify runs
+npx wrangler types                # gitignored worker-configuration.d.ts; CI runs this before typecheck
+```
 
-Do not run the full suite after every edit. GitHub CI runs `typecheck`, `test:unit`, and `test:worker` on pushes to `main` and on any PR that is opened. Production deploy is opt-in (`ENABLE_PRODUCTION_DEPLOY` plus Cloudflare secrets) — see [INSTALL.md](./INSTALL.md). Do not `wrangler login` or `wrangler deploy` from a cloud agent VM. Do not stamp `d1_migrations` or run `d1 execute` against production. New schema belongs in `migrations/` first.
+Localhost skips Access. Handle is the email local-part (`dev` for the default).
 
-| You changed | Run this (seconds) |
-|---|---|
-| `src/catalog.ts`, `src/handles.ts`, `src/urls.ts`, `src/http.ts`, `src/auth.ts` (helpers), `src/zip.ts`, `src/config.ts`, `src/memorable.ts`, `src/slugs.ts`, `src/policy.ts`, `src/instance.ts`, `src/expire.ts`, `templates/skill`, `templates/plugin`, `templates/marketplace`, `scripts/render-skill.mjs` | `npm run test:unit` — or one file: `npm run test:unit -- test/unit/catalog.spec.ts` |
-| `src/hub.html`, `src/hub.client.js`, `src/tokens.html`, `src/chrome.ts`, `src/about.ts`, `src/setup.ts`, `src/stats.ts` | `npx vitest run test/pages.spec.ts` |
+## Tests
+
+Do not run the full suite after every edit. CI (`.github/workflows/ci.yml`) runs `wrangler types`, `typecheck`, `lint`, `test:unit`, and `test:worker` on `main` and every PR. Production deploy is opt-in (`ENABLE_PRODUCTION_DEPLOY`). Pre-commit runs `oxlint` (correctness errors fail the hook; complexity warnings print and do not).
+
+`test:unit` is Node, no Miniflare. `test:worker` boots the Worker once and hits it over `SELF.fetch`. Worker bindings in `vitest.config.ts` (hub/content origins, `esperlabs.app` fixture emails) are intentional — do not "fix" them to `.dev.vars`.
+
+| Change | Run |
+| --- | --- |
+| Pure helper under `src/` | `npm run test:unit -- test/unit/<name>.spec.ts` |
+| `templates/`, `scripts/render-skill.mjs`, `instance-skill.json` | `npm run test:unit -- test/unit/skill-render.spec.ts` |
+| Hub/tokens/setup/about/stats HTML, `src/hub.client.js`, `src/chrome.ts` | `npx vitest run test/pages.spec.ts` |
 | `src/index.ts` routes, host rules, hub `/account` API | `npx vitest run test/routes.spec.ts` |
-| `src/sites.ts`, `src/files.ts`, `src/auth.ts` (DB), `src/markdown.ts`, `src/gate.ts`, publish/delete/list API | `npx vitest run test/api.spec.ts` |
-| Loose-file write/rename failure paths | `npx vitest run test/files.spec.ts` |
-| `src/db.ts`, `migrations/`, shared types, or you are about to commit | `npm run typecheck && npm test` |
+| Publish/delete/list, `src/sites.ts`, `src/files.ts`, `src/auth.ts` (DB), `src/markdown.ts`, `src/gate.ts` | `npx vitest run test/api.spec.ts` |
+| Loose-file write/rename failures | `npx vitest run test/files.spec.ts` |
+| Site mutation rollback | `npx vitest run test/site-integrity.spec.ts` |
+| Expiry purge races | `npx vitest run test/api.purge-claim.spec.ts` |
+| `src/db.ts`, `migrations/`, shared types, or before commit | `npx wrangler types && npm run typecheck && npm run lint && npm test` |
 
-`test:unit` is Node, no Miniflare. `test:worker` boots the Worker once and hits it over `SELF.fetch`. Prefer the matching file while iterating; run `npm test` before you commit.
-
-Page tests check that the HTML still has the right contracts (nav, copy, element IDs the JS calls). They are not pixel tests. If you add `$("some-id")` or `getElementById("some-id")`, put that id on the page or `pages.spec.ts` fails.
+Page tests are HTML contracts (nav, copy, element IDs the JS calls), not pixels. If you add `$("some-id")` or `getElementById("some-id")`, that id must exist on the page or `assertDomBindings` in `pages.spec.ts` fails.
 
 ## Verify like a user
 
-`.cursor/skills/verify-energon/` is how an agent drives a **local** hub and `/v1` the way a user does (isolated `wrangler dev`, not the human’s port 8787). Use it to prove a publish, token, password, catalog, or public-URL change. Follow that skill’s Launch / Doctor / Drive / Cleanup. Do not invent a token.
+`.cursor/skills/verify-energon/` is how an agent drives a **local** hub and `/v1` the way a user does (isolated `wrangler dev` via `bin/launch`, default port `18787`, persist under `/tmp/energon-verify/`). Follow that skill's Launch / Doctor / Drive / Cleanup. Do not invent a token. Do not attach to whatever is already on 8787 unless `bin/doctor` says that pid is this run.
 
-Those tests above do not keep the feature map honest. The map lives in `.cursor/skills/verify-energon/features/` and rots when a user-facing handle moves.
+The feature map is `.cursor/skills/verify-energon/features/`. It rots when a user-facing handle moves.
 
-**Same PR:** if you change a path, header, hub control, or proof string that the map or `verify-energon` Drive section names (element ids, ARIA labels, `/v1` routes, `X-Energon-Password`, token prefix/env, public `/{handle}/s|f/…` URLs), update those files in this change. Do not leave stale selectors for a later audit.
+**Same PR:** if you change a path, header, hub control, or proof string that the map or the skill Drive section names (element ids, ARIA labels, `/v1` routes, `X-Energon-Password`, token prefix/env, public `/{handle}/s|f/…` URLs), update those files in this change.
 
-**`/maintain-verification-skill`:** run it when user-facing behavior moved and you are not sure the map still covers it (new hub flow, new `/v1` route, gate/token/catalog change), or when a verify drive failed because the skill was wrong. That pass only edits `.cursor/skills/verify-energon/`. If the app is wrong, report a product bug — do not “fix” it by changing the map.
+**When the map may be wrong:** user-facing behavior moved and coverage is unclear (new hub flow, new `/v1` route, gate/token/catalog change), or a verify drive failed because the skill was stale. That pass only edits `.cursor/skills/verify-energon/`. If the app is wrong, report a product bug — do not "fix" it by changing the map.
 
-Skip maintain for internal refactors, tests-only, migrations with no user path change, or copy that `pages.spec.ts` already covers and the map never names. Do not run it after every edit.
+Skip that pass for internal refactors, tests-only, migrations with no user path change, or copy that `pages.spec.ts` already covers and the map never names.
+
+## Skill templates
+
+Edit `templates/skill/` and `templates/plugin/`, then `npm run skill:render`. `npm run skill:render -- --check` must stay green (`test:unit` runs it). Do not ship `{{placeholders}}` in committed `SKILL.md`.
+
+On a real host, `npm run skill:init` writes `plugins/{name}/` and marketplace catalogs — see INSTALL.md. This upstream tree is not a marketplace.
