@@ -2,6 +2,303 @@ import { describe, expect, it } from "vitest";
 import { auth, json, mint, req } from "./helpers";
 
 describe("TTL purge claims", () => {
+  it("keeps a replacement claim while purge observes the newly written bytes", async () => {
+    const { env } = await import("cloudflare:test");
+    const { purgeExpiredFile } = await import("../src/expire");
+    const token = await mint("ttl-replacement-claim");
+
+    const uploaded = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "X-Filename": "before.txt", "content-type": "text/plain", "X-TTL": "1d" }),
+      body: "before",
+    });
+    const fileId = uploaded.body.id as string;
+    const bucket = env.BUCKET as R2Bucket & { put: R2Bucket["put"] };
+    const originalPut = bucket.put.bind(bucket);
+    let purgeResult: boolean | undefined;
+    bucket.put = async (key, value, options) => {
+      const result = await originalPut(key, value, options);
+      if (key === `files/${fileId}/after.txt` && purgeResult === undefined) {
+        await env.DB.prepare(`UPDATE loose_files SET expires_at = ? WHERE id = ?`)
+          .bind("2000-01-01T00:00:00.000Z", fileId)
+          .run();
+        purgeResult = await purgeExpiredFile(env, undefined, fileId, "ada", "before.txt");
+      }
+      return result;
+    };
+    try {
+      const replaced = await json(`/v1/files/${fileId}`, {
+        method: "PUT",
+        headers: auth(token, { "X-Filename": "after.txt", "content-type": "text/plain" }),
+        body: "after",
+      });
+      expect(replaced.status).toBe(200);
+    } finally {
+      bucket.put = originalPut;
+    }
+
+    expect(purgeResult).toBe(false);
+    const row = await env.DB.prepare(`SELECT id, filename, last_written_by FROM loose_files WHERE id = ?`)
+      .bind(fileId)
+      .first<{ id: string; filename: string; last_written_by: string }>();
+    expect(row?.id).toBe(fileId);
+    expect(row?.filename).toBe("after.txt");
+    expect(row?.last_written_by).toBe("ada@esperlabs.app");
+    const object = await env.BUCKET.get(`files/${fileId}/after.txt`);
+    expect(object).not.toBeNull();
+    expect(await object!.text()).toBe("after");
+  });
+
+  it("does not write after expiry claims a row between its snapshot and write claim", async () => {
+    const { env } = await import("cloudflare:test");
+    const { purgeExpiredFile } = await import("../src/expire");
+    const { putLooseFile } = await import("../src/files");
+    const token = await mint("ttl-purge-first");
+
+    const uploaded = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "X-Filename": "purge-first.txt", "content-type": "text/plain", "X-TTL": "1d" }),
+      body: "before",
+    });
+    const fileId = uploaded.body.id as string;
+    const bucket = env.BUCKET as R2Bucket & {
+      delete: R2Bucket["delete"];
+      put: R2Bucket["put"];
+    };
+    const originalDelete = bucket.delete.bind(bucket);
+    const originalPut = bucket.put.bind(bucket);
+    let deleteStarted!: () => void;
+    const deleteReady = new Promise<void>((resolve) => {
+      deleteStarted = resolve;
+    });
+    let releaseDelete!: () => void;
+    const deleteGate = new Promise<void>((resolve) => {
+      releaseDelete = resolve;
+    });
+    let replacementPuts = 0;
+    bucket.delete = async (key) => {
+      deleteStarted();
+      await deleteGate;
+      return originalDelete(key);
+    };
+    bucket.put = async (key, value, options) => {
+      replacementPuts += 1;
+      return originalPut(key, value, options);
+    };
+
+    const db = env.DB;
+    const originalPrepare = db.prepare.bind(db);
+    let snapshotPaused = false;
+    let purgePromise: Promise<boolean> | undefined;
+    db.prepare = ((sql: string) => {
+      const statement = originalPrepare(sql);
+      if (snapshotPaused || !sql.includes("SELECT id, handle, filename, size, expires_at, created_by, last_written_by, updated_at, write_policy FROM loose_files WHERE id = ?")) {
+        return statement;
+      }
+      snapshotPaused = true;
+      const originalBind = statement.bind.bind(statement);
+      return {
+        ...statement,
+        bind: (...bindArgs: unknown[]) => {
+          const bound = originalBind(...bindArgs);
+          const originalFirst = bound.first.bind(bound) as (...args: unknown[]) => Promise<unknown>;
+          return {
+            ...bound,
+            first: async (...firstArgs: unknown[]) => {
+              const row = await originalFirst(...firstArgs);
+              await env.DB.prepare(`UPDATE loose_files SET expires_at = ? WHERE id = ?`)
+                .bind("2000-01-01T00:00:00.000Z", fileId)
+                .run();
+              purgePromise = purgeExpiredFile(env, undefined, fileId, "ada", "purge-first.txt");
+              await deleteReady;
+              return row;
+            },
+          };
+        },
+      };
+    }) as typeof db.prepare;
+    try {
+      const replacement = putLooseFile(
+        env,
+        undefined,
+        { email: "ada@esperlabs.app", via: "token" },
+        fileId,
+        new TextEncoder().encode("after"),
+        "purge-first.txt",
+        "text/plain",
+      );
+      await expect(replacement).rejects.toMatchObject({ status: 410 });
+      releaseDelete();
+      expect(await purgePromise).toBe(true);
+    } finally {
+      db.prepare = originalPrepare;
+      bucket.delete = originalDelete;
+      bucket.put = originalPut;
+      releaseDelete();
+    }
+
+    expect(replacementPuts).toBe(0);
+    expect(await env.DB.prepare(`SELECT id FROM loose_files WHERE id = ?`).bind(fileId).first()).toBeNull();
+    expect(await env.BUCKET.get(`files/${fileId}/purge-first.txt`)).toBeNull();
+  });
+
+  it("reclaims stale write claims for PUT and PATCH", async () => {
+    const { env } = await import("cloudflare:test");
+    const { WRITE_CLAIM } = await import("../src/expire");
+    const token = await mint("ttl-stale-write-claim");
+    const staleAt = "2000-01-01T00:00:00.000Z";
+
+    const putUpload = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "X-Filename": "stale-put.txt", "content-type": "text/plain" }),
+      body: "before",
+    });
+    const putId = putUpload.body.id as string;
+    await env.DB.prepare(`UPDATE loose_files SET last_written_by = ?, updated_at = ? WHERE id = ?`)
+      .bind(`${WRITE_CLAIM}:abandoned-put`, staleAt, putId)
+      .run();
+
+    const replaced = await json(`/v1/files/${putId}`, {
+      method: "PUT",
+      headers: auth(token, { "X-Filename": "stale-put.txt", "content-type": "text/plain" }),
+      body: "after",
+    });
+    expect(replaced.status).toBe(200);
+    expect(await (await env.BUCKET.get(`files/${putId}/stale-put.txt`))!.text()).toBe("after");
+
+    const patchUpload = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "X-Filename": "stale-patch.txt", "content-type": "text/plain" }),
+      body: "patch",
+    });
+    const patchId = patchUpload.body.id as string;
+    await env.DB.prepare(`UPDATE loose_files SET last_written_by = ?, updated_at = ? WHERE id = ?`)
+      .bind(`${WRITE_CLAIM}:abandoned-patch`, staleAt, patchId)
+      .run();
+
+    const patched = await json(`/v1/files/${patchId}`, {
+      method: "PATCH",
+      headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({ password: "secret", ttl: "7d", write_policy: "owner" }),
+    });
+    expect(patched.status).toBe(200);
+    expect(patched.body).toMatchObject({ password_protected: true, write_policy: "owner" });
+
+    const rows = await env.DB.prepare(
+      `SELECT id, last_written_by, write_policy FROM loose_files WHERE id IN (?, ?) ORDER BY id`,
+    )
+      .bind(putId, patchId)
+      .all<{ id: string; last_written_by: string; write_policy: string }>();
+    expect(rows.results).toHaveLength(2);
+    expect(rows.results.every((row) => row.last_written_by === "ada@esperlabs.app")).toBe(true);
+    expect(rows.results.find((row) => row.id === patchId)?.write_policy).toBe("owner");
+  });
+
+  it("rejects active write claims for PUT and PATCH", async () => {
+    const { env } = await import("cloudflare:test");
+    const { WRITE_CLAIM } = await import("../src/expire");
+    const token = await mint("ttl-active-write-claim");
+    const uploaded = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "X-Filename": "active.txt", "content-type": "text/plain" }),
+      body: "before",
+    });
+    const fileId = uploaded.body.id as string;
+    await env.DB.prepare(`UPDATE loose_files SET last_written_by = ?, updated_at = ? WHERE id = ?`)
+      .bind(`${WRITE_CLAIM}:active`, new Date().toISOString(), fileId)
+      .run();
+
+    const replaced = await json(`/v1/files/${fileId}`, {
+      method: "PUT",
+      headers: auth(token, { "X-Filename": "active.txt", "content-type": "text/plain" }),
+      body: "after",
+    });
+    expect(replaced.status).toBe(409);
+    expect(replaced.body.error).toBe("file_busy");
+
+    const patched = await json(`/v1/files/${fileId}`, {
+      method: "PATCH",
+      headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({ ttl: "7d" }),
+    });
+    expect(patched.status).toBe(409);
+    expect(patched.body.error).toBe("file_busy");
+    expect(await (await env.BUCKET.get(`files/${fileId}/active.txt`))!.text()).toBe("before");
+  });
+
+  it("returns file_busy when a write claim wins each PATCH update race", async () => {
+    const { env } = await import("cloudflare:test");
+    const { WRITE_CLAIM } = await import("../src/expire");
+    const token = await mint("ttl-patch-write-races");
+    const cases = [
+      {
+        name: "password and ttl",
+        body: { password: "secret", ttl: "7d" },
+        sql: "password_hash = ?, expires_at = ?",
+      },
+      { name: "password", body: { password: "secret" }, sql: "password_hash = ? WHERE" },
+      { name: "ttl", body: { ttl: "7d" }, sql: "expires_at = ? WHERE" },
+      {
+        name: "write policy metadata",
+        body: { write_policy: "owner" },
+        sql: "SET updated_at = ?, last_written_by = ? WHERE",
+      },
+      {
+        name: "write policy value",
+        body: { password: "secret", write_policy: "owner" },
+        sql: "SET write_policy = ? WHERE",
+      },
+    ];
+
+    for (const race of cases) {
+      const uploaded = await json("/v1/files", {
+        method: "POST",
+        headers: auth(token, { "X-Filename": `${race.name}.txt`, "content-type": "text/plain" }),
+        body: "before",
+      });
+      const fileId = uploaded.body.id as string;
+      const db = env.DB;
+      const originalPrepare = db.prepare.bind(db);
+      let injected = false;
+      db.prepare = ((sql: string) => {
+        const statement = originalPrepare(sql);
+        if (injected || !sql.includes("UPDATE loose_files") || !sql.includes(race.sql)) return statement;
+        const originalBind = statement.bind.bind(statement);
+        return {
+          ...statement,
+          bind: (...bindArgs: unknown[]) => {
+            const bound = originalBind(...bindArgs);
+            const originalRun = bound.run.bind(bound);
+            return Object.assign(bound, {
+              run: async () => {
+                injected = true;
+                await originalPrepare(
+                  `UPDATE loose_files SET last_written_by = ?, updated_at = ? WHERE id = ?`,
+                )
+                  .bind(`${WRITE_CLAIM}:${race.name}`, new Date().toISOString(), fileId)
+                  .run();
+                return originalRun();
+              },
+            });
+          },
+        };
+      }) as typeof db.prepare;
+
+      try {
+        const patched = await json(`/v1/files/${fileId}`, {
+          method: "PATCH",
+          headers: auth(token, { "content-type": "application/json" }),
+          body: JSON.stringify(race.body),
+        });
+        expect(patched.status, race.name).toBe(409);
+        expect(patched.body.error, race.name).toBe("file_busy");
+        expect(injected, race.name).toBe(true);
+      } finally {
+        db.prepare = originalPrepare;
+      }
+    }
+  });
+
   it("purge claims before deleting R2 so a concurrent PATCH ttl cannot orphan bytes", async () => {
     const { env } = await import("cloudflare:test");
     const { purgeExpiredSite, purgeExpiredFile } = await import("../src/expire");
