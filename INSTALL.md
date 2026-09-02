@@ -138,6 +138,8 @@ The human may have pasted the “Connect an agent” block from [README.md](./RE
 
 Install at **user (global) scope** so it is available in every project. Project or workspace scope only if the human asked for that.
 
+Each instance ships its own skill in its own repo, with its own name and token env. `yourco-energon` and another company's `esper-energon` can both live on the same machine. Install the one you want everywhere at user scope. If you belong to more than one organization, install each skill, or pin the second in that company's project settings. Do not install two marketplaces that share the same `name`.
+
 Most hosts only need the company repo:
 
 ```
@@ -192,7 +194,7 @@ codex plugin add energon@energon
 
 ```
 grok plugin marketplace add your-org/energon
-grok plugin install energon@energon --trust
+ grok plugin install energon@energon --trust
 ```
 
 **GitHub Copilot**
