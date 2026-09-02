@@ -1,0 +1,17 @@
+{
+  "name": "Energon Worker",
+  "install": "./scripts/cloud-agent-install.sh",
+  "terminals": [
+    {
+      "name": "wrangler dev",
+      "command": "npm run dev",
+      "description": "Local Cloudflare Worker (Miniflare) with local D1 + R2 on http://127.0.0.1:8787"
+    }
+  ],
+  "ports": [
+    {
+      "name": "wrangler dev",
+      "port": 8787
+    }
+  ]
+}
