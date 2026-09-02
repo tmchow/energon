@@ -59,3 +59,52 @@ export function assertSlug(slug: string): string {
   }
   return s;
 }
+
+export function assertFilePath(path: string): string {
+  const decoded = safeDecode(path);
+  const normalized = normalizeRelPath(decoded);
+  if (!normalized) {
+    throw new ApiError(
+      400,
+      "bad_path",
+      `Path '${path}' is not a safe relative file path. Remove leading slashes and '..' segments.`,
+    );
+  }
+  return normalized;
+}
+
+function safeDecode(path: string): string {
+  try {
+    return path
+      .split("/")
+      .map((p) => decodeURIComponent(p))
+      .join("/");
+  } catch {
+    throw new ApiError(400, "bad_path", "That path is not valid URL encoding.");
+  }
+}
+
+export async function getSite(env: Env, handle: string, slug: string): Promise<SiteRow | null> {
+  return env.DB.prepare(`SELECT ${SITE_SELECT} FROM sites WHERE handle = ? AND slug = ?`)
+    .bind(handle, slug)
+    .first<SiteRow>();
+}
+
+async function findSiteForActor(env: Env, actor: Actor, slug: string): Promise<SiteRow | null> {
+  const handle = await ensureHandle(env, actor.email);
+  const mine = await getSite(env, handle, slug);
+  if (mine) return mine;
+  const rows = await env.DB.prepare(`SELECT ${SITE_SELECT} FROM sites WHERE slug = ?`)
+    .bind(slug)
+    .all<SiteRow>();
+  const found = rows.results || [];
+  if (found.length === 1) return found[0]!;
+  return null;
+}
+
+async function fileCount(env: Env, handle: string, slug: string): Promise<number> {
+  const row = await env.DB.prepare(`SELECT COUNT(*) AS n FROM site_files WHERE handle = ? AND slug = ?`)
+    .bind(handle, slug)
+    .first<{ n: number }>();
+  return Number(row?.n ?? 0);
+}
