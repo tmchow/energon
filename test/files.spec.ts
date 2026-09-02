@@ -354,6 +354,10 @@ describe("putLooseFile", () => {
             return null;
           },
           async run() {
+            if (sql.includes("SET last_written_by = ?, updated_at = ? WHERE id = ? AND last_written_by = ?")) {
+              claimReleases += 1;
+              return { meta: { changes: 1 } };
+            }
             if (sql.includes("UPDATE loose_files SET last_written_by = ?, updated_at = ?")) {
               return { meta: { changes: 1 } };
             }

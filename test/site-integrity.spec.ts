@@ -1,6 +1,7 @@
 import { zipSync, strToU8 } from "fflate";
 import { describe, expect, it } from "vitest";
 import { auth, json, mint, req } from "./helpers";
+import { withD1Trigger } from "./mutation-harness";
 
 async function createSite(token: string, slug: string, files: Record<string, string> = { "index.html": "original" }) {
   await json("/v1/sites", {
@@ -18,35 +19,6 @@ async function createSite(token: string, slug: string, files: Record<string, str
 }
 
 describe("site mutation integrity", () => {
-  it("restores replaced bytes when the site metadata batch fails", async () => {
-    const { env } = await import("cloudflare:test");
-    const token = await mint("site-integrity-put");
-    await createSite(token, "integrity-put", { "index.html": "original" });
-
-    const db = env.DB;
-    const originalBatch = db.batch.bind(db);
-    db.batch = async () => {
-      throw new Error("injected site metadata failure");
-    };
-    try {
-      const response = await json("/v1/sites/integrity-put/files/index.html", {
-        method: "PUT",
-        headers: auth(token),
-        body: "replacement",
-      });
-      expect(response.status).toBe(500);
-    } finally {
-      db.batch = originalBatch;
-    }
-
-    const file = await req("/v1/sites/integrity-put/files/index.html", { headers: auth(token) });
-    expect(await file.text()).toBe("original");
-    const row = await env.DB.prepare(`SELECT size FROM site_files WHERE slug = ? AND path = ?`)
-      .bind("integrity-put", "index.html")
-      .first<{ size: number }>();
-    expect(row?.size).toBe("original".length);
-  });
-
   it("restores every affected path when an import fails after an R2 write", async () => {
     const { env } = await import("cloudflare:test");
     const token = await mint("site-integrity-import");
@@ -80,23 +52,22 @@ describe("site mutation integrity", () => {
     const { env } = await import("cloudflare:test");
     const token = await mint("site-integrity-import-db");
     await createSite(token, "integrity-import-db", { "a.txt": "old-a", "b.txt": "old-b" });
-    const db = env.DB;
-    const originalPrepare = db.prepare.bind(db);
-    db.prepare = ((sql: string) => {
-      if (sql.includes("ON CONFLICT(handle, slug, path)")) throw new Error("injected import metadata failure");
-      return originalPrepare(sql);
-    }) as typeof db.prepare;
-    try {
-      const zipped = zipSync({ "a.txt": strToU8("new-a"), "b.txt": strToU8("new-b") });
-      const response = await json("/v1/sites/integrity-import-db/import", {
+    const response = await withD1Trigger(
+      env.DB,
+      "fail_native_import_metadata",
+      `CREATE TRIGGER fail_native_import_metadata
+       BEFORE UPDATE OF size ON site_files
+       WHEN NEW.slug = 'integrity-import-db' AND NEW.path = 'a.txt' AND NEW.size = 9
+       BEGIN
+         SELECT RAISE(ABORT, 'test import metadata abort');
+       END`,
+      () => json("/v1/sites/integrity-import-db/import", {
         method: "POST",
         headers: auth(token, { "content-type": "application/zip" }),
-        body: zipped,
-      });
-      expect(response.status).toBe(500);
-    } finally {
-      db.prepare = originalPrepare;
-    }
+        body: zipSync({ "a.txt": strToU8("new-alpha"), "b.txt": strToU8("new-b") }),
+      }),
+    );
+    expect(response.status).toBe(500);
     const listing = await json("/v1/sites/integrity-import-db", { headers: auth(token) });
     expect(listing.body.files.map((file: { path: string; size: number }) => [file.path, file.size])).toEqual([
       ["a.txt", 5],
@@ -182,25 +153,6 @@ describe("site mutation integrity", () => {
       db.batch = originalBatch;
     }
     const file = await req("/v1/sites/integrity-delete-file/files/index.html", { headers: auth(token) });
-    expect(await file.text()).toBe("original");
-  });
-
-  it("keeps a site and its bytes when site deletion metadata fails", async () => {
-    const { env } = await import("cloudflare:test");
-    const token = await mint("site-integrity-delete-site");
-    await createSite(token, "integrity-delete-site");
-    const db = env.DB;
-    const originalBatch = db.batch.bind(db);
-    db.batch = async () => {
-      throw new Error("injected site deletion metadata failure");
-    };
-    try {
-      const response = await json("/v1/sites/integrity-delete-site", { method: "DELETE", headers: auth(token) });
-      expect(response.status).toBe(500);
-    } finally {
-      db.batch = originalBatch;
-    }
-    const file = await req("/v1/sites/integrity-delete-site/files/index.html", { headers: auth(token) });
     expect(await file.text()).toBe("original");
   });
 

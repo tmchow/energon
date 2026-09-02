@@ -10,6 +10,9 @@ A named collection of public files addressed through one stable site URL.
 ### Site file
 A single path within a Site, with content bytes and catalog metadata that must remain consistent across the storage and catalog layers.
 
+### Loose file
+A standalone published file addressed independently rather than as a path within a Site.
+
 ### Site mutation
 An operation that changes one or more Site files or the Site itself. A mutation is complete only when its storage and catalog changes agree; a failed mutation must restore the prior state or report an explicit recovery failure.
 
@@ -20,6 +23,8 @@ A temporary catalog marker that gives expiration cleanup exclusive permission to
 A temporary leased catalog marker that gives one loose-file storage mutation exclusive permission to change storage and catalog state.
 
 A fresh Write claim blocks competing replacements and expiration cleanup. An abandoned claim becomes reclaimable after its lease is stale.
+
+If a mutation fails before catalog commit, claim rollback restores the observed timestamp and effective prior writer ownership; reclaiming an abandoned claim normalizes ownership to the file creator instead of reinstalling the stale marker. Successful finalization preserves the committed mutation timestamp.
 
 ## Authentication
 
@@ -41,6 +46,7 @@ An Instance Identity is resolved from deployment configuration with project defa
 
 ## Relationships
 
+- A Site contains Site files; a Loose file is published outside any Site.
 - An Instance Identity defines the Token Prefix used by an API Token.
 - An API Token authenticates against the Instance Identity that issued it.
 - Purge claims and Write claims make competing content mutations resolve before storage changes begin.
