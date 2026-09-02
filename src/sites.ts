@@ -37,3 +37,6 @@ import {
 import type { Actor, Env, SiteFileRow, SiteRow } from "./types";
 import { sitePublicUrl } from "./urls";
 import { packZip, unpackZip } from "./zip";
+
+const SITE_SELECT =
+  `handle, slug, created_at, updated_at, created_by, last_written_by, password_hash, expires_at, write_policy`;
