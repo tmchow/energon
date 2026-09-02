@@ -50,6 +50,7 @@ describe("Energon", () => {
     expect(body.limits.file_bytes).toBe(25 * 1024 * 1024);
     expect(body.limits.zip_bytes).toBe(25 * 1024 * 1024);
     expect(body.limits.platform_bytes).toBe(20 * 1024 * 1024 * 1024);
+    expect(body.limits.max_import_files).toBe(200);
     expect(body.retention.file_bytes).toBe(25 * 1024 * 1024);
     expect(body.retention.allow_unlimited).toBe(true);
     expect(body.retention.default_ttl).toBe("never");

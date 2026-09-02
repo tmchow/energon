@@ -94,6 +94,72 @@ describe("putLooseFile", () => {
     expect(purged).toEqual([["/ada/f/Abc123/"]]);
   });
 
+  it("fails the replacement when cache purge rejects", async () => {
+    const key = "files/Abc123/notes.txt";
+    const objects = new Map([
+      [key, { bytes: new TextEncoder().encode("original"), contentType: "text/plain" }],
+    ]);
+    const bucket = {
+      async get() {
+        return {
+          bytes: async () => objects.get(key)!.bytes.slice(),
+          httpMetadata: { contentType: "text/plain" },
+        };
+      },
+      async put() {
+        return {};
+      },
+      async delete() {},
+    };
+    const db = {
+      prepare(sql: string) {
+        return {
+          bind() {
+            return this;
+          },
+          async first() {
+            if (sql.includes("SELECT id, handle, filename, size")) {
+              return {
+                id: "Abc123",
+                handle: "ada",
+                filename: "notes.txt",
+                size: 8,
+                expires_at: null,
+                created_by: "ada@esperlabs.app",
+                last_written_by: "ada@esperlabs.app",
+                write_policy: "instance",
+              };
+            }
+            if (sql.includes("COALESCE(SUM(size)")) return { total: 8 };
+            if (sql.includes("SELECT password_hash")) return { password_hash: null };
+            return null;
+          },
+          async run() {
+            return sql.includes("UPDATE loose_files") ? { meta: { changes: 1 } } : {};
+          },
+        };
+      },
+    };
+    const env = {
+      DB: db,
+      BUCKET: bucket,
+      PUBLIC_ORIGIN: "https://hub.energon.example.com",
+      CONTENT_ORIGIN: "https://energon.example.com",
+    } as unknown as Env;
+    const ctx = {
+      cache: {
+        async purge() {
+          throw new Error("purge rejected");
+        },
+      },
+      waitUntil() {},
+    } as unknown as ExecutionContext;
+    const actor: Actor = { email: "ada@esperlabs.app", via: "token" };
+    await expect(
+      putLooseFile(env, ctx, actor, "Abc123", new TextEncoder().encode("replacement"), "notes.txt", "text/plain"),
+    ).rejects.toThrow(/purge rejected/);
+  });
+
   it("restores same-filename content when the D1 update fails", async () => {
     const key = "files/Abc123/notes.txt";
     const objects = new Map([
@@ -142,6 +208,7 @@ describe("putLooseFile", () => {
             return null;
           },
           async run() {
+            if (sql.includes("platform_quota")) return { meta: { changes: 1 } };
             throw new Error("injected D1 failure");
           },
         };

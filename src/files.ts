@@ -41,6 +41,7 @@ import {
   nanoid,
   publicOrigin,
   readBodyCapped,
+  releaseStorage,
   tooLarge,
   wantsDownload,
 } from "./http";
@@ -83,7 +84,7 @@ export async function createLooseFile(
     throw new ApiError(400, "bad_filename", "Give a simple filename, not a path.");
   }
   contentOrigin(env);
-  await assertStorageRoom(env.DB, bytes.byteLength, 0, policy.platformBytes);
+  const held = await assertStorageRoom(env.DB, bytes.byteLength, 0, policy.platformBytes);
   const user = await ensureUser(env, actor.email, actor.idpSub);
   const handle = user.handle;
   const id = await mintFileId(env);
@@ -104,12 +105,13 @@ export async function createLooseFile(
       .run();
   } catch (err) {
     await env.BUCKET.delete(key).catch(() => undefined);
+    if (held) await releaseStorage(env.DB, bytes.byteLength);
     throw err;
   }
   const origin = publicOrigin(env);
   const url = filePublicUrl(env, handle, id, filename);
   const api_url = `${origin}/v1/files/${id}`;
-  purgeContent(ctx, [filePrefix(handle, id)]);
+  await purgeContent(ctx, [filePrefix(handle, id)]);
   return json(
     {
       url,
@@ -168,7 +170,7 @@ export async function duplicateLooseFile(
   }
   contentOrigin(env);
   const policy = instancePolicy(env);
-  await assertStorageRoom(env.DB, source.size, 0, policy.platformBytes);
+  const held = await assertStorageRoom(env.DB, source.size, 0, policy.platformBytes);
   const user = await ensureUser(env, actor.email, actor.idpSub);
   const handle = user.handle;
   const id = await mintFileId(env);
@@ -192,11 +194,12 @@ export async function duplicateLooseFile(
       .run();
   } catch (err) {
     await env.BUCKET.delete(newKey).catch(() => undefined);
+    if (held) await releaseStorage(env.DB, source.size);
     throw err;
   }
   const origin = publicOrigin(env);
   const url = filePublicUrl(env, handle, id, filename);
-  purgeContent(ctx, [filePrefix(handle, id)]);
+  await purgeContent(ctx, [filePrefix(handle, id)]);
   return json(
     {
       url,
@@ -427,7 +430,7 @@ export async function putLooseFile(
     }
   }
   contentOrigin(env);
-  await assertStorageRoom(env.DB, bytes.byteLength, existing.size, policy.platformBytes);
+  const held = await assertStorageRoom(env.DB, bytes.byteLength, existing.size, policy.platformBytes);
   const contentType = contentTypeFor(filename, bytes, hintType);
   const ts = new Date().toISOString();
   const hash = await passwordHashFromInput(password);
@@ -441,6 +444,7 @@ export async function putLooseFile(
     existing.expires_at,
     existing.last_written_by,
     existing.created_by,
+    actor,
   );
   if (!claim) {
     const current = await env.DB.prepare(`SELECT expires_at, last_written_by FROM loose_files WHERE id = ?`)
@@ -490,6 +494,7 @@ export async function putLooseFile(
     if (!metadataCommitted) {
       await restoreR2Object(env.BUCKET, newKey, renamed ? null : previousState).catch(() => undefined);
       await releaseLooseFileWriteClaim(env, id, claim.token, claim.restoreWriter).catch(() => undefined);
+      if (held) await releaseStorage(env.DB, bytes.byteLength - existing.size);
     }
     throw err;
   }
@@ -498,7 +503,7 @@ export async function putLooseFile(
   });
   const origin = publicOrigin(env);
   const url = filePublicUrl(env, handle, id, filename);
-  purgeContent(ctx, [filePrefix(handle, id)]);
+  await purgeContent(ctx, [filePrefix(handle, id)]);
   const row = await env.DB.prepare(`SELECT password_hash FROM loose_files WHERE id = ?`)
     .bind(id)
     .first<{ password_hash: string | null }>();
@@ -597,7 +602,7 @@ export async function patchLoose(
     if (!Number(updated.meta?.changes ?? 0)) await throwLooseFileMutationConflict(env, id);
   }
   if (hash !== undefined || resolved) {
-    purgeContent(ctx, [filePrefix(handle, id)]);
+    await purgeContent(ctx, [filePrefix(handle, id)]);
   }
   const origin = publicOrigin(env);
   const protectedNow = hash === undefined ? Boolean(existing.password_hash) : Boolean(hash);
@@ -721,13 +726,14 @@ export async function deleteLooseFile(
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
   const row = await env.DB.prepare(
-    `SELECT id, handle, filename, expires_at, created_by, last_written_by, updated_at, write_policy, owner_id FROM loose_files WHERE id = ?`,
+    `SELECT id, handle, filename, size, expires_at, created_by, last_written_by, updated_at, write_policy, owner_id FROM loose_files WHERE id = ?`,
   )
     .bind(id)
     .first<{
       id: string;
       handle: string | null;
       filename: string;
+      size: number;
       expires_at: string | null;
       created_by: string;
       last_written_by: string | null;
@@ -749,6 +755,7 @@ export async function deleteLooseFile(
     row.expires_at,
     row.last_written_by,
     row.created_by,
+    actor,
   );
   if (!claim) {
     const current = await env.DB.prepare(`SELECT last_written_by FROM loose_files WHERE id = ?`)
@@ -787,7 +794,8 @@ export async function deleteLooseFile(
     await releaseLooseFileWriteClaim(env, id, claim.token, claim.restoreWriter).catch(() => undefined);
     throw failure;
   }
-  if (row.handle) purgeContent(ctx, [filePrefix(row.handle, id)]);
+  await assertStorageRoom(env.DB, 0, row.size);
+  if (row.handle) await purgeContent(ctx, [filePrefix(row.handle, id)]);
 }
 
 async function snapshotR2Object(bucket: R2Bucket, key: string): Promise<R2Snapshot | null> {

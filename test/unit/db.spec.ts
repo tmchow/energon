@@ -68,6 +68,7 @@ describe("schema upgrades", () => {
     expect([...db.tables.get("tokens") || []]).toEqual(expect.arrayContaining(["token_secret", "token_hint", "user_id"]));
     expect([...db.tables.get("users") || []]).toEqual(expect.arrayContaining(["idp_sub"]));
     expect([...db.tables.get("gate_attempts") || []]).toEqual(expect.arrayContaining(["scope", "fails", "window_start"]));
+    expect([...db.tables.get("platform_quota") || []]).toEqual(expect.arrayContaining(["id", "used"]));
     expect([...db.indexes]).toEqual(
       expect.arrayContaining([
         "idx_site_files_site",

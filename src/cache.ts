@@ -21,12 +21,12 @@ export function fileCacheTag(id: string): string {
 }
 
 /** Drop cached public GETs under these path prefixes. No-op if Workers Cache is unavailable. */
-export function purgeContent(ctx: ExecutionContext | undefined, prefixes: string[]): void {
+export async function purgeContent(ctx: ExecutionContext | undefined, prefixes: string[]): Promise<void> {
   if (!ctx || prefixes.length === 0) return;
   const api = (ctx as ExecutionContext & { cache?: { purge: (opts: { pathPrefixes: string[] }) => Promise<unknown> } })
     .cache;
   if (!api?.purge) return;
-  ctx.waitUntil(Promise.resolve(api.purge({ pathPrefixes: prefixes })).catch(() => undefined));
+  await api.purge({ pathPrefixes: prefixes });
 }
 
 export function sitePrefix(handle: string, slug: string): string {
