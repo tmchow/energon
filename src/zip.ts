@@ -1,8 +1,38 @@
-import { unzipSync, zipSync } from "fflate";
+import { unzipSync, zipSync, type Zippable } from "fflate";
 import { MAX_FILE_BYTES, MAX_IMPORT_FILES, PRODUCT, formatBytes } from "./config";
 import { ApiError, normalizeRelPath, tooLarge } from "./http";
 
 export type UnpackedFile = { path: string; bytes: Uint8Array };
+
+const ALREADY_COMPRESSED_EXTENSIONS = new Set([
+  "7z",
+  "avif",
+  "bz2",
+  "gif",
+  "gz",
+  "heic",
+  "heif",
+  "ico",
+  "jpeg",
+  "jpg",
+  "mov",
+  "mp3",
+  "mp4",
+  "ogg",
+  "pdf",
+  "png",
+  "rar",
+  "webm",
+  "webp",
+  "woff",
+  "woff2",
+  "zip",
+]);
+
+function isAlreadyCompressed(path: string): boolean {
+  const dot = path.lastIndexOf(".");
+  return dot >= 0 && ALREADY_COMPRESSED_EXTENSIONS.has(path.slice(dot + 1).toLowerCase());
+}
 
 function stripWrappingFolder(paths: string[]): (path: string) => string {
   const files = paths.filter((p) => p && !p.endsWith("/"));
@@ -121,7 +151,7 @@ export function packZip(files: UnpackedFile[], maxBytes = MAX_FILE_BYTES): Uint8
       `That site has ${files.length} files. ${PRODUCT} exports at most ${MAX_IMPORT_FILES} files per zip. Split the site, then retry.`,
     );
   }
-  const rec: Record<string, Uint8Array> = {};
+  const rec: Zippable = {};
   let total = 0;
   for (const f of files) {
     const path = normalizeRelPath(f.path);
@@ -134,7 +164,7 @@ export function packZip(files: UnpackedFile[], maxBytes = MAX_FILE_BYTES): Uint8
     }
     if (f.bytes.byteLength > maxBytes) throw tooLarge(f.bytes.byteLength, "", maxBytes);
     total += f.bytes.byteLength;
-    rec[path] = f.bytes;
+    rec[path] = isAlreadyCompressed(path) ? [f.bytes, { level: 0 }] : f.bytes;
   }
   if (total > maxBytes) {
     throw new ApiError(
