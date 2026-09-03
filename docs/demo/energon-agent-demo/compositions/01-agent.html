@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en"><head></head>
+  <body>
+    <template>
+      <style>
+        #root { position: absolute; inset: 0; width: 1920px; height: 1080px; overflow: hidden; background: #17141f; color: #f8f5ff; font-family: Montserrat, sans-serif; }
+        .agent-grid { position: absolute; inset: 0; opacity: .22; background-image: linear-gradient(rgba(138,108,255,.18) 2px, transparent 2px), linear-gradient(90deg, rgba(138,108,255,.18) 2px, transparent 2px); background-size: 96px 96px; }
+        .agent-glow { position: absolute; left: 180px; top: 110px; width: 1560px; height: 850px; border-radius: 50%; background: radial-gradient(circle, rgba(104,73,234,.38), rgba(60,38,115,.16) 48%, rgba(23,20,31,0) 72%); opacity: 0; will-change: opacity, transform; }
+        .agent-meta { position: absolute; left: 116px; top: 72px; display: flex; align-items: center; gap: 22px; font-family: "IBM Plex Mono", monospace; font-size: 23px; letter-spacing: .08em; text-transform: uppercase; }
+        .agent-step { color: #b7a6ff; font-weight: 700; }
+        .agent-rule { width: 112px; height: 3px; border-radius: 3px; background: #8a6cff; transform-origin: left center; }
+        .agent-label { color: #d8d1e8; }
+        .agent-shell { position: absolute; left: 174px; top: 166px; width: 1572px; height: 826px; border: 2px solid rgba(196,180,255,.28); border-radius: 30px; background: #211d2b; box-shadow: 0 48px 120px rgba(4,2,11,.48), 0 0 0 12px rgba(138,108,255,.05); overflow: hidden; transform-origin: center center; }
+        .agent-bar { height: 64px; display: flex; align-items: center; padding: 0 28px; gap: 13px; background: #2a2535; border-bottom: 2px solid rgba(196,180,255,.13); }
+        .agent-dot { width: 17px; height: 17px; border-radius: 50%; background: #665d75; }
+        .agent-dot:nth-child(1) { background: #ff7d91; }
+        .agent-dot:nth-child(2) { background: #f4c86a; }
+        .agent-dot:nth-child(3) { background: #74d7a1; }
+        .agent-title { margin-left: 18px; color: #bcb4c8; font-family: "IBM Plex Mono", monospace; font-size: 21px; letter-spacing: .04em; }
+        .agent-status { margin-left: auto; display: flex; align-items: center; gap: 10px; color: #bcb4c8; font-family: "IBM Plex Mono", monospace; font-size: 18px; }
+        .agent-status-dot { width: 11px; height: 11px; border-radius: 50%; background: #74d7a1; box-shadow: 0 0 0 6px rgba(116,215,161,.12); }
+        .agent-video { display: block; width: 1568px; height: 762px; object-fit: cover; background: #1e1e2e; }
+        .agent-brand { position: absolute; right: 94px; bottom: 48px; display: flex; align-items: center; gap: 13px; color: #d8d1e8; font-family: "IBM Plex Mono", monospace; font-size: 18px; letter-spacing: .06em; text-transform: uppercase; }
+        .agent-brand img { width: 40px; height: 40px; }
+      </style>
+      <div data-hf-id="hf-803n" id="root" data-composition-id="agent" data-width="1920" data-height="1080" data-duration="10">
+        <div data-hf-id="hf-dgbw" class="agent-grid"></div>
+        <div data-hf-id="hf-ccxq" id="agent-glow" class="agent-glow"></div>
+        <div data-hf-id="hf-wygq" id="agent-meta" class="agent-meta"><span data-hf-id="hf-z920" class="agent-step">01</span><span data-hf-id="hf-1oab" id="agent-rule" class="agent-rule"></span><span data-hf-id="hf-l8ww" class="agent-label">Ask the agent</span></div>
+        <div data-hf-id="hf-9eqq" id="agent-shell" class="agent-shell">
+          <div data-hf-id="hf-osab" class="agent-bar">
+            <span data-hf-id="hf-503m" class="agent-dot"></span><span data-hf-id="hf-0j6u" class="agent-dot"></span><span data-hf-id="hf-0xhv" class="agent-dot"></span>
+            <span data-hf-id="hf-52yh" class="agent-title">codex · energon</span>
+            <span data-hf-id="hf-capu" class="agent-status"><span data-hf-id="hf-vjnx" class="agent-status-dot"></span>connected</span>
+          </div>
+          <video data-hf-id="hf-2le8" id="agent-terminal" class="clip agent-video" src="assets/terminal.mp4" data-start="0" data-duration="10" data-track-index="1" muted playsinline></video>
+        </div>
+        <div data-hf-id="hf-02s4" id="agent-brand" class="agent-brand"><span data-hf-id="hf-vks6">Agent → artifact</span><img data-hf-id="hf-y012" src="assets/energon-logo.svg" alt="Energon"></div>
+        <script>
+          const tl = gsap.timeline({ paused: true });
+          tl.fromTo("#agent-meta", { opacity: 0, x: -36 }, { opacity: 1, x: 0, duration: .55, ease: "power3.out" }, .15);
+          tl.fromTo("#agent-rule", { scaleX: 0 }, { scaleX: 1, duration: .7, ease: "expo.out" }, .22);
+          tl.fromTo("#agent-shell", { opacity: 0, scale: .94, y: 40 }, { opacity: 1, scale: 1, y: 0, duration: .8, ease: "power3.out" }, .2);
+          tl.fromTo("#agent-glow", { opacity: 0, scale: .84 }, { opacity: .34, scale: 1, duration: 1.1, ease: "power2.out" }, .1);
+          const glow = document.getElementById("agent-glow");
+          const phase = { p: 0 };
+          tl.to(phase, { p: Math.PI * 4, duration: 8.7, ease: "none", onUpdate: () => { const s = Math.sin(phase.p); glow.style.opacity = String(.31 + s * .025); glow.style.transform = `scale(${1 + s * .012})`; } }, 1.2);
+          tl.fromTo("#agent-brand", { opacity: 0, x: 26 }, { opacity: 1, x: 0, duration: .45, ease: "power2.out" }, .72);
+          window.__timelines.agent = tl;
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

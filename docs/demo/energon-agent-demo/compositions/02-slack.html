@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en"><head></head>
+  <body>
+    <template>
+      <style>
+        #root { position: absolute; inset: 0; width: 1920px; height: 1080px; overflow: hidden; background: #17141f; color: #f8f5ff; font-family: Montserrat, sans-serif; }
+        .slack-grid { position: absolute; inset: 0; opacity: .18; background-image: linear-gradient(rgba(138,108,255,.18) 2px, transparent 2px), linear-gradient(90deg, rgba(138,108,255,.18) 2px, transparent 2px); background-size: 96px 96px; }
+        .slack-glow { position: absolute; left: 260px; top: 40px; width: 1460px; height: 920px; border-radius: 50%; background: radial-gradient(circle, rgba(104,73,234,.42), rgba(23,20,31,0) 68%); opacity: .3; }
+        .slack-meta { position: absolute; left: 116px; top: 72px; display: flex; align-items: center; gap: 22px; font-family: "IBM Plex Mono", monospace; font-size: 23px; letter-spacing: .08em; text-transform: uppercase; }
+        .slack-step { color: #b7a6ff; font-weight: 700; }
+        .slack-rule { width: 112px; height: 3px; border-radius: 3px; background: #8a6cff; transform-origin: left center; }
+        .slack-label { color: #d8d1e8; }
+        .slack-app { position: absolute; left: 148px; top: 154px; width: 1624px; height: 842px; display: grid; grid-template-columns: 348px 1fr; border: 2px solid rgba(196,180,255,.3); border-radius: 32px; overflow: hidden; background: #f8f6fb; box-shadow: 0 48px 120px rgba(4,2,11,.5), 0 0 0 12px rgba(138,108,255,.05); transform-origin: center center; }
+        .slack-side { background: #342044; color: #f8efff; padding: 34px 26px; }
+        .slack-workspace { display: flex; align-items: center; gap: 18px; padding: 0 10px 30px; font-size: 30px; font-weight: 900; letter-spacing: -.03em; border-bottom: 2px solid rgba(255,255,255,.11); }
+        .slack-workmark { width: 50px; height: 50px; display: grid; place-items: center; border-radius: 14px; background: #8a6cff; color: white; font-family: "IBM Plex Mono", monospace; font-size: 22px; box-shadow: 0 10px 24px rgba(8,4,18,.28); }
+        .slack-section { margin: 32px 14px 14px; color: #c9b7d0; font-family: "IBM Plex Mono", monospace; font-size: 18px; letter-spacing: .08em; text-transform: uppercase; }
+        .slack-channel { margin: 7px 0; padding: 14px 18px; border-radius: 12px; color: #d8cddd; font-size: 23px; }
+        .slack-channel.active { color: #fff; background: #6541a2; font-weight: 700; }
+        .slack-main { color: #24202d; background: #f8f6fb; }
+        .slack-head { height: 112px; display: flex; align-items: center; padding: 0 46px; border-bottom: 2px solid #e8e2ee; }
+        .slack-channel-name { font-size: 32px; font-weight: 900; letter-spacing: -.025em; }
+        .slack-purpose { margin-left: 22px; color: #746f7d; font-size: 21px; }
+        .slack-people { margin-left: auto; display: flex; align-items: center; gap: 10px; color: #746f7d; font-family: "IBM Plex Mono", monospace; font-size: 18px; }
+        .slack-avatars { display: flex; }
+        .slack-avatar-mini { width: 38px; height: 38px; margin-left: -8px; border: 3px solid #f8f6fb; border-radius: 50%; background: #d1c7e7; }
+        .slack-thread { padding: 78px 68px; }
+        .slack-message { display: grid; grid-template-columns: 66px 1fr; gap: 20px; }
+        .slack-agent-avatar { width: 66px; height: 66px; display: grid; place-items: center; border-radius: 18px; background: #211b30; box-shadow: 0 12px 30px rgba(45,33,68,.2); }
+        .slack-agent-avatar img { width: 46px; height: 46px; }
+        .slack-message-head { display: flex; align-items: baseline; gap: 14px; }
+        .slack-author { font-size: 25px; font-weight: 900; }
+        .slack-app-tag { padding: 4px 9px; border-radius: 7px; background: #e7e0fb; color: #5c43b6; font-family: "IBM Plex Mono", monospace; font-size: 15px; font-weight: 700; letter-spacing: .06em; }
+        .slack-time { color: #8c8793; font-size: 17px; }
+        .slack-copy { margin-top: 13px; color: #4d4854; font-size: 25px; line-height: 1.45; }
+        .slack-card { position: relative; width: 950px; height: 232px; margin-top: 28px; display: grid; grid-template-columns: 1fr 170px; overflow: hidden; border: 3px solid #ddd5eb; border-radius: 22px; background: #fff; box-shadow: 0 18px 48px rgba(64,48,88,.13); transform-origin: center center; }
+        .slack-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 9px; background: #8a6cff; }
+        .slack-card-copy { padding: 30px 34px 28px 42px; }
+        .slack-card-eyebrow { color: #765ad1; font-family: "IBM Plex Mono", monospace; font-size: 17px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+        .slack-card-title { margin-top: 12px; color: #24202d; font-size: 30px; font-weight: 900; letter-spacing: -.025em; }
+        .slack-card-url { margin-top: 14px; color: #645e6d; font-family: "IBM Plex Mono", monospace; font-size: 18px; }
+        .slack-open { position: relative; margin: 30px 28px 30px 0; display: grid; place-items: center; overflow: visible; border-radius: 18px; background: #8a6cff; color: white; font-size: 23px; font-weight: 900; box-shadow: 0 16px 30px rgba(110,79,224,.3); transform-origin: center center; }
+        .slack-open-arrow { margin-left: 7px; font-family: "IBM Plex Mono", monospace; }
+        .slack-ripple { position: absolute; left: 50%; top: 50%; width: 62px; height: 62px; margin: -31px 0 0 -31px; border: 4px solid #8a6cff; border-radius: 50%; opacity: 0; transform: scale(0); pointer-events: none; }
+        .slack-cursor { position: absolute; left: 1570px; top: 850px; width: 66px; height: 78px; z-index: 10; filter: drop-shadow(0 8px 10px rgba(28,21,42,.32)); transform-origin: 0 0; pointer-events: none; }
+        .slack-cursor path { fill: #211b30; stroke: #fff; stroke-width: 4px; stroke-linejoin: round; }
+        .slack-brand { position: absolute; right: 94px; bottom: 42px; display: flex; align-items: center; gap: 13px; color: #d8d1e8; font-family: "IBM Plex Mono", monospace; font-size: 18px; letter-spacing: .06em; text-transform: uppercase; }
+      </style>
+      <div data-hf-id="hf-yhkz" id="root" data-composition-id="slack" data-width="1920" data-height="1080" data-duration="4">
+        <div data-hf-id="hf-eugx" class="slack-grid"></div><div data-hf-id="hf-y0eu" class="slack-glow"></div>
+        <div data-hf-id="hf-hbqy" id="slack-meta" class="slack-meta"><span data-hf-id="hf-asa4" class="slack-step">02</span><span data-hf-id="hf-tfxr" id="slack-rule" class="slack-rule"></span><span data-hf-id="hf-e6gl" class="slack-label">Share with the team</span></div>
+        <div data-hf-id="hf-rpcq" id="slack-app" class="slack-app">
+          <aside data-hf-id="hf-69sv" class="slack-side">
+            <div data-hf-id="hf-2ay4" class="slack-workspace"><span data-hf-id="hf-ju5w" class="slack-workmark">AC</span><span data-hf-id="hf-xzrv">Acme</span></div>
+            <div data-hf-id="hf-amqm" class="slack-section">Channels</div>
+            <div data-hf-id="hf-6olb" class="slack-channel"># general</div><div data-hf-id="hf-gamd" class="slack-channel active"># design</div><div data-hf-id="hf-evbc" class="slack-channel"># product</div><div data-hf-id="hf-o8mq" class="slack-channel"># launches</div>
+          </aside>
+          <main data-hf-id="hf-zzoa" class="slack-main">
+            <header data-hf-id="hf-8vsn" class="slack-head"><span data-hf-id="hf-v68a" class="slack-channel-name"># design</span><span data-hf-id="hf-55h8" class="slack-purpose">Prototype reviews and critique</span><span data-hf-id="hf-qwzg" class="slack-people"><span data-hf-id="hf-is7y" class="slack-avatars"><span data-hf-id="hf-ceod" class="slack-avatar-mini"></span><span data-hf-id="hf-u45d" class="slack-avatar-mini"></span><span data-hf-id="hf-vb2g" class="slack-avatar-mini"></span></span>18</span></header>
+            <section data-hf-id="hf-e049" class="slack-thread">
+              <article data-hf-id="hf-ygu3" id="slack-message" class="slack-message">
+                <div data-hf-id="hf-htra" class="slack-agent-avatar"><img data-hf-id="hf-y012" src="assets/energon-logo.svg" alt="Energon"></div>
+                <div data-hf-id="hf-yeow">
+                  <div data-hf-id="hf-87p9" class="slack-message-head"><span data-hf-id="hf-hoys" class="slack-author">Codex</span><span data-hf-id="hf-vuhl" class="slack-app-tag">APP</span><span data-hf-id="hf-rla5" class="slack-time">just now</span></div>
+                  <div data-hf-id="hf-z9bm" class="slack-copy">The onboarding flow prototype is ready for review.</div>
+                  <div data-hf-id="hf-amee" id="slack-card" class="slack-card">
+                    <div data-hf-id="hf-rfpn" class="slack-card-copy"><div data-hf-id="hf-9fy3" class="slack-card-eyebrow">Published with Energon</div><div data-hf-id="hf-5t0v" class="slack-card-title">Onboarding flow prototype</div><div data-hf-id="hf-mh30" class="slack-card-url">content.energon.your.co/ada/s/onboarding-flow/</div></div>
+                    <div data-hf-id="hf-nsom" id="slack-open" class="slack-open">Open <span data-hf-id="hf-snkd" class="slack-open-arrow">↗</span><span data-hf-id="hf-9f6v" id="slack-ripple" class="slack-ripple"></span></div>
+                  </div>
+                </div>
+              </article>
+            </section>
+          </main>
+        </div>
+        <svg data-hf-id="hf-lf6s" id="slack-cursor" class="slack-cursor" viewBox="0 0 64 76" aria-hidden="true"><path data-hf-id="hf-k2fh" d="M7 5v50l14-13 11 27 11-5-11-26h20z" /></svg>
+        <div data-hf-id="hf-jkoa" id="slack-brand" class="slack-brand"><span data-hf-id="hf-1jz0">Shared where work happens · Energon</span></div>
+        <script>
+          const tl = gsap.timeline({ paused: true });
+          tl.fromTo("#slack-meta", { opacity: 0, x: -36 }, { opacity: 1, x: 0, duration: .42, ease: "power3.out" }, .12);
+          tl.fromTo("#slack-rule", { scaleX: 0 }, { scaleX: 1, duration: .56, ease: "expo.out" }, .18);
+          tl.fromTo("#slack-app", { opacity: 0, scale: .94, y: 34 }, { opacity: 1, scale: 1, y: 0, duration: .62, ease: "power3.out" }, .16);
+          tl.fromTo("#slack-message", { opacity: 0, x: 56 }, { opacity: 1, x: 0, duration: .52, ease: "power2.out" }, .5);
+          tl.fromTo("#slack-card", { opacity: 0, scale: .86, y: 22 }, { opacity: 1, scale: 1, y: 0, duration: .58, ease: "power3.out" }, .72);
+          tl.fromTo("#slack-cursor", { opacity: 0, x: 0, y: 0 }, { opacity: 1, x: -70, y: -292, duration: .82, ease: "power2.inOut" }, 1.42);
+          tl.to(["#slack-open", "#slack-cursor"], { scale: .92, duration: .1, ease: "power1.in" }, 2.27);
+          tl.to(["#slack-open", "#slack-cursor"], { scale: 1, duration: .36, ease: "back.out(1.6)" }, 2.37);
+          tl.set("#slack-ripple", { opacity: 1, scale: 0 }, 2.3);
+          tl.to("#slack-ripple", { opacity: 0, scale: 4.3, duration: .66, ease: "power3.out", immediateRender: false }, 2.3);
+          tl.fromTo("#slack-brand", { opacity: 0, x: 24 }, { opacity: 1, x: 0, duration: .4, ease: "power2.out" }, .86);
+          window.__timelines.slack = tl;
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

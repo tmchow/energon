@@ -16,10 +16,10 @@
 Energon runs in your Cloudflare account. Agents write over HTTP; humans open normal web links. Markdown, HTML folders, screenshots, PDFs, and other files share one host instead of being scattered across chat artifacts, public paste services, static hosts, and drives.
 
 <div align="center">
-  <img src="./docs/assets/energon-agent-demo.gif" width="800" alt="Simulated Codex session publishing a prototype with Energon and sharing its link in Slack">
+  <img src="./docs/assets/energon-agent-demo.gif" width="800" alt="Animated simulated workflow: Codex publishes an onboarding prototype with Energon, shares it in Slack, and opens the resulting site">
 </div>
 
-<p align="center"><em>Simulated Codex session with the Energon skill and a Slack connector installed.</em></p>
+<p align="center"><em>Simulated end-to-end workflow. The terminal is recorded with VHS; no external services are called.</em></p>
 
 > Energon is self-hosted software, not a hosted service or a curl installer. Start with [Deploy a company host](#deploy-a-company-host), or give [this prompt](#give-this-to-an-agent) to an agent.
 
@@ -33,7 +33,7 @@ Energon runs in your Cloudflare account. Agents write over HTTP; humans open nor
 
 | Need | What Energon does | Example |
 | --- | --- | --- |
-| Publish from different agents | Ships an instance-specific [Agent Plugin](https://agent-plugins.org/) for Cursor, Claude Code, Codex, Copilot, Grok, and other compatible clients | “Publish `./onboarding-flow`, then post its Energon link in Slack” |
+| Publish from different agents | Ships an instance-specific [Agent Plugin](https://agent-plugins.org/) for Cursor, Claude Code, Codex, Copilot, Grok, and other compatible clients | “Publish the onboarding flow prototype to Energon and post the link to `#design` in Slack” |
 | Keep related files together | Publishes a named site with nested paths | `/ada/s/onboarding-flow/` |
 | Hand off one artifact | Publishes a loose file with a short, stable ID | `/ada/f/x7k2q9/brief.md` |
 | Revise without moving the link | Replaces one site path or loose file in place | `PUT /v1/files/x7k2q9` |
