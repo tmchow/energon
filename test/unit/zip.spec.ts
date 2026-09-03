@@ -120,4 +120,14 @@ describe("packZip", () => {
     expect(unpackZip(bytes).map((f) => f.path).sort()).toEqual(["css/app.css", "index.html"]);
     expect(() => packZip([])).toThrow(ApiError);
   });
+
+  it("stores already-compressed web assets without deflating them", () => {
+    const image = Uint8Array.from({ length: 1024 }, (_, index) => (index * 31) & 0xff);
+    const stored = packZip([{ path: "image.PNG", bytes: image }]);
+    const compressed = packZip([{ path: "index.html", bytes: strToU8("<p>compress me</p>".repeat(100)) }]);
+
+    expect(stored[8] | (stored[9] << 8)).toBe(0);
+    expect(compressed[8] | (compressed[9] << 8)).toBe(8);
+    expect(unpackZip(stored)).toEqual([{ path: "image.PNG", bytes: image }]);
+  });
 });
