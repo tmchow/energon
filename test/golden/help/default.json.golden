@@ -1,0 +1,183 @@
+{
+  "product": "Energon",
+  "hub": "https://hub.energon.example.com",
+  "content_origin": "https://energon.example.com",
+  "account": "https://hub.energon.example.com/account",
+  "env": "ENERGON_TOKEN",
+  "skill": "energon",
+  "marketplace": "energon",
+  "install": "energon@energon",
+  "auth": "Authorization: Bearer ee_live_<secret>",
+  "token_prefix": "ee_live_",
+  "limits": {
+    "file_bytes": 26214400,
+    "zip_bytes": 26214400,
+    "platform_bytes": 21474836480,
+    "max_import_files": 200
+  },
+  "retention": {
+    "allow_unlimited": true,
+    "default_ttl": "never",
+    "max_ttl": "never",
+    "presets": [
+      {
+        "id": "30m",
+        "seconds": 1800,
+        "label": "30 minutes"
+      },
+      {
+        "id": "1h",
+        "seconds": 3600,
+        "label": "1 hour"
+      },
+      {
+        "id": "1d",
+        "seconds": 86400,
+        "label": "1 day"
+      },
+      {
+        "id": "7d",
+        "seconds": 604800,
+        "label": "7 days"
+      },
+      {
+        "id": "14d",
+        "seconds": 1209600,
+        "label": "14 days"
+      },
+      {
+        "id": "30d",
+        "seconds": 2592000,
+        "label": "1 month"
+      },
+      {
+        "id": "60d",
+        "seconds": 5184000,
+        "label": "2 months"
+      },
+      {
+        "id": "90d",
+        "seconds": 7776000,
+        "label": "3 months"
+      },
+      {
+        "id": "180d",
+        "seconds": 15552000,
+        "label": "6 months"
+      },
+      {
+        "id": "365d",
+        "seconds": 31536000,
+        "label": "1 year"
+      },
+      {
+        "id": "never",
+        "seconds": null,
+        "label": "Never"
+      }
+    ],
+    "allowed_email_domains": [
+      "esperlabs.app",
+      "esperlabs.ai"
+    ],
+    "file_bytes": 26214400,
+    "zip_bytes": 26214400,
+    "platform_bytes": 21474836480,
+    "write_policy": "instance"
+  },
+  "tokens": {
+    "presets": [
+      {
+        "id": "1d",
+        "seconds": 86400,
+        "label": "1 day"
+      },
+      {
+        "id": "7d",
+        "seconds": 604800,
+        "label": "7 days"
+      },
+      {
+        "id": "30d",
+        "seconds": 2592000,
+        "label": "1 month"
+      },
+      {
+        "id": "60d",
+        "seconds": 5184000,
+        "label": "2 months"
+      },
+      {
+        "id": "90d",
+        "seconds": 7776000,
+        "label": "3 months"
+      },
+      {
+        "id": "180d",
+        "seconds": 15552000,
+        "label": "6 months"
+      },
+      {
+        "id": "365d",
+        "seconds": 31536000,
+        "label": "1 year"
+      },
+      {
+        "id": "never",
+        "seconds": null,
+        "label": "Never"
+      }
+    ],
+    "default": "90d",
+    "allow_never": true,
+    "tokens_url": "https://hub.energon.example.com/tokens"
+  },
+  "identity": {
+    "origin": "https://hub.energon.example.com",
+    "skill": "energon",
+    "env": "ENERGON_TOKEN",
+    "install": "energon@energon",
+    "repo": "tmchow/energon"
+  },
+  "sop": [
+    "Look for env ENERGON_TOKEN. If missing, tell the human to open https://hub.energon.example.com/tokens, mint a token, and export it. The secret is shown once. Do not invent a token.",
+    "Tokens expire after the lifetime the human picked at mint (default 90 days; see tokens.presets). A 401 with error token_expired is terminal: stop, tell the human to mint a new token at https://hub.energon.example.com/tokens, and do not retry. Tokens cannot be extended. GET /v1/whoami shows your token's expires_at.",
+    "This instance's skill is energon (install energon@energon). The origin is https://hub.energon.example.com. Do not guess another host.",
+    "Decide: a site (named folder of files) vs a file (one file, short id). Public URLs are /{handle}/s/{slug}/ and /{handle}/f/{id}/{filename}. Both stay put when you PUT again.",
+    "New site: POST /v1/sites with the human's slug and optional ttl (30m, 1h, 1d, 7d, 14d, 30d, 60d, 90d, 180d, 365d, never). Omit ttl to use never. On 409, show the existing URL and ask: new slug, or retry with overwrite: true.",
+    "Write files with PUT /v1/sites/{slug}/files/{path}. One call per file. Last write wins on that path only. PUT does not extend expiry.",
+    "Read bytes with GET /v1/sites/{slug}/files/{path} or GET /v1/files/{id} (token; no share password needed). Humans and agents can also GET the /{handle}/s or /{handle}/f URL. Expired content is 410.",
+    "Who can write is per site or file: owner (the creating account, keyed by IdP identity) or instance (any token on this host). New objects copy this instance default (instance) unless you set write_policy on create (JSON field, multipart field, or X-Energon-Write-Policy). PATCH write_policy is creator-only. Anyone with a token can still read via /v1.",
+    "Optional share password: pass \"password\" on POST /v1/sites or PATCH /v1/sites/{slug}; X-Energon-Set-Password on POST/PUT /v1/files. Empty string clears. Default is no password — anyone with the link can open it.",
+    "Energon stores only a hash. Write responses echo the password you just set so you can copy it. GET never returns it. To change it, PATCH a new value; to remove it, PATCH \"\".",
+    "If a password is set, browsers get a form. Agents send header X-Energon-Password on the human URL. Do not put the password in the published file.",
+    "Optional: zip a folder and POST /v1/sites/{slug}/import. GET /v1/sites/{slug}/export downloads the site as a zip (same 25 MB and file-count caps). Empty sites are 400.",
+    "A single file is never a zip. GET /v1/files/{id}?download=1 (or the public URL with ?download=1) returns the file with Content-Disposition: attachment.",
+    "One file: POST /v1/files, then PUT /v1/files/{id} to replace it. Same url and api_url. Optional multipart field ttl or header X-Energon-TTL.",
+    "Make a copy: POST /v1/sites {\"slug\":\"new-slug\",\"duplicate_from\":\"existing-slug\"} or POST /v1/files {\"duplicate_from\":\"id\"} (optional filename). You become created_by. write_policy is the instance default. Fresh TTL. Password is not copied. Anyone who can read via /v1 can duplicate. If you already have replacement bytes this turn, POST/PUT those instead.",
+    "Give humans the /{handle}/s or /{handle}/f URL (and the password, if any). Agents can use that URL plus X-Energon-Password, or api_url with their token.",
+    "Never default to overwrite. Never use a guessed slug that already exists without the human confirming."
+  ],
+  "routes": {
+    "GET /llms.txt": "agent-readable overview, no auth",
+    "GET /v1/help": "this document, no auth",
+    "GET /v1/health": "liveness, no auth",
+    "GET /v1/whoami": "token label, owner email, and expires_at (null = never)",
+    "POST /v1/sites": "{ \"slug\", \"overwrite\": false, \"password\"?: string, \"ttl\"?: string, \"write_policy\"?: \"owner\"|\"instance\", \"duplicate_from\"?: slug }",
+    "PATCH /v1/sites/{slug}": "{ \"password\"?: string, \"ttl\"?: string, \"write_policy\"?: \"owner\"|\"instance\" } — empty password clears. ttl resets expiry from now. write_policy is creator-only.",
+    "GET /v1/sites/{slug}/files/{path}": "raw file bytes (token)",
+    "PUT /v1/sites/{slug}/files/{path}": "raw file body",
+    "POST /v1/sites/{slug}/import": "application/zip unpacks into the site",
+    "GET /v1/sites/{slug}/export": "zip of the site (token; skips share password)",
+    "GET /v1/sites/{slug}": "JSON file listing",
+    "DELETE /v1/sites/{slug}": "delete site and objects",
+    "DELETE /v1/sites/{slug}/files/{path}": "delete one path",
+    "POST /v1/files": "multipart field file, or raw body plus X-Filename; or JSON { duplicate_from, filename? }. Optional X-Energon-Set-Password, X-Energon-TTL, X-Energon-Write-Policy, X-Energon-Duplicate-From",
+    "GET /v1/files": "loose files you created or last wrote. ?scope=created|edited|involved&q=&created_by=&sort=updated|name&limit=25&cursor=",
+    "GET /v1/files/{id}": "raw loose file bytes (token). ?download=1 sets Content-Disposition: attachment",
+    "PUT /v1/files/{id}": "replace loose file bytes; same id and URL; optional X-Energon-Set-Password",
+    "PATCH /v1/files/{id}": "{ \"password\"?: string, \"ttl\"?: string, \"write_policy\"?: \"owner\"|\"instance\" } — empty password clears. ttl resets expiry from now. write_policy is creator-only.",
+    "DELETE /v1/files/{id}": "delete the loose file and its object (no recycle bin)",
+    "GET /v1/sites": "sites you created or last wrote. ?scope=created|edited|involved&q=&created_by=&sort=updated|name&limit=25&cursor="
+  }
+}
