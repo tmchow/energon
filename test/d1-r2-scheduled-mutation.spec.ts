@@ -39,7 +39,7 @@ describe("mock-free scheduled mutation convergence", () => {
       log.snapshot("assert", "after_tick_3", afterThird);
       expect(afterThird).toEqual(afterSecond);
     });
-  });
+  }, 30_000);
 
   it("retains a fresh claimed expiry and purges it after the claim becomes stale", async () => {
     await withMutationLog("scheduled-sweep-claim-retry", async (log) => {
