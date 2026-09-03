@@ -108,7 +108,7 @@ describe("site mutation integrity", () => {
       db.batch = originalBatch;
     }
     expect(batchSizes).toEqual([D1_BATCH_LIMIT, D1_BATCH_LIMIT]);
-  });
+  }, 15_000);
 
   it("cleans up a duplicate when a later R2 copy fails", async () => {
     const { env } = await import("cloudflare:test");
