@@ -10,3 +10,6 @@ dist/
 worker-configuration.d.ts
 # Copied from node_modules/mermaid by scripts/vendor-mermaid.mjs
 public/static/mermaid/
+# Golden compare leftovers (test/unit/golden.ts)
+*.actual
+

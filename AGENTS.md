@@ -29,7 +29,7 @@ This file is how to **change this tree**. It is not a product README and not the
 | `src/index.ts` | Router |
 | `src/sites.ts`, `src/files.ts`, `src/gate.ts`, `src/auth.ts` | Publish API, share passwords, Access identity, tokens |
 | `src/hub.html`, `src/hub.client.js`, `src/tokens.html`, `src/chrome.ts`, `src/setup.ts`, `src/about.ts`, `src/stats.ts` | Signed-in UI |
-| `src/auth.ts` `helpBody`, `src/llms.ts` | Runtime agent docs (`/v1/help`, `/llms.txt`). Update both when `/v1` behavior changes; then `templates/skill/` if the SOP changed. |
+| `src/auth.ts` `helpBody`, `src/llms.ts` | Runtime agent docs (`/v1/help`, `/llms.txt`). Update both when `/v1` behavior changes; then `templates/skill/` if the SOP changed. Freeze the bodies in `test/golden/`. |
 | `src/db.ts`, `src/schema.sql`, `migrations/` | Schema (see below) |
 | `src/catalog.ts`, `src/handles.ts`, `src/urls.ts`, `src/http.ts`, `src/policy.ts`, `src/instance.ts`, `src/expire.ts`, `src/cache.ts`, `src/zip.ts`, `src/markdown.ts`, `src/mime.ts`, `src/memorable.ts`, `src/slugs.ts`, `src/config.ts` | Helpers — prefer `test:unit` |
 | `templates/`, `scripts/render-skill.mjs`, `instance-skill.json` | Skill / plugin source |
@@ -67,6 +67,7 @@ Do not run the full suite after every edit. CI (`.github/workflows/ci.yml`) runs
 | Change | Run |
 | --- | --- |
 | Pure helper under `src/` | `npm run test:unit -- test/unit/<name>.spec.ts` |
+| `helpBody`, `llms.txt`, markdown HTML | `npm run test:unit -- test/unit/golden.spec.ts` (`UPDATE_GOLDENS=1` to regenerate; review `git diff test/golden/`) |
 | `templates/`, `scripts/render-skill.mjs`, `instance-skill.json` | `npm run test:unit -- test/unit/skill-render.spec.ts` |
 | Hub/tokens/setup/about/stats HTML, `src/hub.client.js`, `src/chrome.ts` | `npx vitest run test/pages.spec.ts` |
 | `src/index.ts` routes, host rules, hub `/account` API | `npx vitest run test/routes.spec.ts` |
@@ -76,7 +77,7 @@ Do not run the full suite after every edit. CI (`.github/workflows/ci.yml`) runs
 | Expiry purge races | `npx vitest run test/api.purge-claim.spec.ts` |
 | `src/db.ts`, `migrations/`, shared types, or before commit | `npx wrangler types && npm run typecheck && npm run lint && npm test` |
 
-Page tests are HTML contracts (nav, copy, element IDs the JS calls), not pixels. If you add `$("some-id")` or `getElementById("some-id")`, that id must exist on the page or `assertDomBindings` in `pages.spec.ts` fails.
+Page tests are HTML contracts (nav, copy, element IDs the JS calls), not pixels. If you add `$("some-id")` or `getElementById("some-id")`, that id must exist on the page or `assertDomBindings` in `pages.spec.ts` fails. Do not snapshot hub pages into `test/golden/`.
 
 ## Verify like a user
 
