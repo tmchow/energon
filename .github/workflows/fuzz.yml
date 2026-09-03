@@ -1,0 +1,45 @@
+name: Fuzz
+
+on:
+  schedule:
+    - cron: "37 9 * * *"
+  workflow_dispatch:
+
+jobs:
+  zip:
+    name: ZIP parser
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: fuzz/corpus/zip
+          key: fuzz-zip-${{ github.run_id }}
+          restore-keys: fuzz-zip-
+      - run: npm run fuzz:build
+      - name: Fuzz ZIP parser for ten minutes
+        run: |
+          mkdir -p fuzz/artifacts/zip
+          npx jazzer .fuzz-build/zip.mjs --sync fuzz/corpus/zip -- \
+            -dict=fuzz/dicts/zip.dict \
+            -max_total_time=600 \
+            -artifact_prefix=fuzz/artifacts/zip/
+      - name: Minimize saved corpus
+        run: |
+          mv fuzz/corpus/zip fuzz/corpus/zip-expanded
+          mkdir -p fuzz/corpus/zip
+          npx jazzer .fuzz-build/zip.mjs --sync fuzz/corpus/zip -- \
+            -merge=1 \
+            fuzz/corpus/zip-expanded
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: zip-fuzz-crashes
+          path: fuzz/artifacts/zip
+          if-no-files-found: ignore
