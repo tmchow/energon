@@ -16,3 +16,4 @@ public/static/mermaid/
 # Golden compare leftovers (test/unit/golden.ts)
 *.actual
 
+.context/compound-engineering/
