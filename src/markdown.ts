@@ -1,11 +1,17 @@
 import { marked } from "marked";
-import xss, { getDefaultWhiteList, safeAttrValue } from "xss";
+import xss, { type IWhiteList, type SafeAttrValueHandler } from "xss";
 import { privateCacheControl } from "./cache";
 import { brandMark, documentShell, escapeHtml } from "./chrome";
 import { PRODUCT } from "./config";
 import { applyIsolation, basename, contentDisposition, mermaidDocumentCsp, MERMAID_SCRIPT_PATH, wantsDownload } from "./http";
 
 const MERMAID_FENCE = /^(```|~~~)[ \t]*mermaid\b/im;
+
+// xss is CommonJS; these helpers are properties of its callable default export.
+const xssRuntime = xss as typeof xss & {
+  getDefaultWhiteList(): IWhiteList;
+  safeAttrValue: SafeAttrValueHandler;
+};
 
 marked.use({
   gfm: true,
@@ -31,7 +37,7 @@ export function wantsRawMarkdown(request: Request): boolean {
   return !/\btext\/html\b/i.test(accept);
 }
 
-const whiteList = getDefaultWhiteList();
+const whiteList = xssRuntime.getDefaultWhiteList();
 whiteList.pre = ["class"];
 whiteList.code = ["class"];
 whiteList.img = ["src", "alt", "title"];
@@ -60,7 +66,7 @@ export function renderMarkdown(md: string): { html: string; mermaid: boolean } {
         return "";
       }
       if (tag === "input" && name === "type" && value !== "checkbox") return "";
-      return safeAttrValue(tag, name, value, cssFilter);
+      return xssRuntime.safeAttrValue(tag, name, value, cssFilter);
     },
   });
   return { html, mermaid: MERMAID_FENCE.test(md) || html.includes('class="mermaid"') };

@@ -1,0 +1,16 @@
+{
+  "status": "complete",
+  "current": null,
+  "completed": [
+    "fflate",
+    "oxlint",
+    "esbuild",
+    "ws",
+    "typescript",
+    "@cloudflare/vitest-plugin",
+    "vitest",
+    "sharp"
+  ],
+  "failed": [],
+  "pending": []
+}
