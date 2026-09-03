@@ -15,6 +15,12 @@
 
 Energon runs in your Cloudflare account. Agents write over HTTP; humans open normal web links. Markdown, HTML folders, screenshots, PDFs, and other files share one host instead of being scattered across chat artifacts, public paste services, static hosts, and drives.
 
+<div align="center">
+  <img src="./docs/assets/energon-agent-demo.gif" width="800" alt="Simulated Codex session publishing a prototype with Energon and sharing its link in Slack">
+</div>
+
+<p align="center"><em>Simulated Codex session with the Energon skill and a Slack connector installed.</em></p>
+
 > Energon is self-hosted software, not a hosted service or a curl installer. Start with [Deploy a company host](#deploy-a-company-host), or give [this prompt](#give-this-to-an-agent) to an agent.
 
 ## TL;DR
@@ -27,17 +33,17 @@ Energon runs in your Cloudflare account. Agents write over HTTP; humans open nor
 
 | Need | What Energon does | Example |
 | --- | --- | --- |
-| Publish from different agents | Ships an instance-specific [Agent Plugin](https://agent-plugins.org/) for Cursor, Claude Code, Codex, Copilot, Grok, and other compatible clients | “Put this folder on Energon as `lunch-poll`” |
-| Keep related files together | Publishes a named site with nested paths | `/ada/s/lunch-poll/` |
+| Publish from different agents | Ships an instance-specific [Agent Plugin](https://agent-plugins.org/) for Cursor, Claude Code, Codex, Copilot, Grok, and other compatible clients | “Publish `./onboarding-flow`, then post its Energon link in Slack” |
+| Keep related files together | Publishes a named site with nested paths | `/ada/s/onboarding-flow/` |
 | Hand off one artifact | Publishes a loose file with a short, stable ID | `/ada/f/x7k2q9/brief.md` |
 | Revise without moving the link | Replaces one site path or loose file in place | `PUT /v1/files/x7k2q9` |
 | Control who may overwrite | Stores `owner` or `instance` write policy per site or file | Lock a final brief to its creator |
 | Share outside the company | Serves content without an Access session, optionally behind a share password | Send the same preview URL to a client |
 | Keep company data on company infrastructure | Runs as a Cloudflare Worker backed by your D1 and R2 | No public paste-service account |
 
-## Quick example
+## What the agent does underneath
 
-Once a host exists and a human has exported the token named by `GET /v1/help`:
+The installed skill turns the natural-language request above into the same portable HTTP workflow from any supported agent. Once a host exists and a human has exported the token named by `GET /v1/help`:
 
 ```bash
 export ENERGON_ORIGIN=https://energon.your.co
@@ -53,23 +59,23 @@ curl -sS "$ENERGON_ORIGIN/v1/whoami" \
 curl -sS "$ENERGON_ORIGIN/v1/sites" \
   -H "Authorization: Bearer $ENERGON_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"slug":"lunch-poll","overwrite":false,"ttl":"7d"}'
+  -d '{"slug":"onboarding-flow","overwrite":false,"ttl":"7d"}'
 
 # Publish the homepage.
-curl -sS "$ENERGON_ORIGIN/v1/sites/lunch-poll/files/index.html" \
+curl -sS "$ENERGON_ORIGIN/v1/sites/onboarding-flow/files/index.html" \
   -X PUT \
   -H "Authorization: Bearer $ENERGON_TOKEN" \
   -H "Content-Type: text/html; charset=utf-8" \
   --data-binary @index.html
 
 # Or upload an entire site from a ZIP after creating its slug.
-curl -sS "$ENERGON_ORIGIN/v1/sites/lunch-poll/import" \
+curl -sS "$ENERGON_ORIGIN/v1/sites/onboarding-flow/import" \
   -H "Authorization: Bearer $ENERGON_TOKEN" \
   -H "Content-Type: application/zip" \
-  --data-binary @site.zip
+  --data-binary @onboarding-flow.zip
 
 # Inspect the site without downloading every file.
-curl -sS "$ENERGON_ORIGIN/v1/sites/lunch-poll" \
+curl -sS "$ENERGON_ORIGIN/v1/sites/onboarding-flow" \
   -H "Authorization: Bearer $ENERGON_TOKEN"
 ```
 
