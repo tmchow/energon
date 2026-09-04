@@ -82,3 +82,9 @@ _Why it serves the approach:_ The product is the fork; if standing up a host is 
 **Scope of that promise:** The instance is already deployed and the files are ready to serve. Building a prototype may still happen before upload. Stable links serve current contents, not immutable revisions, and stop working at expiry or deletion.
 
 **Word choices:** Lead with rendered documents, working prototypes, and stable links. Say "read, reference, or update" so agent use is not reduced to editing. Use "publish" for the operation and "hand off" for one outcome. Say "independent copy", not "version control". Avoid "shared workspace", "edit together", and "permanent link", which imply capabilities we do not provide. Explain agent interoperability and owned infrastructure without claiming competitors cannot offer individual capabilities.
+
+## Marketing and documentation
+
+The marketing site at [getenergon.com](https://www.getenergon.com) owns positioning, audience narratives, benefits, and product demonstrations. The [docs site](https://docs.getenergon.com) owns setup, task guides, concepts, reference, security, and operations. Docs introductions provide enough context to choose a task; product pitches and audience comparisons link back to marketing.
+
+Tutorials start with the browser or agent task and retain the constraints needed to perform it correctly. Examples cover viewing, reference, revision, and independent copies as well as handoff. Instance-specific connection details and policy come from the deployed host's `/setup`, `/auth.md`, and `/v1/help`.
