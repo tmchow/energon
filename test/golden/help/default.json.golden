@@ -5,6 +5,7 @@
   "account": "https://hub.energon.example.com/account",
   "openapi": "https://hub.energon.example.com/v1/openapi.json",
   "auth_url": "https://hub.energon.example.com/auth.md",
+  "connection_url": "https://hub.energon.example.com/v1/connections",
   "env": "ENERGON_TOKEN",
   "skill": "energon",
   "marketplace": "energon",
@@ -142,8 +143,8 @@
     "repo": "tmchow/energon"
   },
   "sop": [
-    "Look for env ENERGON_TOKEN. If missing, tell the human to open https://hub.energon.example.com/tokens, mint a token, and export it. The secret is shown once. Do not invent a token.",
-    "Tokens expire after the lifetime the human picked at mint (default 90 days; see tokens.presets). A 401 with error token_expired is terminal: stop, tell the human to mint a new token at https://hub.energon.example.com/tokens, and do not retry. Tokens cannot be extended. GET /v1/whoami shows your token's expires_at.",
+    "Look for env ENERGON_TOKEN. If missing, follow https://hub.energon.example.com/auth.md to request a human-approved connection, or ask the human to mint and export a token at https://hub.energon.example.com/tokens. The secret is shown once. Do not invent a token.",
+    "Tokens expire after the lifetime the human picked at mint (default 90 days; see tokens.presets). A 401 with error token_expired is terminal: stop using it, ask the human to approve a new connection or mint a replacement at https://hub.energon.example.com/tokens, and do not retry the expired token. Tokens cannot be extended. GET /v1/whoami shows your token's expires_at.",
     "This instance's skill is energon (install energon@energon). The origin is https://hub.energon.example.com. Do not guess another host.",
     "The HTTP schema (paths, request and response bodies, status codes, error codes) is https://hub.energon.example.com/v1/openapi.json. This document is the instance identity and policy: origins, token env, retention presets, token lifetimes, limits.",
     "Decide: a site (named folder of files) vs a file (one file, short id). Public URLs are /{handle}/s/{slug}/ and /{handle}/f/{id}/{filename}. Both stay put when you PUT again.",
@@ -164,6 +165,8 @@
   "routes": {
     "GET /llms.txt": "agent-readable overview, no auth",
     "GET /auth.md": "authentication instructions, no auth",
+    "POST /v1/connections": "request a human-approved agent connection, no auth",
+    "POST /v1/connections/{id}/token": "poll for one-time token delivery with poll_token, no bearer auth",
     "GET /v1/help": "this document, no auth",
     "GET /v1/health": "liveness, no auth",
     "GET /v1/openapi.json": "OpenAPI 3.1 HTTP contract, no auth",

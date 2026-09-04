@@ -15,7 +15,7 @@ export function llmsTxt(origin: string, env?: Env): string {
 
 Reading as reference does not authorize editing. Copies are independent objects, not revision history. Build any required site output before publishing; this host serves files, not server-side application code.
 
-The API and authenticated hub live on ${origin}. Published content is served from ${content}, which must be a separate hostname in production. There are no accounts in the API — humans mint a bearer token at ${origin}/tokens while signed in, then export it as \`${id.tokenEnv}\`. Tokens look like \`${id.tokenPrefix}…\`.
+The API and authenticated hub live on ${origin}. Published content is served from ${content}, which must be a separate hostname in production. There is no public signup. Follow ${origin}/auth.md for a human-approved connection, or have the human mint a bearer token at ${origin}/tokens and export it as \`${id.tokenEnv}\`. Tokens look like \`${id.tokenPrefix}…\`.
 
 Do not put secrets, tokens, or share passwords in published files. Last write wins on a single path. Never default to overwrite.
 
@@ -33,8 +33,8 @@ Do not put secrets, tokens, or share passwords in published files. Last write wi
 
 - Site (named folder): \`POST /v1/sites\` with \`{"slug":"…","overwrite":false,"ttl":"7d"}\`, then \`PUT /v1/sites/{slug}/files/{path}\`. Public URL: \`/{handle}/s/{slug}/\`.
 - File (one file, short id): \`POST /v1/files\`, then \`PUT /v1/files/{id}\` to replace it. Public URL: \`/{handle}/f/{id}/{filename}\`. Spaces in the filename become underscores in the path; the download name stays the original.
-- Auth on every \`/v1\` call except help, health, and openapi.json: \`Authorization: Bearer $${id.tokenEnv}\`.
-- Tokens expire after the lifetime the human picked at mint (default 90 days). A \`401\` with \`error: token_expired\` is terminal: stop, tell the human to mint a new token at /tokens, do not retry, do not invent one. Tokens cannot be extended. \`GET /v1/whoami\` shows \`expires_at\`.
+- Auth on every \`/v1\` call except help, health, openapi.json, and the connection request/poll endpoints: \`Authorization: Bearer $${id.tokenEnv}\`.
+- Tokens expire after the lifetime the human picked at mint (default 90 days). A \`401\` with \`error: token_expired\` is terminal: stop using it, ask the human to approve a new connection or mint a replacement at /tokens, do not retry the expired token, do not invent one. Tokens cannot be extended. \`GET /v1/whoami\` shows \`expires_at\`.
 - On 409, show the existing URL and ask the human: new slug, or retry with \`overwrite: true\`.
 - \`GET /v1/sites\` and \`GET /v1/files\` list only what you created or last wrote. \`?scope=created|edited|involved\`, \`?q=\`, \`?created_by=\`, \`?limit=\`, \`?cursor=\` (always intersected with your involvement — you cannot dump someone else's catalog). Responses include \`total\` and \`next_cursor\`. Search runs over the full involved set; pages are keyset cursors.
 - Optional share password: \`password\` on create/PATCH, or \`X-Energon-Set-Password\` on file write. Empty string clears. Write responses echo the password you just set. GET never returns it — only a hash is stored. Agents send \`X-Energon-Password\` on the human URL. Token GETs on \`/v1\` skip it.

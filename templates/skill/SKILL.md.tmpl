@@ -15,7 +15,7 @@ This skill is bound to **{{ORIGIN}}**. Do not send traffic to another Energon ho
 
 ## Hard rules
 
-1. Look for env `{{TOKEN_ENV}}`. If it is missing, **stop and tell the human** to open {{ORIGIN}}/tokens, mint a token, and export it. Do **not** invent a token. Do **not** reuse a token you saw in chat history unless they just pasted it. A token that has expired (`401` with `error: token_expired`) is the same stop: it cannot be renewed; the human mints a new one.
+1. Look for env `{{TOKEN_ENV}}`. If it is missing, read {{ORIGIN}}/auth.md and request a human-approved connection, or ask the human to mint and export a token at {{ORIGIN}}/tokens. Do not automate the human approval. Do **not** invent a token. Do **not** reuse a token you saw in chat history unless they just pasted it. A token that has expired (`401` with `error: token_expired`) is the same stop: it cannot be renewed; the human must approve a new connection or mint a replacement.
 2. Never default to `overwrite: true`.
 3. Never pick a slug that already exists without the human confirming.
 4. Last write wins **on that path only**. Putting a file does not delete other files. There is no merge, no comments, no presence.
@@ -26,7 +26,7 @@ This skill is bound to **{{ORIGIN}}**. Do not send traffic to another Energon ho
 9. `GET /v1/sites` and `GET /v1/files` list only what **you** created or last wrote. To find something Bob created that you edited: `?created_by=bob@example.com&scope=edited`. Do not expect a company-wide catalog. You can still GET a known `/{handle}/s/{slug}` or `/{handle}/f/{id}` URL.
 10. Pass `ttl` on create unless the human wants this instance's default. `GET /v1/help` → `retention` is the source of truth. `PUT` does not extend expiry. `PATCH { "ttl": "7d" }` resets from now. Expired URLs are `410`.
 
-Auth on every `/v1` call except `/v1/help`, `/v1/health`, and `/v1/openapi.json`:
+Auth on every `/v1` call except `/v1/help`, `/v1/health`, `/v1/openapi.json`, and the connection request/poll endpoints documented in `/auth.md`:
 
 ```
 Authorization: Bearer ${{TOKEN_ENV}}
@@ -187,14 +187,16 @@ A single file is never a zip. `GET /v1/files/{id}?download=1` (or the public URL
 
 ## Scenario G — No token, expired token, or 401
 
-401 messages point at {{ORIGIN}}/tokens. Tell the human:
+Stop using a rejected or expired token. Read {{ORIGIN}}/auth.md for the human-approved connection flow: show the returned link and code, wait for approval, and poll with the private `poll_token`. Store the delivered token without printing it. Denial is terminal; a lost delivery requires human revocation before a new approval. This is not an OAuth flow.
+
+Manual tokens are also supported. Tell the human:
 
 1. Open that page while signed in.
 2. Mint a token with a label (`laptop`, `ci`) and a lifetime (default 3 months).
 3. Copy it **now** — it is shown once.
 4. `export {{TOKEN_ENV}}={{TOKEN_PREFIX}}…` (or add it to their secret store).
 
-Then retry with the **new** token. Do not scrape HTML for a token. Do not mint from the API; only humans mint, via the hub.
+Then retry with the **new** token. Do not scrape HTML for a token. Do not automate approval or mint through the human hub API; only the connection flow delivers a token after human approval.
 
 If the 401 body has `error: token_expired`, the token passed its lifetime. It cannot be extended and there is no renew call: do not retry with it, do not invent a replacement, hand the human the steps above. `GET /v1/whoami` returns your token's `expires_at` (`null` means never) if you want to warn the human before it happens.
 

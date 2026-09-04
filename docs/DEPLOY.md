@@ -157,7 +157,7 @@ The Worker reads `Cf-Access-Authenticated-User-Email`. It does not implement sig
 
 **Paths**
 
-- **Allow** (signed-in): `/`, `/account*`, `/about`, `/stats`, `/setup`, `/tokens`
+- **Allow** (signed-in): `/`, `/account*`, `/about`, `/stats`, `/setup`, `/tokens`, `/connect`
 - **Bypass** (default): `/v1*`, `/health`, `/llms.txt`, `/auth.md`, `/favicon.svg`, `/static*` on the hub, and `/{handle}/s/*`, `/{handle}/f/*` on the content hostname
 
 Published `/{handle}/s/*` and `/{handle}/f/*` are served from `CONTENT_ORIGIN` and stay on the open internet by default so a share link just opens. Do not put Access on the content hostname; the Worker rejects hub routes there and the separate origin prevents active uploads from reading authenticated hub responses. Leave `/v1*` on Bypass on the hub. There is no `PUBLISH_VISIBILITY` var.
@@ -178,3 +178,9 @@ npm run dev
 ## What you should not do
 
 Do not reuse another instance’s D1 `database_id` or R2 bucket. Do not put Access on `/v1`. Do not install two marketplaces that share the same `name`. Do not leave `{{ORIGIN}}` in a skill you ship to agents.
+
+## Agent connections
+
+Keep `/connect` behind the same Access policy as `/tokens`; keep `/v1/connections` and its token polling endpoint under the existing `/v1*` bypass. Humans still authorize every credential. The new connection endpoints do not implement OAuth or public signup.
+
+Migration `0014_agent_connections.sql` adds short-lived connection records. Request creation is limited to 20 per IP and 1000 per instance per ten minutes; pending clients poll at most every five seconds. Cron removes records more than a day past expiry. No API token or poll secret is stored in plaintext. The delivered credential appears in the existing Tokens UI. If delivery is lost, revoke that token before approving a replacement.

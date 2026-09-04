@@ -1,6 +1,6 @@
 # Discovery documents
 
-Discovery documents are the unauthenticated first reads on a host: `/v1/help` for this instance's identity and policy, `/v1/openapi.json` for the `/v1` HTTP schema, `/v1/health` for liveness, `/llms.txt` for the agent overview, and `/auth.md` for authentication instructions. They answer before a token exists.
+Discovery documents are the unauthenticated first reads on a host: `/v1/help` for this instance's identity and policy, `/v1/openapi.json` for the `/v1` HTTP schema, `/v1/health` for liveness, `/llms.txt` for the agent overview, and `/auth.md` for authentication instructions for connections and manual tokens. They answer before a token exists.
 
 ## Sub-features
 

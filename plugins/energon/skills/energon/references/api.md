@@ -81,3 +81,7 @@ GET /v1/openapi.json  OpenAPI 3.1 contract for every route above
 ```
 
 Limits: 25 MB per file and per zip upload; 20 GB platform cap; optional content TTL per instance.
+
+## Human-approved connection
+
+Read https://energon.example.com/auth.md for POST `/v1/connections` and POST `/v1/connections/{id}/token`. No bearer is needed to start; polling requires the private `poll_token`. No file access is granted until a signed-in human enters the agent code and approves. Connection tokens use the existing token lifetime and revocation rules. Manual tokens remain available.

@@ -42,7 +42,7 @@
           "instance"
         ],
         "summary": "Authentication instructions for agents",
-        "description": "Public Markdown describing manual token setup, credential boundaries, account verification, and recovery. HEAD is accepted. This is documentation, not an OAuth or agent registration endpoint.",
+        "description": "Public Markdown describing human-approved connections, manual tokens, credential boundaries, account verification, and recovery. HEAD is accepted. The documented connection flow is an Energon API, not OAuth or WorkOS agent registration.",
         "security": [],
         "responses": {
           "200": {
@@ -98,7 +98,7 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Identity and policy. Top-level keys: product, hub, content_origin, account, openapi, auth_url, env, skill, marketplace, install, auth, token_prefix, limits, retention, tokens, identity, sop, routes.",
+            "description": "Identity and policy. Top-level keys: product, hub, content_origin, account, openapi, auth_url, connection_url, env, skill, marketplace, install, auth, token_prefix, limits, retention, tokens, identity, sop, routes.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1797,6 +1797,243 @@
           }
         }
       }
+    },
+    "/v1/connections": {
+      "post": {
+        "operationId": "startConnection",
+        "tags": [
+          "instance"
+        ],
+        "summary": "Request a human-approved agent connection",
+        "description": "No bearer token. Does not grant API access. Show the human verification_uri and user_code; they must sign in through Access, enter the code, and approve. Requests expire in ten minutes. Limits: 20 requests per IP and 1000 per instance per ten-minute window. All successful responses use Cache-Control: no-store, private. This is an Energon API, not OAuth device authorization.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Connection started; keep poll_token private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionStarted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid label or JSON.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "x-error-codes": [
+              "bad_label",
+              "bad_json"
+            ]
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "429": {
+            "description": "Wait ten minutes before starting another request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "x-error-codes": [
+              "connection_rate_limited"
+            ]
+          },
+          "413": {
+            "description": "Connection JSON exceeds 4096 bytes.",
+            "x-error-codes": [
+              "too_large"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Use a JSON object, not a form body.",
+            "x-error-codes": [
+              "bad_content_type"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/connections/{id}/token": {
+      "post": {
+        "operationId": "exchangeConnection",
+        "tags": [
+          "instance"
+        ],
+        "summary": "Poll for one-time token delivery",
+        "description": "No bearer token; requires the private poll_token in the JSON body. Poll at most once every five seconds while pending. After human approval, exactly one request receives the account token. If delivery is lost, ask the human to revoke the token before approving a new connection. Denial is terminal; do not automatically restart.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectionPoll"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Account token delivered once; no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionToken"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Waiting for human approval; wait interval seconds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionPending"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid JSON.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "x-error-codes": [
+              "bad_json"
+            ]
+          },
+          "401": {
+            "description": "Invalid request credentials; stop and check them.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "x-error-codes": [
+              "connection_invalid"
+            ]
+          },
+          "403": {
+            "description": "Denied or approving account no longer allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "x-error-codes": [
+              "connection_denied",
+              "forbidden_domain"
+            ]
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "410": {
+            "description": "Expired or consumed request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "x-error-codes": [
+              "connection_expired"
+            ]
+          },
+          "429": {
+            "description": "Wait at least five seconds between polls.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "x-error-codes": [
+              "connection_slow_down"
+            ]
+          },
+          "413": {
+            "description": "Connection JSON exceeds 4096 bytes.",
+            "x-error-codes": [
+              "too_large"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Use a JSON object, not a form body.",
+            "x-error-codes": [
+              "bad_content_type"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1810,7 +2047,7 @@
     "schemas": {
       "Error": {
         "type": "object",
-        "description": "Every non-2xx JSON body. Some codes add fields: site_exists and token_expired are typed below; too_large and storage_cap add limit_bytes plus actual_bytes or used_bytes; bad_ttl, ttl_required, and ttl_too_long add presets and default_ttl or max_ttl; forbidden_domain adds allowed_email_domains; site_not_found adds hint. password_required (401) and rate_limited (429) come from the public content gate, not /v1. bad_label, bad_origin, and token_not_found come from the hub /account API. not_found is any unknown route. bad_path is also returned for a URL that is not valid percent-encoding.",
+        "description": "Every non-2xx JSON body. Some codes add fields: site_exists and token_expired are typed below; too_large and storage_cap add limit_bytes plus actual_bytes or used_bytes; bad_ttl, ttl_required, and ttl_too_long add presets and default_ttl or max_ttl; forbidden_domain adds allowed_email_domains; site_not_found adds hint. password_required (401) and rate_limited (429) come from the public content gate, not /v1. bad_label, bad_origin, and token_not_found come from the hub /account API. not_found is any unknown route. bad_path is also returned for a URL that is not valid percent-encoding. connection_bad_code and connection_decided come from the human /account/connections API.",
         "required": [
           "error",
           "message"
@@ -1831,6 +2068,13 @@
               "bad_ttl",
               "bad_write_policy",
               "bad_zip_path",
+              "connection_bad_code",
+              "connection_decided",
+              "connection_denied",
+              "connection_expired",
+              "connection_invalid",
+              "connection_rate_limited",
+              "connection_slow_down",
               "content_origin_not_configured",
               "copy_failed",
               "empty_site",
@@ -3028,6 +3272,118 @@
             "const": true
           }
         }
+      },
+      "ConnectionRequest": {
+        "type": "object",
+        "required": [
+          "label"
+        ],
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "additionalProperties": false
+      },
+      "ConnectionStarted": {
+        "type": "object",
+        "required": [
+          "id",
+          "poll_token",
+          "user_code",
+          "verification_uri",
+          "expires_in",
+          "interval"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "poll_token": {
+            "type": "string",
+            "description": "Private request credential. Keep in memory; never include in URLs or show to the human."
+          },
+          "user_code": {
+            "type": "string",
+            "pattern": "^[0-9]{8}$"
+          },
+          "verification_uri": {
+            "type": "string",
+            "format": "uri"
+          },
+          "expires_in": {
+            "type": "integer",
+            "const": 600
+          },
+          "interval": {
+            "type": "integer",
+            "const": 5
+          }
+        },
+        "additionalProperties": false
+      },
+      "ConnectionPoll": {
+        "type": "object",
+        "required": [
+          "poll_token"
+        ],
+        "properties": {
+          "poll_token": {
+            "type": "string",
+            "minLength": 48,
+            "maxLength": 48
+          }
+        },
+        "additionalProperties": false
+      },
+      "ConnectionPending": {
+        "type": "object",
+        "required": [
+          "status",
+          "interval"
+        ],
+        "properties": {
+          "status": {
+            "const": "pending"
+          },
+          "interval": {
+            "type": "integer",
+            "const": 5
+          }
+        },
+        "additionalProperties": false
+      },
+      "ConnectionToken": {
+        "type": "object",
+        "required": [
+          "id",
+          "token",
+          "label",
+          "expires_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Token ID for listing and revocation."
+          },
+          "token": {
+            "type": "string",
+            "description": "Delivered once; store securely as the environment variable from help."
+          },
+          "label": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
       }
     },
     "parameters": {

@@ -198,7 +198,7 @@ copilot plugin marketplace add your-org/energon
 copilot plugin install yourco-energon@yourco-energon
 ```
 
-A human then signs in at `{origin}/tokens`, mints a token, and exports it under the environment variable named by `/v1/help`. The secret is shown once and cannot be recovered later.
+The agent can request a connection using `{origin}/auth.md`: a human signs in, enters the agent’s code, and approves; the agent receives its token directly. Manual setup remains available: a human signs in at `{origin}/tokens`, mints a token, and exports it under the environment variable named by `/v1/help`. The secret is shown once and cannot be recovered later.
 
 ### Run the source locally
 
@@ -309,6 +309,8 @@ curl -sS "$ENERGON_ORIGIN/v1/files/{id}" \
 | `GET /v1/help` | Identity, SOP, routes, limits, retention, and token policy | None |
 | `GET /v1/health` | Return `{ "ok": true }` | None |
 | `GET /v1/openapi.json` | OpenAPI 3.1 contract for every `/v1` route, with `servers` set to this instance | None |
+| `POST /v1/connections` | Start a connection for human approval | None |
+| `POST /v1/connections/{id}/token` | Poll for one-time credential delivery | Request poll token |
 | `GET /v1/whoami` | Return token owner, label, and expiry | Token |
 
 For headers, response shapes, filters, duplication, ZIP behavior, and error handling, query the deployed `/v1/openapi.json` or see the rendered plugin's `references/api.md`.
@@ -434,7 +436,7 @@ Yes. Each fork renders a distinct plugin name and token environment variable. In
 
 ### Can an agent mint or recover a token?
 
-No. A signed-in human mints it at `/tokens`. The secret is displayed once. It cannot be recovered or renewed, and an expired token must be replaced.
+An agent can request a connection, but a signed-in human must approve it before a token is delivered. Humans can also mint tokens manually at `/tokens`. The secret is delivered or displayed once. It cannot be recovered or renewed, and an expired token must be replaced.
 
 ### Why separate hub and content hostnames?
 
