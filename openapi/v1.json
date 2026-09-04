@@ -23,7 +23,7 @@
   "tags": [
     {
       "name": "instance",
-      "description": "Discovery and identity. help, health, openapi, and llms.txt need no token."
+      "description": "Discovery and identity. help, health, openapi, llms.txt, and auth.md need no token."
     },
     {
       "name": "sites",
@@ -35,6 +35,32 @@
     }
   ],
   "paths": {
+    "/auth.md": {
+      "get": {
+        "operationId": "getAuthMarkdown",
+        "tags": [
+          "instance"
+        ],
+        "summary": "Authentication instructions for agents",
+        "description": "Public Markdown describing manual token setup, credential boundaries, account verification, and recovery. HEAD is accepted. This is documentation, not an OAuth or agent registration endpoint.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Instance-specific authentication instructions.",
+            "content": {
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          }
+        }
+      }
+    },
     "/llms.txt": {
       "get": {
         "operationId": "getLlmsTxt",
@@ -72,7 +98,7 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Identity and policy. Top-level keys: product, hub, content_origin, account, openapi, env, skill, marketplace, install, auth, token_prefix, limits, retention, tokens, identity, sop, routes.",
+            "description": "Identity and policy. Top-level keys: product, hub, content_origin, account, openapi, auth_url, env, skill, marketplace, install, auth, token_prefix, limits, retention, tokens, identity, sop, routes.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1855,6 +1881,16 @@
             "type": "string",
             "format": "uri",
             "description": "{origin}/account. Absent on public content gate errors and on 405 bodies."
+          },
+          "auth_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Public authentication instructions, included for rejected or expired API tokens."
+          },
+          "tokens_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Human token management page, included for rejected or expired API tokens."
           }
         },
         "additionalProperties": true

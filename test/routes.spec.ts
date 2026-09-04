@@ -2,6 +2,25 @@ import { describe, expect, it } from "vitest";
 import { access, auth, json, mint, req } from "./helpers";
 
 describe("host and route contracts", () => {
+  it("serves authentication instructions before login and links them from discovery and token errors", async () => {
+    const response = await req("/auth.md");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/markdown");
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(await response.text()).toContain("https://hub.energon.example.com/tokens");
+    const head = await req("/auth.md", { method: "HEAD" });
+    expect(head.status).toBe(200);
+    expect(await head.text()).toBe("");
+    expect((await req("/auth.md", { method: "POST" })).status).toBe(405);
+    expect((await json("/v1/help")).body.auth_url).toBe("https://hub.energon.example.com/auth.md");
+    expect(await (await req("/llms.txt")).text()).toContain("https://hub.energon.example.com/auth.md");
+    for (const path of ["/v1", "/v1/", "/v1/whoami"]) {
+      const rejected = await json(path);
+      expect(rejected.status).toBe(401);
+      expect(rejected.body.auth_url).toBe("https://hub.energon.example.com/auth.md");
+    }
+  });
+
   it("blocks the human hub on workers.dev and keeps /v1/health up", async () => {
     const hub = await req("https://energon.workers.dev/");
     expect(hub.status).toBe(403);

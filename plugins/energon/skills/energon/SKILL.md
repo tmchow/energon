@@ -32,7 +32,7 @@ Auth on every `/v1` call except `/v1/help`, `/v1/health`, and `/v1/openapi.json`
 Authorization: Bearer $ENERGON_TOKEN
 ```
 
-Tokens look like `ee_live_…`.
+Tokens look like `ee_live_…`. For authentication setup, credential boundaries, and recovery, read `GET https://energon.example.com/auth.md` (no auth).
 
 ## Decide: site or loose file?
 

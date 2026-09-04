@@ -9,6 +9,7 @@ import { setupResponse } from "./setup";
 import { statsResponse } from "./stats";
 import { parseListQuery } from "./catalog";
 import { llmsResponse } from "./llms";
+import { authMarkdownResponse } from "./auth-doc";
 import { openapiResponse } from "./openapi";
 import { ENV_TOKEN, PRODUCT, RESERVED_HANDLES } from "./config";
 import { ensureSchema } from "./db";
@@ -79,6 +80,11 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     return methodNotAllowed();
   }
 
+  if (path === "/auth.md") {
+    if (method === "GET" || method === "HEAD") return authMarkdownResponse(env);
+    return methodNotAllowed();
+  }
+
   if (path === "/v1/help") {
     if (method === "GET") return json(helpBody(publicOrigin(env), env));
     return methodNotAllowed();
@@ -121,7 +127,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   await ensureSchema(env.DB);
 
   if (path === "/v1" || path === "/v1/") {
-    return unauthorized(publicOrigin(env)).toResponse(publicOrigin(env));
+    return unauthorized(publicOrigin(env), undefined, env).toResponse(publicOrigin(env));
   }
 
   if (path.startsWith("/v1/")) return api(request, env, ctx, path, method);

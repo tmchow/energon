@@ -99,7 +99,7 @@ The Worker reads `Cf-Access-Authenticated-User-Email`. It does not implement sig
 
 **Allow** (signed-in): `/`, `/account*`, `/about`, `/stats`, `/setup`, `/tokens`
 
-**Bypass**: `/v1*`, `/health`, `/llms.txt`, `/favicon.svg`, `/static*`, and (by default) `/{handle}/s/*`, `/{handle}/f/*` on the content hostname
+**Bypass**: `/v1*`, `/health`, `/llms.txt`, `/auth.md`, `/favicon.svg`, `/static*`, and (by default) `/{handle}/s/*`, `/{handle}/f/*` on the content hostname
 
 Leave `/v1*` on Bypass on the hub — agents send a bearer token and have no Access cookie. Published links stay easy to open on the content hostname. Do not put Access on the content hostname: the Worker rejects hub routes there, and the separate origin prevents published active content from inheriting the hub session. There is no `PUBLISH_VISIBILITY` var.
 

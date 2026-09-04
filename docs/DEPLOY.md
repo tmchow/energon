@@ -158,7 +158,7 @@ The Worker reads `Cf-Access-Authenticated-User-Email`. It does not implement sig
 **Paths**
 
 - **Allow** (signed-in): `/`, `/account*`, `/about`, `/stats`, `/setup`, `/tokens`
-- **Bypass** (default): `/v1*`, `/health`, `/llms.txt`, `/favicon.svg`, `/static*` on the hub, and `/{handle}/s/*`, `/{handle}/f/*` on the content hostname
+- **Bypass** (default): `/v1*`, `/health`, `/llms.txt`, `/auth.md`, `/favicon.svg`, `/static*` on the hub, and `/{handle}/s/*`, `/{handle}/f/*` on the content hostname
 
 Published `/{handle}/s/*` and `/{handle}/f/*` are served from `CONTENT_ORIGIN` and stay on the open internet by default so a share link just opens. Do not put Access on the content hostname; the Worker rejects hub routes there and the separate origin prevents active uploads from reading authenticated hub responses. Leave `/v1*` on Bypass on the hub. There is no `PUBLISH_VISIBILITY` var.
 

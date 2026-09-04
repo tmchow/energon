@@ -21,6 +21,7 @@ Do not put secrets, tokens, or share passwords in published files. Last write wi
 
 ## Start here
 
+- [Authentication instructions](${origin}/auth.md): connect with a token, verify the account, and recover from rejected credentials. No auth.
 - [OpenAPI 3.1 contract](${origin}/v1/openapi.json): every \`/v1\` path with request and response schemas, status codes, and error codes. No auth.
 - [Machine-readable API help](${origin}/v1/help): this instance's identity and policy. SOP, routes, limits, retention, token policy. No auth.
 - [Health](${origin}/v1/health): \`{"ok":true}\`. No auth.
