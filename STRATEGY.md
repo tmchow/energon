@@ -25,18 +25,18 @@ It is not a system of record. Code and anything that must be versioned and revie
 
 **Primary:** A person working with agents across sessions, tools, or machines. They want one way to publish, view, revise, and reference work without choosing a host per artifact or creating a repository for it. Sometimes they upload or share directly; sometimes they ask an agent; sometimes an agent acts autonomously within delegated authority. Human-to-human, human-to-agent, agent-to-human, and agent-to-agent use all belong. Cross-tool demand remains a positioning hypothesis, not observed adoption.
 
-**Secondary:** The individual or company operator who forks and runs the host. They want that workflow on infrastructure they control, with their own identity, token, and retention policies.
+**Secondary:** The individual or organization operator who forks and runs the host. They want that workflow on infrastructure they control, with their own identity, token, and retention policies.
 
 ## Boundaries
 
 - Not a repo or system of record. Code and anything that needs versioning and review stays in git. Copies are independent objects; there are no branches, merges, or revision history.
-- Not a company-wide catalog. Listing and search are scoped to what you created, edited, or were involved in; no one can dump another person's catalog.
+- Not an instance-wide catalog. Listing and search are scoped to what you created, edited, or were involved in; no one can dump another person's catalog.
 - Not a document editor. People edit in their own tools or through agents. Shared writes happen through in-place replacement under write policy; `curl` and `?raw=1` stay the source, last write wins, no merge. Referencing an artifact does not require permission to change it.
-- Not a hosted public service. This repo is what you fork; running an instance requires setup in your own Cloudflare account.
+- Not a hosted public service. `getenergon.com` explains the project but does not provide an Energon account or host files. This repo is what you fork; running an instance requires setup in your own Cloudflare account.
 - Not a general-purpose CDN or app platform. Files and small sites only, no server-side code.
 - Not per-user access control on published links. Links are open by default; a share password is a shared secret, not an ACL.
 
-_Resist a change when:_ it makes publishing depend on a specific chat product, a specific agent, or infrastructure the company does not own.
+_Resist a change when:_ it makes publishing depend on a specific chat product, a specific agent, or infrastructure the operator does not own.
 
 ## Key metrics
 
@@ -59,11 +59,11 @@ _Why it serves the approach:_ Publishing and returning to the work must be strai
 
 Cloudflare Access, token prefixes, write policy (owner vs instance), share passwords, expiry, and storage integrity across mutations.
 
-_Why it serves the approach:_ A company-owned host has to be safe to hand a token to every teammate and safe to send a link outside.
+_Why it serves the approach:_ An operator-owned host has to be safe for its authorized users and safe to send a link beyond the instance.
 
 ### Fork and run
 
-`skill:init`, the marketplace catalogs, `INSTALL.md`, `docs/DEPLOY.md`, and the upstream-merge story so one company's instance does not collide with another's.
+`skill:init`, the marketplace catalogs, `INSTALL.md`, `docs/DEPLOY.md`, and the upstream-merge story so one instance's generated skill does not collide with another's.
 
 _Why it serves the approach:_ The product is the fork; if standing up a host is hard, nobody gets the link.
 

@@ -1,7 +1,7 @@
 # Contributing
 
-This repository is the Energon source you fork and run for your company.
-There is no hosted public service here.
+This repository is the Energon source you fork and run for yourself or your organization.
+[getenergon.com](https://getenergon.com) explains the project; there is no hosted public service there.
 
 **Issues are welcome. Pull requests are not.**
 
