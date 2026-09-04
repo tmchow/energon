@@ -9,6 +9,7 @@ import { setupResponse } from "./setup";
 import { statsResponse } from "./stats";
 import { parseListQuery } from "./catalog";
 import { llmsResponse } from "./llms";
+import { openapiResponse } from "./openapi";
 import { ENV_TOKEN, PRODUCT, RESERVED_HANDLES } from "./config";
 import { ensureSchema } from "./db";
 import { sweepExpired } from "./expire";
@@ -80,6 +81,11 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
 
   if (path === "/v1/help") {
     if (method === "GET") return json(helpBody(publicOrigin(env), env));
+    return methodNotAllowed();
+  }
+
+  if (path === "/v1/openapi.json") {
+    if (method === "GET" || method === "HEAD") return openapiResponse(env);
     return methodNotAllowed();
   }
 
