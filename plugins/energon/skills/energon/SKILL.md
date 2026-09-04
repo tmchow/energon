@@ -1,13 +1,13 @@
 ---
 name: energon
-description: Share files and small sites on Energon (https://energon.example.com) so work can leave a session. Use when the user wants to publish a prototype, hand a markdown/image/PDF to another person or agent, put a doc on a stable internal URL, fetch something already on Energon, mint or use ENERGON_TOKEN, or mentions Energon / energon.example.com. Never invent a token. Never overwrite an existing slug without the human confirming.
+description: Publish, read, reference, revise, or copy documents, prototypes, and working files on Energon (https://energon.example.com). Use when the user wants to publish a prototype, share a markdown/image/PDF with a person or agent, update a doc at its existing URL, read published work as reference, mint or use ENERGON_TOKEN, or mentions Energon / energon.example.com. Never invent a token. Never overwrite an existing slug without the human confirming.
 ---
 
 # Energon
 
-Energon is how work leaves a session at your company. Put a prototype, a markdown doc, or a single file on an internal URL. The hub is behind Cloudflare Access. Published `/sites` and `/files` links are not — anyone with the URL can open them unless you set an optional share password. Agents publish and fetch over HTTP with a token.
+Energon is agent-native publishing at your company. Agents publish, read, reference, revise, and copy ordinary files over HTTP with a token. People can upload directly through the hub and open the same work: Markdown renders as a document, and prepared HTML renders as a working static site. The hub is behind Cloudflare Access. Published content links are not — anyone with the URL can open them unless you set an optional share password.
 
-You are moving **something someone made** to **someone who is not in this filesystem**. Ask when a slug collides. When you are done, give the human `url` and, if another agent will read it, `api_url`.
+Publish for viewing now, revision, or reference in a later session — a handoff to someone else is only one use. Reading as reference does not authorize editing. Permitted updates keep the same address until expiry or deletion; copies have independent identities, not revision history. Ask when a slug collides. After publishing, give the human `url` and, when useful for later agent access, `api_url`.
 
 Load [references/api.md](references/api.md) only if you need exact routes or error shapes.
 

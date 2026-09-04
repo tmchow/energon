@@ -8,12 +8,12 @@ Publish a file lets a user mint one object with a short stable id, open it at `/
 - `file-public` serves the bytes at the public URL with the chosen filename.
 - `file-replace` PUTs new bytes to the same id; `url` does not move.
 - `file-download` returns `Content-Disposition: attachment` with `?download=1`.
-- `file-hub` stages one dropped or chosen file and publishes with Launch.
+- `file-hub` stages one dropped or chosen file and publishes with Publish.
 
 ## How to get to it (user POV)
 
 - `POST /v1/files` with a raw body and `X-Filename`, or multipart field `file`, then `PUT /v1/files/{id}` to replace.
-- Hub: choose `Choose files`, pick exactly one file, edit `Filename`, choose `Launch`.
+- Hub: choose `Choose files`, pick exactly one file, edit `Filename`, choose `Publish`.
 - Open `/{handle}/f/{id}/{filename}` or `GET /v1/files/{id}` with a token.
 
 ## Driving it with energon-verify
@@ -29,7 +29,7 @@ Preconditions:
 - **Token GET.** Run `curl -sS -o "$EVIDENCE/publish-file/api.md" "$ORIGIN/v1/files/$ID" -H "Authorization: Bearer $TOKEN"`. Status `200`. Body is `verify-file-v1`.
 - **Replace.** Run `curl -sS -o "$EVIDENCE/publish-file/put.json" -w '%{http_code}' -X PUT "$ORIGIN/v1/files/$ID" -H "Authorization: Bearer $TOKEN" -H "content-type: text/markdown" --data 'verify-file-v2'`. Status `200`. Body `url` and `id` are unchanged. Public GET now returns `verify-file-v2`.
 - **Download.** Run `curl -sS -D "$EVIDENCE/publish-file/download.headers" -o /dev/null "$ORIGIN/v1/files/$ID?download=1" -H "Authorization: Bearer $TOKEN"`. Status `200`. `Content-Disposition` is an attachment and includes `brief.md`.
-- **Hub entry.** Open `$ORIGIN/`. Choose `Choose files` and set one file on `#filepick`. `#stage-loose` is visible, `#stage-site` is hidden, `#stage-filename` shows the name. Choose `Launch`. `#messages` links to `/$HANDLE/f/{id}/…` and the Files table lists that filename.
+- **Hub entry.** Open `$ORIGIN/`. Choose `Choose files` and set one file on `#filepick`. `#stage-loose` is visible, `#stage-site` is hidden, `#stage-filename` shows the name. Choose `Publish`. `#messages` links to `/$HANDLE/f/{id}/…` and the Files table lists that filename.
 - **Proof.** Save create JSON, public body before and after replace, and download headers. Browser proof: hub Files table showing `brief.md` with `#who` visible.
 
 ## Gotchas

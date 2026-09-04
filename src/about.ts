@@ -16,21 +16,22 @@ export function aboutPage(email: string, footer = ""): string {
     body: `${appHeader({ active: "about", email })}
     <main class="wrap about-wrap">
       <h1 class="display">Why use ${escapeHtml(PRODUCT)}?</h1>
-      <p class="lede">You can already ship a prototype. You can already share a markdown file. Nothing does both in one place, as easy for a person as for an agent. That job is not solved without ${escapeHtml(PRODUCT)}. There is no editor. You write the file, replace it, and the address stays put.</p>
+      <p class="lede">Agent-native publishing for documents, prototypes, and working files. Built for agents to publish, read, reference, and revise ordinary files. Ready for people to open, explore, and upload directly. Permitted updates keep the same URL across sessions and agent tools.</p>
+      <p class="lede">Once this instance is running: no repo to create, no deployment pipeline to configure, no new link for every update. Publish prepared files from your browser or your agent. Your operator runs the host in their own Cloudflare account.</p>
       <nav class="scene-nav" aria-label="Scenes">
         <a href="#prototype">Prototype</a>
-        <a href="#handoff">Time or machine</a>
-        <a href="#pong">Ping-pong</a>
-        <a href="#living">Living file</a>
+        <a href="#handoff">Read and reference</a>
+        <a href="#pong">Revise</a>
+        <a href="#living">Keep or copy</a>
         <a href="#public">Public links</a>
       </nav>
 
       <section class="scene" id="prototype">
         <div class="scene-copy">
           <p class="scene-kicker">01</p>
-          <h2>Ship a prototype</h2>
-          <p>Those prototype hosts work. They also ask you to stand up a repo, a project, a deploy. That pause is why the prototype stays on your laptop.</p>
-          <p>Drop the folder. Send the link. They open it. Less friction means you share sooner, and you share more. That is the velocity. The site lives at a path like <code>/ada/s/lunch-poll/</code>.</p>
+          <h2>Open a working prototype</h2>
+          <p>Upload a prepared HTML folder or ZIP, or ask your agent to publish it. With an <code>index.html</code>, the link opens the actual site and its assets, ready to explore in a browser.</p>
+          <p>Open it yourself or send the link to someone else. If your prototype needs a build step, build it before uploading; ${escapeHtml(PRODUCT)} serves the output and does not run server-side code.</p>
         </div>
         ${diagram("proto", "Less ceremony. The folder becomes a link.")}
       </section>
@@ -38,19 +39,19 @@ export function aboutPage(email: string, footer = ""): string {
       <section class="scene" id="handoff">
         <div class="scene-copy">
           <p class="scene-kicker">02</p>
-          <h2>Across time, or machines</h2>
-          <p>What matters is the knowledge, not the file. Context from this session has to show up in the next one — on another laptop, tomorrow on this one, or in someone else's hands. Two agents passing a markdown file is the usual case. Or an image.</p>
-          <p>An attachment is last night's copy. A drive link often asks the next session to sign in. Drop it, send the link, they open it. One address, like <code>/ada/f/x7k2/brief.md</code>. Replace the contents and the link stays put.</p>
+          <h2>Read now. Reference later.</h2>
+          <p>A Markdown brief opens as a readable page. Give its link to your agent tomorrow, or to another agent on a different machine, to read as reference for the next task. Reading does not require permission to edit.</p>
+          <p>The same work is readable by people and retrievable as files by agents. For Markdown source, use <code>?raw=1</code>. An agent can also use the authenticated file URL with its own token from this instance.</p>
         </div>
-        ${diagram("hand", "Context leaves this session. The next one opens the link.")}
+        ${diagram("hand", "One session publishes. Another reads or references the work.")}
       </section>
 
       <section class="scene" id="pong">
         <div class="scene-copy">
           <p class="scene-kicker">03</p>
-          <h2>Pass it back and forth</h2>
-          <p>You are taking turns on one draft — with a person, or with an agent. Each turn, the other side needs the current version. Not last night's attachment. Not a pull request for a mock.</p>
-          <p>One link is the draft. Ada saves. Bob saves over it. Ada saves again. Whoever wrote last is what the link shows. Last write wins on purpose: you are trading the live object, not merging branches. Need history or comments? Git or Google Docs. Need to take a turn and keep going? Same link.</p>
+          <h2>Revise the work. Keep the link.</h2>
+          <p>Read a plan, ask your agent for a change, then reopen the same link. The creator chooses whether only their account or other authorized users and agents on this instance may update or delete the work.</p>
+          <p>There is no editor here: people edit in their own tools or through agents, which replace the underlying file. Last write wins. The link shows current contents, without comments, merges, or revision history. Keep work that needs reviewed history in your repository.</p>
         </div>
         ${diagram("pong", "Take a turn. Same link. Last write wins.")}
       </section>
@@ -58,21 +59,21 @@ export function aboutPage(email: string, footer = ""): string {
       <section class="scene" id="living">
         <div class="scene-copy">
           <p class="scene-kicker">04</p>
-          <h2>Keep a living file</h2>
-          <p>The link does not change when the file does. Paste it in Slack once. Next week it still works. A new upload in the thread is a new file.</p>
-          <p>Open a markdown file in a browser and you get a page. Want the raw file instead? Add <code>?raw=1</code>.</p>
+          <h2>Continue here, or make a copy</h2>
+          <p>Updates keep the same address until the work expires or is deleted. Replacing contents does not extend expiration. A stable link is a reference to current work, not a frozen revision.</p>
+          <p>To explore another direction, a signed-in user or an agent with an instance token can duplicate a file or site. The copy has its own link, owner, and settings; it does not inherit the original's password. Choose its write policy and expiration for the new purpose.</p>
         </div>
-        ${diagram("live", "Monday through Friday, the link does not move.")}
+        ${diagram("live", "Updates keep the address until expiry or deletion.")}
       </section>
 
       <section class="scene scene-open" id="public">
         <div class="scene-copy">
           <p class="scene-kicker">05</p>
-          <h2>Links are always public</h2>
-          <p>You sign in to publish. The link itself does not ask anyone to sign in. That is on purpose: the person you send it to can just open it, and an agent can read it without a Google login.</p>
-          <p>That is for convenience. If the link should not be wide open, put a share password on it. If a password is not enough — you need named people, folders, real permissions — put the file in Google Drive.</p>
+          <h2>Links are open by default</h2>
+          <p>You sign in to upload, or give your agent a token. Recipients need no company login to open published links. Add a share password when the public link needs a gate.</p>
+          <p>A share password does not restrict reads through the API: any valid token on this instance can still read the underlying work. If you need access limited to named recipients, use a system with per-reader permissions.</p>
         </div>
-        ${diagram("open", "Sign in to publish. The link is public. Add a password if it needs a gate.")}
+        ${diagram("open", "Sign in to publish. Links are open by default, with optional passwords.")}
       </section>
     </main>`,
   });

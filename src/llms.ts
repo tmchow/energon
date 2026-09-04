@@ -11,7 +11,9 @@ export function llmsTxt(origin: string, env?: Env): string {
   const presets = policy.presets.map((p) => `${p.id} (${p.label})`).join(", ");
   return `# ${PRODUCT}
 
-> ${PRODUCT} is a file and static-site host for a company. Humans open a URL. Agents publish and fetch the same bytes over HTTP. The hub is behind Cloudflare Access. Published \`/sites\` and \`/files\` URLs are not, unless a share password is set. Do not invent a token.
+> ${PRODUCT} is agent-native publishing for documents, prototypes, and working files. Agents publish, read, reference, revise, and copy ordinary files over HTTP. People can upload directly and open the same work: Markdown renders as a document; prepared HTML renders as a working static site. Permitted updates keep the same URL until expiry or deletion. The hub is behind Cloudflare Access; published content links are not, unless a share password is set. Do not invent a token.
+
+Reading as reference does not authorize editing. Copies are independent objects, not revision history. Build any required site output before publishing; this host serves files, not server-side application code.
 
 The API and authenticated hub live on ${origin}. Published content is served from ${content}, which must be a separate hostname in production. There are no accounts in the API — humans mint a bearer token at ${origin}/tokens while signed in, then export it as \`${id.tokenEnv}\`. Tokens look like \`${id.tokenPrefix}…\`.
 

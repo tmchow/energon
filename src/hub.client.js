@@ -201,7 +201,7 @@ function stageWrite() {
   return String($("stage-write").value || policy.write_policy || "owner").trim();
 }
 function writePolicyLabel(value) {
-  return value === "instance" ? "Anyone with a token on this host." : "Only you";
+  return value === "instance" ? "Anyone with a token on this host." : "Only the creator";
 }
 function isCreator(item) {
   return Boolean(boot.email && item.created_by && item.created_by === boot.email);
@@ -370,7 +370,7 @@ function render(data) {
   const sites = listState.sitesItems;
   $("sites-count").textContent = countLabel(sites.length, listState.sitesTotal, "site", "sites");
   if (!sites.length) {
-    $("sites").innerHTML = '<p class="empty"><strong>No sites yet</strong>Drop a folder to create one.</p>';
+    $("sites").innerHTML = '<p class="empty"><strong>No sites yet</strong>Publish a prepared folder or ask your agent to publish a prototype.</p>';
   } else {
     const wrap = document.createElement("div");
     wrap.className = "table-wrap";
@@ -405,7 +405,7 @@ function render(data) {
   const files = listState.filesItems;
   $("files-count").textContent = countLabel(files.length, listState.filesTotal, "file", "files");
   if (!files.length) {
-    $("files").innerHTML = '<p class="empty"><strong>No files yet</strong>Drop a single file to mint a stable URL.</p>';
+    $("files").innerHTML = '<p class="empty"><strong>No files yet</strong>Upload a document or ask your agent to publish one, then share its link.</p>';
   } else {
     const wrap = document.createElement("div");
     wrap.className = "table-wrap";
@@ -706,7 +706,7 @@ function resetStage() {
   $("stage-password").value = "";
   $("stage-password").removeAttribute("data-generated");
   $("stage-pw-copy").hidden = true;
-  $("stage-go").textContent = "Launch";
+  $("stage-go").textContent = "Publish";
   drop.classList.remove("busy");
 }
 
@@ -720,7 +720,7 @@ function showStage(next) {
   $("stage-pw-copy").hidden = true;
   $("stage-site").hidden = next.kind === "loose";
   $("stage-loose").hidden = next.kind !== "loose";
-  $("stage-go").textContent = "Launch";
+  $("stage-go").textContent = "Publish";
   const handle = boot.handle || "you";
   $("stage-site-origin").textContent = CONTENT_ORIGIN + "/" + handle + "/s/";
   $("stage-file-origin").textContent = CONTENT_ORIGIN + "/" + handle + "/f/{id}/";
@@ -779,7 +779,7 @@ async function launchSite() {
   const password = stagePassword();
   try {
     drop.classList.add("busy");
-    $("stage-go").textContent = "Launching…";
+    $("stage-go").textContent = "Publishing…";
     const payload = { slug, overwrite: Boolean(staged.overwrite) };
     if (password) payload.password = password;
     if (!staged.overwrite) {
@@ -798,7 +798,7 @@ async function launchSite() {
       if (staged.conflictSlug === slug) {
         staged.overwrite = true;
         $("stage-exists").hidden = false;
-        $("stage-exists").textContent = (data.message || "Site exists.") + " Launch again to write into it.";
+        $("stage-exists").textContent = (data.message || "Site exists.") + " Publish again to write into it.";
         $("stage-go").textContent = "Write into it";
         drop.classList.remove("busy");
         return;
@@ -807,8 +807,8 @@ async function launchSite() {
       const suggested = await firstFreeSlug(nextNumberedSlug(slug));
       $("stage-slug").value = suggested;
       $("stage-exists").hidden = false;
-      $("stage-exists").textContent = "'" + slug + "' exists. Using '" + suggested + "'. Launch to create it, or put '" + slug + "' back to write into the existing site.";
-      $("stage-go").textContent = "Launch";
+      $("stage-exists").textContent = "'" + slug + "' exists. Using '" + suggested + "'. Publish to create it, or put '" + slug + "' back to write into the existing site.";
+      $("stage-go").textContent = "Publish";
       drop.classList.remove("busy");
       return;
     }
@@ -819,7 +819,7 @@ async function launchSite() {
         headers: { "content-type": "application/zip" },
         body: staged.file,
       });
-      launchFlash(`Launched <a href="${esc(imported.url)}">${esc(imported.slug)}</a> (${(imported.written || []).length} files).`, data.password || password);
+      launchFlash(`Published <a href="${esc(imported.url)}">${esc(imported.slug)}</a> (${(imported.written || []).length} files).`, data.password || password);
     } else {
       const files = stripWrapFiles(staged.files).filter((it) => it.path && !it.path.endsWith("/"));
       for (const it of files) {
@@ -829,13 +829,13 @@ async function launchSite() {
           body: it.file,
         });
       }
-      launchFlash(`Launched <a href="${esc(CONTENT_ORIGIN)}/${esc(boot.handle || "you")}/s/${esc(slug)}/">${esc(slug)}</a> (${files.length} files).`, data.password || password);
+      launchFlash(`Published <a href="${esc(CONTENT_ORIGIN)}/${esc(boot.handle || "you")}/s/${esc(slug)}/">${esc(slug)}</a> (${files.length} files).`, data.password || password);
     }
     resetStage();
     await resetLists();
   } catch (err) {
     drop.classList.remove("busy");
-    $("stage-go").textContent = staged.overwrite ? "Write into it" : "Launch";
+    $("stage-go").textContent = staged.overwrite ? "Write into it" : "Publish";
     msg(esc(err.message), true);
   }
 }
@@ -844,7 +844,7 @@ async function launchLoose() {
   if (!staged || staged.kind !== "loose") return;
   try {
     drop.classList.add("busy");
-    $("stage-go").textContent = "Launching…";
+    $("stage-go").textContent = "Publishing…";
     const form = new FormData();
     const name = safeFilename($("stage-filename").value, staged.file.name);
     $("stage-filename").value = name;
@@ -856,12 +856,12 @@ async function launchLoose() {
     const write = stageWrite();
     if (write) form.set("write_policy", write);
     const data = await api("/account/files", { method: "POST", body: form });
-    launchFlash(`Launched <a href="${esc(data.url)}">${esc(data.filename)}</a>`, data.password || password);
+    launchFlash(`Published <a href="${esc(data.url)}">${esc(data.filename)}</a>`, data.password || password);
     resetStage();
     await resetLists();
   } catch (err) {
     drop.classList.remove("busy");
-    $("stage-go").textContent = "Launch";
+    $("stage-go").textContent = "Publish";
     msg(esc(err.message), true);
   }
 }

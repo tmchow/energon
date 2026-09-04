@@ -14,7 +14,7 @@ Share password lets a user lock a public site or file URL behind a phrase. Brows
 
 ## How to get to it (user POV)
 
-- Hub stage: fill `Optional password` (or generate with `Generate a readable password`) before `Launch`.
+- Hub stage: fill `Optional password` (or generate with `Generate a readable password`) before `Publish`.
 - Hub catalog: `Set password` / `Change or remove password`, or `More actions`.
 - API: `"password"` on `POST /v1/sites` or `PATCH /v1/sites/{slug}`; `X-Energon-Set-Password` on `POST`/`PUT /v1/files`.
 - Open the public URL; submit the form, or retry with header `X-Energon-Password`.
