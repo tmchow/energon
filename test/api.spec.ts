@@ -16,7 +16,7 @@ describe("Energon", () => {
     expect(res.headers.get("content-type")).toMatch(/markdown/);
     const text = await res.text();
     expect(text).toContain("Energon");
-    expect(text).toContain("company");
+    expect(text).toContain("agent-native publishing");
     expect(text).toContain("ENERGON_TOKEN");
     expect(text).toContain("/v1/help");
     expect(text).toContain("user (global) scope");

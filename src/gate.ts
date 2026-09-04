@@ -134,6 +134,7 @@ export function passwordPromptHtml(title: string, action: string, wrong: boolean
       <a class="brand" href="/">${brandMark()}</a>
       <h1>${escapeHtml(productName())}</h1>
       <p class="lede">This link is password-protected.</p>
+      <p>Ask the person who sent you this link for its share password.</p>
       ${err}
       <form method="post" action="${escapeHtml(action)}">
         <label class="field">Password

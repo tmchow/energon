@@ -50,7 +50,7 @@ Run this first whenever anything looks off, and before the first drive of a sess
 .cursor/skills/verify-energon/bin/doctor
 ```
 
-It is read-only. It checks: persist path is under `/tmp/energon-verify` (not `.wrangler/state`); recorded pid is alive; that pid (or a child in its session) owns `$PORT`; `GET /health` is `{ok:true}`; `GET /v1/help` has `hub` and `content_origin` equal to `$ORIGIN`, `env=ENERGON_TOKEN`, `token_prefix=ee_live_`, `openapi=$ORIGIN/v1/openapi.json`; `GET /v1/openapi.json` has `openapi` `3.1.0` and `servers[0].url` equal to `$ORIGIN`; `GET /` is the hub (`Ship a file or a site in seconds.`, `#pick-files`); `GET /account/data` has an email; hub bootstrap JSON has a handle.
+It is read-only. It checks: persist path is under `/tmp/energon-verify` (not `.wrangler/state`); recorded pid is alive; that pid (or a child in its session) owns `$PORT`; `GET /health` is `{ok:true}`; `GET /v1/help` has `hub` and `content_origin` equal to `$ORIGIN`, `env=ENERGON_TOKEN`, `token_prefix=ee_live_`, `openapi=$ORIGIN/v1/openapi.json`; `GET /v1/openapi.json` has `openapi` `3.1.0` and `servers[0].url` equal to `$ORIGIN`; `GET /` is the hub (`Publish a document, prototype, or file.`, `#pick-files`); `GET /account/data` has an email; hub bootstrap JSON has a handle.
 
 If doctor fails, stop. Do not drive a foreign instance.
 
@@ -59,7 +59,7 @@ If doctor fails, stop. Do not drive a foreign instance.
 Two surfaces, same data:
 
 1. **HTTP** — the agent path. `curl` against `$ORIGIN`. Mint with `bin/mint-token`; then `Authorization: Bearer $TOKEN` on `/v1`. Public content URLs need no token unless a share password is set (`X-Energon-Password`).
-2. **Browser** — the human path. Open `$ORIGIN/`. Stable handles: `#pick-files` (Choose files), `#pick-folder` (Choose folder), `#filepick` / `#folderpick` (hidden file inputs), `#stage-go` (Launch), `#stage-cancel` (Cancel), `#stage-slug` (`aria-label="Site slug"`), `#stage-filename` (`aria-label="Filename"`), `#stage-password`, `#q` (placeholder `Search slugs and filenames`), nav `aria-label="Pages"` with Hub / Tokens / Setup / About / Stats. Catalog row actions: `Copy URL`, `Set password` / `Change or remove password`, `Delete`, `More actions`, `Download zip` / `Download`.
+2. **Browser** — the human path. Open `$ORIGIN/`. Stable handles: `#pick-files` (Choose files), `#pick-folder` (Choose folder), `#filepick` / `#folderpick` (hidden file inputs), `#stage-go` (Publish), `#stage-cancel` (Cancel), `#stage-slug` (`aria-label="Site slug"`), `#stage-filename` (`aria-label="Filename"`), `#stage-password`, `#q` (placeholder `Search slugs and filenames`), nav `aria-label="Pages"` with Hub / Tokens / Setup / About / Stats. Catalog row actions: `Copy URL`, `Set password` / `Change or remove password`, `Delete`, `More actions`, `Download zip` / `Download`.
 
 Prefer HTTP for publish/read proofs; it is the documented agent user path, not a test-only API. Use the browser when the feature is hub-only (Tokens mint/revoke, drop/stage, catalog buttons, password dialogs).
 
@@ -92,7 +92,7 @@ Playwright is not a repo dependency. Use the environment's browser tools, or a o
 
 - Choose files: click `Choose files`, then set files on `#filepick` (the click only opens a native picker).
 - One file stages a loose file (`#stage-loose` visible, `#stage-filename` filled). A folder or zip stages a site (`#stage-slug`).
-- Nothing is written until `Launch`. After success, `#messages` contains a flash with the public URL and the catalog lists the slug or filename.
+- Nothing is written until `Publish`. After success, `#messages` contains a flash with the public URL and the catalog lists the slug or filename.
 - Tokens: go to `/tokens`, fill the `Label` textbox, choose a lifetime in `#mint-ttl` (`aria-label="Token lifetime"`, default `3 months`), click `Mint token`. `#new-token` shows `export ENERGON_TOKEN=ee_live_…`. The list has an `Expires` column; expired rows are greyed (`tr.row-expired`) and keep only `Revoke`.
 
 ## Evidence

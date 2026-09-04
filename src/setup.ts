@@ -66,10 +66,11 @@ document.addEventListener("DOMContentLoaded", () => {
     body: `${appHeader({ active: "setup", email })}
     <main class="wrap">
       <h1 class="display">Add ${escapeHtml(PRODUCT)} to your agent.</h1>
-      <p class="lede">Most hosts only need the repo. ${escapeHtml(PRODUCT)} is a <strong>Claude Code</strong> marketplace and an <a href="https://agent-plugins.org/">Agent Plugins</a> marketplace, so Cursor, OpenClaw, ChatGPT, Codex, GitHub Copilot, and others install the same skill. Install at user (global) scope so it follows you across projects. Then mint a token on <a href="/tokens">Tokens</a> and export it as <code>${escapeHtml(id.tokenEnv)}</code>.</p>
+      <p class="lede">Give your agent a way to publish work, read a link as reference, or revise a file at the same address when permitted. The same instance-specific skill works across compatible agent tools. You can also <a href="/">upload from your browser</a>.</p>
+      <p class="lede">Install this instance's plugin in <strong>Claude Code</strong> or a compatible <a href="https://agent-plugins.org/">Agent Plugins</a> client, such as Cursor, OpenClaw, ChatGPT, Codex, or GitHub Copilot. Install at user (global) scope so it follows you across projects. Then mint a token on <a href="/tokens">Tokens</a> and export it as <code>${escapeHtml(id.tokenEnv)}</code>.</p>
       <div class="stack">
         <section class="card">
-          <div class="card-head"><h2>Marketplace</h2><span class="hint">Use the form your host asks for</span></div>
+          <div class="card-head"><h2>Marketplace</h2><span class="hint">Use the form your agent tool asks for</span></div>
           <div class="card-body">
             <p class="muted-copy">Add this as a plugin marketplace, then install <code>${escapeHtml(id.plugin)}</code> (<code>${escapeHtml(installLine(id))}</code>) at user (global) scope. Project or workspace only if you asked for this repo.</p>
             ${copyRow("GitHub repo", repo)}
@@ -77,9 +78,9 @@ document.addEventListener("DOMContentLoaded", () => {
           </div>
         </section>
         <section class="card">
-          <div class="card-head"><h2>Or paste this</h2><span class="hint">Let the host guide the install</span></div>
+          <div class="card-head"><h2>Or paste this into your agent</h2><span class="hint">Let your agent guide the install</span></div>
           <div class="card-body">
-            <p class="muted-copy">If the host wants instructions instead of a repo field, paste the block and let it follow through.</p>
+            <p class="muted-copy">Paste these instructions into your agent to connect it to this instance.</p>
             <div class="copy-block">
               <pre class="soft" id="agent-install">${escapeHtml(install)}</pre>
               <button type="button" class="btn-ghost btn-sm copy-block-btn" data-copy-from="agent-install">Copy</button>
@@ -87,6 +88,7 @@ document.addEventListener("DOMContentLoaded", () => {
           </div>
         </section>
       </div>
+      <p class="lede">Once connected, try “Publish this brief and give me its link,” “Read this link as reference without changing it,” or “Update this file at the same link.” A stable link shows current contents until expiry or deletion.</p>
     </main>`,
   });
 }

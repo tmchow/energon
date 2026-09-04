@@ -16,9 +16,11 @@
   <a href="https://docs.getenergon.com">Documentation</a>
 </p>
 
-**Give your agents a place to hand things off. For agent work that doesn't belong in a repo.**
+**Agent-native publishing for documents, prototypes, and working files.**
 
-Briefs, prototypes, screenshots, PDFs, working sets moving between machines. Any agent publishes a file or small site over HTTP; any agent or person opens the link later, from another session, machine, or harness. Energon runs in your Cloudflare account, with ownership, expiry, and share passwords per file, instead of that work being scattered across temp files, chat artifacts, public paste services, static hosts, and drives.
+Built for agents to publish, read, reference, and revise ordinary files without operating a human editor. Ready for people to open, explore, and upload directly. Markdown renders as a document; a ready-to-serve HTML folder becomes a working site. Permitted updates keep the same URL across sessions and agent tools. Energon runs in your own Cloudflare account.
+
+**No repo to create. No deployment pipeline to configure. No new link for every update.** Once your instance is running, publish prepared files directly. Build your prototype before uploading if it needs a build step; Energon serves the output. Updates keep the address until expiry or deletion. Make an independent copy when you want to try another direction.
 
 <div align="center">
   <a href="./docs/SCENARIOS.md">
@@ -32,18 +34,29 @@ Briefs, prototypes, screenshots, PDFs, working sets moving between machines. Any
 
 ## TL;DR
 
-**The problem:** Agents produce work that does not belong in a repo, and that work is durable only if it lands in git anyway. Otherwise it is trapped in one chat product, sitting in a temp file another agent or machine cannot find, published to someone else's service, or split across tools depending on whether the output is HTML, Markdown, or a binary file.
+**The problem:** Sharing a document, a working prototype, and an agent's working files often requires different tools. Updates become new attachments, and work left in a local folder or chat session is hard to retrieve from another session or machine.
 
-**The solution:** Energon gives every compatible agent the same token-authenticated HTTP API. It stores bytes in your R2 bucket, metadata in D1, and serves stable links from a separate content hostname.
+**The solution:** One publishing workflow, with a browser hub for people and a token-authenticated HTTP API for agents. The same artifact is a rendered view for people and accessible files for agents. They can return to its stable address to view, reference, or revise it. Energon stores bytes in your R2 bucket, metadata in D1, and serves published work from a separate content hostname.
+
+### Start from your browser or your agent
+
+- **From your browser:** open your instance's hub, choose one file or a prepared site folder, review the password, expiration, and write settings, then publish. Open the result or copy its link for a person or agent. A ZIP selected in the hub is unpacked as a site; use the API to store an archive as one downloadable file.
+- **From your agent:** [connect to your instance](#connect-an-agent-to-an-existing-host), then ask it to publish a brief or prototype, read a link as reference, or update an existing artifact. Updating requires the object's write policy to allow it; reading and referencing do not imply permission to edit.
+
+For example: publish a prototype, open it, ask your agent for a change, and refresh the same link. Later, give that link to another session as reference. An authenticated user or agent can make a separate copy to explore an alternative. There is no built-in editor, merge model, or revision history; a stable link shows the current contents.
 
 ### Why Energon?
 
 | Need | What Energon does | Example |
 | --- | --- | --- |
+| View the actual work | Renders Markdown and serves prepared HTML sites with their assets | Open a brief as a page or interact with a prototype |
+| Publish without an agent | Provides a signed-in browser hub for files and site folders | Upload a PDF and send its link to a teammate |
 | Publish from different agents | Ships an instance-specific [Agent Plugin](https://agent-plugins.org/) for Cursor, Claude Code, Codex, Copilot, Grok, and other compatible clients | “Publish the onboarding flow prototype to Energon and post the link to `#design` in Slack” |
 | Keep related files together | Publishes a named site with nested paths | `/ada/s/onboarding-flow/` |
 | Hand off one artifact | Publishes a loose file with a short, stable ID | `/ada/f/x7k2q9/brief.md` |
 | Revise without moving the link | Replaces one site path or loose file in place | `PUT /v1/files/x7k2q9` |
+| Reference work in another session | Lets an agent retrieve current contents without joining the original conversation | “Read this brief as reference; don't change it” |
+| Explore an alternative | Copies a file or site to an independent identity owned by the authenticated caller | Try a second prototype without replacing the first |
 | Control who may overwrite | Stores `owner` or `instance` write policy per site or file | Lock a final brief to its creator |
 | Share with other people | Serves content without an Access session, optionally behind a share password | Send the same preview URL to a client or collaborator |
 | Keep files on infrastructure you control | Runs as a Cloudflare Worker backed by your D1 and R2 | No public paste-service account |

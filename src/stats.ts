@@ -137,8 +137,8 @@ export function statsPage(stats: StatsPayload, footer = ""): string {
     body: `${appHeader({ active: "stats", email: stats.email })}
     <main class="wrap stats-wrap">
       <p class="kicker">How much is here</p>
-      <h1 class="display">You, and the whole cube.</h1>
-      <p class="lede">Your numbers are what you created or last wrote. Organization is everyone. Rank people by storage, files, or sites. Sizes flip to KB, MB, and GB when they get there.</p>
+      <h1 class="display">Storage and usage.</h1>
+      <p class="lede">Your numbers cover work you created or last updated. Organization covers this instance. Files includes individual uploads and files inside sites. These are stored-content totals, not counts of views or handoffs.</p>
       <div class="stats-pair">
         ${pane("You", stats.email, [
           ["Sites", formatCount(stats.you.sites)],

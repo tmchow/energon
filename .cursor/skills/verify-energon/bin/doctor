@@ -76,7 +76,7 @@ if [[ "$openapi_servers" == *"\"url\": \"$ORIGIN\""* ]]; then ok "GET /v1/openap
 hub_file="$(state_dir)/hub.html"
 curl -sS -o "$hub_file" "$ORIGIN/" || true
 # grep -q on a pipe trips pipefail (writer gets SIGPIPE). Read a file instead.
-if grep -F -q 'Ship a file or a site in seconds.' "$hub_file"; then
+if grep -F -q 'Publish a document, prototype, or file.' "$hub_file"; then
   ok "GET / is the Energon hub"
 else
   bad "GET / is not the Energon hub"
