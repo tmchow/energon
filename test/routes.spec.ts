@@ -34,6 +34,10 @@ describe("host and route contracts", () => {
     const post = await json("/v1/openapi.json", { method: "POST" });
     expect(post.status).toBe(405);
 
+    const again = await json("/v1/openapi.json");
+    expect(again.body.servers).toEqual([{ url: "https://hub.energon.example.com" }]);
+    expect(again.body.servers[0].description).toBeUndefined();
+
     const help = await json("/v1/help");
     expect(help.body.openapi).toBe("https://hub.energon.example.com/v1/openapi.json");
     expect(help.body.routes["GET /v1/openapi.json"]).toBe("OpenAPI 3.1 HTTP contract, no auth");
