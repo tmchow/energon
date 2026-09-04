@@ -16,6 +16,29 @@ describe("host and route contracts", () => {
     expect(health.body).toEqual({ ok: true });
   });
 
+  it("serves the OpenAPI contract without a token and points help at it", async () => {
+    const res = await req("/v1/openapi.json");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    expect(res.headers.get("cache-control")).toBe("public, max-age=300");
+    expect(await res.text()).toContain('"servers":[{"url":"https://hub.energon.example.com"}]');
+
+    const doc = await json("/v1/openapi.json");
+    expect(doc.body.openapi).toBe("3.1.0");
+    expect(doc.body.servers).toEqual([{ url: "https://hub.energon.example.com" }]);
+    expect(doc.body.paths["/v1/sites"].post.operationId).toBe("createSite");
+
+    const head = await req("/v1/openapi.json", { method: "HEAD" });
+    expect(head.status).toBe(200);
+    const post = await json("/v1/openapi.json", { method: "POST" });
+    expect(post.status).toBe(405);
+
+    const help = await json("/v1/help");
+    expect(help.body.openapi).toBe("https://hub.energon.example.com/v1/openapi.json");
+    expect(help.body.routes["GET /v1/openapi.json"]).toBe("OpenAPI 3.1 HTTP contract, no auth");
+  });
+
   it("redirects a site URL without a trailing slash", async () => {
     const token = await mint("slash");
     await json("/v1/sites", {
