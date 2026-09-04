@@ -1,28 +1,31 @@
 ---
 name: Energon
-last_updated: 2026-09-02
+last_updated: 2026-09-04
 ---
 
 # Energon Strategy
 
 ## Purpose
 
-An agent finishes a doc, a small HTML app, a screenshot, or a PDF, and the person needs a link a coworker or an outsider can open. The hosts that make that a one-step thing are tied to one chat product or are public services, and the Quick-shaped tools that run on your own infrastructure are not something an agent in any harness can reach for the same way. The crux is getting a company-owned host to be as easy for an agent as a native artifact surface, without the bytes leaving infrastructure the company controls.
+Agents produce work that does not belong in a repo: briefs, plans, prototypes, screenshots, PDFs, working sets in transit between machines. Today that work is durable only if it lands in git. Everything else ends up in temp files and chat artifacts that a second session, a second machine, a second agent, or a second person cannot find or open. The hosts that would fix this are tied to one chat product or are public services, and the tools that run on your own infrastructure are not something an agent in any harness can reach for the same way. The crux is giving agents one company-owned place to hand things off that is as easy to use as a native artifact surface, without the bytes leaving infrastructure the company controls.
 
 ## Positioning
 
-Energon is the fork you run in your own Cloudflare account, with a skill named for your host that works the same from Cursor, Claude Code, Codex, and any client that installs Agent Plugins. Every file and small site gets a stable HTTP address that survives overwrites, and who may overwrite it is a per-object choice between the creator and the whole instance, so one link can go to a teammate or outside the company and still be yours.
+Energon is the handoff layer for agent work that does not belong in a repo. It is the fork you run in your own Cloudflare account, with a skill named for your host that works the same from Cursor, Claude Code, Codex, and any client that installs Agent Plugins. Any agent writes a file or small site; any agent or person opens it later from a stable HTTP address, from another session, machine, or harness. The address survives overwrites, who may overwrite is a per-object choice between the creator and the whole instance, and expiry and share passwords are set per object, so one link can go to a teammate or outside the company and still be yours.
+
+It is not a system of record. Code and anything that must be versioned and reviewed stays in the repo. Energon holds the outputs around that work and the things in transit between agents.
 
 ## Users
 
-**Primary:** A person who works across several agent harnesses - They're hiring Energon to turn what their agent just made into a stable link a teammate or outsider can open, without leaving the agent or picking a host per artifact. That this need spans harnesses is the bet, not yet observed adoption.
+**Primary:** A person running agents in more than one place - local and cloud, several harnesses, several machines, across sessions. They're hiring Energon so those agents can hand work to each other and to people through a link, without leaving the agent, picking a host per artifact, or forcing the work into a repo. That this need spans harnesses is the bet, not yet observed adoption.
 
 **Secondary:** The company operator who forks and runs the host - They're hiring Energon to give the whole team that link without standing up or trusting a public service.
 
 ## Boundaries
 
-- Not a company catalog or search. Lists only return what you created or last wrote.
-- Not a document editor or collaboration surface. `curl` and `?raw=1` stay the source; last write wins.
+- Not a repo or system of record. Code and anything that needs versioning and review stays in git; Energon holds outputs and work in transit.
+- Not a company-wide catalog. Listing and search are scoped to what you created, edited, or were involved in; no one can dump another person's catalog.
+- Not a document editor. Shared writes happen through in-place replacement under write policy; `curl` and `?raw=1` stay the source, last write wins, no merge.
 - Not a hosted public service. This repo is what you fork; there is no energon.com to sign up for.
 - Not a general-purpose CDN or app platform. Files and small sites only, no server-side code.
 - Not per-user access control on published links. Links are open by default; a share password is a shared secret, not an ACL.
@@ -35,6 +38,7 @@ _Resist a change when:_ it makes publishing depend on a specific chat product, a
 - **Active publishers** - Distinct people who created or last wrote an object in the last 30 days; D1 `sites` / `loose_files` (`last_written_by`, `updated_at`). Derivable today; `/stats` shows only lifetime totals.
 - **Token-to-first-write** - Median minutes from a token being minted to that person's first successful write; D1 `tokens.created_at` joined to the first object they created. Derivable today.
 - **Second-write share** - Share of objects created in a window that were overwritten at least once, meaning the address held; D1 `updated_at > created_at`. Derivable today.
+- **Handoff share** - Share of objects read or overwritten by a token other than the creator's; overwrites are derivable today from `last_written_by != created_by`, reads need Worker log instrumentation. This is the metric the positioning depends on.
 
 ## Tracks
 
@@ -58,6 +62,10 @@ _Why it serves the approach:_ The product is the fork; if standing up a host is 
 
 ## Brand
 
-**One-liner:** Whatever your agent just made, a link your company owns and anyone can open.
+**One-liner:** Give your agents a place to hand things off.
 
-**Key message:** A company host for files and small sites, running in your own Cloudflare account. The same skill works from Cursor, Claude Code, Codex, and any client that installs Agent Plugins. Teammates read and write with a token; a link can still go to someone outside.
+**Eyebrow:** For agent work that doesn't belong in a repo.
+
+**Key message:** Briefs, prototypes, screenshots, PDFs. Any agent publishes, any agent or person opens the link later, from anywhere. Runs in your Cloudflare account with expiry and passwords per file. The same skill works from Cursor, Claude Code, Codex, and any client that installs Agent Plugins.
+
+**Word choices:** Say "hand off", not "publish", when describing the category; publishing is one use. Avoid "everything your agents make" and "a shared place", which read as a repo replacement. Name the artifact types so the boundary against git is concrete.
