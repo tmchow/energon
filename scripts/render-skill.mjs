@@ -2,8 +2,7 @@
 /**
  * templates/ is the source. plugins/ is a render of those templates.
  *
- * OSS renders plugins/energon bound to https://energon.example.com. It does
- * not ship marketplace catalogs — this tree is not installable.
+ * Upstream validates templates without generating a plugin or catalogs.
  *
  * A fork runs --init. That writes plugins/{name}/, the harness catalogs, and
  * instance-skill.json. Commit those; that repo is the marketplace.
@@ -37,7 +36,7 @@ const MARKETPLACES = [
   { rel: ".agents/plugins/marketplace.json", tmpl: "agents.json.tmpl" },
 ];
 
-/** If instance-skill.json is missing, treat the tree as the public OSS skill. */
+/** Missing instance configuration leaves the tree uninitialized. */
 const OSS_DEFAULTS = {
   skill: "energon",
   plugin: "energon",
@@ -276,6 +275,7 @@ function parseArgs(argv, root) {
     throw new Error("skill:init requires --name (or --skill) and --origin");
   }
   validateIdentifiers(out, "argument");
+  if (out.init || !isPlaceholder(out)) validateInstance(out);
   return { opts: out, prev };
 }
 
@@ -365,7 +365,35 @@ function writeOrCheck(root, path, contents, check, dirty) {
 }
 
 function isPlaceholder(opts) {
-  return opts.origin === OSS_DEFAULTS.origin && opts.skill === OSS_DEFAULTS.skill;
+  return opts.origin === OSS_DEFAULTS.origin &&
+    IDENTIFIER_FIELDS.every((field) => opts[field] === OSS_DEFAULTS[field]);
+}
+
+function validateInstance(opts) {
+  for (const field of IDENTIFIER_FIELDS) {
+    if (opts[field] === "energon" || opts[field] === "energon-energon") {
+      throw new Error(`${field} must identify your instance; run skill:init with --name YOUR_ORG`);
+    }
+  }
+  let origin;
+  try {
+    origin = new URL(opts.origin);
+  } catch {
+    throw new Error("origin must be an HTTPS origin for your deployed host");
+  }
+  if (origin.protocol !== "https:" || origin.username || origin.password ||
+      origin.pathname !== "/" || origin.search || origin.hash ||
+      /(^|\.)example\.(com|net|org)\.?$/i.test(origin.hostname)) {
+    throw new Error("origin must be an HTTPS origin for your deployed host, without placeholder domains");
+  }
+}
+
+function validateTemplates(vars) {
+  for (const dir of [PLUGIN_TMPL_DIR, SKILL_TMPL_DIR, MARKETPLACE_TMPL_DIR]) {
+    for (const file of listTmplFiles(dir)) {
+      if (file.endsWith(".tmpl")) render(readFileSync(join(dir, file), "utf8"), vars);
+    }
+  }
 }
 
 function entryExists(path) {
@@ -510,7 +538,13 @@ export function runRender(argv, { root = SCRIPT_ROOT } = {}) {
     removeStalePlugin(root, prev, opts, opts.check);
   }
   dropAutoloadSkills(root, [prev.skill, opts.skill], opts.check, dirty);
-  writePluginTree(root, opts, vars, opts.check, dirty);
+  if (isPlaceholder(opts)) {
+    validateTemplates(vars);
+    const placeholder = pluginRel(opts);
+    if (entryExists(join(root, placeholder))) dirty.push(placeholder);
+  } else {
+    writePluginTree(root, opts, vars, opts.check, dirty);
+  }
   writeMarketplaces(root, opts, vars, opts.check, dirty, catalogsRequired);
   if (opts.init) {
     writeOrCheck(root, instancePath(root), `${JSON.stringify(instancePayload(opts), null, 2)}\n`, opts.check, dirty);
@@ -526,6 +560,13 @@ function main() {
       process.exitCode = 1;
     } else {
       console.log("skill is up to date");
+    }
+  } else if (isPlaceholder(opts)) {
+    if (dirty.includes(pluginRel(opts))) {
+      console.error("placeholder plugin remains; remove plugins/energon or run skill:init for your instance");
+      process.exitCode = 1;
+    } else {
+      console.log("templates validated; run skill:init with your instance name and origin to generate a plugin");
     }
   } else {
     console.log(`rendered ${opts.plugin}/${opts.skill}${dirty.length ? ` (${dirty.length} changed)` : ""}`);

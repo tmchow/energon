@@ -16,7 +16,7 @@ This tree is meant to be forked and run inside a company. There is no hosted pub
 | `ALLOW_UNLIMITED_RETENTION` | `true` (committed) | `false` |
 | `DEFAULT_TTL` / `MAX_TTL` | `never` / `never` | `7d` / `30d` |
 | `WRITE_POLICY` | `instance` (committed) | `owner` |
-| Skill | rendered for this host | placeholder `energon@energon` |
+| Skill | generated for this host | generic runtime identity only; no installable plugin |
 
 Code defaults are **strict** when vars are omitted: required TTL, 30-day cap, creator-only writes. The committed `wrangler.toml` opts into company mode. Replace the placeholder D1 id, `PUBLIC_ORIGIN`, and `CONTENT_ORIGIN` before you deploy. `CONTENT_ORIGIN` must be a separate custom hostname; without it, production content publication fails closed.
 
@@ -50,7 +50,7 @@ API tokens expire on their own clock, separate from content. A human picks a lif
 
 The installable skill is the **committed files** under `plugins/{name}/` plus the harness catalogs `skill:init` writes. That is what `/plugin install` reads. Source templates live in `templates/`.
 
-This upstream ships a placeholder package named **`energon`** under `plugins/energon`, bound to `https://energon.example.com` and `ENERGON_TOKEN`. It is not a marketplace — there is no `.claude-plugin/marketplace.json` until you init. After you fork:
+Upstream ships templates and default configuration, with no generated plugin or marketplace catalogs. After you fork, generate the package with a unique instance name and your real HTTPS hub origin:
 
 ```bash
 npm run skill:init -- --name yourco --origin https://energon.your.co
@@ -62,11 +62,11 @@ It writes `plugins/yourco-energon/`, `.claude-plugin/marketplace.json`, `.agents
 
 Do not put the skill in `.agents/skills` or `.claude/skills` — those autoload it in this Worker repo. Keep the plugin in `plugins/{name}/` so `claude plugin validate .` treats the fork as a marketplace, not the whole Worker as a plugin.
 
-Skill name and marketplace name match so a second Energon catalog does not collide. Claude Code has one marketplace `name` slot.
+Choose distinct names for each instance, including staging and production. Initialization rejects generic `energon` skill, plugin, and marketplace names, and placeholder origins. Matching the skill and marketplace names makes installation easier; uniqueness across instances prevents collisions.
 
-`npm run skill:render -- --check` fails if committed files drifted from `instance-skill.json` + `templates/`.
+Before initialization, `npm run skill:render` and its `--check` form validate templates without generating files. After initialization, render refreshes the plugin and catalogs, and `--check` fails if committed files drift from `instance-skill.json` + `templates/`.
 
-Do not ship `{{placeholders}}` in `SKILL.md`. Do not tell a private host to install the placeholder `tmchow/energon` skill.
+Do not ship `{{placeholders}}` in `SKILL.md`. Do not tell a private host to install from `tmchow/energon`. Existing forks using generic names must follow the rename instructions in [INSTALL.md](../INSTALL.md#3-render-this-hosts-skill) before rendering again.
 
 ## Cloudflare resources (once per instance)
 

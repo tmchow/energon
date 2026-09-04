@@ -54,19 +54,17 @@ npm run skill:init -- --name yourco --origin https://energon.your.co
 
 `--name yourco` becomes skill **and** marketplace `yourco-energon` (install `yourco-energon@yourco-energon`), token env `YOURCO_ENERGON_TOKEN`, and the GitHub repo from `git remote get-url origin`. Pass `--repo your-org/energon` if origin is still `tmchow/energon`.
 
-For the generic names (`energon@energon`, `ENERGON_TOKEN`) instead of `yourco-energon`:
-
-```bash
-npm run skill:init -- --skill energon --marketplace energon --origin https://energon.your.co --token-env ENERGON_TOKEN --repo your-org/energon
-```
+Choose a name unique to this instance (for example, `yourco` or `yourco-staging`). Generic `energon` identities and placeholder origins are rejected. Use your deployed HTTPS hub origin without a path.
 
 That writes `plugins/yourco-energon/` (Agent Plugins package), the harness catalogs (`.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`, and the Copilot/root copies), and `instance-skill.json`. The plugin lives in that subdirectory — not at the repo root, and not under `.agents/skills` or `.claude/skills`. Commit the result. After that, this fork is the marketplace teammates add.
 
-Then set wrangler `[vars]` to the same values. The init command prints the line.
+Then set wrangler `[vars]` to the same values from `instance-skill.json`, as shown below.
 
-`npm run skill:render -- --check` fails if those files drifted from `instance-skill.json` + `templates/`. That check is part of `npm run test:unit`.
+After initialization, `npm run skill:render` refreshes the generated files and `npm run skill:render -- --check` fails if they drift from `instance-skill.json` + `templates/`. Before initialization, both commands validate templates without generating a plugin. The check is part of `npm run test:unit`.
 
-The committed skill in **this** upstream tree is a placeholder under `plugins/energon`, bound to `https://energon.example.com`. Upstream does not ship marketplace catalogs. Do not tell teammates to install from `tmchow/energon`. After init, they install from **your** fork.
+Upstream contains templates and default configuration, with no generated plugin or marketplace catalogs. A fresh fork must run `skill:init` before distributing a plugin. Teammates install from **your** configured fork, never `tmchow/energon`.
+
+If an existing fork uses the generic `energon` identity, rerun `skill:init` with a unique name and the same real origin. Commit the renamed plugin and catalogs, update the Worker identity variables below, and have teammates replace the old installation and token environment variable with the new names. Existing token values remain valid when `TOKEN_PREFIX` is unchanged.
 
 ### 4. Company vars (`wrangler.toml`)
 
@@ -157,7 +155,7 @@ your-org/energon
 https://github.com/your-org/energon
 ```
 
-Add that as a marketplace, then install the plugin named in `GET {origin}/v1/help` → `install` (placeholder tree: `energon@energon`).
+Add that as a marketplace, then install the plugin named in `GET {origin}/v1/help` → `install`.
 
 Or paste this, filling in the values from `/v1/help` or `/setup`:
 
@@ -167,7 +165,7 @@ Add the Energon plugin marketplace and install {plugin}.
 Repo: {owner/repo}
 https://github.com/{owner/repo}
 
-This repo is a Claude Code marketplace and an Agent Plugins marketplace (https://agent-plugins.org/). Follow this host’s plugin install flow. Install at user (global) scope so the skill is available in every project. Do not install at project or workspace scope unless the human asked for that. After install, ask the human to mint a token at {origin}/tokens and export it as {TOKEN_ENV}. Do not invent a token.
+This repo is a Claude Code marketplace and an Agent Plugins marketplace (https://agent-plugins.org/). Follow this host’s plugin install flow. Install at user (global) scope so the skill is available in every project. Do not install at project or workspace scope unless the human asked for that. After install, read {origin}/auth.md and request a human-approved connection. Manual token setup at {origin}/tokens using {TOKEN_ENV} is also available. Do not invent a token.
 ```
 
 Signed-in humans can copy a filled block from `{origin}/setup`.
@@ -178,14 +176,14 @@ Harness-specific commands (replace repo / plugin with this host’s values):
 
 ```
 /plugin marketplace add your-org/energon
-/plugin install energon@energon --scope user
+/plugin install yourco-energon@yourco-energon --scope user
 ```
 
 **Cursor**
 
 ```
 agent plugin marketplace add https://github.com/your-org/energon.git
-agent plugin install energon@energon
+agent plugin install yourco-energon@yourco-energon
 ```
 
 Or in chat: ask Cursor to add the GitHub marketplace and install the plugin at user (global) scope. Cursor loads `plugins/{plugin}/` (`plugin.json` + `skills/`), not a `.cursor` folder.
@@ -194,21 +192,21 @@ Or in chat: ask Cursor to add the GitHub marketplace and install the plugin at u
 
 ```
 codex plugin marketplace add your-org/energon
-codex plugin add energon@energon
+codex plugin add yourco-energon@yourco-energon
 ```
 
 **Grok**
 
 ```
 grok plugin marketplace add your-org/energon
-grok plugin install energon@energon --trust
+grok plugin install yourco-energon@yourco-energon --trust
 ```
 
 **GitHub Copilot**
 
 ```
 copilot plugin marketplace add your-org/energon
-copilot plugin install energon@energon
+copilot plugin install yourco-energon@yourco-energon
 ```
 
 ### 2. Connect the agent
@@ -222,15 +220,15 @@ For CI, scripts, or manual setup:
 3. Export it. Do **not** invent a token. Do **not** commit it.
 
 ```
-export ENERGON_TOKEN=ee_live_…
+export YOURCO_ENERGON_TOKEN=ee_live_…
 ```
 
-Use the env name from `GET {origin}/v1/help` → `env` if this host renamed it. Add that line to `~/.zshrc` (or the equivalent) so new terminals keep it.
+Replace `YOURCO_ENERGON_TOKEN` with the env name from `GET {origin}/v1/help` → `env`. Add that line to `~/.zshrc` (or the equivalent) so new terminals keep it.
 
 ### 3. Smoke check
 
 ```
-curl -sS {origin}/v1/whoami -H "Authorization: Bearer $ENERGON_TOKEN"
+curl -sS {origin}/v1/whoami -H "Authorization: Bearer $YOURCO_ENERGON_TOKEN"
 ```
 
 Then they can say: “Put this folder on Energon as lunch-poll” or “Hand this screenshot to the other chat.”
@@ -242,12 +240,12 @@ Do not pin the plugin in a project by default. If they want teammates to get it 
 ```json
 {
   "extraKnownMarketplaces": {
-    "energon": {
+    "yourco-energon": {
       "source": { "source": "github", "repo": "your-org/energon" }
     }
   },
   "enabledPlugins": {
-    "energon@energon": true
+    "yourco-energon@yourco-energon": true
   }
 }
 ```
@@ -263,4 +261,4 @@ Put that in `.claude/settings.json` and/or `.github/copilot/settings.json`, usin
 - Do not put Access on `/v1`.
 - Do not install two marketplaces that share the same `name`.
 - Do not leave `{{ORIGIN}}` in a skill you ship to agents.
-- Do not tell a company to install the placeholder `tmchow/energon` skill bound to `energon.example.com`.
+- Do not tell a company to install from `tmchow/energon`; generate and commit the plugin in its configured fork first.
