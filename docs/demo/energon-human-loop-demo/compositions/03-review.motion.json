@@ -1,0 +1,10 @@
+{
+  "duration": 7,
+  "assertions": [
+    { "kind": "appearsBy", "selector": "#review-gate", "bySec": 1 },
+    { "kind": "appearsBy", "selector": "#review-plan", "bySec": 2.8 },
+    { "kind": "before", "a": "#review-gate", "b": "#review-plan" },
+    { "kind": "staysInFrame", "selector": "#review-rollout" },
+    { "kind": "keepsMoving", "withinSelector": "#review", "maxStaticSec": 3 }
+  ]
+}

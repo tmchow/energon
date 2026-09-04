@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en"><head></head>
+  <body>
+    <template>
+      <style>
+        #root { position: absolute; inset: 0; width: 1920px; height: 1080px; overflow: hidden; background: #17141f; color: #f8f5ff; font-family: Montserrat, sans-serif; }
+        .prototype-grid-bg { position: absolute; inset: 0; opacity: .17; background-image: linear-gradient(rgba(138,108,255,.18) 2px, transparent 2px), linear-gradient(90deg, rgba(138,108,255,.18) 2px, transparent 2px); background-size: 96px 96px; }
+        .prototype-glow { position: absolute; left: 210px; top: 50px; width: 1500px; height: 930px; border-radius: 50%; background: radial-gradient(circle, rgba(104,73,234,.42), rgba(45,29,83,.18) 46%, rgba(23,20,31,0) 72%); opacity: 0; will-change: opacity, transform; }
+        .prototype-meta { position: absolute; left: 116px; top: 72px; display: flex; align-items: center; gap: 22px; font-family: "IBM Plex Mono", monospace; font-size: 23px; letter-spacing: .08em; text-transform: uppercase; }
+        .prototype-step { color: #b7a6ff; font-weight: 700; }
+        .prototype-rule { width: 112px; height: 3px; border-radius: 3px; background: #8a6cff; transform-origin: left center; }
+        .prototype-label { color: #d8d1e8; }
+        .prototype-browser { position: absolute; left: 138px; top: 146px; width: 1644px; height: 856px; overflow: hidden; border: 2px solid rgba(196,180,255,.3); border-radius: 32px; background: #fff; box-shadow: 0 52px 130px rgba(4,2,11,.54), 0 0 0 12px rgba(138,108,255,.06); transform-origin: center center; }
+        .prototype-chrome { height: 88px; display: grid; grid-template-columns: 160px 1fr 160px; align-items: center; padding: 0 26px; background: #ece8f1; border-bottom: 2px solid #dcd5e5; }
+        .prototype-dots { display: flex; gap: 13px; }
+        .prototype-dot { width: 17px; height: 17px; border-radius: 50%; background: #9f97a9; }
+        .prototype-dot:nth-child(1) { background: #ff7d91; } .prototype-dot:nth-child(2) { background: #f4c86a; } .prototype-dot:nth-child(3) { background: #74d7a1; }
+        .prototype-urlbar { height: 50px; display: flex; align-items: center; gap: 14px; padding: 0 20px; border: 2px solid #d7cfdf; border-radius: 16px; background: #fff; color: #4f4958; font-family: "IBM Plex Mono", monospace; font-size: 18px; box-shadow: inset 0 1px 2px rgba(30,22,44,.06); }
+        .prototype-lock { color: #6348b8; font-size: 18px; }
+        .prototype-live { justify-self: end; display: flex; align-items: center; gap: 10px; color: #534e59; font-family: "IBM Plex Mono", monospace; font-size: 17px; }
+        .prototype-live-dot { width: 11px; height: 11px; border-radius: 50%; background: #32b778; box-shadow: 0 0 0 6px rgba(50,183,120,.13); }
+        .prototype-page { height: 768px; display: grid; grid-template-columns: 560px 1fr; color: #24202d; background: #fbfafc; }
+        .prototype-aside { position: relative; overflow: hidden; padding: 72px 70px; background: #241d35; color: #f8f5ff; }
+        .prototype-aside::after { content: ""; position: absolute; right: -190px; bottom: -220px; width: 560px; height: 560px; border: 72px solid rgba(138,108,255,.16); border-radius: 50%; }
+        .prototype-wordmark { display: flex; align-items: center; gap: 16px; font-size: 26px; font-weight: 900; letter-spacing: -.02em; }
+        .prototype-wordmark-mark { width: 50px; height: 50px; display: grid; place-items: center; border-radius: 15px; background: #8a6cff; font-family: "IBM Plex Mono", monospace; font-size: 22px; }
+        .prototype-aside-kicker { margin-top: 100px; color: #b7a6ff; font-family: "IBM Plex Mono", monospace; font-size: 18px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+        .prototype-aside-title { margin-top: 22px; max-width: 390px; font-size: 52px; line-height: 1.03; letter-spacing: -.045em; font-weight: 900; }
+        .prototype-progress { margin-top: 66px; display: grid; gap: 23px; }
+        .prototype-step-row { display: grid; grid-template-columns: 38px 1fr; align-items: center; gap: 16px; color: #a9a1b8; font-size: 21px; }
+        .prototype-step-num { width: 38px; height: 38px; display: grid; place-items: center; border: 2px solid #5c526e; border-radius: 50%; font-family: "IBM Plex Mono", monospace; font-size: 16px; }
+        .prototype-step-row.done { color: #d8cef8; } .prototype-step-row.done .prototype-step-num { border-color: #694bc9; background: #694bc9; color: white; }
+        .prototype-step-row.active { color: white; font-weight: 900; } .prototype-step-row.active .prototype-step-num { border-color: #b7a6ff; color: #b7a6ff; box-shadow: 0 0 0 7px rgba(138,108,255,.12); }
+        .prototype-content { position: relative; padding: 74px 92px; }
+        .prototype-counter { color: #716a78; font-family: "IBM Plex Mono", monospace; font-size: 18px; letter-spacing: .06em; text-transform: uppercase; }
+        .prototype-title { margin-top: 22px; color: #24202d; font-size: 58px; line-height: 1.04; letter-spacing: -.045em; font-weight: 900; }
+        .prototype-subtitle { margin-top: 18px; color: #716b77; font-size: 23px; line-height: 1.5; }
+        .prototype-form { margin-top: 48px; display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+        .prototype-field { padding: 22px 24px; border: 3px solid #e2dce7; border-radius: 17px; background: white; }
+        .prototype-field.wide { grid-column: 1 / -1; }
+        .prototype-field-label { color: #77717e; font-family: "IBM Plex Mono", monospace; font-size: 15px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+        .prototype-field-value { margin-top: 10px; color: #2e2935; font-size: 22px; font-weight: 700; }
+        .prototype-footer { margin-top: 38px; display: flex; align-items: center; justify-content: space-between; }
+        .prototype-back { color: #746f7d; font-size: 20px; font-weight: 700; }
+        .prototype-continue { padding: 19px 34px; border-radius: 16px; background: #8a6cff; color: white; font-size: 22px; font-weight: 900; box-shadow: 0 16px 34px rgba(110,79,224,.28); }
+        .prototype-proof { position: absolute; right: 94px; bottom: 40px; display: flex; align-items: center; gap: 13px; color: #d8d1e8; font-family: "IBM Plex Mono", monospace; font-size: 18px; letter-spacing: .06em; text-transform: uppercase; }
+        .prototype-proof img { width: 40px; height: 40px; }
+      </style>
+      <div data-hf-id="hf-72jr" id="root" data-composition-id="prototype" data-width="1920" data-height="1080" data-duration="6">
+        <div data-hf-id="hf-t22p" class="prototype-grid-bg"></div><div data-hf-id="hf-88wu" id="prototype-glow" class="prototype-glow"></div>
+        <div data-hf-id="hf-fq4a" id="prototype-meta" class="prototype-meta"><span data-hf-id="hf-ujlt" class="prototype-step">03</span><span data-hf-id="hf-jn0n" id="prototype-rule" class="prototype-rule"></span><span data-hf-id="hf-17jh" class="prototype-label">Open the prototype</span></div>
+        <div data-hf-id="hf-ueds" id="prototype-browser" class="prototype-browser">
+          <div data-hf-id="hf-0b2d" class="prototype-chrome">
+            <div data-hf-id="hf-i4af" class="prototype-dots"><span data-hf-id="hf-ygtv" class="prototype-dot"></span><span data-hf-id="hf-nor7" class="prototype-dot"></span><span data-hf-id="hf-nag6" class="prototype-dot"></span></div>
+            <div data-hf-id="hf-b0pu" id="prototype-urlbar" class="prototype-urlbar"><span data-hf-id="hf-2hrn" class="prototype-lock">◆</span><span data-hf-id="hf-ozei">content.energon.your.co/ada/s/onboarding-flow/</span></div>
+            <div data-hf-id="hf-othv" class="prototype-live"><span data-hf-id="hf-mbny" class="prototype-live-dot"></span>live</div>
+          </div>
+          <div data-hf-id="hf-2spi" class="prototype-page">
+            <aside data-hf-id="hf-6lpg" class="prototype-aside">
+              <div data-hf-id="hf-472s" class="prototype-wordmark"><span data-hf-id="hf-l91a" class="prototype-wordmark-mark">O</span>Orbit</div>
+              <div data-hf-id="hf-tzr7" class="prototype-aside-kicker">Workspace setup</div>
+              <div data-hf-id="hf-85j5" class="prototype-aside-title">A calmer start for every new teammate.</div>
+              <div data-hf-id="hf-m5sm" class="prototype-progress">
+                <div data-hf-id="hf-dzmu" class="prototype-step-row done"><span data-hf-id="hf-qf3o" class="prototype-step-num">✓</span><span data-hf-id="hf-cb67">Your profile</span></div>
+                <div data-hf-id="hf-zdg4" class="prototype-step-row active"><span data-hf-id="hf-yx47" class="prototype-step-num">2</span><span data-hf-id="hf-j8mr">Your workspace</span></div>
+                <div data-hf-id="hf-j0ei" class="prototype-step-row"><span data-hf-id="hf-zbf8" class="prototype-step-num">3</span><span data-hf-id="hf-yluk">Invite the team</span></div>
+              </div>
+            </aside>
+            <main data-hf-id="hf-3f4y" id="prototype-content" class="prototype-content">
+              <div data-hf-id="hf-ar93" class="prototype-counter">Step 2 of 3</div>
+              <div data-hf-id="hf-yu1d" class="prototype-title">Tell us about your workspace</div>
+              <div data-hf-id="hf-ahpy" class="prototype-subtitle">We’ll tailor the onboarding checklist to how your team works.</div>
+              <div data-hf-id="hf-inx5" class="prototype-form">
+                <div data-hf-id="hf-h3ux" class="prototype-field"><div data-hf-id="hf-wkgk" class="prototype-field-label">Workspace name</div><div data-hf-id="hf-z997" class="prototype-field-value">Acme Design</div></div>
+                <div data-hf-id="hf-6h8d" class="prototype-field"><div data-hf-id="hf-m4bu" class="prototype-field-label">Team size</div><div data-hf-id="hf-th68" class="prototype-field-value">11–25 people</div></div>
+                <div data-hf-id="hf-dzca" class="prototype-field wide"><div data-hf-id="hf-0pth" class="prototype-field-label">Primary goal</div><div data-hf-id="hf-o3dp" class="prototype-field-value">Ship better product experiences</div></div>
+              </div>
+              <div data-hf-id="hf-1g6a" class="prototype-footer"><span data-hf-id="hf-q9ak" class="prototype-back">← Back</span><span data-hf-id="hf-rdb2" class="prototype-continue">Continue →</span></div>
+            </main>
+          </div>
+        </div>
+        <div data-hf-id="hf-ye5c" id="prototype-proof" class="prototype-proof"><span data-hf-id="hf-pfvh">A real page, ready to review</span><img data-hf-id="hf-y012" src="assets/energon-logo.svg" alt="Energon"></div>
+        <script>
+          const tl = gsap.timeline({ paused: true });
+          tl.fromTo("#prototype-meta", { opacity: 0, x: -36 }, { opacity: 1, x: 0, duration: .45, ease: "power3.out" }, .12);
+          tl.fromTo("#prototype-rule", { scaleX: 0 }, { scaleX: 1, duration: .62, ease: "expo.out" }, .18);
+          tl.fromTo("#prototype-browser", { opacity: 0, scale: .9, y: 42, borderRadius: 42 }, { opacity: 1, scale: 1, y: 0, borderRadius: 32, duration: .82, ease: "power3.out" }, .15);
+          tl.fromTo("#prototype-glow", { opacity: 0, scale: .82 }, { opacity: .36, scale: 1, duration: 1.05, ease: "power2.out" }, .12);
+          tl.fromTo("#prototype-urlbar", { boxShadow: "0 0 0 0 rgba(138,108,255,0)" }, { boxShadow: "0 0 0 7px rgba(138,108,255,.13)", duration: .56, ease: "power2.out" }, .62);
+          tl.to("#prototype-urlbar", { boxShadow: "inset 0 1px 2px rgba(30,22,44,.06)", duration: .7, ease: "power1.inOut" }, 1.19);
+          tl.fromTo("#prototype-content", { opacity: 0, x: 48 }, { opacity: 1, x: 0, duration: .68, ease: "power2.out" }, .58);
+          tl.fromTo("#prototype-proof", { opacity: 0, x: 26 }, { opacity: 1, x: 0, duration: .48, ease: "power2.out" }, .86);
+          const glow = document.getElementById("prototype-glow");
+          const phase = { p: 0 };
+          tl.to(phase, { p: Math.PI * 2, duration: 4.7, ease: "none", onUpdate: () => { const s = Math.sin(phase.p); glow.style.opacity = String(.33 + s * .025); glow.style.transform = `scale(${1 + s * .012})`; } }, 1.25);
+          window.__timelines.prototype = tl;
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

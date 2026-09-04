@@ -1,0 +1,9 @@
+{
+  "duration": 4.5,
+  "assertions": [
+    { "kind": "appearsBy", "selector": "#dm-app", "bySec": 0.9 },
+    { "kind": "appearsBy", "selector": "#dm-message", "bySec": 1.8 },
+    { "kind": "before", "a": "#dm-app", "b": "#dm-message" },
+    { "kind": "staysInFrame", "selector": "#dm-card" }
+  ]
+}

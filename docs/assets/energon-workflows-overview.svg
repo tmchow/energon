@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Three ways Energon keeps work moving</title>
+  <desc id="desc">Overview of publishing a prototype for Slack, sharing an editable plan for human review, and moving a ZIP from a local agent to a cloud agent.</desc>
+  <defs>
+    <pattern id="grid" width="64" height="64" patternUnits="userSpaceOnUse">
+      <path d="M64 0H0V64" fill="none" stroke="#8a6cff" stroke-opacity=".09" stroke-width="1"/>
+    </pattern>
+    <radialGradient id="bloom" cx="50%" cy="42%" r="66%">
+      <stop offset="0" stop-color="#8a6cff" stop-opacity=".22"/>
+      <stop offset=".62" stop-color="#8a6cff" stop-opacity=".05"/>
+      <stop offset="1" stop-color="#17141f" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="cubeTop" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#c9b0ff" stop-opacity=".32"/><stop offset="1" stop-color="#6a4cff" stop-opacity=".05"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-30%" width="140%" height="170%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#05020d" flood-opacity=".42"/>
+    </filter>
+    <filter id="logoGlow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <style>
+      .display{font-family:Montserrat,Arial,sans-serif}.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}.lane{fill:#211b30;stroke:#514163;stroke-width:2}.eyebrow{fill:#b7a6ff;font-size:17px;font-weight:700;letter-spacing:2px}.lane-title{fill:#f8f5ff;font-size:30px;font-weight:800;letter-spacing:-.5px}.lane-copy{fill:#bcb4c8;font-size:19px}.node{fill:#f8f6fb;stroke:#ddd6e5;stroke-width:2}.node-warm{fill:#fffaf3;stroke:#eadfd4;stroke-width:2}.node-title{fill:#2a2535;font-size:17px;font-weight:800}.node-sub{fill:#6c6774;font-size:13px;font-weight:600;letter-spacing:.4px}.arrow{fill:none;stroke:#8a6cff;stroke-width:4;stroke-linecap:round}.outcome{fill:#2a2535;stroke:#765ad1;stroke-width:2}.outcome-text{fill:#e7e0fb;font-size:15px;font-weight:700}.step{fill:#8a6cff}.step-text{fill:#fff;font-size:14px;font-weight:800}.device{fill:#efc464}.cloud{fill:#b7a6ff}.human{fill:#765ad1}.small-icon{fill:#fff;font-size:16px;font-weight:800}.footer{fill:#d9d0ff;font-size:19px;font-weight:700;letter-spacing:.7px}
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" rx="28" fill="#17141f"/>
+  <rect width="1600" height="900" rx="28" fill="url(#grid)"/>
+  <rect width="1600" height="900" rx="28" fill="url(#bloom)"/>
+
+  <g transform="translate(72 56)">
+    <g transform="translate(0 1) scale(1.05)">
+      <polygon fill="url(#cubeTop)" points="32,8 53,20 32,32 11,20"/>
+      <polygon fill="#5c48d8" fill-opacity=".18" points="11,20 32,32 32,53 11,41"/>
+      <polygon fill="#b08cff" fill-opacity=".22" points="53,20 32,32 32,53 53,41"/>
+      <g fill="none" stroke="#f3ecff" stroke-width="2.2" stroke-linejoin="round" filter="url(#logoGlow)">
+        <path d="M32 8 53 20 32 32 11 20Z"/><path d="M11 20v21l21 12 21-12V20"/><path d="M32 32v21"/>
+      </g>
+    </g>
+    <text class="display" x="82" y="34" fill="#f8f5ff" font-size="28" font-weight="800">Energon workflows</text>
+    <text class="mono" x="82" y="61" fill="#bcb4c8" font-size="15" letter-spacing="1.3">ONE COMPANY-OWNED HANDOFF LAYER</text>
+  </g>
+
+  <text class="display" x="1528" y="90" text-anchor="end" fill="#f8f5ff" font-size="44" font-weight="800" letter-spacing="-1.4">Work moves. The link stays simple.</text>
+  <text class="display" x="1528" y="125" text-anchor="end" fill="#bcb4c8" font-size="21">Sites, documents, and whole working sets—across people, agents, and machines.</text>
+
+  <!-- Lane 1 -->
+  <g filter="url(#shadow)">
+    <rect class="lane" x="72" y="178" width="1456" height="182" rx="26"/>
+  </g>
+  <circle class="step" cx="116" cy="224" r="22"/><text class="mono step-text" x="116" y="229" text-anchor="middle">01</text>
+  <text class="mono eyebrow" x="154" y="218">PUBLISH A PROTOTYPE</text>
+  <text class="display lane-title" x="154" y="254">Turn agent output into a link</text>
+  <text class="display lane-copy" x="154" y="286">Publish the site, share the link, open the prototype.</text>
+
+  <g transform="translate(690 204)">
+    <rect class="node" width="164" height="104" rx="18"/><circle class="human" cx="34" cy="33" r="17"/><text class="mono small-icon" x="34" y="39" text-anchor="middle">A</text><text class="display node-title" x="60" y="37">Agent</text><text class="mono node-sub" x="22" y="76">BUILD SITE</text>
+    <path class="arrow" d="M177 52h62"/><path d="m232 44 12 8-12 8" fill="#8a6cff"/>
+    <g transform="translate(252)"><rect class="outcome" width="164" height="104" rx="18"/><g transform="translate(50 16) scale(.72)"><polygon fill="#8a6cff" fill-opacity=".2" points="32,8 53,20 32,32 11,20"/><g fill="none" stroke="#f3ecff" stroke-width="2.4"><path d="M32 8 53 20 32 32 11 20Z"/><path d="M11 20v21l21 12 21-12V20"/><path d="M32 32v21"/></g></g><text class="display outcome-text" x="82" y="85" text-anchor="middle">ENERGON URL</text></g>
+    <path class="arrow" d="M429 52h62"/><path d="m484 44 12 8-12 8" fill="#8a6cff"/>
+    <g transform="translate(504)"><rect class="node" width="164" height="104" rx="18"/><circle fill="#4a154b" cx="34" cy="33" r="17"/><text class="display small-icon" x="34" y="39" text-anchor="middle">S</text><text class="display node-title" x="60" y="37">#design</text><text class="mono node-sub" x="22" y="76">CLICK → OPEN</text></g>
+  </g>
+  <g transform="translate(1384 214)"><rect class="outcome" width="116" height="84" rx="16"/><text class="mono outcome-text" x="58" y="36" text-anchor="middle">LIVE</text><text class="mono outcome-text" x="58" y="59" text-anchor="middle">PROTOTYPE</text></g>
+
+  <!-- Lane 2 -->
+  <g filter="url(#shadow)"><rect class="lane" x="72" y="382" width="1456" height="182" rx="26"/></g>
+  <circle class="step" cx="116" cy="428" r="22"/><text class="mono step-text" x="116" y="433" text-anchor="middle">02</text>
+  <text class="mono eyebrow" x="154" y="422">KEEP HUMANS IN THE LOOP</text>
+  <text class="display lane-title" x="154" y="458">Humans review; agents revise</text>
+  <text class="display lane-copy" x="154" y="490">Share rendered Markdown and preserve the same URL.</text>
+
+  <g transform="translate(690 408)">
+    <rect class="node-warm" width="164" height="104" rx="18"/><circle class="human" cx="34" cy="33" r="17"/><text class="mono small-icon" x="34" y="39" text-anchor="middle">M</text><text class="display node-title" x="60" y="37">Maya</text><text class="mono node-sub" x="22" y="76">SHARE PLAN</text>
+    <path class="arrow" d="M177 52h62"/><path d="m232 44 12 8-12 8" fill="#8a6cff"/>
+    <g transform="translate(252)"><rect class="outcome" width="164" height="104" rx="18"/><text class="mono" x="82" y="43" text-anchor="middle" fill="#b7a6ff" font-size="24" font-weight="800">MD</text><text class="display outcome-text" x="82" y="77" text-anchor="middle">SAME LINK</text></g>
+    <path class="arrow" d="M429 52h62"/><path d="m484 44 12 8-12 8" fill="#8a6cff"/>
+    <g transform="translate(504)"><rect class="node-warm" width="164" height="104" rx="18"/><circle class="device" cx="34" cy="33" r="17"/><text class="mono" x="34" y="39" text-anchor="middle" fill="#35223f" font-size="16" font-weight="900">N</text><text class="display node-title" x="60" y="37">Noah</text><text class="mono node-sub" x="22" y="76">REVIEW + DIRECT</text></g>
+  </g>
+  <g transform="translate(1384 418)"><rect class="outcome" width="116" height="84" rx="16"/><text class="mono outcome-text" x="58" y="36" text-anchor="middle">REVISED</text><text class="mono outcome-text" x="58" y="59" text-anchor="middle">PLAN</text></g>
+
+  <!-- Lane 3 -->
+  <g filter="url(#shadow)"><rect class="lane" x="72" y="586" width="1456" height="182" rx="26"/></g>
+  <circle class="step" cx="116" cy="632" r="22"/><text class="mono step-text" x="116" y="637" text-anchor="middle">03</text>
+  <text class="mono eyebrow" x="154" y="626">CROSS A MACHINE BOUNDARY</text>
+  <text class="display lane-title" x="154" y="662">Move a working set between machines</text>
+  <text class="display lane-copy" x="154" y="694">Package local assets once; fetch the ZIP remotely.</text>
+
+  <g transform="translate(690 612)">
+    <rect class="node-warm" width="164" height="104" rx="18"/><circle class="device" cx="34" cy="33" r="17"/><text class="mono" x="34" y="39" text-anchor="middle" fill="#35223f" font-size="14" font-weight="900">MAC</text><text class="display node-title" x="60" y="37">Local agent</text><text class="mono node-sub" x="22" y="76">5 ASSETS → ZIP</text>
+    <path class="arrow" d="M177 52h62"/><path d="m232 44 12 8-12 8" fill="#8a6cff"/>
+    <g transform="translate(252)"><rect class="outcome" width="164" height="104" rx="18"/><text class="mono" x="82" y="43" text-anchor="middle" fill="#b7a6ff" font-size="24" font-weight="800">ZIP</text><text class="display outcome-text" x="82" y="77" text-anchor="middle">ENERGON URL</text></g>
+    <path class="arrow" d="M429 52h62"/><path d="m484 44 12 8-12 8" fill="#8a6cff"/>
+    <g transform="translate(504)"><rect class="node" width="164" height="104" rx="18"/><circle class="cloud" cx="34" cy="33" r="17"/><text class="mono" x="34" y="39" text-anchor="middle" fill="#35223f" font-size="14" font-weight="900">☁</text><text class="display node-title" x="60" y="37">Cloud agent</text><text class="mono node-sub" x="22" y="76">FETCH + RENDER</text></g>
+  </g>
+  <g transform="translate(1384 622)"><rect class="outcome" width="116" height="84" rx="16"/><text class="mono outcome-text" x="58" y="36" text-anchor="middle">FINISHED</text><text class="mono outcome-text" x="58" y="59" text-anchor="middle">VIDEO</text></g>
+
+  <line x1="72" x2="1528" y1="812" y2="812" stroke="#8a6cff" stroke-opacity=".42" stroke-width="2"/>
+  <text class="display footer" x="72" y="850">Explore the animated workflows</text>
+  <text class="mono" x="1528" y="850" text-anchor="end" fill="#b7a6ff" font-size="17" font-weight="700" letter-spacing="1.2">PEOPLE → AGENTS → ENERGON → WORKING LINKS  ↗</text>
+</svg>

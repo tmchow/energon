@@ -1,40 +1,205 @@
 # Energon
 
-Energon is a company host for files and small sites. An agent publishes over HTTP. A person opens the link.
+<div align="center">
+  <img src="./src/logo.svg" width="112" alt="Energon logo">
+</div>
 
-It is agent-native on purpose. The same skill works from Cursor, Claude Code, Codex, and other clients that install [Agent Plugins](https://agent-plugins.org/). Markdown, a folder of HTML, a screenshot, a PDF: one place, not a static host plus Drive plus Slack. You run it in your Cloudflare account, so the bytes are not sitting on a public paste service. Teammates with a token can read and write. You can lock a site or a file so only the creator overwrites it. You can still send the link to someone outside the company.
+<div align="center">
 
-Team members authenticate to mint a token. Published URLs are served from the separately configured content hostname and are open by default, because an agent has no login cookie and a preview for someone outside the company is the same URL. Anyone with the link can open it. Put a share password on a URL that should not be wide open. Token reads on the hub's `/v1` skip the password. Writing stays on tokens.
+[![CI](https://github.com/tmchow/energon/actions/workflows/ci.yml/badge.svg)](https://github.com/tmchow/energon/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-This repo is what you fork. `npm run skill:init` writes a plugin package named for your host (`yourco-energon`, `YOURCO_ENERGON_TOKEN`) and the marketplace catalogs teammates add, so it does not collide with another Energon you also use. Install that skill at user scope if this is the host you want in every project. If you belong to more than one organization, install each instance's skill. They have different names and different token env vars. Or pin one at project scope in that company's repos.
+</div>
 
-A site is a named folder, like `/ada/s/lunch-poll/`. A file is one object with a short id, like `/ada/f/x7k2/brief.md`. POST once to mint the id, then PUT to replace it. The address does not move. `curl` and `?raw=1` stay the source. `index.md` is the homepage when `index.html` is missing. Last write wins on each path.
+**One company-owned place where any agent can publish a file or small site and hand a human a stable link.**
 
-Who can mint tokens, the default write policy, and how long things live are settings on the host. Companies usually let any token on the host write, and leave expiration off. [Deploy your own Energon](./docs/DEPLOY.md) has the list.
+Energon runs in your Cloudflare account. Agents write over HTTP; humans open normal web links. Markdown, HTML folders, screenshots, PDFs, and other files share one host instead of being scattered across chat artifacts, public paste services, static hosts, and drives.
 
-`GET /v1/sites` and `GET /v1/files` only return what you created or last wrote. They are not a company catalog.
+<div align="center">
+  <a href="./docs/SCENARIOS.md">
+    <img src="./docs/assets/energon-workflows-overview.svg" width="800" alt="Three Energon workflows: publish a prototype for Slack, share an editable plan for human review, and move a ZIP from a local agent to a cloud agent">
+  </a>
+</div>
 
-The package in this upstream tree is `plugins/energon`, aimed at `https://energon.example.com`. That host is not real, and this tree is not a marketplace. Run `npm run skill:init` with your hostname before anyone installs the skill. Default token env is `ENERGON_TOKEN`.
+<p align="center"><em>Prototype publishing, human review, and cross-machine agent handoff. <a href="./docs/SCENARIOS.md">Explore the animated workflows →</a></em></p>
 
-## Where this came from
+> Energon is self-hosted software, not a hosted service or a curl installer. Start with [Deploy a company host](#deploy-a-company-host), or give [this prompt](#give-this-to-an-agent) to an agent.
 
-[Claude Artifacts](https://claude.com/blog/artifacts) is really easy. An HTML app, a link, someone can open it. Only inside Claude products, though. Bounce across agents in different harnesses and you cannot reach for the same thing.
+## TL;DR
 
-[ht-ml.app](https://ht-ml.app) is the version of that idea that is not stuck in one chat product. It is shaped around HTML, and it is a public host.
+**The problem:** Agents can create useful artifacts, but those artifacts are often trapped in one chat product, published to someone else's service, or split across tools depending on whether the output is HTML, Markdown, or a binary file.
 
-[Proof](https://www.proofeditor.ai) is great because it is markdown. It is simple, and there is also a lot of it. It sits between Google Docs and something more agent-native, and markdown-only is limiting.
+**The solution:** Energon gives every compatible agent the same token-authenticated HTTP API. It stores bytes in your R2 bucket, metadata in D1, and serves stable links from a separate content hostname.
 
-I saw [Shopify Quick](https://shopify.engineering/quick) last year and thought it was genius. A folder becomes a link, on your own infrastructure. I did not find an easy way that matched my preferences, so I built Energon.
+### Why Energon?
 
-I wanted one place an agent can write from whatever agent I am in. A small site, a markdown doc, an image, a file. Running in our Cloudflare account instead of a public service. Teammates can read and write. A site or a file can be limited to the person who created it. A link can still go to someone outside the company. The skill lives in the instance repo and is named for that host, so two organizations do not step on each other. Plenty of people have already made Quick-shaped tools, Open Quick and others. This is the combination I wanted.
+| Need | What Energon does | Example |
+| --- | --- | --- |
+| Publish from different agents | Ships an instance-specific [Agent Plugin](https://agent-plugins.org/) for Cursor, Claude Code, Codex, Copilot, Grok, and other compatible clients | “Publish the onboarding flow prototype to Energon and post the link to `#design` in Slack” |
+| Keep related files together | Publishes a named site with nested paths | `/ada/s/onboarding-flow/` |
+| Hand off one artifact | Publishes a loose file with a short, stable ID | `/ada/f/x7k2q9/brief.md` |
+| Revise without moving the link | Replaces one site path or loose file in place | `PUT /v1/files/x7k2q9` |
+| Control who may overwrite | Stores `owner` or `instance` write policy per site or file | Lock a final brief to its creator |
+| Share outside the company | Serves content without an Access session, optionally behind a share password | Send the same preview URL to a client |
+| Keep company data on company infrastructure | Runs as a Cloudflare Worker backed by your D1 and R2 | No public paste-service account |
+
+## What the agent does underneath
+
+The installed skill turns the natural-language request above into the same portable HTTP workflow from any supported agent. Once a host exists and a human has exported the token named by `GET /v1/help`:
+
+```bash
+export ENERGON_ORIGIN=https://energon.your.co
+
+# Inspect this instance's live routes, limits, retention, and token env name.
+curl -sS "$ENERGON_ORIGIN/v1/help"
+
+# Confirm the token and its expiry.
+curl -sS "$ENERGON_ORIGIN/v1/whoami" \
+  -H "Authorization: Bearer $ENERGON_TOKEN"
+
+# Reserve a stable site URL. Never assume overwrite permission.
+curl -sS "$ENERGON_ORIGIN/v1/sites" \
+  -H "Authorization: Bearer $ENERGON_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"slug":"onboarding-flow","overwrite":false,"ttl":"7d"}'
+
+# Publish the homepage.
+curl -sS "$ENERGON_ORIGIN/v1/sites/onboarding-flow/files/index.html" \
+  -X PUT \
+  -H "Authorization: Bearer $ENERGON_TOKEN" \
+  -H "Content-Type: text/html; charset=utf-8" \
+  --data-binary @index.html
+
+# Or upload an entire site from a ZIP after creating its slug.
+curl -sS "$ENERGON_ORIGIN/v1/sites/onboarding-flow/import" \
+  -H "Authorization: Bearer $ENERGON_TOKEN" \
+  -H "Content-Type: application/zip" \
+  --data-binary @onboarding-flow.zip
+
+# Inspect the site without downloading every file.
+curl -sS "$ENERGON_ORIGIN/v1/sites/onboarding-flow" \
+  -H "Authorization: Bearer $ENERGON_TOKEN"
+```
+
+The create and write responses return both `url` for humans and `api_url` for agents. ZIP import requires an existing slug; if every archive entry is inside one wrapping directory, Energon strips that directory so `index.html` lands at the site root. A site serves `index.html` first, then `index.md`; without either, its root shows a file list.
+
+## How it works
+
+```text
+                         company Cloudflare account
+
+ agent / curl
+      │  Bearer token
+      ▼
+┌──────────────────────── hub hostname ────────────────────────┐
+│ Cloudflare Access ── humans: hub, account, setup, tokens     │
+│ Energon Worker     ── agents: /v1 API                        │
+└──────────────┬─────────────────────────────┬──────────────────┘
+               │ metadata                    │ bytes
+               ▼                             ▼
+          ┌─────────┐                   ┌─────────┐
+          │   D1    │                   │   R2    │
+          │ catalog │                   │ objects │
+          └─────────┘                   └────┬────┘
+                                           │ public or passworded
+                                           ▼
+                              ┌─────────────────────────┐
+                              │ separate content host   │
+                              │ /{handle}/s/...         │
+                              │ /{handle}/f/...         │
+                              └────────────┬────────────┘
+                                           ▼
+                                        browser
+```
+
+The hostname split matters: active content never inherits the hub's Access session. Public responses can be cached at the edge; writes and deletes purge the affected cache entries.
+
+## Design principles
+
+1. **One publishing primitive across agent harnesses.** The deployed instance renders its own plugin name, origin, token environment variable, and operating instructions. Two organizations can install two separately named Energon instances without colliding.
+2. **Stable addresses, explicit mutation.** A site owns a human-chosen slug. A loose file gets a short ID. Updates use `PUT`; they do not mint a new URL. Writes are last-write-wins on the affected path.
+3. **Humans control credentials and destructive choices.** Humans mint tokens through Access. Agents must not invent tokens, guess ownership of an existing slug, or silently opt into overwrite.
+4. **Open links are deliberate.** Published URLs are public by default so recipients do not need a company login. Share passwords gate sensitive links; token-authenticated `/v1` reads bypass those passwords.
+5. **The running instance is the source of truth.** `GET /v1/help` describes the deployed host's identity, routes, limits, retention policy, and token policy. Installed skills tell agents to consult it instead of assuming upstream defaults.
+
+## When to use Energon
+
+| Capability | Energon | Object storage alone | Static-site platform | Shared document editor |
+| --- | --- | --- | --- | --- |
+| Agent-oriented HTTP workflow | Built in | Build it yourself | Usually build/deploy oriented | Usually UI oriented |
+| One file and multi-file sites | Both | Objects, no site behavior | Sites | Documents |
+| Stable replace-in-place URL | Yes | Depends on your URL layer | Usually | Yes |
+| Company-owned infrastructure | Your Cloudflare account | Usually | Usually | Vendor hosted |
+| External link without company login | Yes, optional password | Depends on policy | Usually | Depends on sharing policy |
+| Comments, suggestions, and merge history | No | No | Git-based at best | Yes |
+
+Use Energon for prototypes, rendered Markdown, agent-to-agent handoffs, screenshots, PDFs, and small sites that need a durable link. Use a document editor for collaborative review, a full application platform for builds and server-side runtimes, and direct object storage when you only need a storage API.
+
+## Installation
+
+There are three distinct installation paths. They are not interchangeable.
+
+### Deploy a company host
+
+Fork [`tmchow/energon`](https://github.com/tmchow/energon) into your organization, then follow [INSTALL.md](./INSTALL.md). The short version is:
+
+```bash
+git clone https://github.com/your-org/energon.git
+cd energon
+npm install
+npx wrangler r2 bucket create energon
+npx wrangler d1 create energon
+npm run skill:init -- --name yourco --origin https://energon.your.co
+```
+
+Then configure a distinct hub hostname and content hostname, Cloudflare Access, D1, R2, and deployment credentials. Workers Paid is required for the supported upload limits. Do not reuse another instance's D1 database ID or R2 bucket.
+
+### Connect an agent to an existing host
+
+Open the deployed host's `/setup`, or read `GET {origin}/v1/help`. Both provide the actual marketplace, plugin, and token environment variable for that instance.
+
+```text
+# Claude Code
+/plugin marketplace add your-org/energon
+/plugin install yourco-energon@yourco-energon --scope user
+
+# Cursor
+agent plugin marketplace add https://github.com/your-org/energon.git
+agent plugin install yourco-energon@yourco-energon
+
+# Codex / ChatGPT
+codex plugin marketplace add your-org/energon
+codex plugin add yourco-energon@yourco-energon
+
+# Grok
+grok plugin marketplace add your-org/energon
+grok plugin install yourco-energon@yourco-energon --trust
+
+# GitHub Copilot
+copilot plugin marketplace add your-org/energon
+copilot plugin install yourco-energon@yourco-energon
+```
+
+A human then signs in at `{origin}/tokens`, mints a token, and exports it under the environment variable named by `/v1/help`. The secret is shown once and cannot be recovered later.
+
+### Run the source locally
+
+```bash
+git clone https://github.com/tmchow/energon.git
+cd energon
+npm install
+npx wrangler d1 migrations apply energon --local
+cp .dev.vars.example .dev.vars
+npm run dev
+```
+
+Open <http://127.0.0.1:8787>. Localhost skips Cloudflare Access and defaults to `dev@example.com`; set `DEV_ACCESS_EMAIL` in `.dev.vars` to change the identity.
 
 ## Give this to an agent
 
-Same steps for you or an agent: [INSTALL.md](./INSTALL.md). Paste one of these.
-
 ### Stand up a company host
 
-```
+```text
 Read INSTALL.md in this repository and stand up an Energon host for our company.
 
 Follow INSTALL.md exactly. Ask me for our hub hostname, content hostname, who may mint tokens, and whether coworkers' tokens should overwrite each other's files (WRITE_POLICY=instance) or only the creator (owner).
@@ -44,40 +209,228 @@ Do not invent a token. Do not reuse another instance's D1 database_id or R2 buck
 
 ### Connect an agent to a host that exists
 
-```
+```text
 Read INSTALL.md in this repository, section "Connect an agent", and install Energon for this machine.
 
 Ask me for our Energon origin (https://...) if it is not already in the environment or INSTALL.md. I will mint a token at {origin}/tokens and paste the secret. Export it as the token env named by GET {origin}/v1/help. Install the skill from our company repo at user (global) scope. If I already use another Energon, this skill has a different name. Install it too, or pin it in this repo. Do not invent a token.
 ```
 
-`{origin}/setup` has the same block already filled in for your host.
+The deployed host's `/setup` page has the same prompt filled with its own values.
 
-## What you deploy
+## API reference
 
-The Worker is this repo: the hub, the `/v1` API, and the viewer. Files live in R2. D1 holds slugs, handles, token hashes, expiry, and who may write. Cloudflare Access is who can authenticate and mint a key. Published links skip it unless you put it on those paths. Repeat views can hit the edge cache. The rest is in [INSTALL.md](./INSTALL.md) and [docs/DEPLOY.md](./docs/DEPLOY.md).
-
-## Run it on your machine
+All authenticated routes use:
 
 ```bash
-npm install
+-H "Authorization: Bearer $ENERGON_TOKEN"
+```
+
+Errors are JSON with `error`, `message`, and `hub`. The live, machine-readable reference is always `GET {origin}/v1/help`.
+
+### Sites
+
+| Method and path | Purpose |
+| --- | --- |
+| `POST /v1/sites` | Create or explicitly claim a slug; can duplicate another site |
+| `GET /v1/sites` | List sites you created or last wrote, with search and pagination |
+| `GET /v1/sites/{slug}` | List a site's files |
+| `PATCH /v1/sites/{slug}` | Change password, TTL, or write policy |
+| `DELETE /v1/sites/{slug}` | Delete the site and all its objects |
+| `PUT /v1/sites/{slug}/files/{path}` | Create or replace one path with the raw request body |
+| `GET /v1/sites/{slug}/files/{path}` | Read one path as raw bytes with a token |
+| `DELETE /v1/sites/{slug}/files/{path}` | Delete one path |
+| `POST /v1/sites/{slug}/import` | Import an `application/zip` archive |
+| `GET /v1/sites/{slug}/export` | Export the site as a zip |
+
+```bash
+# Create a password-protected site using the instance default write policy.
+curl -sS "$ENERGON_ORIGIN/v1/sites" \
+  -H "Authorization: Bearer $ENERGON_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"slug":"private-draft","overwrite":false,"password":"correct horse battery staple"}'
+
+# Replace one path without changing the site's expiry.
+curl -sS "$ENERGON_ORIGIN/v1/sites/private-draft/files/notes.md" \
+  -X PUT \
+  -H "Authorization: Bearer $ENERGON_TOKEN" \
+  -H "Content-Type: text/markdown; charset=utf-8" \
+  --data-binary @notes.md
+```
+
+### Loose files
+
+| Method and path | Purpose |
+| --- | --- |
+| `POST /v1/files` | Upload one file or duplicate an existing file into a new ID |
+| `GET /v1/files` | List loose files you created or last wrote, with search and pagination |
+| `GET /v1/files/{id}` | Read raw bytes; `?download=1` sets attachment disposition |
+| `PUT /v1/files/{id}` | Replace bytes while preserving the ID and public URL |
+| `PATCH /v1/files/{id}` | Change password, TTL, or write policy |
+| `DELETE /v1/files/{id}` | Delete the object and catalog row |
+
+```bash
+# Create a loose file. The JSON response contains its id and stable url.
+curl -sS "$ENERGON_ORIGIN/v1/files" \
+  -H "Authorization: Bearer $ENERGON_TOKEN" \
+  -F "file=@brief.pdf" \
+  -F "ttl=30d"
+
+# Replace it later. Do not POST again.
+curl -sS "$ENERGON_ORIGIN/v1/files/{id}" \
+  -X PUT \
+  -H "Authorization: Bearer $ENERGON_TOKEN" \
+  -H "X-Filename: brief.pdf" \
+  --data-binary @brief.pdf
+```
+
+### Instance and identity
+
+| Method and path | Purpose | Authentication |
+| --- | --- | --- |
+| `GET /v1/help` | Identity, SOP, routes, limits, retention, and token policy | None |
+| `GET /v1/health` | Return `{ "ok": true }` | None |
+| `GET /v1/whoami` | Return token owner, label, and expiry | Token |
+
+For headers, response shapes, filters, duplication, ZIP behavior, and error handling, see the rendered plugin's `references/api.md` or query the deployed `/v1/help`.
+
+## Configuration
+
+The committed [wrangler.toml](./wrangler.toml) is a complete, company-shaped example with placeholder origins and database ID. A typical fork changes these values:
+
+```toml
+[vars]
+PUBLIC_ORIGIN = "https://energon.your.co"                  # Hub and /v1
+CONTENT_ORIGIN = "https://content.energon.your.co"         # Published bytes; must be separate
+TOKEN_ENV = "YOURCO_ENERGON_TOKEN"                         # Must match the rendered skill
+SKILL_NAME = "yourco-energon"
+MARKETPLACE_NAME = "yourco-energon"
+MARKETPLACE_REPO = "your-org/energon"
+TOKEN_PREFIX = "ee_live_"
+
+ALLOW_UNLIMITED_RETENTION = "true"
+DEFAULT_TTL = "never"
+MAX_TTL = "never"
+WRITE_POLICY = "instance"                                 # owner or instance
+
+ALLOW_UNLIMITED_TOKENS = "true"                           # Affects future mints only
+ALLOWED_EMAIL_DOMAINS = "your.co,your.com"
+FOOTER_TEXT = ""
+```
+
+Code defaults are stricter when retention and write-policy variables are absent: seven-day default retention, a 30-day maximum, and creator-only writes. `PUT` never extends content TTL; `PATCH { "ttl": "7d" }` resets it from the current time. Token expiry is a separate clock.
+
+See [docs/DEPLOY.md](./docs/DEPLOY.md) for every variable, custom-domain and Access rules, cache behavior, cron costs, migration policy, and fork hygiene.
+
+## Repository commands
+
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Start the local Worker on port 8787 |
+| `npm run db:local` | Apply D1 migrations to local state |
+| `npm run db:remote` | Apply migrations remotely; reserved for an authorized production operation |
+| `npm run types` | Generate Wrangler binding types |
+| `npm run typecheck` | Type-check Worker and tests |
+| `npm run lint` | Run oxlint |
+| `npm run lint:fix` | Apply safe lint fixes |
+| `npm run test:unit` | Run fast Node tests without Miniflare |
+| `npm run test:worker` | Boot the Worker and run integration/API tests |
+| `npm run test:watch` | Run Vitest in watch mode |
+| `npm test` | Run unit and Worker suites |
+| `npm run skill:init -- --name yourco --origin https://energon.your.co` | Render a fork's instance-specific plugin and catalogs |
+| `npm run skill:render` | Re-render the committed plugin from templates and `instance-skill.json` |
+| `npm run skill:render -- --check` | Fail if rendered output has drifted |
+| `npm run vendor:mermaid` | Refresh the locally served Mermaid browser asset |
+| `npm run deploy` | Deploy with Wrangler; only for a human-authorized production flow |
+
+While editing, use the focused test map in [AGENTS.md](./AGENTS.md). CI generates Wrangler types, type-checks, lints, and runs both suites.
+
+## Troubleshooting
+
+### `401 unauthorized` or `401 token_expired`
+
+Stop retrying. A human must sign in at `{origin}/tokens` and mint a new token. Tokens are shown once, cannot be revealed later, and expired tokens cannot be extended. Confirm the correct environment variable with:
+
+```bash
+curl -sS "$ENERGON_ORIGIN/v1/help"
+```
+
+### `409 site_exists`
+
+The slug is already claimed. Read the returned URL and last writer, then choose a new slug or ask the human before retrying with `"overwrite": true`. Claiming a slug does not wipe its existing paths.
+
+### `404 site_not_found` on `PUT`
+
+Create the site with `POST /v1/sites` first. Energon never creates a missing site implicitly. Likewise, replacing a loose file requires an existing ID.
+
+### `413 too_large` or `413 storage_cap`
+
+The default limit is 25 MB per file and per ZIP upload, with at most 200 files in an imported archive and a 20 GB platform safety cap. Split the artifact, use a different delivery system, or delete old content after the human confirms.
+
+### `410 expired`
+
+The content passed its `expires_at` and is gone or awaiting purge. Publish it again under a new object; retrying the expired URL will not restore it.
+
+### Local D1 or type errors after a fresh clone
+
+```bash
 npx wrangler d1 migrations apply energon --local
-cp .dev.vars.example .dev.vars
-npm run dev
+npm run types
+npm run typecheck
 ```
 
-Open http://127.0.0.1:8787. Sign-in is off on localhost. Identity defaults to `dev@example.com`. Set `DEV_ACCESS_EMAIL` in `.dev.vars` to change it.
+Do not delete `.wrangler/state`; it is the local database.
 
-```bash
-npm test
-```
+### The hub works but published URLs fail in production
 
-`npm run test:unit` is the fast Node suite. `npm run test:worker` boots the app. Which file to run while you edit is in [AGENTS.md](./AGENTS.md).
+Verify that `PUBLIC_ORIGIN` and `CONTENT_ORIGIN` are different custom hostnames and that both route to the Worker. Cloudflare Access belongs on the hub, not the content hostname. Production content publication fails closed when the separate origin is missing.
 
-CI runs typecheck, lint, and both suites on pushes to `main` and on any PR that is opened. Production deploy is opt-in. See [INSTALL.md](./INSTALL.md).
+## Limitations
 
-## Contributing
+- **No hosted public instance:** this repository is source for a company fork. `https://energon.example.com` and `plugins/energon` are placeholders until `npm run skill:init` renders a real instance.
+- **Cloudflare-specific:** the supported deployment uses Workers, D1, R2, Access, custom domains, and a Workers Paid plan.
+- **Public by default:** anyone with a published link can open it unless a share password is set. A share password protects public reads, not token-authenticated `/v1` reads.
+- **Not collaborative editing:** there are no comments, suggestions, merges, or version history. Writes are last-write-wins per path.
+- **No recycle bin:** deletes are destructive; expired content is purged.
+- **Bounded artifacts:** defaults cap one file or ZIP at 25 MB, one ZIP at 200 files, and total stored content at 20 GB.
+- **Scoped catalog:** `GET /v1/sites` and `GET /v1/files` return only objects the token owner created or last wrote, not a company-wide inventory.
 
-Issues are welcome. Pull requests against `tmchow/energon` are not merged. Fork the repo to run your own host, and keep instance changes on that fork. Details: [CONTRIBUTING.md](./CONTRIBUTING.md). Security reports: [SECURITY.md](./SECURITY.md).
+## FAQ
+
+### Is published content private?
+
+Not by default. Public links intentionally skip Cloudflare Access so an external recipient can open the same URL. Set a share password for link-level protection. Keep the hub and API on a different hostname from published content.
+
+### Should I publish a site or a loose file?
+
+Use a site for several related files, a prototype, or a document with assets. Use a loose file for one screenshot, PDF, Markdown file, or archive that should remain an archive.
+
+### Can two coworkers update the same URL?
+
+Yes when its write policy is `instance`. With `owner`, only the creator can mutate it. The creator can change that policy later. Concurrent edits do not merge; the last successful write to a path wins.
+
+### Can I use more than one Energon host?
+
+Yes. Each fork renders a distinct plugin name and token environment variable. Install each at user scope, or pin an organization's plugin in its repositories.
+
+### Can an agent mint or recover a token?
+
+No. A signed-in human mints it at `/tokens`. The secret is displayed once. It cannot be recovered or renewed, and an expired token must be replaced.
+
+### Why separate hub and content hostnames?
+
+Published HTML can be active content. Serving it from a separate hostname prevents it from sharing the hub's Access session and authenticated UI origin.
+
+### Where did the idea come from?
+
+[Claude Artifacts](https://support.claude.com/en/articles/9487310-what-are-artifacts-and-how-do-i-use-them) made the “create something, get a link” workflow feel obvious, but keeps the artifact inside Claude products. [ht-ml.app](https://ht-ml.app) carries that idea onto a public HTML host. [Proof](https://www.proofeditor.ai) makes Markdown collaboration simple. [Shopify Quick](https://shopify.engineering/quick) showed how good it feels when a folder becomes a link on your own infrastructure. Energon is the combination this project wanted: mixed file types, different agent harnesses, company-owned infrastructure, teammate writes, and externally shareable links.
+
+## About contributions
+
+> *About Contributions:* Please don't take this the wrong way, but I do not accept outside contributions for any of my projects. I simply don't have the mental bandwidth to review anything, and it's my name on the thing, so I'm responsible for any problems it causes; thus, the risk-reward is highly asymmetric from my perspective. I'd also have to worry about other "stakeholders," which seems unwise for tools I mostly make for myself for free. Feel free to submit issues, and even PRs if you want to illustrate a proposed fix, but know I won't merge them directly. Instead, I'll have Claude or Codex review submissions via `gh` and independently decide whether and how to address them. Bug reports in particular are welcome. Sorry if this offends, but I want to avoid wasted time and hurt feelings. I understand this isn't in sync with the prevailing open-source ethos that seeks community contributions, but it's the only way I can move at this velocity and keep my sanity.
+
+For Energon specifically, [issues are welcome](https://github.com/tmchow/energon/issues/new/choose), but do not open a pull request against `tmchow/energon` unless the owner asked for it. A workflow closes pull requests from forks. Keep instance-specific changes on your company fork. See [CONTRIBUTING.md](./CONTRIBUTING.md).
+
+Report vulnerabilities privately; do not put secrets or customer content in a public issue. Follow [SECURITY.md](./SECURITY.md) for the current reporting channel.
 
 ## License
 

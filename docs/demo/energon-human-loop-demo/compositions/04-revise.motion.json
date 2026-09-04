@@ -1,0 +1,8 @@
+{
+  "duration": 8,
+  "assertions": [
+    { "kind": "appearsBy", "selector": "#revise-shell", "bySec": 1 },
+    { "kind": "staysInFrame", "selector": "#revise-shell" },
+    { "kind": "keepsMoving", "withinSelector": "#revise", "maxStaticSec": 3 }
+  ]
+}

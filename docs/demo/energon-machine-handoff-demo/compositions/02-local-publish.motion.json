@@ -1,0 +1,1 @@
+{"duration":8,"assertions":[{"kind":"appearsBy","selector":"#lp-shell","bySec":1},{"kind":"before","a":"#lp-shell","b":"#lp-source"},{"kind":"staysInFrame","selector":"#lp-shell"},{"kind":"keepsMoving","withinSelector":"#local-publish","maxStaticSec":2}]}

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en" data-resolution="landscape">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #17141f; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #17141f; }
+      #root > [data-composition-src] { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-at0g" id="root" data-composition-id="main" data-start="0" data-duration="20" data-width="1920" data-height="1080">
+      <div data-hf-id="hf-v4hq" id="el-agent" data-composition-id="agent" data-composition-src="compositions/01-agent.html" data-start="0" data-duration="10" data-track-index="1" data-width="1920" data-height="1080"></div>
+      <div data-hf-id="hf-ia4e" id="el-slack" data-composition-id="slack" data-composition-src="compositions/02-slack.html" data-start="10" data-duration="4" data-track-index="1" data-width="1920" data-height="1080"></div>
+      <div data-hf-id="hf-m8p9" id="el-prototype" data-composition-id="prototype" data-composition-src="compositions/03-prototype.html" data-start="14" data-duration="6" data-track-index="1" data-width="1920" data-height="1080"></div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines.main = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

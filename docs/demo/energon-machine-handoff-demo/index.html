@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en" data-resolution="landscape">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #17141f; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #17141f; }
+      #root > [data-composition-src] { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-kv97" id="root" data-composition-id="main" data-start="0" data-duration="34" data-width="1920" data-height="1080">
+      <div data-hf-id="hf-nfz5" id="el-local-assets" data-composition-id="local-assets" data-composition-src="compositions/01-local-assets.html" data-start="0" data-duration="6" data-track-index="1" data-width="1920" data-height="1080"></div>
+      <div data-hf-id="hf-6w28" id="el-local-publish" data-composition-id="local-publish" data-composition-src="compositions/02-local-publish.html" data-start="6" data-duration="8" data-track-index="1" data-width="1920" data-height="1080"></div>
+      <div data-hf-id="hf-bf1p" id="el-link-bridge" data-composition-id="link-bridge" data-composition-src="compositions/03-link-bridge.html" data-start="14" data-duration="6" data-track-index="1" data-width="1920" data-height="1080"></div>
+      <div data-hf-id="hf-3z73" id="el-cloud-fetch" data-composition-id="cloud-fetch" data-composition-src="compositions/04-cloud-fetch.html" data-start="20" data-duration="8" data-track-index="1" data-width="1920" data-height="1080"></div>
+      <div data-hf-id="hf-gyoq" id="el-finished" data-composition-id="finished" data-composition-src="compositions/05-finished.html" data-start="28" data-duration="6" data-track-index="1" data-width="1920" data-height="1080"></div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines.main = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en"><head></head>
+  <body>
+    <template>
+      <style>
+        #revise { position: absolute; inset: 0; width: 1920px; height: 1080px; overflow: hidden; background: #17141f; color: #f8f5ff; font-family: Montserrat, sans-serif; }
+        .revise-grid { position: absolute; inset: 0; opacity: .22; background-image: linear-gradient(rgba(138,108,255,.18) 2px, transparent 2px), linear-gradient(90deg, rgba(138,108,255,.18) 2px, transparent 2px); background-size: 96px 96px; }
+        .revise-glow { position: absolute; left: 180px; top: 110px; width: 1560px; height: 850px; border-radius: 50%; background: radial-gradient(circle, rgba(104,73,234,.38), rgba(60,38,115,.16) 48%, rgba(23,20,31,0) 72%); opacity: 0; will-change: opacity, transform; }
+        .revise-meta { position: absolute; left: 116px; top: 72px; display: flex; align-items: center; gap: 22px; font-family: "IBM Plex Mono", monospace; font-size: 23px; letter-spacing: .08em; text-transform: uppercase; }
+        .revise-step { color: #b7a6ff; font-weight: 700; }
+        .revise-rule { width: 112px; height: 3px; border-radius: 3px; background: #8a6cff; transform-origin: left center; }
+        .revise-label { color: #d8d1e8; }
+        .revise-person { margin-left: 18px; padding: 8px 13px; border: 2px solid rgba(138,108,255,.35); border-radius: 999px; color: #d9d0ff; font-size: 17px; letter-spacing: .04em; text-transform: none; }
+        .revise-shell { position: absolute; left: 174px; top: 166px; width: 1572px; height: 826px; border: 2px solid rgba(196,180,255,.28); border-radius: 30px; background: #211d2b; box-shadow: 0 48px 120px rgba(4,2,11,.48), 0 0 0 12px rgba(138,108,255,.05); overflow: hidden; transform-origin: center center; }
+        .revise-bar { height: 64px; display: flex; align-items: center; padding: 0 28px; gap: 13px; background: #2a2535; border-bottom: 2px solid rgba(196,180,255,.13); }
+        .revise-dot { width: 17px; height: 17px; border-radius: 50%; background: #665d75; }
+        .revise-dot:nth-child(1) { background: #ff7d91; }
+        .revise-dot:nth-child(2) { background: #f4c86a; }
+        .revise-dot:nth-child(3) { background: #74d7a1; }
+        .revise-title { margin-left: 18px; color: #bcb4c8; font-family: "IBM Plex Mono", monospace; font-size: 21px; letter-spacing: .04em; }
+        .revise-status { margin-left: auto; display: flex; align-items: center; gap: 10px; color: #bcb4c8; font-family: "IBM Plex Mono", monospace; font-size: 18px; }
+        .revise-status-dot { width: 11px; height: 11px; border-radius: 50%; background: #74d7a1; box-shadow: 0 0 0 6px rgba(116,215,161,.12); }
+        .revise-video { display: block; width: 1568px; height: 762px; object-fit: cover; background: #1e1e2e; }
+        .revise-brand { position: absolute; right: 94px; bottom: 48px; display: flex; align-items: center; gap: 13px; color: #d8d1e8; font-family: "IBM Plex Mono", monospace; font-size: 18px; letter-spacing: .06em; text-transform: uppercase; }
+        .revise-brand img { width: 40px; height: 40px; }
+      </style>
+      <div data-hf-id="hf-25jd" id="revise" data-composition-id="revise" data-width="1920" data-height="1080" data-duration="8">
+        <div data-hf-id="hf-652p" class="revise-grid"></div>
+        <div data-hf-id="hf-1i5m" id="revise-glow" class="revise-glow"></div>
+        <div data-hf-id="hf-iw5e" id="revise-meta" class="revise-meta"><span data-hf-id="hf-8ek8" class="revise-step">04</span><span data-hf-id="hf-cr99" id="revise-rule" class="revise-rule"></span><span data-hf-id="hf-uo4c" class="revise-label">Human directs the change</span><span data-hf-id="hf-w9f6" class="revise-person">Noah chooses the safer rollout</span></div>
+        <div data-hf-id="hf-7kzy" id="revise-shell" class="revise-shell">
+          <div data-hf-id="hf-4ukw" class="revise-bar">
+            <span data-hf-id="hf-rskf" class="revise-dot"></span><span data-hf-id="hf-eqcf" class="revise-dot"></span><span data-hf-id="hf-ec1e" class="revise-dot"></span>
+            <span data-hf-id="hf-kb1m" class="revise-title">codex · shared Energon plan</span>
+            <span data-hf-id="hf-xhu7" class="revise-status"><span data-hf-id="hf-8l9i" class="revise-status-dot"></span>revision 1 loaded</span>
+          </div>
+          <video data-hf-id="hf-4idk" id="revise-terminal" class="clip revise-video" src="assets/revise-terminal.mp4" data-start="0" data-duration="8" data-track-index="1" muted playsinline></video>
+        </div>
+        <div data-hf-id="hf-t9e6" id="revise-brand" class="revise-brand"><span data-hf-id="hf-0wz5">Human direction → agent revision</span><img data-hf-id="hf-y012" src="assets/energon-logo.svg" alt="Energon"></div>
+        <script>
+          const tl = gsap.timeline({ paused: true });
+          tl.fromTo("#revise-meta", { opacity: 0, x: -36 }, { opacity: 1, x: 0, duration: .55, ease: "power3.out" }, .15);
+          tl.fromTo("#revise-rule", { scaleX: 0 }, { scaleX: 1, duration: .7, ease: "expo.out" }, .22);
+          tl.fromTo("#revise-shell", { opacity: 0, scale: .94, y: 40 }, { opacity: 1, scale: 1, y: 0, duration: .8, ease: "power3.out" }, .2);
+          tl.fromTo("#revise-glow", { opacity: 0, scale: .84 }, { opacity: .34, scale: 1, duration: 1.1, ease: "power2.out" }, .1);
+          const glow = document.getElementById("revise-glow");
+          const phase = { p: 0 };
+          tl.to(phase, { p: Math.PI * 3.4, duration: 6.7, ease: "none", onUpdate: () => { const s = Math.sin(phase.p); glow.style.opacity = String(.31 + s * .025); glow.style.transform = `scale(${1 + s * .012})`; } }, 1.1);
+          tl.fromTo("#revise-brand", { opacity: 0, x: 26 }, { opacity: 1, x: 0, duration: .45, ease: "power2.out" }, .72);
+          window.__timelines.revise = tl;
+        </script>
+      </div>
+    </template>
+  </body>
+</html>
