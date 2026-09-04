@@ -71,12 +71,11 @@ afterEach(() => {
 });
 
 describe("skill template", () => {
-  it("committed plugin files match instance-skill.json plus the templates", () => {
+  it("the checkout matches its configured render state", () => {
     const result = spawnSync(process.execPath, ["scripts/render-skill.mjs", "--check"], {
       encoding: "utf8",
     });
     expect(result.status, result.stderr || result.stdout).toBe(0);
-    for (const rel of CATALOG_PATHS) expect(existsSync(rel), rel).toBe(false);
     expect(existsSync(join(".agents", "skills", "energon"))).toBe(false);
     expect(existsSync(join(".claude", "skills", "energon"))).toBe(false);
   });
@@ -128,20 +127,83 @@ describe("skill:init", () => {
     );
     expect(existsSync(join(root, ".agents", "skills"))).toBe(false);
     expect(existsSync(join(pluginDir, "logo.svg"))).toBe(true);
+    expect(runRender(["--check"], { root }).dirty).toEqual([]);
+    writeFileSync(join(pluginDir, "skills", "yourco-energon", "SKILL.md"), "stale");
+    expect(runRender(["--check"], { root }).dirty).toContain(join("plugins", "yourco-energon", "skills", "yourco-energon", "SKILL.md"));
+    runRender([], { root });
+    expect(runRender(["--check"], { root }).dirty).toEqual([]);
     expect(JSON.parse(readFileSync(join(root, "instance-skill.json"), "utf8"))).toMatchObject({
       skill: "yourco-energon",
       tokenEnv: "YOURCO_ENERGON_TOKEN",
     });
   });
 
-  it("does not write marketplace catalogs for the placeholder host", () => {
+  it("renders no plugin or catalogs before initialization", () => {
     const root = mkdtempSync(join(tmpdir(), "energon-skill-"));
     disposableRoots.push(root);
     runRender([], { root });
-    expect(existsSync(join(root, "plugins", "energon", "plugin.json"))).toBe(true);
+    expect(existsSync(join(root, "plugins"))).toBe(false);
+    expect(runRender(["--check"], { root }).dirty).toEqual([]);
     expect(existsSync(join(root, ".claude-plugin", "marketplace.json"))).toBe(false);
     expect(existsSync(join(root, ".agents", "plugins", "marketplace.json"))).toBe(false);
     expect(existsSync(join(root, ".agents", "skills", "energon"))).toBe(false);
+  });
+
+  it.each([
+    ["--skill", "energon"],
+    ["--plugin", "energon"],
+    ["--marketplace", "energon"],
+    ["--name", "energon"],
+    ["--origin", "https://energon.example.com"],
+    ["--origin", "https://example.org"],
+    ["--origin", "http://energon.your.co"],
+    ["--origin", "https://energon.your.co/path"],
+    ["--origin", "not-a-url"],
+  ])("rejects unconfigured %s %s before writing", (option, value) => {
+    const root = mkdtempSync(join(tmpdir(), "energon-skill-"));
+    disposableRoots.push(root);
+    expect(() => runRender([
+      "--init", "--name", "yourco", "--origin", "https://energon.your.co", "--repo", "acme/energon", option, value,
+    ], { root })).toThrow(/must identify your instance|must be an HTTPS origin/);
+    expect(existsSync(join(root, "plugins"))).toBe(false);
+    expect(existsSync(join(root, "instance-skill.json"))).toBe(false);
+    for (const rel of CATALOG_PATHS) expect(existsSync(join(root, rel))).toBe(false);
+  });
+
+  it("validates upstream template variables without generating files", () => {
+    const root = makeDisposableRepo();
+    cpSync(resolve("instance-skill.json"), join(root, "instance-skill.json"));
+    writeFileSync(join(root, "templates", "skill", "SKILL.md.tmpl"), "{{UNKNOWN_VARIABLE}}");
+    const result = runRenderer(root, ["--check"]);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("unknown template keys: UNKNOWN_VARIABLE");
+    expect(existsSync(join(root, "plugins", "energon"))).toBe(false);
+  });
+
+  it("requires generic deployed identities to be renamed and supports that migration", () => {
+    const root = mkdtempSync(join(tmpdir(), "energon-skill-"));
+    disposableRoots.push(root);
+    writeFileSync(join(root, "instance-skill.json"), JSON.stringify({
+      skill: "energon", plugin: "energon", marketplace: "energon", origin: "https://energon.your.co",
+    }));
+    mkdirSync(join(root, "plugins", "energon"), { recursive: true });
+    writeFileSync(join(root, "plugins", "energon", "SKILL.md"), "old generic skill");
+    expect(() => runRender([], { root })).toThrow(/must identify your instance/);
+    expect(readFileSync(join(root, "plugins", "energon", "SKILL.md"), "utf8")).toBe("old generic skill");
+    runRender(["--init", "--name", "yourco", "--origin", "https://energon.your.co", "--repo", "acme/energon"], { root });
+    expect(existsSync(join(root, "plugins", "energon"))).toBe(false);
+    expect(existsSync(join(root, "plugins", "yourco-energon", "skills", "yourco-energon", "SKILL.md"))).toBe(true);
+    expect(runRender(["--check"], { root }).dirty).toEqual([]);
+  });
+
+  it("reports a stale upstream placeholder without regenerating or changing it", () => {
+    const root = mkdtempSync(join(tmpdir(), "energon-skill-"));
+    disposableRoots.push(root);
+    const plugin = join(root, "plugins", "energon");
+    mkdirSync(plugin, { recursive: true });
+    writeFileSync(join(plugin, "SKILL.md"), "legacy placeholder");
+    expect(runRender(["--check"], { root }).dirty).toContain(join("plugins", "energon"));
+    expect(readFileSync(join(plugin, "SKILL.md"), "utf8")).toBe("legacy placeholder");
   });
 
   it("throws and writes nothing when --init has --name but no --origin", () => {

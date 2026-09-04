@@ -18,7 +18,7 @@ This file is how to **change this tree**. It is not a product README and not the
 - Never default to `overwrite: true`. Never claim a guessed slug that already exists without the human confirming.
 - Do not `wrangler login`, `wrangler deploy`, `npm run db:remote`, stamp `d1_migrations`, or `d1 execute` against production. New schema belongs in `migrations/` first.
 - Do not `pkill -f wrangler` / `workerd`. Do not delete `.wrangler/state` (the human's local DB).
-- Do not hand-edit `plugins/energon/` (or `plugins/{name}/` on a fork). Source is `templates/` + `instance-skill.json`. Render with `npm run skill:render`.
+- Do not hand-edit generated `plugins/{name}/` on a fork. Source is `templates/` + `instance-skill.json`. Render with `npm run skill:render`.
 - Do not put the skill under `.agents/skills` or `.claude/skills` — those autoload it inside this Worker repo.
 - `tmchow/energon` does not merge unsolicited or fork PRs (a workflow closes fork PRs). Same-repo PRs from the owner are fine. On a company fork, follow that repo's humans. [CONTRIBUTING.md](./CONTRIBUTING.md).
 
@@ -34,7 +34,7 @@ This file is how to **change this tree**. It is not a product README and not the
 | `src/db.ts`, `src/schema.sql`, `migrations/` | Schema (see below) |
 | `src/catalog.ts`, `src/handles.ts`, `src/urls.ts`, `src/http.ts`, `src/policy.ts`, `src/instance.ts`, `src/expire.ts`, `src/cache.ts`, `src/zip.ts`, `src/markdown.ts`, `src/mime.ts`, `src/memorable.ts`, `src/slugs.ts`, `src/config.ts` | Helpers — prefer `test:unit` |
 | `templates/`, `scripts/render-skill.mjs`, `instance-skill.json` | Skill / plugin source |
-| `plugins/energon/` | Rendered placeholder bound to `https://energon.example.com`. Not a marketplace until `npm run skill:init`. |
+| `plugins/{name}/` | Generated only after a fork runs `npm run skill:init`; absent upstream. |
 | `.cursor/skills/verify-energon/` | Isolated local hub + `/v1` user-path verification |
 
 ## Schema
@@ -96,6 +96,6 @@ Skip that pass for internal refactors, tests-only, migrations with no user path 
 
 ## Skill templates
 
-Edit `templates/skill/` and `templates/plugin/`, then `npm run skill:render`. `npm run skill:render -- --check` must stay green (`test:unit` runs it). Do not ship `{{placeholders}}` in committed `SKILL.md`.
+Edit `templates/skill/` and `templates/plugin/`, then `npm run skill:render` (validates templates upstream; regenerates the plugin on initialized forks). `npm run skill:render -- --check` must stay green (`test:unit` runs it). Do not ship `{{placeholders}}` in committed `SKILL.md`.
 
-On a real host, `npm run skill:init` writes `plugins/{name}/` and marketplace catalogs — see INSTALL.md. This upstream tree is not a marketplace.
+On a real host, `npm run skill:init` writes `plugins/{name}/` and marketplace catalogs — see INSTALL.md. This upstream tree contains no generated plugin or marketplace catalogs.
