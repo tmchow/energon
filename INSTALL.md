@@ -97,7 +97,7 @@ The Worker reads `Cf-Access-Authenticated-User-Email`. It does not implement sig
 - IdP: Google Workspace / Okta / GitHub Enterprise, restricted to your org.
 - Also set `ALLOWED_EMAIL_DOMAINS` so a mis-aimed Access policy cannot mint tokens for random Gmail.
 
-**Allow** (signed-in): `/`, `/account*`, `/about`, `/stats`, `/setup`, `/tokens`
+**Allow** (signed-in): `/`, `/account*`, `/about`, `/stats`, `/setup`, `/tokens`, `/connect`
 
 **Bypass**: `/v1*`, `/health`, `/llms.txt`, `/auth.md`, `/favicon.svg`, `/static*`, and (by default) `/{handle}/s/*`, `/{handle}/f/*` on the content hostname
 
@@ -211,7 +211,11 @@ copilot plugin marketplace add your-org/energon
 copilot plugin install energon@energon
 ```
 
-### 2. Mint a token
+### 2. Connect the agent
+
+Ask the agent to read `{origin}/auth.md` and start a connection. Open its verification link, sign in through Access, enter the code shown by the agent, choose a lifetime, and approve. The token goes directly to the waiting agent and appears on `/tokens` for revocation. There is no public signup.
+
+For CI, scripts, or manual setup:
 
 1. Human opens `{origin}/tokens` while signed in through Access.
 2. Mint a key. The secret is shown once. Store it. It cannot be revealed later.

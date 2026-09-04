@@ -14,7 +14,7 @@ This file is how to **change this tree**. It is not a product README and not the
 
 ## Hard stops
 
-- Do not invent a token. Humans mint at `{origin}/tokens`.
+- Do not invent a token. Humans mint at `{origin}/tokens` or approve agent connection requests at `/connect`. Never automate human approval.
 - Never default to `overwrite: true`. Never claim a guessed slug that already exists without the human confirming.
 - Do not `wrangler login`, `wrangler deploy`, `npm run db:remote`, stamp `d1_migrations`, or `d1 execute` against production. New schema belongs in `migrations/` first.
 - Do not `pkill -f wrangler` / `workerd`. Do not delete `.wrangler/state` (the human's local DB).
@@ -28,7 +28,7 @@ This file is how to **change this tree**. It is not a product README and not the
 | --- | --- |
 | `src/index.ts` | Router |
 | `src/sites.ts`, `src/files.ts`, `src/gate.ts`, `src/auth.ts` | Publish API, share passwords, Access identity, tokens |
-| `src/hub.html`, `src/hub.client.js`, `src/tokens.html`, `src/chrome.ts`, `src/setup.ts`, `src/about.ts`, `src/stats.ts` | Signed-in UI |
+| `src/hub.html`, `src/hub.client.js`, `src/tokens.html`, `src/chrome.ts`, `src/setup.ts`, `src/about.ts`, `src/stats.ts`, `src/connect.ts` | Signed-in UI |
 | `src/auth.ts` `helpBody`, `src/llms.ts` | Runtime agent docs (`/v1/help`, `/llms.txt`). Update both when `/v1` behavior changes; then `templates/skill/` if the SOP changed. Freeze the bodies in `test/golden/`. |
 | `openapi/v1.json`, `src/openapi.ts` | The `/v1` HTTP schema, served at `/v1/openapi.json` with `servers` set to `PUBLIC_ORIGIN`. When a `/v1` route, body, status, or `ApiError` code changes, edit the document by hand and keep `test/unit/openapi-drift.spec.ts` green; it diffs the document against `helpBody().routes`, `src/index.ts`, and every `ApiError` code. |
 | `src/db.ts`, `src/schema.sql`, `migrations/` | Schema (see below) |
@@ -77,6 +77,7 @@ Do not run the full suite after every edit. CI (`.github/workflows/ci.yml`) runs
 | Loose-file write/rename failures | `npx vitest run test/files.spec.ts` |
 | Site mutation rollback | `npx vitest run test/site-integrity.spec.ts` |
 | Expiry purge races | `npx vitest run test/api.purge-claim.spec.ts` |
+| `src/connections.ts`, `src/connect.ts` | `npx vitest run test/connections.spec.ts` |
 | `src/db.ts`, `migrations/`, shared types, or before commit | `npx wrangler types && npm run typecheck && npm run lint && npm test` |
 
 Page tests are HTML contracts (nav, copy, element IDs the JS calls), not pixels. If you add `$("some-id")` or `getElementById("some-id")`, that id must exist on the page or `assertDomBindings` in `pages.spec.ts` fails. Do not snapshot hub pages into `test/golden/`.

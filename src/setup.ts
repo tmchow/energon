@@ -20,7 +20,7 @@ function installBlock(id: InstanceIdentity): string {
 Repo: ${repo}
 ${url}
 
-This repo is a Claude Code marketplace and an Agent Plugins marketplace (https://agent-plugins.org/). That standard works with Cursor, OpenClaw, ChatGPT, Codex, GitHub Copilot, and others. Follow this host’s plugin install flow. Install at user (global) scope so the skill is available in every project. Do not install at project or workspace scope unless the human asked for that. After install, ask the human to mint a token at ${id.origin}/tokens and export it as ${id.tokenEnv}. Do not invent a token.`;
+This repo is a Claude Code marketplace and an Agent Plugins marketplace (https://agent-plugins.org/). That standard works with Cursor, OpenClaw, ChatGPT, Codex, GitHub Copilot, and others. Follow this host’s plugin install flow. Install at user (global) scope so the skill is available in every project. Do not install at project or workspace scope unless the human asked for that. After install, read ${id.origin}/auth.md and request a human-approved connection. Manual tokens from ${id.origin}/tokens are also supported. Store the credential as ${id.tokenEnv}. Do not invent a token.`;
 }
 
 export function setupResponse(actor: Actor, env: Env): Response {
@@ -67,7 +67,7 @@ document.addEventListener("DOMContentLoaded", () => {
     <main class="wrap">
       <h1 class="display">Add ${escapeHtml(PRODUCT)} to your agent.</h1>
       <p class="lede">Give your agent a way to publish work, read a link as reference, or revise a file at the same address when permitted. The same instance-specific skill works across compatible agent tools. You can also <a href="/">upload from your browser</a>.</p>
-      <p class="lede">Install this instance's plugin in <strong>Claude Code</strong> or a compatible <a href="https://agent-plugins.org/">Agent Plugins</a> client, such as Cursor, OpenClaw, ChatGPT, Codex, or GitHub Copilot. Install at user (global) scope so it follows you across projects. Then mint a token on <a href="/tokens">Tokens</a> and export it as <code>${escapeHtml(id.tokenEnv)}</code>.</p>
+      <p class="lede">Install this instance's plugin in <strong>Claude Code</strong> or a compatible <a href="https://agent-plugins.org/">Agent Plugins</a> client, such as Cursor, OpenClaw, ChatGPT, Codex, or GitHub Copilot. Install at user (global) scope so it follows you across projects. Then ask your agent to connect: it will give you a link and code to approve here. You can also mint a token on <a href="/tokens">Tokens</a> and export it as <code>${escapeHtml(id.tokenEnv)}</code>.</p>
       <div class="stack">
         <section class="card">
           <div class="card-head"><h2>Marketplace</h2><span class="hint">Use the form your agent tool asks for</span></div>

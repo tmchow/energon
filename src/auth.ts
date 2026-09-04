@@ -31,14 +31,14 @@ export function unauthorized(origin: string, detail?: string, env?: Env): ApiErr
   );
 }
 
-/** Terminal for agents: the token is dead, cannot be extended, and only a human can mint another. */
+/** Terminal for agents: the token is dead, cannot be extended, and a human must authorize another. */
 export function tokenExpiredError(origin: string, expiredAt: string, env?: Env): ApiError {
   const id = identityFromEnv(env || {});
   const when = Number.isFinite(Date.parse(expiredAt)) ? ` on ${expiredAt}` : "";
   return new ApiError(
     401,
     "token_expired",
-    `That API token expired${when}. Tokens cannot be extended. Tell the human to open ${origin}/tokens, mint a new one, and export it as ${id.tokenEnv}. Do not retry with this token. Do not invent a token.`,
+    `That API token expired${when}. Tokens cannot be extended. Ask the human to approve a new connection (see ${origin}/auth.md) or mint a replacement at ${origin}/tokens and export it as ${id.tokenEnv}. Do not retry with this token. Do not invent a token.`,
     { expired_at: expiredAt, auth_url: `${origin}/auth.md`, tokens_url: `${origin}/tokens` },
   );
 }
@@ -300,6 +300,7 @@ export function helpBody(origin: string, env?: Env): unknown {
     account: `${origin}/account`,
     openapi: `${origin}/v1/openapi.json`,
     auth_url: `${origin}/auth.md`,
+    connection_url: `${origin}/v1/connections`,
     env: id.tokenEnv,
     skill: id.skill,
     marketplace: id.marketplace,
@@ -322,8 +323,8 @@ export function helpBody(origin: string, env?: Env): unknown {
       repo: id.repo,
     },
     sop: [
-      `Look for env ${id.tokenEnv}. If missing, tell the human to open ${origin}/tokens, mint a token, and export it. The secret is shown once. Do not invent a token.`,
-      `Tokens expire after the lifetime the human picked at mint (default 90 days; see tokens.presets). A 401 with error token_expired is terminal: stop, tell the human to mint a new token at ${origin}/tokens, and do not retry. Tokens cannot be extended. GET /v1/whoami shows your token's expires_at.`,
+      `Look for env ${id.tokenEnv}. If missing, follow ${origin}/auth.md to request a human-approved connection, or ask the human to mint and export a token at ${origin}/tokens. The secret is shown once. Do not invent a token.`,
+      `Tokens expire after the lifetime the human picked at mint (default 90 days; see tokens.presets). A 401 with error token_expired is terminal: stop using it, ask the human to approve a new connection or mint a replacement at ${origin}/tokens, and do not retry the expired token. Tokens cannot be extended. GET /v1/whoami shows your token's expires_at.`,
       `This instance's skill is ${id.skill} (install ${installLine(id)}). The origin is ${origin}. Do not guess another host.`,
       `The HTTP schema (paths, request and response bodies, status codes, error codes) is ${origin}/v1/openapi.json. This document is the instance identity and policy: origins, token env, retention presets, token lifetimes, limits.`,
       `Decide: a site (named folder of files) vs a file (one file, short id). Public URLs are /{handle}/s/{slug}/ and /{handle}/f/{id}/{filename}. Both stay put when you PUT again.`,
@@ -344,6 +345,8 @@ export function helpBody(origin: string, env?: Env): unknown {
     routes: {
       "GET /llms.txt": "agent-readable overview, no auth",
       "GET /auth.md": "authentication instructions, no auth",
+      "POST /v1/connections": "request a human-approved agent connection, no auth",
+      "POST /v1/connections/{id}/token": "poll for one-time token delivery with poll_token, no bearer auth",
       "GET /v1/help": "this document, no auth",
       "GET /v1/health": "liveness, no auth",
       "GET /v1/openapi.json": "OpenAPI 3.1 HTTP contract, no auth",

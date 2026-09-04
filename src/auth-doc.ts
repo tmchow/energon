@@ -10,9 +10,21 @@ export function authMarkdown(env: Env): string {
   const policy = tokenPolicy(env);
   return `# Authenticate to ${PRODUCT}
 
-This is an existing organization's file and small-site host. There is no public signup or agent registration endpoint. A human who is permitted by this instance's Cloudflare Access sign-in policy authorizes API access by minting a token.
+This is an existing organization's file and small-site host. There is no public signup. A human who is permitted by this instance's Cloudflare Access sign-in policy authorizes API access by approving a connection or manually minting a token.
 
-## Connect
+## Connect with human approval
+
+If \`${identity.tokenEnv}\` already contains a working credential, use it. Otherwise:
+
+1. POST ${origin}/v1/connections with JSON \`{ "label": "my agent" }\`. No bearer token is required. This returns \`id\`, \`poll_token\`, \`user_code\`, \`verification_uri\`, \`expires_in\`, and \`interval\`.
+2. Keep \`poll_token\` private in memory. It only permits retrieving the result of this request; it cannot access files. Show the human \`verification_uri\` and \`user_code\`. Ask them to open the link, sign in, enter the code on the page, choose a token lifetime, and approve. Do not automate the human's approval or ask for their sign-in credentials.
+3. POST ${origin}/v1/connections/{id}/token with JSON \`{ "poll_token": "<returned poll_token>" }\`. Wait at least \`interval\` seconds between polls (currently five). A 202 \`status: pending\` means keep waiting within the request's ten-minute lifetime. On 429 \`connection_slow_down\`, wait at least five seconds before polling again.
+4. A 200 response contains \`id\`, \`token\`, \`label\`, and \`expires_at\`. Store \`token\` as \`${identity.tokenEnv}\` in the agent's environment or secret store, without printing it. Discard the request secrets and verify the account with GET ${origin}/v1/whoami.
+5. A 403 \`connection_denied\` is terminal: stop and ask the human before starting again. A 410 \`connection_expired\` means the request expired or was already consumed. The token is delivered once: if that response was lost, ask the human to revoke the token on ${origin}/tokens before approving a new connection. Never keep retrying consumed requests. On 401 \`connection_invalid\`, stop and check the request credentials. On 429 \`connection_rate_limited\`, wait ten minutes before starting another request.
+
+This flow issues the same account tokens as manual minting. It is an Energon connection API, not OAuth device authorization. The agent cannot receive an API token before the human approves.
+
+## Connect with a manual token
 
 1. Look for the existing credential in \`${identity.tokenEnv}\`. Do not print it or invent a token.
 2. If it is missing, ask the human to open ${origin}/tokens, sign in, choose a label and lifetime, and mint a token. The secret is displayed once and cannot be recovered later.
@@ -32,9 +44,9 @@ Never put tokens or share passwords in published files, source control, logs, or
 
 ## Recover
 
-- Missing token: stop authenticated work and ask the human to mint one at ${origin}/tokens.
+- Missing token: stop authenticated work and request a human-approved connection, or ask the human to mint one at ${origin}/tokens.
 - \`401 unauthorized\`: check the configured instance and environment variable without revealing the secret. If the credential is rejected or revoked, stop and ask the human for a replacement. Do not repeatedly retry it.
-- \`401 token_expired\`: stop using the token. Tokens cannot be extended or refreshed; the human must mint a replacement. \`expires_at: null\` means no scheduled expiry, not immunity from revocation.
+- \`401 token_expired\`: stop using the token. Tokens cannot be extended or refreshed; ask the human to approve a new connection or mint a replacement. \`expires_at: null\` means no scheduled expiry, not immunity from revocation.
 - \`403\`: access or write policy denied the action. Do not retry with broader access automatically.
 
 Humans list and revoke tokens at ${origin}/tokens. Revocation prevents further use of that credential.
@@ -45,7 +57,7 @@ Humans list and revoke tokens at ${origin}/tokens. Revocation prevents further u
 - [HTTP API contract](${origin}/v1/openapi.json)
 - [Agent overview](${origin}/llms.txt)
 
-These documents are public and require no credential. This page documents Energon's current token workflow; it does not advertise OAuth authorization or the WorkOS auth.md registration protocol.
+These documents are public and require no credential. This page documents Energon's connection and manual-token workflows; it does not advertise OAuth authorization or the WorkOS auth.md registration protocol.
 `;
 }
 

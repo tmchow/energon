@@ -1,4 +1,18 @@
 const TABLE_STATEMENTS = [
+  `CREATE TABLE IF NOT EXISTS agent_connections (
+    id TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    poll_hash TEXT NOT NULL,
+    code_hash TEXT NOT NULL,
+    ip_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    status TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    next_poll_at TEXT NOT NULL,
+    user_id TEXT,
+    token_expires_at TEXT
+  )`,
   `CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     email TEXT NOT NULL UNIQUE,
@@ -74,6 +88,9 @@ const TABLE_STATEMENTS = [
 ];
 
 const INDEX_STATEMENTS = [
+  `CREATE INDEX IF NOT EXISTS idx_connections_ip_created ON agent_connections(ip_hash, created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_connections_created ON agent_connections(created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_connections_expires ON agent_connections(expires_at)`,
   `CREATE INDEX IF NOT EXISTS idx_site_files_site ON site_files(handle, slug)`,
   `CREATE INDEX IF NOT EXISTS idx_loose_files_created ON loose_files(created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_sites_updated ON sites(updated_at DESC)`,

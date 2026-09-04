@@ -1,3 +1,5 @@
+import { connectResponse } from "./connect";
+import { decideConnection, exchangeConnection, purgeConnections, startConnection } from "./connections";
 import { aboutResponse } from "./about";
 import { appFooter, chromeCss, chromeHead, instanceFooter, PRIVATE_HTML_HEADERS } from "./chrome";
 import hubTemplate from "./hub.html";
@@ -38,6 +40,8 @@ import {
 import { sitePublicUrl } from "./urls";
 import type { Actor, Env } from "./types";
 
+const CONNECTION_JSON_MAX_BYTES = 4096;
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
@@ -62,6 +66,7 @@ export default {
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     await ensureSchema(env.DB);
     await sweepExpired(env, ctx);
+    await purgeConnections(env);
   },
 };
 
@@ -153,6 +158,16 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
 
   if (path === "/setup" && method === "GET") {
     return setupResponse(await requireHuman(request, env, ctx), env);
+  }
+
+  if (path === "/connect" && method === "GET") {
+    return connectResponse(env, await requireHuman(request, env, ctx), url.searchParams.get("request") || "");
+  }
+
+  const connectionDecision = path.match(/^\/account\/connections\/([A-Za-z0-9]{24})\/(approve|deny)$/);
+  if (connectionDecision && method === "POST") {
+    const actor = await requireHuman(request, env, ctx);
+    return decideConnection(env, connectionDecision[1], actor, await readJson(request, CONNECTION_JSON_MAX_BYTES), connectionDecision[2] === "approve");
   }
 
   if (path === "/tokens" && method === "GET") {
@@ -316,6 +331,16 @@ async function api(
   path: string,
   method: string,
 ): Promise<Response> {
+  if (path === "/v1/connections") {
+    if (method === "POST") return startConnection(request, env, await readJson(request, CONNECTION_JSON_MAX_BYTES));
+    return methodNotAllowed();
+  }
+  const connectionToken = path.match(/^\/v1\/connections\/([^/]+)\/token$/);
+  if (connectionToken) {
+    if (method === "POST") return exchangeConnection(env, connectionToken[1], await readJson(request, CONNECTION_JSON_MAX_BYTES));
+    return methodNotAllowed();
+  }
+
   if (path === "/v1/whoami" && method === "GET") {
     const actor = await requireToken(request, env);
     return json({ email: actor.email, label: actor.tokenLabel, expires_at: actor.tokenExpiresAt ?? null });
@@ -533,12 +558,22 @@ function contentPatch(body: Record<string, unknown>): {
   return patch;
 }
 
-async function readJson(request: Request): Promise<Record<string, unknown>> {
+async function readJson(request: Request, maxBytes?: number): Promise<Record<string, unknown>> {
   const ctype = request.headers.get("content-type") || "";
   if (ctype.includes("application/x-www-form-urlencoded") || ctype.includes("multipart/form-data")) {
     throw new ApiError(415, "bad_content_type", "Send a JSON object body.");
   }
-  const text = await request.text();
+  let received = 0;
+  const body = maxBytes && request.body
+    ? request.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        received += chunk.byteLength;
+        if (received > maxBytes) throw new ApiError(413, "too_large", `Connection requests must be at most ${maxBytes} bytes.`, { limit_bytes: maxBytes });
+        controller.enqueue(chunk);
+      },
+    }))
+    : request.body;
+  const text = maxBytes ? await new Response(body).text() : await request.text();
   if (!text) return {};
   try {
     const parsed = JSON.parse(text) as unknown;
