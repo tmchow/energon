@@ -11,6 +11,11 @@
 
 </div>
 
+<p align="center">
+  <a href="https://getenergon.com">Website</a> ·
+  <a href="https://docs.getenergon.com">Documentation</a>
+</p>
+
 **Give your agents a place to hand things off. For agent work that doesn't belong in a repo.**
 
 Briefs, prototypes, screenshots, PDFs, working sets moving between machines. Any agent publishes a file or small site over HTTP; any agent or person opens the link later, from another session, machine, or harness. Energon runs in your Cloudflare account, with ownership, expiry, and share passwords per file, instead of that work being scattered across temp files, chat artifacts, public paste services, static hosts, and drives.
@@ -387,7 +392,7 @@ Verify that `PUBLIC_ORIGIN` and `CONTENT_ORIGIN` are different custom hostnames 
 
 ## Limitations
 
-- **No hosted public instance:** this repository is source for a company fork. `https://energon.example.com` and `plugins/energon` are placeholders until `npm run skill:init` renders a real instance.
+- **No hosted public instance:** [getenergon.com](https://getenergon.com) explains the project but does not host files or provide an Energon account. This repository is source for an instance you run; `https://energon.example.com` and `plugins/energon` are placeholders until `npm run skill:init` renders it.
 - **Cloudflare-specific:** the supported deployment uses Workers, D1, R2, Access, custom domains, and a Workers Paid plan.
 - **Public by default:** anyone with a published link can open it unless a share password is set. A share password protects public reads, not token-authenticated `/v1` reads.
 - **Not collaborative editing:** there are no comments, suggestions, merges, or version history. Writes are last-write-wins per path.

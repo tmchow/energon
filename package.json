@@ -9,7 +9,7 @@
   "bugs": {
     "url": "https://github.com/tmchow/energon/issues"
   },
-  "homepage": "https://github.com/tmchow/energon#readme",
+  "homepage": "https://getenergon.com",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",

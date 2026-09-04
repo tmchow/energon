@@ -26,7 +26,7 @@ It is not a system of record. Code and anything that must be versioned and revie
 - Not a repo or system of record. Code and anything that needs versioning and review stays in git; Energon holds outputs and work in transit.
 - Not a company-wide catalog. Listing and search are scoped to what you created, edited, or were involved in; no one can dump another person's catalog.
 - Not a document editor. Shared writes happen through in-place replacement under write policy; `curl` and `?raw=1` stay the source, last write wins, no merge.
-- Not a hosted public service. This repo is what you fork; there is no energon.com to sign up for.
+- Not a hosted public service. `getenergon.com` explains the project but does not provide an Energon account or host files; this repo is what you fork and run.
 - Not a general-purpose CDN or app platform. Files and small sites only, no server-side code.
 - Not per-user access control on published links. Links are open by default; a share password is a shared secret, not an ACL.
 
