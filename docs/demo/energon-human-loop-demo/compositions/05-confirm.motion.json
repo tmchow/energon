@@ -1,0 +1,11 @@
+{
+  "duration": 6,
+  "assertions": [
+    { "kind": "appearsBy", "selector": "#confirm-browser", "bySec": 0.9 },
+    { "kind": "appearsBy", "selector": "#confirm-message", "bySec": 2.1 },
+    { "kind": "before", "a": "#confirm-browser", "b": "#confirm-message" },
+    { "kind": "staysInFrame", "selector": "#confirm-rollout" },
+    { "kind": "staysInFrame", "selector": "#confirm-message" },
+    { "kind": "keepsMoving", "withinSelector": "#confirm", "maxStaticSec": 3 }
+  ]
+}

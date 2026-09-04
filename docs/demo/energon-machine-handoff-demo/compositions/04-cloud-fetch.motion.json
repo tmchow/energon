@@ -1,0 +1,1 @@
+{"duration":8,"assertions":[{"kind":"appearsBy","selector":"#cf-app","bySec":1},{"kind":"before","a":"#cf-source","b":"#cf-result"},{"kind":"staysInFrame","selector":"#cf-app"},{"kind":"keepsMoving","withinSelector":"#cloud-fetch","maxStaticSec":2}]}

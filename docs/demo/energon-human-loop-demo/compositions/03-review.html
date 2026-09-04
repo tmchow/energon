@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en"><head></head>
+  <body>
+    <template>
+      <style>
+        #review { position: absolute; inset: 0; width: 1920px; height: 1080px; overflow: hidden; background: #17141f; color: #f8f5ff; font-family: Montserrat, sans-serif; }
+        .review-grid-bg { position: absolute; inset: 0; opacity: .17; background-image: linear-gradient(rgba(138,108,255,.18) 2px, transparent 2px), linear-gradient(90deg, rgba(138,108,255,.18) 2px, transparent 2px); background-size: 96px 96px; }
+        .review-glow { position: absolute; left: 210px; top: 50px; width: 1500px; height: 930px; border-radius: 50%; background: radial-gradient(circle, rgba(104,73,234,.42), rgba(45,29,78,.16) 48%, rgba(23,20,31,0) 72%); opacity: .3; will-change: opacity, transform; }
+        .review-meta { position: absolute; left: 116px; top: 72px; display: flex; align-items: center; gap: 22px; font-family: "IBM Plex Mono", monospace; font-size: 23px; letter-spacing: .08em; text-transform: uppercase; }
+        .review-step { color: #b7a6ff; font-weight: 700; }
+        .review-rule { width: 112px; height: 3px; border-radius: 3px; background: #8a6cff; transform-origin: left center; }
+        .review-label { color: #d8d1e8; }
+        .review-person { margin-left: 18px; padding: 8px 13px; border: 2px solid rgba(138,108,255,.35); border-radius: 999px; color: #d9d0ff; font-size: 17px; letter-spacing: .04em; text-transform: none; }
+        .review-browser { position: absolute; left: 148px; top: 154px; width: 1624px; height: 842px; overflow: hidden; border: 2px solid rgba(196,180,255,.3); border-radius: 32px; background: #f8f6fb; box-shadow: 0 48px 120px rgba(4,2,11,.5), 0 0 0 12px rgba(138,108,255,.05); transform-origin: center center; }
+        .review-chrome { height: 92px; display: flex; align-items: center; gap: 13px; padding: 0 28px; background: #ece8f1; border-bottom: 2px solid #ddd6e5; }
+        .review-dot { width: 16px; height: 16px; border-radius: 50%; background: #b7afbd; }
+        .review-dot:nth-child(1) { background: #e87888; }
+        .review-dot:nth-child(2) { background: #d9ad4e; }
+        .review-dot:nth-child(3) { background: #68bc8d; }
+        .review-urlbar { margin-left: 20px; flex: 1; height: 52px; display: flex; align-items: center; gap: 14px; padding: 0 22px; border: 2px solid #d4ccd9; border-radius: 14px; background: #fff; color: #5c5663; font-family: "IBM Plex Mono", monospace; font-size: 18px; }
+        .review-lock { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 8px; background: #e7e0fb; color: #513b9c; font-size: 15px; font-weight: 900; }
+        .review-secure { color: #6d6673; font-size: 17px; }
+        .review-stage { position: absolute; inset: 92px 0 0; background: #f8f6fb; }
+        .review-gate { position: absolute; left: 492px; top: 112px; width: 640px; padding: 48px 52px; border: 3px solid #e0d8ea; border-radius: 28px; background: #fff; box-shadow: 0 28px 70px rgba(68,49,92,.16); text-align: center; transform-origin: center center; }
+        .review-gate-icon { width: 74px; height: 74px; display: grid; place-items: center; margin: 0 auto 24px; border-radius: 23px; background: #e9e3fb; color: #5b43ad; font-size: 34px; font-weight: 900; }
+        .review-gate-title { color: #24202d; font-size: 35px; font-weight: 900; letter-spacing: -.03em; }
+        .review-gate-copy { margin-top: 12px; color: #6f6976; font-size: 21px; line-height: 1.45; }
+        .review-password { height: 68px; margin-top: 30px; display: flex; align-items: center; justify-content: center; gap: 9px; border: 3px solid #cfc4df; border-radius: 17px; background: #faf8fc; }
+        .review-password span { width: 12px; height: 12px; border-radius: 50%; background: #403848; }
+        .review-unlock { height: 64px; margin-top: 18px; display: grid; place-items: center; border-radius: 17px; background: #8a6cff; color: #fff; font-size: 23px; font-weight: 900; box-shadow: 0 15px 30px rgba(110,79,224,.3); transform-origin: center center; }
+        .review-plan { position: absolute; inset: 0; background: #fbf9fc; opacity: 0; }
+        .review-document { position: absolute; left: 146px; top: 30px; width: 1260px; color: #24202d; }
+        .review-filebar { display: flex; align-items: center; gap: 14px; color: #5d5664; font-family: "IBM Plex Mono", monospace; font-size: 17px; }
+        .review-md-icon { width: 40px; height: 40px; display: grid; place-items: center; border: 2px solid #d6caee; border-radius: 10px; background: #f2edff; color: #6249b6; font-size: 15px; font-weight: 900; }
+        .review-filename { color: #403849; font-weight: 700; }
+        .review-badge { margin-left: auto; padding: 8px 12px; border-radius: 999px; background: #e8e2fa; color: #5941a7; font-size: 14px; font-weight: 700; }
+        .review-document h1 { margin: 18px 0 10px; font-size: 42px; line-height: 1.08; letter-spacing: -.045em; }
+        .review-lede { margin: 0; color: #6b6571; font-size: 20px; line-height: 1.45; }
+        .review-divider { height: 2px; margin: 23px 0 20px; background: #e2dce8; }
+        .review-md-grid { display: grid; grid-template-columns: 1.08fr .92fr; gap: 54px; }
+        .review-md-section { margin-bottom: 22px; }
+        .review-md-section h2 { margin: 0 0 11px; padding-bottom: 8px; border-bottom: 2px solid #e2dce8; font-size: 25px; letter-spacing: -.025em; }
+        .review-md-section p { margin: 0; color: #5d5664; font-size: 18px; line-height: 1.5; }
+        .review-list { margin: 0; padding-left: 27px; color: #4d4753; font-size: 18px; line-height: 1.65; }
+        .review-list li::marker { color: #765ad1; }
+        .review-ghost { opacity: .48; }
+        .review-ghost-lines { display: grid; gap: 8px; margin-top: 11px; }
+        .review-ghost-line { height: 9px; border-radius: 999px; background: #d8d1e8; }
+        .review-ghost-line:nth-child(2) { width: 82%; }
+        .review-mermaid { padding: 16px 20px 18px; border: 2px solid #d8d1e8; border-radius: 15px; background: #fff; box-shadow: 0 10px 28px rgba(72,54,95,.07); }
+        .review-mermaid-label { display: flex; align-items: center; gap: 9px; margin-bottom: 13px; color: #746f7d; font-family: "IBM Plex Mono", monospace; font-size: 13px; font-weight: 700; letter-spacing: .05em; }
+        .review-mermaid-mark { color: #765ad1; font-size: 17px; }
+        .review-flow { display: flex; align-items: center; gap: 11px; }
+        .review-node { min-width: 126px; padding: 15px 11px; border: 2px solid #d5cedc; border-radius: 11px; background: #faf8fc; color: #403849; font-size: 16px; font-weight: 700; line-height: 1.25; text-align: center; transform-origin: center center; }
+        .review-node-start { min-width: 112px; }
+        .review-node-risk { border-color: #bca9ef; background: #f4f0ff; }
+        .review-arrow { color: #765ad1; font-family: "IBM Plex Mono", monospace; font-size: 22px; font-weight: 900; }
+        .review-rollout-note { margin-top: 12px; color: #7b7481; font-family: "IBM Plex Mono", monospace; font-size: 13px; }
+        .review-callout { position: absolute; right: 42px; bottom: 35px; width: 360px; padding: 20px 23px; border: 3px solid #d6caee; border-radius: 18px; background: #fff; color: #403849; box-shadow: 0 18px 45px rgba(72,54,95,.14); opacity: 0; }
+        .review-callout strong { display: block; color: #6249b6; font-family: "IBM Plex Mono", monospace; font-size: 16px; letter-spacing: .06em; text-transform: uppercase; }
+        .review-callout span { display: block; margin-top: 10px; font-size: 20px; line-height: 1.38; }
+        .review-cursor { position: absolute; left: 1480px; top: 760px; width: 64px; height: 64px; z-index: 12; pointer-events: none; filter: drop-shadow(0 8px 10px rgba(28,21,42,.3)); transform-origin: 10px 8px; }
+        .review-cursor svg { width: 100%; height: 100%; }
+        .review-cursor path { fill: #211b30; stroke: #fff; stroke-width: 1.4px; stroke-linejoin: round; }
+        .review-ripple { position: absolute; left: 11px; top: 9px; width: 44px; height: 44px; border: 4px solid #8a6cff; border-radius: 50%; opacity: 0; transform: scale(.2); }
+        .review-brand { position: absolute; right: 94px; bottom: 42px; color: #d8d1e8; font-family: "IBM Plex Mono", monospace; font-size: 18px; letter-spacing: .06em; text-transform: uppercase; }
+      </style>
+      <div data-hf-id="hf-z1dk" id="review" data-composition-id="review" data-width="1920" data-height="1080" data-duration="7">
+        <div data-hf-id="hf-dnez" class="review-grid-bg"></div><div data-hf-id="hf-osqa" id="review-glow" class="review-glow"></div>
+        <div data-hf-id="hf-dfky" id="review-meta" class="review-meta"><span data-hf-id="hf-t405" class="review-step">03</span><span data-hf-id="hf-1r8h" id="review-rule" class="review-rule"></span><span data-hf-id="hf-4jzu" class="review-label">Human reviews the plan</span><span data-hf-id="hf-yoww" class="review-person">Noah spots the rollout gap</span></div>
+        <div data-hf-id="hf-gl52" id="review-browser" class="review-browser">
+          <div data-hf-id="hf-fi67" class="review-chrome"><span data-hf-id="hf-elvr" class="review-dot"></span><span data-hf-id="hf-y7on" class="review-dot"></span><span data-hf-id="hf-xtdm" class="review-dot"></span><div data-hf-id="hf-zxez" class="review-urlbar"><span data-hf-id="hf-fxi7" id="review-lock" class="review-lock">◆</span><span data-hf-id="hf-6piw">content.energon.your.co/maya/f/k7p2m9/workspace-invites.md</span></div><span data-hf-id="hf-qfqp" class="review-secure">Protected</span></div>
+          <div data-hf-id="hf-3lhp" class="review-stage">
+            <div data-hf-id="hf-q6iq" id="review-gate" class="review-gate">
+              <div data-hf-id="hf-mast" class="review-gate-icon">⌁</div>
+              <div data-hf-id="hf-vykk" class="review-gate-title">Protected plan</div>
+              <div data-hf-id="hf-s4my" class="review-gate-copy">Enter the password Maya shared to view this Markdown file.</div>
+              <div data-hf-id="hf-xzna" class="review-password"><span data-hf-id="hf-uckh"></span><span data-hf-id="hf-l73p"></span><span data-hf-id="hf-me0s"></span><span data-hf-id="hf-lzpr"></span><span data-hf-id="hf-n6mu"></span><span data-hf-id="hf-msbt"></span><span data-hf-id="hf-nz8w"></span><span data-hf-id="hf-nkxv"></span><span data-hf-id="hf-ieyi"></span></div>
+              <div data-hf-id="hf-bg9f" id="review-unlock" class="review-unlock">Unlock plan</div>
+            </div>
+            <div data-hf-id="hf-37du" id="review-plan" class="review-plan">
+              <article data-hf-id="hf-jwfd" class="review-document">
+                <div data-hf-id="hf-f7rn" class="review-filebar"><span data-hf-id="hf-ws07" class="review-md-icon">MD</span><span data-hf-id="hf-n3md" class="review-filename">workspace-invites.md</span><span data-hf-id="hf-k8gm" class="review-badge">Rendered Markdown · Revision 1</span></div>
+                <h1 data-hf-id="hf-8nb9">Workspace invites implementation plan</h1>
+                <p data-hf-id="hf-5xqh" class="review-lede">Add email invitations, resend and revoke controls, and clear pending-member states.</p>
+                <div data-hf-id="hf-div1" class="review-divider"></div>
+                <div data-hf-id="hf-z0ne" class="review-md-grid">
+                  <div data-hf-id="hf-left" class="review-md-column">
+                    <section data-hf-id="hf-hmwu" class="review-md-section"><h2 data-hf-id="hf-qyu5">Scope</h2><ul data-hf-id="hf-list" class="review-list"><li data-hf-id="hf-li1">Add a member invitation modal with email validation</li><li data-hf-id="hf-li2">Support resend and revoke for pending invitations</li></ul></section>
+                    <section data-hf-id="hf-fy1u" class="review-md-section review-ghost"><h2 data-hf-id="hf-if08">Verification</h2><p data-hf-id="hf-8duk">Unit coverage and an end-to-end invite acceptance path.</p><div data-hf-id="hf-lines" class="review-ghost-lines"><span data-hf-id="hf-line1" class="review-ghost-line"></span><span data-hf-id="hf-line2" class="review-ghost-line"></span></div></section>
+                  </div>
+                  <section data-hf-id="hf-5nso" class="review-md-section"><h2 data-hf-id="hf-fmis">Rollout</h2><p data-hf-id="hf-io7u">Enable for every workspace after staging verification.</p><div data-hf-id="hf-mmd" class="review-mermaid"><div data-hf-id="hf-mmdlbl" class="review-mermaid-label"><span data-hf-id="hf-mmdmark" class="review-mermaid-mark">◇</span>MERMAID · rollout flow</div><div data-hf-id="hf-flow" class="review-flow"><div data-hf-id="hf-node1" class="review-node review-node-start">Staging verified</div><span data-hf-id="hf-arrow1" class="review-arrow">→</span><div data-hf-id="hf-node2" id="review-rollout" class="review-node review-node-risk">All workspaces</div><span data-hf-id="hf-arrow2" class="review-arrow">→</span><div data-hf-id="hf-node3" class="review-node">Monitor support</div></div><div data-hf-id="hf-note" class="review-rollout-note">No canary stage · no rollback condition</div></div></section>
+                </div>
+              </article>
+              <div data-hf-id="hf-igke" id="review-callout" class="review-callout"><strong data-hf-id="hf-5zhq">Noah's review</strong><span data-hf-id="hf-oen6">This jumps straight to 100% with no measurable rollback threshold.</span></div>
+            </div>
+          </div>
+        </div>
+        <div data-hf-id="hf-zjh9" id="review-cursor" class="review-cursor" aria-hidden="true"><span data-hf-id="hf-6i2h" id="review-ripple" class="review-ripple"></span><svg data-hf-id="hf-y9f5" viewBox="0 0 24 24"><path data-hf-id="hf-5lwp" d="M3 2.8 20.6 14 12.8 15.5 9 22 3 2.8Z" /></svg></div>
+        <div data-hf-id="hf-0rti" id="review-brand" class="review-brand">The link opens for a person · Energon</div>
+        <script>
+          const tl = gsap.timeline({ paused: true });
+          tl.fromTo("#review-meta", { opacity: 0, x: -36 }, { opacity: 1, x: 0, duration: .42, ease: "power3.out" }, .08);
+          tl.fromTo("#review-rule", { scaleX: 0 }, { scaleX: 1, duration: .56, ease: "expo.out" }, .14);
+          tl.fromTo("#review-browser", { opacity: 0, scale: .94, y: 34 }, { opacity: 1, scale: 1, y: 0, duration: .64, ease: "power3.out" }, .12);
+          tl.fromTo("#review-gate", { opacity: 0, scale: .92 }, { opacity: 1, scale: 1, duration: .5, ease: "power3.out" }, .42);
+          tl.fromTo("#review-cursor", { opacity: 0, x: 0, y: 0 }, { opacity: 1, x: -446, y: -25, duration: .72, ease: "power2.inOut" }, .7);
+          tl.to(["#review-unlock", "#review-cursor"], { scale: .91, duration: .1, ease: "power1.in" }, 1.45);
+          tl.to(["#review-unlock", "#review-cursor"], { scale: 1, duration: .26, ease: "power3.out" }, 1.55);
+          tl.set("#review-ripple", { opacity: .9, scale: .2 }, 1.49);
+          tl.to("#review-ripple", { opacity: 0, scale: 3.3, duration: .56, ease: "power3.out", immediateRender: false }, 1.49);
+          tl.to("#review-lock", { backgroundColor: "#d9f1e3", color: "#245f3f", duration: .28, ease: "power1.out" }, 1.55);
+          tl.to("#review-gate", { opacity: 0, scale: .96, duration: .34, ease: "power2.in" }, 1.76);
+          tl.fromTo("#review-plan", { opacity: 0, x: 44 }, { opacity: 1, x: 0, duration: .62, ease: "power2.out" }, 1.98);
+          tl.to("#review-cursor", { x: -220, y: -135, duration: .82, ease: "power2.inOut" }, 2.74);
+          tl.to("#review-rollout", { scale: 1.025, backgroundColor: "#f4f0ff", borderColor: "#8a6cff", duration: .4, ease: "power2.out" }, 3.58);
+          tl.fromTo("#review-callout", { opacity: 0, x: 28 }, { opacity: 1, x: 0, duration: .46, ease: "power2.out" }, 3.74);
+          tl.fromTo("#review-brand", { opacity: 0, x: 24 }, { opacity: 1, x: 0, duration: .38, ease: "power2.out" }, 4.02);
+          const glow = document.getElementById("review-glow");
+          const phase = { p: 0 };
+          tl.to(phase, { p: Math.PI * 2, duration: 5.6, ease: "none", onUpdate: () => { const s = Math.sin(phase.p); glow.style.opacity = String(.31 + s * .025); glow.style.transform = `scale(${1 + s * .012})`; } }, 1.2);
+          window.__timelines.review = tl;
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

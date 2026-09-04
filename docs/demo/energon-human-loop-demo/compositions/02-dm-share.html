@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en"><head></head>
+  <body>
+    <template>
+      <style>
+        #dm-share { position: absolute; inset: 0; width: 1920px; height: 1080px; overflow: hidden; background: #17141f; color: #f8f5ff; font-family: Montserrat, sans-serif; }
+        .dm-grid { position: absolute; inset: 0; opacity: .18; background-image: linear-gradient(rgba(138,108,255,.18) 2px, transparent 2px), linear-gradient(90deg, rgba(138,108,255,.18) 2px, transparent 2px); background-size: 96px 96px; }
+        .dm-glow { position: absolute; left: 250px; top: 38px; width: 1470px; height: 920px; border-radius: 50%; background: radial-gradient(circle, rgba(104,73,234,.42), rgba(23,20,31,0) 68%); opacity: .31; }
+        .dm-meta { position: absolute; left: 116px; top: 72px; display: flex; align-items: center; gap: 22px; font-family: "IBM Plex Mono", monospace; font-size: 23px; letter-spacing: .08em; text-transform: uppercase; }
+        .dm-step { color: #b7a6ff; font-weight: 700; }
+        .dm-rule { width: 112px; height: 3px; border-radius: 3px; background: #8a6cff; transform-origin: left center; }
+        .dm-label { color: #d8d1e8; }
+        .dm-person { margin-left: 18px; padding: 8px 13px; border: 2px solid rgba(138,108,255,.35); border-radius: 999px; color: #d9d0ff; font-size: 17px; letter-spacing: .04em; text-transform: none; }
+        .dm-app { position: absolute; left: 148px; top: 154px; width: 1624px; height: 842px; display: grid; grid-template-columns: 326px 1fr; border: 2px solid rgba(196,180,255,.3); border-radius: 32px; overflow: hidden; background: #f8f6fb; box-shadow: 0 48px 120px rgba(4,2,11,.5), 0 0 0 12px rgba(138,108,255,.05); transform-origin: center center; }
+        .dm-side { background: #342044; color: #f8efff; padding: 34px 26px; }
+        .dm-workspace { display: flex; align-items: center; gap: 18px; padding: 0 10px 28px; font-size: 30px; font-weight: 900; letter-spacing: -.03em; border-bottom: 2px solid rgba(255,255,255,.11); }
+        .dm-workmark { width: 50px; height: 50px; display: grid; place-items: center; border-radius: 14px; background: #8a6cff; color: white; font-family: "IBM Plex Mono", monospace; font-size: 22px; box-shadow: 0 10px 24px rgba(8,4,18,.28); }
+        .dm-section { margin: 30px 14px 12px; color: #c9b7d0; font-family: "IBM Plex Mono", monospace; font-size: 18px; letter-spacing: .08em; text-transform: uppercase; }
+        .dm-nav { display: flex; align-items: center; gap: 14px; margin: 7px 0; padding: 13px 16px; border-radius: 12px; color: #d8cddd; font-size: 22px; }
+        .dm-nav.active { color: #fff; background: #6541a2; font-weight: 700; }
+        .dm-nav-avatar { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 11px; background: #efc464; color: #35223f; font-family: "IBM Plex Mono", monospace; font-size: 16px; font-weight: 900; }
+        .dm-main { position: relative; color: #24202d; background: #f8f6fb; }
+        .dm-head { height: 106px; display: flex; align-items: center; padding: 0 46px; border-bottom: 2px solid #e8e2ee; }
+        .dm-head-avatar { width: 52px; height: 52px; display: grid; place-items: center; margin-right: 18px; border-radius: 16px; background: #efc464; color: #35223f; font-family: "IBM Plex Mono", monospace; font-size: 21px; font-weight: 900; }
+        .dm-name { font-size: 30px; font-weight: 900; letter-spacing: -.025em; }
+        .dm-presence { margin-left: 12px; color: #6e6876; font-size: 19px; }
+        .dm-thread { position: absolute; left: 54px; right: 54px; top: 146px; bottom: 150px; }
+        .dm-message { display: grid; grid-template-columns: 64px 1fr; gap: 20px; }
+        .dm-avatar { width: 64px; height: 64px; display: grid; place-items: center; border-radius: 19px; background: #765ad1; color: #fff; font-family: "IBM Plex Mono", monospace; font-size: 24px; font-weight: 900; box-shadow: 0 12px 28px rgba(90,64,150,.23); }
+        .dm-message-head { display: flex; align-items: baseline; gap: 13px; }
+        .dm-author { font-size: 24px; font-weight: 900; }
+        .dm-time { color: #74707a; font-size: 17px; }
+        .dm-copy { margin-top: 11px; color: #4d4854; font-size: 24px; line-height: 1.42; }
+        .dm-card { width: 1015px; margin-top: 22px; overflow: hidden; border: 3px solid #ddd5eb; border-radius: 22px; background: #fff; box-shadow: 0 18px 48px rgba(64,48,88,.13); transform-origin: left center; }
+        .dm-card-top { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 22px; padding: 24px 30px 18px 38px; border-left: 9px solid #8a6cff; }
+        .dm-eyebrow { color: #765ad1; font-family: "IBM Plex Mono", monospace; font-size: 16px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+        .dm-title { margin-top: 9px; font-size: 28px; font-weight: 900; letter-spacing: -.025em; }
+        .dm-url { margin-top: 10px; color: #645e6d; font-family: "IBM Plex Mono", monospace; font-size: 17px; }
+        .dm-tags { display: flex; flex-direction: column; gap: 10px; align-items: flex-end; }
+        .dm-tag { padding: 8px 12px; border-radius: 999px; background: #ebe6fb; color: #5c43b6; font-family: "IBM Plex Mono", monospace; font-size: 16px; font-weight: 700; }
+        .dm-password { display: flex; align-items: center; gap: 10px; padding: 15px 38px; background: #f2eef8; border-top: 2px solid #e7e0ef; color: #4e4857; font-size: 21px; }
+        .dm-password code { color: #352c45; font-family: "IBM Plex Mono", monospace; font-size: 20px; font-weight: 700; }
+        .dm-open { margin-left: auto; padding: 11px 17px; border-radius: 12px; background: #8a6cff; color: #fff; font-size: 19px; font-weight: 900; box-shadow: 0 10px 22px rgba(110,79,224,.25); transform-origin: center center; }
+        .dm-composer { position: absolute; left: 48px; right: 48px; bottom: 32px; height: 94px; display: flex; align-items: center; gap: 18px; padding: 0 18px 0 28px; border: 3px solid #d7cfdf; border-radius: 20px; background: #fff; box-shadow: 0 12px 30px rgba(70,53,91,.08); }
+        .dm-compose-copy { flex: 1; color: #514b59; font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .dm-send { width: 66px; height: 58px; display: grid; place-items: center; border-radius: 15px; background: #8a6cff; color: #fff; font-size: 30px; font-weight: 900; box-shadow: 0 12px 24px rgba(110,79,224,.3); transform-origin: center center; }
+        .dm-cursor { position: absolute; left: 1370px; top: 740px; width: 64px; height: 64px; z-index: 12; pointer-events: none; filter: drop-shadow(0 8px 10px rgba(28,21,42,.3)); transform-origin: 10px 8px; }
+        .dm-cursor svg { width: 100%; height: 100%; }
+        .dm-cursor path { fill: #211b30; stroke: #fff; stroke-width: 1.4px; stroke-linejoin: round; }
+        .dm-ripple { position: absolute; left: 11px; top: 9px; width: 44px; height: 44px; border: 4px solid #8a6cff; border-radius: 50%; opacity: 0; transform: scale(.2); }
+        .dm-brand { position: absolute; right: 94px; bottom: 42px; color: #d8d1e8; font-family: "IBM Plex Mono", monospace; font-size: 18px; letter-spacing: .06em; text-transform: uppercase; }
+      </style>
+      <div data-hf-id="hf-qiya" id="dm-share" data-composition-id="dm-share" data-width="1920" data-height="1080" data-duration="4.5">
+        <div data-hf-id="hf-gnye" class="dm-grid"></div><div data-hf-id="hf-9mvh" class="dm-glow"></div>
+        <div data-hf-id="hf-t6yg" id="dm-meta" class="dm-meta"><span data-hf-id="hf-fv7t" class="dm-step">02</span><span data-hf-id="hf-g2ez" id="dm-rule" class="dm-rule"></span><span data-hf-id="hf-euw1" class="dm-label">Share with a teammate</span><span data-hf-id="hf-q6gq" class="dm-person">Maya → Noah</span></div>
+        <div data-hf-id="hf-ckre" id="dm-app" class="dm-app">
+          <aside data-hf-id="hf-fqc2" class="dm-side">
+            <div data-hf-id="hf-y2xt" class="dm-workspace"><span data-hf-id="hf-tzkd" class="dm-workmark">AC</span><span data-hf-id="hf-xzrv">Acme</span></div>
+            <div data-hf-id="hf-j4xq" class="dm-section">Direct messages</div>
+            <div data-hf-id="hf-vr9w" class="dm-nav active"><span data-hf-id="hf-lfcg" class="dm-nav-avatar">N</span>Noah Kim</div>
+            <div data-hf-id="hf-qcvb" class="dm-nav"><span data-hf-id="hf-mkyl" class="dm-nav-avatar" style="background:#a7d7cb">L</span>Lena Ortiz</div>
+            <div data-hf-id="hf-6qdj" class="dm-section">Channels</div>
+            <div data-hf-id="hf-ygv5" class="dm-nav"># product</div><div data-hf-id="hf-0r6x" class="dm-nav"># engineering</div>
+          </aside>
+          <main data-hf-id="hf-lyw9" class="dm-main">
+            <header data-hf-id="hf-pox8" class="dm-head"><span data-hf-id="hf-2a37" class="dm-head-avatar">N</span><span data-hf-id="hf-plvd" class="dm-name">Noah Kim</span><span data-hf-id="hf-o9sb" class="dm-presence">● active</span></header>
+            <section data-hf-id="hf-m6f2" class="dm-thread">
+              <article data-hf-id="hf-f5wf" id="dm-message" class="dm-message">
+                <div data-hf-id="hf-5qz8" class="dm-avatar">M</div>
+                <div data-hf-id="hf-yeow">
+                  <div data-hf-id="hf-thcy" class="dm-message-head"><span data-hf-id="hf-z6ww" class="dm-author">Maya Chen</span><span data-hf-id="hf-he4k" class="dm-time">just now</span></div>
+                  <div data-hf-id="hf-ww28" class="dm-copy">Could you review this before I start implementation?</div>
+                  <div data-hf-id="hf-c70i" id="dm-card" class="dm-card">
+                    <div data-hf-id="hf-g2zu" class="dm-card-top">
+                      <div data-hf-id="hf-y7yw"><div data-hf-id="hf-2ih5" class="dm-eyebrow">Published with Energon</div><div data-hf-id="hf-gfsb" class="dm-title">Workspace invites · implementation plan</div><div data-hf-id="hf-iz1k" class="dm-url">content.energon.your.co/maya/f/k7p2m9/workspace-invites.md</div></div>
+                      <div data-hf-id="hf-g1ix" class="dm-tags"><span data-hf-id="hf-v5f5" class="dm-tag">Team-editable</span><span data-hf-id="hf-3i7f" class="dm-tag">Protected</span></div>
+                    </div>
+                    <div data-hf-id="hf-rc69" class="dm-password">Share password <code data-hf-id="hf-51wj">bumblebee</code><span data-hf-id="hf-7vab" id="dm-open" class="dm-open">Open plan ↗</span></div>
+                  </div>
+                </div>
+              </article>
+            </section>
+            <div data-hf-id="hf-7lem" id="dm-composer" class="dm-composer"><span data-hf-id="hf-tdid" id="dm-compose-copy" class="dm-compose-copy">Could you review this before I start? https://content.energon... · Password: bumblebee</span><span data-hf-id="hf-dm2m" id="dm-send" class="dm-send">↑</span></div>
+          </main>
+        </div>
+        <div data-hf-id="hf-1lo7" id="dm-cursor" class="dm-cursor" aria-hidden="true"><span data-hf-id="hf-54ir" id="dm-ripple" class="dm-ripple"></span><svg data-hf-id="hf-y9f5" viewBox="0 0 24 24"><path data-hf-id="hf-5lwp" d="M3 2.8 20.6 14 12.8 15.5 9 22 3 2.8Z" /></svg></div>
+        <div data-hf-id="hf-v60w" id="dm-brand" class="dm-brand">A person shares the artifact · Energon</div>
+        <script>
+          const tl = gsap.timeline({ paused: true });
+          tl.fromTo("#dm-meta", { opacity: 0, x: -36 }, { opacity: 1, x: 0, duration: .42, ease: "power3.out" }, .08);
+          tl.fromTo("#dm-rule", { scaleX: 0 }, { scaleX: 1, duration: .56, ease: "expo.out" }, .14);
+          tl.fromTo("#dm-app", { opacity: 0, scale: .94, y: 34 }, { opacity: 1, scale: 1, y: 0, duration: .62, ease: "power3.out" }, .12);
+          tl.fromTo("#dm-cursor", { opacity: 0, x: 0, y: 0 }, { opacity: 1, x: 268, y: 145, duration: .62, ease: "power2.inOut" }, .28);
+          tl.to(["#dm-send", "#dm-cursor"], { scale: .9, duration: .1, ease: "power1.in" }, .92);
+          tl.to(["#dm-send", "#dm-cursor"], { scale: 1, duration: .26, ease: "power3.out" }, 1.02);
+          tl.set("#dm-ripple", { opacity: .9, scale: .2 }, .96);
+          tl.to("#dm-ripple", { opacity: 0, scale: 3.2, duration: .58, ease: "power3.out", immediateRender: false }, .96);
+          tl.to("#dm-compose-copy", { opacity: 0, duration: .2, ease: "power1.out" }, 1.02);
+          tl.fromTo("#dm-message", { opacity: 0, x: 50 }, { opacity: 1, x: 0, duration: .48, ease: "power2.out" }, 1.1);
+          tl.fromTo("#dm-card", { opacity: 0, scale: .92 }, { opacity: 1, scale: 1, duration: .5, ease: "power3.out" }, 1.32);
+          tl.fromTo("#dm-brand", { opacity: 0, x: 24 }, { opacity: 1, x: 0, duration: .38, ease: "power2.out" }, 1.44);
+          tl.to("#dm-cursor", { x: 122, y: -190, duration: .7, ease: "power2.inOut" }, 1.82);
+          tl.to(["#dm-open", "#dm-cursor"], { scale: .91, duration: .1, ease: "power1.in" }, 2.56);
+          tl.to(["#dm-open", "#dm-cursor"], { scale: 1, duration: .28, ease: "power3.out" }, 2.66);
+          tl.set("#dm-ripple", { opacity: .9, scale: .2 }, 2.6);
+          tl.to("#dm-ripple", { opacity: 0, scale: 3.2, duration: .58, ease: "power3.out", immediateRender: false }, 2.6);
+          window.__timelines["dm-share"] = tl;
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

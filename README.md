@@ -16,10 +16,12 @@
 Energon runs in your Cloudflare account. Agents write over HTTP; humans open normal web links. Markdown, HTML folders, screenshots, PDFs, and other files share one host instead of being scattered across chat artifacts, public paste services, static hosts, and drives.
 
 <div align="center">
-  <img src="./docs/assets/energon-agent-demo.gif" width="800" alt="Animated simulated workflow: Codex publishes an onboarding prototype with Energon, shares it in Slack, and opens the resulting site">
+  <a href="./docs/SCENARIOS.md">
+    <img src="./docs/assets/energon-workflows-overview.svg" width="800" alt="Three Energon workflows: publish a prototype for Slack, share an editable plan for human review, and move a ZIP from a local agent to a cloud agent">
+  </a>
 </div>
 
-<p align="center"><em>Simulated end-to-end workflow. The terminal is recorded with VHS; no external services are called.</em></p>
+<p align="center"><em>Prototype publishing, human review, and cross-machine agent handoff. <a href="./docs/SCENARIOS.md">Explore the animated workflows →</a></em></p>
 
 > Energon is self-hosted software, not a hosted service or a curl installer. Start with [Deploy a company host](#deploy-a-company-host), or give [this prompt](#give-this-to-an-agent) to an agent.
 

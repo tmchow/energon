@@ -1,0 +1,8 @@
+{
+  "duration": 8.5,
+  "assertions": [
+    { "kind": "appearsBy", "selector": "#publish-shell", "bySec": 1 },
+    { "kind": "staysInFrame", "selector": "#publish-shell" },
+    { "kind": "keepsMoving", "withinSelector": "#publish", "maxStaticSec": 3 }
+  ]
+}
