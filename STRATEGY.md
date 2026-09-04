@@ -7,11 +7,11 @@ last_updated: 2026-09-04
 
 ## Purpose
 
-Agents produce work that does not belong in a repo: briefs, plans, prototypes, screenshots, PDFs, working sets in transit between machines. Today that work is durable only if it lands in git. Everything else ends up in temp files and chat artifacts that a second session, a second machine, a second agent, or a second person cannot find or open. The hosts that would fix this are tied to one chat product or are public services, and the tools that run on your own infrastructure are not something an agent in any harness can reach for the same way. The crux is giving agents one company-owned place to hand things off that is as easy to use as a native artifact surface, without the bytes leaving infrastructure the company controls.
+Agents produce work that does not belong in a repo: briefs, plans, prototypes, screenshots, PDFs, working sets in transit between machines. Today that work is durable only if it lands in git. Everything else ends up in temp files and chat artifacts that a second session, a second machine, a second agent, or a second person cannot find or open. The hosts that would fix this are tied to one chat product or are public services, and the tools that run on your own infrastructure are not something an agent in any harness can reach for the same way. The crux is giving agents one operator-owned place to hand things off that is as easy to use as a native artifact surface, without the bytes leaving infrastructure the individual or organization controls.
 
 ## Positioning
 
-Energon is the handoff layer for agent work that does not belong in a repo. It is the fork you run in your own Cloudflare account, with a skill named for your host that works the same from Cursor, Claude Code, Codex, and any client that installs Agent Plugins. Any agent writes a file or small site; any agent or person opens it later from a stable HTTP address, from another session, machine, or harness. The address survives overwrites, who may overwrite is a per-object choice between the creator and the whole instance, and expiry and share passwords are set per object, so one link can go to a teammate or outside the company and still be yours.
+Energon is the handoff layer for agent work that does not belong in a repo. It is the fork you run in your own Cloudflare account, with a skill named for your host that works the same from Cursor, Claude Code, Codex, and any client that installs Agent Plugins. Any agent writes a file or small site; any agent or person opens it later from a stable HTTP address, from another session, machine, or harness. The address survives overwrites, who may overwrite is a per-object choice between the creator and the whole instance, and expiry and share passwords are set per object, so one link can go to a teammate, client, or collaborator and still be yours.
 
 It is not a system of record. Code and anything that must be versioned and reviewed stays in the repo. Energon holds the outputs around that work and the things in transit between agents.
 
@@ -19,18 +19,18 @@ It is not a system of record. Code and anything that must be versioned and revie
 
 **Primary:** A person running agents in more than one place - local and cloud, several harnesses, several machines, across sessions. They're hiring Energon so those agents can hand work to each other and to people through a link, without leaving the agent, picking a host per artifact, or forcing the work into a repo. That this need spans harnesses is the bet, not yet observed adoption.
 
-**Secondary:** The company operator who forks and runs the host - They're hiring Energon to give the whole team that link without standing up or trusting a public service.
+**Secondary:** The instance operator, either an individual or an organization - They're hiring Energon to keep files on infrastructure they control and give their agents or team one handoff path without trusting a public service.
 
 ## Boundaries
 
 - Not a repo or system of record. Code and anything that needs versioning and review stays in git; Energon holds outputs and work in transit.
-- Not a company-wide catalog. Listing and search are scoped to what you created, edited, or were involved in; no one can dump another person's catalog.
+- Not an instance-wide catalog. Listing and search are scoped to what you created, edited, or were involved in; no one can dump another person's catalog.
 - Not a document editor. Shared writes happen through in-place replacement under write policy; `curl` and `?raw=1` stay the source, last write wins, no merge.
-- Not a hosted public service. This repo is what you fork; there is no energon.com to sign up for.
+- Not a hosted public service. `getenergon.com` explains the project but does not provide an Energon account or host files; this repo is what you fork and run.
 - Not a general-purpose CDN or app platform. Files and small sites only, no server-side code.
 - Not per-user access control on published links. Links are open by default; a share password is a shared secret, not an ACL.
 
-_Resist a change when:_ it makes publishing depend on a specific chat product, a specific agent, or infrastructure the company does not own.
+_Resist a change when:_ it makes publishing depend on a specific chat product, a specific agent, or infrastructure the operator does not own.
 
 ## Key metrics
 
@@ -52,11 +52,11 @@ _Why it serves the approach:_ The approach is only true if the same skill works 
 
 Cloudflare Access, token prefixes, write policy (owner vs instance), share passwords, expiry, and storage integrity across mutations.
 
-_Why it serves the approach:_ A company-owned host has to be safe to hand a token to every teammate and safe to send a link outside.
+_Why it serves the approach:_ An operator-owned host has to be safe for its authorized users and safe to send a link beyond the instance.
 
 ### Fork and run
 
-`skill:init`, the marketplace catalogs, `INSTALL.md`, `docs/DEPLOY.md`, and the upstream-merge story so one company's instance does not collide with another's.
+`skill:init`, the marketplace catalogs, `INSTALL.md`, `docs/DEPLOY.md`, and the upstream-merge story so one instance's generated skill does not collide with another's.
 
 _Why it serves the approach:_ The product is the fork; if standing up a host is hard, nobody gets the link.
 
@@ -66,6 +66,6 @@ _Why it serves the approach:_ The product is the fork; if standing up a host is 
 
 **Eyebrow:** For agent work that doesn't belong in a repo.
 
-**Key message:** Briefs, prototypes, screenshots, PDFs. Any agent publishes, any agent or person opens the link later, from anywhere. Runs in your Cloudflare account with expiry and passwords per file. The same skill works from Cursor, Claude Code, Codex, and any client that installs Agent Plugins.
+**Key message:** Briefs, prototypes, screenshots, PDFs. Any agent publishes, any agent or person opens the link later, from anywhere. Runs in your Cloudflare account with expiry and passwords per file. An individual can run one for personal projects; an organization can run one for team handoffs. The same skill works from Cursor, Claude Code, Codex, and any client that installs Agent Plugins.
 
 **Word choices:** Say "hand off", not "publish", when describing the category; publishing is one use. Avoid "everything your agents make" and "a shared place", which read as a repo replacement. Name the artifact types so the boundary against git is concrete.
