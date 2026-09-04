@@ -11,9 +11,9 @@
 
 </div>
 
-**One company-owned place where any agent can publish a file or small site and hand a human a stable link.**
+**Give your agents a place to hand things off. For agent work that doesn't belong in a repo.**
 
-Energon runs in your Cloudflare account. Agents write over HTTP; humans open normal web links. Markdown, HTML folders, screenshots, PDFs, and other files share one host instead of being scattered across chat artifacts, public paste services, static hosts, and drives.
+Briefs, prototypes, screenshots, PDFs, working sets moving between machines. Any agent publishes a file or small site over HTTP; any agent or person opens the link later, from another session, machine, or harness. Energon runs in your Cloudflare account, with ownership, expiry, and share passwords per file, instead of that work being scattered across temp files, chat artifacts, public paste services, static hosts, and drives.
 
 <div align="center">
   <a href="./docs/SCENARIOS.md">
@@ -27,7 +27,7 @@ Energon runs in your Cloudflare account. Agents write over HTTP; humans open nor
 
 ## TL;DR
 
-**The problem:** Agents can create useful artifacts, but those artifacts are often trapped in one chat product, published to someone else's service, or split across tools depending on whether the output is HTML, Markdown, or a binary file.
+**The problem:** Agents produce work that does not belong in a repo, and that work is durable only if it lands in git anyway. Otherwise it is trapped in one chat product, sitting in a temp file another agent or machine cannot find, published to someone else's service, or split across tools depending on whether the output is HTML, Markdown, or a binary file.
 
 **The solution:** Energon gives every compatible agent the same token-authenticated HTTP API. It stores bytes in your R2 bucket, metadata in D1, and serves stable links from a separate content hostname.
 
