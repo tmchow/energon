@@ -19,7 +19,8 @@ Do not put secrets, tokens, or share passwords in published files. Last write wi
 
 ## Start here
 
-- [Machine-readable API help](${origin}/v1/help): SOP, routes, limits, retention. No auth.
+- [OpenAPI 3.1 contract](${origin}/v1/openapi.json): every \`/v1\` path with request and response schemas, status codes, and error codes. No auth.
+- [Machine-readable API help](${origin}/v1/help): this instance's identity and policy. SOP, routes, limits, retention, token policy. No auth.
 - [Health](${origin}/v1/health): \`{"ok":true}\`. No auth.
 - [Hub](${origin}/): human UI. Cloudflare Access.
 - [About](${origin}/about) and [Stats](${origin}/stats): signed-in humans only.
@@ -29,7 +30,7 @@ Do not put secrets, tokens, or share passwords in published files. Last write wi
 
 - Site (named folder): \`POST /v1/sites\` with \`{"slug":"…","overwrite":false,"ttl":"7d"}\`, then \`PUT /v1/sites/{slug}/files/{path}\`. Public URL: \`/{handle}/s/{slug}/\`.
 - File (one file, short id): \`POST /v1/files\`, then \`PUT /v1/files/{id}\` to replace it. Public URL: \`/{handle}/f/{id}/{filename}\`. Spaces in the filename become underscores in the path; the download name stays the original.
-- Auth on every \`/v1\` call except help and health: \`Authorization: Bearer $${id.tokenEnv}\`.
+- Auth on every \`/v1\` call except help, health, and openapi.json: \`Authorization: Bearer $${id.tokenEnv}\`.
 - Tokens expire after the lifetime the human picked at mint (default 90 days). A \`401\` with \`error: token_expired\` is terminal: stop, tell the human to mint a new token at /tokens, do not retry, do not invent one. Tokens cannot be extended. \`GET /v1/whoami\` shows \`expires_at\`.
 - On 409, show the existing URL and ask the human: new slug, or retry with \`overwrite: true\`.
 - \`GET /v1/sites\` and \`GET /v1/files\` list only what you created or last wrote. \`?scope=created|edited|involved\`, \`?q=\`, \`?created_by=\`, \`?limit=\`, \`?cursor=\` (always intersected with your involvement — you cannot dump someone else's catalog). Responses include \`total\` and \`next_cursor\`. Search runs over the full involved set; pages are keyset cursors.

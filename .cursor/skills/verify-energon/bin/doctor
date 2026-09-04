@@ -64,6 +64,14 @@ if [[ "$hub" == "$ORIGIN" ]]; then ok "GET /v1/help hub=$hub"; else bad "GET /v1
 if [[ "$content" == "$ORIGIN" ]]; then ok "GET /v1/help content_origin=$content"; else bad "GET /v1/help content_origin=$content expected $ORIGIN"; fi
 if [[ "$env_name" == "ENERGON_TOKEN" ]]; then ok "token env ENERGON_TOKEN"; else bad "token env is $env_name"; fi
 if [[ "$prefix" == "ee_live_" ]]; then ok "token prefix ee_live_"; else bad "token prefix is $prefix"; fi
+openapi_url="$(json_get "$help_json" "openapi" 2>/dev/null || true)"
+if [[ "$openapi_url" == "$ORIGIN/v1/openapi.json" ]]; then ok "GET /v1/help openapi=$openapi_url"; else bad "GET /v1/help openapi=$openapi_url expected $ORIGIN/v1/openapi.json"; fi
+
+openapi_json="$(curl -sS "$ORIGIN/v1/openapi.json" || true)"
+openapi_version="$(json_get "$openapi_json" "openapi" 2>/dev/null || true)"
+openapi_servers="$(json_get "$openapi_json" "servers" 2>/dev/null || true)"
+if [[ "$openapi_version" == "3.1.0" ]]; then ok "GET /v1/openapi.json openapi=3.1.0"; else bad "GET /v1/openapi.json openapi=$openapi_version expected 3.1.0"; fi
+if [[ "$openapi_servers" == *"\"url\": \"$ORIGIN\""* ]]; then ok "GET /v1/openapi.json servers[0].url=$ORIGIN"; else bad "GET /v1/openapi.json servers=$openapi_servers expected url $ORIGIN"; fi
 
 hub_file="$(state_dir)/hub.html"
 curl -sS -o "$hub_file" "$ORIGIN/" || true

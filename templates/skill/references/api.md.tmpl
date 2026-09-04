@@ -2,7 +2,9 @@
 
 Base: `{{ORIGIN}}/v1`  
 Auth: `Authorization: Bearer {{TOKEN_PREFIX}}…` (`{{TOKEN_ENV}}`)  
-Unauthenticated: `GET /v1/help`, `GET /v1/health`
+Unauthenticated: `GET /v1/help`, `GET /v1/health`, `GET /v1/openapi.json`
+
+This page is the short form. The full contract (every path, request and response schema, status code, and `error` code) is `GET {{ORIGIN}}/v1/openapi.json` (OpenAPI 3.1). `GET /v1/help` is this instance's identity: origins, token env, retention presets, token policy, limits.
 
 Errors are JSON: `{ error, message, hub }` plus extra fields. `message` is written for agents to read aloud to humans.
 
@@ -72,9 +74,10 @@ Humans pick a lifetime when minting on {{ORIGIN}}/tokens. `GET /v1/help` → `to
 ## Other
 
 ```
-GET /v1/whoami     { email, label, expires_at }
-GET /v1/help       this product, SOP, limits, routes, retention, tokens, identity
-GET /v1/health     { ok: true }
+GET /v1/whoami        { email, label, expires_at }
+GET /v1/help          this instance: SOP, limits, routes, retention, tokens, identity
+GET /v1/health        { ok: true }
+GET /v1/openapi.json  OpenAPI 3.1 contract for every route above
 ```
 
 Limits: 25 MB per file and per zip upload; 20 GB platform cap; optional content TTL per instance.

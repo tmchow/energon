@@ -120,7 +120,7 @@ The hostname split matters: active content never inherits the hub's Access sessi
 2. **Stable addresses, explicit mutation.** A site owns a human-chosen slug. A loose file gets a short ID. Updates use `PUT`; they do not mint a new URL. Writes are last-write-wins on the affected path.
 3. **Humans control credentials and destructive choices.** Humans mint tokens through Access. Agents must not invent tokens, guess ownership of an existing slug, or silently opt into overwrite.
 4. **Open links are deliberate.** Published URLs are public by default so recipients do not need a company login. Share passwords gate sensitive links; token-authenticated `/v1` reads bypass those passwords.
-5. **The running instance is the source of truth.** `GET /v1/help` describes the deployed host's identity, routes, limits, retention policy, and token policy. Installed skills tell agents to consult it instead of assuming upstream defaults.
+5. **The running instance is the source of truth.** `GET /v1/help` describes the deployed host's identity, routes, limits, retention policy, and token policy. `GET /v1/openapi.json` is the HTTP contract for every `/v1` route. Installed skills tell agents to consult them instead of assuming upstream defaults.
 
 ## When to use Energon
 
@@ -225,7 +225,7 @@ All authenticated routes use:
 -H "Authorization: Bearer $ENERGON_TOKEN"
 ```
 
-Errors are JSON with `error`, `message`, and `hub`. The live, machine-readable reference is always `GET {origin}/v1/help`.
+Errors are JSON with `error`, `message`, and `hub`. The live schema (paths, request and response bodies, status codes, error codes) is `GET {origin}/v1/openapi.json`, an OpenAPI 3.1 document committed at `openapi/v1.json`. `GET {origin}/v1/help` is the instance's identity: origins, token env, retention presets, token policy, limits.
 
 ### Sites
 
@@ -289,9 +289,10 @@ curl -sS "$ENERGON_ORIGIN/v1/files/{id}" \
 | --- | --- | --- |
 | `GET /v1/help` | Identity, SOP, routes, limits, retention, and token policy | None |
 | `GET /v1/health` | Return `{ "ok": true }` | None |
+| `GET /v1/openapi.json` | OpenAPI 3.1 contract for every `/v1` route, with `servers` set to this instance | None |
 | `GET /v1/whoami` | Return token owner, label, and expiry | Token |
 
-For headers, response shapes, filters, duplication, ZIP behavior, and error handling, see the rendered plugin's `references/api.md` or query the deployed `/v1/help`.
+For headers, response shapes, filters, duplication, ZIP behavior, and error handling, query the deployed `/v1/openapi.json` or see the rendered plugin's `references/api.md`.
 
 ## Configuration
 

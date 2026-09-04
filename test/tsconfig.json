@@ -8,6 +8,7 @@
     "./unit/skill-render.spec.ts",
     "./unit/markdown.spec.ts",
     "./unit/schema-drift.spec.ts",
+    "./unit/openapi-drift.spec.ts",
     "./unit/golden.spec.ts",
     "./unit/golden.ts"
   ]

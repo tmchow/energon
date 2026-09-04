@@ -1,0 +1,3250 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Energon",
+    "version": "1.0.0",
+    "description": "The /v1 HTTP contract for an Energon host: paths, request and response schemas, status codes, and error codes. Live instance identity is GET /v1/help: hub and content origins, token env var, retention presets, token policy, and limits. Read both. Published content lives on the content origin at /{handle}/s/{slug}/{path} and /{handle}/f/{id}/{filename}; those URLs are not part of /v1, need no token, and are gated only by an optional share password sent as header X-Energon-Password (401 password_required, 429 rate_limited). Never invent a token. Never default to overwrite: true.",
+    "license": {
+      "name": "MIT",
+      "identifier": "MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Replaced at runtime with this instance PUBLIC_ORIGIN by GET /v1/openapi.json"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "instance",
+      "description": "Discovery and identity. help, health, openapi, and llms.txt need no token."
+    },
+    {
+      "name": "sites",
+      "description": "A site is a named folder of files at a stable slug."
+    },
+    {
+      "name": "files",
+      "description": "A loose file is one file at a short id."
+    }
+  ],
+  "paths": {
+    "/llms.txt": {
+      "get": {
+        "operationId": "getLlmsTxt",
+        "tags": [
+          "instance"
+        ],
+        "summary": "Agent-readable overview",
+        "description": "Markdown for agents: what this instance is, how to publish, where the API, help, and this contract live. Not under /v1, but GET /v1/help routes lists it.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Overview.",
+            "content": {
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          }
+        }
+      }
+    },
+    "/v1/help": {
+      "get": {
+        "operationId": "getHelp",
+        "tags": [
+          "instance"
+        ],
+        "summary": "This instance's identity, policy, and SOP",
+        "description": "Live values for this deployment: hub and content origins, token env var and prefix, skill and marketplace names, limits, retention presets, token lifetimes, an agent SOP, and a routes map. This document is the HTTP schema; help is what varies per instance. Fields are not schematized here on purpose; read them from the live response.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Identity and policy. Top-level keys: product, hub, content_origin, account, openapi, env, skill, marketplace, install, auth, token_prefix, limits, retention, tokens, identity, sop, routes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          }
+        }
+      }
+    },
+    "/v1/health": {
+      "get": {
+        "operationId": "getHealth",
+        "tags": [
+          "instance"
+        ],
+        "summary": "Liveness",
+        "description": "Also served at /health. HEAD is accepted.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Up.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          }
+        }
+      }
+    },
+    "/v1/openapi.json": {
+      "get": {
+        "operationId": "getOpenapi",
+        "tags": [
+          "instance"
+        ],
+        "summary": "This contract",
+        "description": "This OpenAPI 3.1 document with servers[0].url set to this instance's PUBLIC_ORIGIN. Cacheable for 300 seconds; access-control-allow-origin: *. HEAD is accepted.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The OpenAPI document.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          }
+        }
+      }
+    },
+    "/v1/whoami": {
+      "get": {
+        "operationId": "whoami",
+        "tags": [
+          "instance"
+        ],
+        "summary": "Who this token is",
+        "responses": {
+          "200": {
+            "description": "Token owner, label, and expiry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Whoami"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenDomain"
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sites": {
+      "get": {
+        "operationId": "listSites",
+        "tags": [
+          "sites"
+        ],
+        "summary": "List sites you created or last wrote",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Q"
+          },
+          {
+            "$ref": "#/components/parameters/CreatedBy"
+          },
+          {
+            "$ref": "#/components/parameters/Sort"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/SitesCursor"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenDomain"
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/ContentOriginNotConfigured"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createSite",
+        "tags": [
+          "sites"
+        ],
+        "summary": "Create a site, claim an existing slug, or duplicate a site",
+        "description": "201 creates. An existing slug without overwrite is 409 site_exists: show the human its url and last writer and ask for a new slug or explicit overwrite. overwrite: true claims the slug (200) without deleting files and without changing TTL unless ttl is sent. duplicate_from copies another site's files into the new slug (201).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Existing slug claimed with overwrite: true.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteClaimed"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created. With duplicate_from the body also has duplicated, duplicated_from, and file_count.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SiteDuplicated"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SiteCreated"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad slug, body, ttl, write_policy, password, or duplicate request; or the duplicate source has more than max_import_files files.",
+            "x-error-codes": [
+              "bad_slug",
+              "reserved_slug",
+              "bad_json",
+              "bad_ttl",
+              "ttl_required",
+              "ttl_too_long",
+              "bad_write_policy",
+              "bad_password",
+              "bad_duplicate",
+              "too_many_files"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Claiming an owner-locked site you did not create, or an email outside the allowed domains.",
+            "x-error-codes": [
+              "forbidden_write",
+              "forbidden_domain"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "duplicate_from names a site that does not exist.",
+            "x-error-codes": [
+              "site_not_found"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The slug exists and overwrite was not true. Nothing was written.",
+            "x-error-codes": [
+              "site_exists"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteExistsError"
+                }
+              }
+            }
+          },
+          "410": {
+            "$ref": "#/components/responses/Expired"
+          },
+          "413": {
+            "description": "Duplicating would pass the platform storage cap.",
+            "x-error-codes": [
+              "storage_cap"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "500": {
+            "description": "Server error. Rollback failures mean the copy may be partial; retry after storage recovers.",
+            "x-error-codes": [
+              "copy_failed",
+              "site_copy_rollback_failed",
+              "handle_failed",
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/ContentOriginNotConfigured"
+          }
+        }
+      }
+    },
+    "/v1/sites/{slug}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Slug"
+        }
+      ],
+      "get": {
+        "operationId": "getSite",
+        "tags": [
+          "sites"
+        ],
+        "summary": "Site metadata and file listing",
+        "description": "Any token can read, including password-protected sites.",
+        "responses": {
+          "200": {
+            "description": "The site and its files.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad slug.",
+            "x-error-codes": [
+              "bad_slug",
+              "reserved_slug"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenDomain"
+          },
+          "404": {
+            "description": "No such site. Create it with POST /v1/sites; there is no implicit create.",
+            "x-error-codes": [
+              "site_not_found"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "$ref": "#/components/responses/Expired"
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "handle_failed",
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/ContentOriginNotConfigured"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchSite",
+        "tags": [
+          "sites"
+        ],
+        "summary": "Change share password, retention, or write policy",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContentPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SitePatched"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad slug, body, ttl, write_policy, or password.",
+            "x-error-codes": [
+              "bad_slug",
+              "reserved_slug",
+              "bad_json",
+              "bad_ttl",
+              "ttl_required",
+              "ttl_too_long",
+              "bad_write_policy",
+              "bad_password"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Not allowed to write this site; write_policy changes are creator-only; or an email outside the allowed domains.",
+            "x-error-codes": [
+              "forbidden_write",
+              "forbidden_write_policy",
+              "forbidden_domain"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such site.",
+            "x-error-codes": [
+              "site_not_found"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another write is in progress; retry.",
+            "x-error-codes": [
+              "site_busy"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "$ref": "#/components/responses/Expired"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "handle_failed",
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/ContentOriginNotConfigured"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteSite",
+        "tags": [
+          "sites"
+        ],
+        "summary": "Delete the site and every file in it",
+        "description": "No recycle bin. Idempotent: a slug that does not exist or has already expired is still 200.",
+        "responses": {
+          "200": {
+            "description": "Deleted or already gone.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteDeleted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad slug.",
+            "x-error-codes": [
+              "bad_slug",
+              "reserved_slug"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Not allowed to write this site, or an email outside the allowed domains.",
+            "x-error-codes": [
+              "forbidden_write",
+              "forbidden_domain"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error. A rollback failure means files may be partially removed; retry after storage recovers.",
+            "x-error-codes": [
+              "copy_failed",
+              "site_delete_rollback_failed",
+              "handle_failed",
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sites/{slug}/files/{path}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Slug"
+        },
+        {
+          "$ref": "#/components/parameters/FilePath"
+        }
+      ],
+      "get": {
+        "operationId": "getSiteFile",
+        "tags": [
+          "sites"
+        ],
+        "summary": "Read one file's bytes",
+        "description": "Token read; the share password is not needed. Markdown comes back as source, not rendered HTML.",
+        "responses": {
+          "200": {
+            "description": "The stored bytes with the stored content-type (application/octet-stream when unknown).",
+            "content": {
+              "application/octet-stream": {},
+              "*/*": {}
+            }
+          },
+          "400": {
+            "description": "Bad slug or path.",
+            "x-error-codes": [
+              "bad_slug",
+              "reserved_slug",
+              "bad_path"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenDomain"
+          },
+          "404": {
+            "description": "No such site or no file at that path.",
+            "x-error-codes": [
+              "site_not_found",
+              "file_not_found"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "$ref": "#/components/responses/Expired"
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "handle_failed",
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "putSiteFile",
+        "tags": [
+          "sites"
+        ],
+        "summary": "Create or replace one path with the request body",
+        "description": "Raw bytes, one call per file. Last write wins on this path only; other paths are untouched. Does not extend expiry. The request content-type is a hint; the stored type is sniffed from the path and bytes.",
+        "requestBody": {
+          "required": true,
+          "description": "The file bytes. Capped at GET /v1/help limits.file_bytes.",
+          "content": {
+            "application/octet-stream": {},
+            "*/*": {}
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Existing path replaced.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteFileWritten"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "New path.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteFileWritten"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad slug or path.",
+            "x-error-codes": [
+              "bad_slug",
+              "reserved_slug",
+              "bad_path"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Not allowed to write this site, or an email outside the allowed domains.",
+            "x-error-codes": [
+              "forbidden_write",
+              "forbidden_domain"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such site. Create it first; PUT never creates a site.",
+            "x-error-codes": [
+              "site_not_found"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "$ref": "#/components/responses/Expired"
+          },
+          "413": {
+            "description": "Over the per-file cap, or the platform storage cap.",
+            "x-error-codes": [
+              "too_large",
+              "storage_cap"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error. storage_rollback_failed means the previous bytes could not be restored; retry after storage recovers.",
+            "x-error-codes": [
+              "storage_rollback_failed",
+              "handle_failed",
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/ContentOriginNotConfigured"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteSiteFile",
+        "tags": [
+          "sites"
+        ],
+        "summary": "Delete one path",
+        "responses": {
+          "200": {
+            "description": "Deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteFileDeleted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad slug or path.",
+            "x-error-codes": [
+              "bad_slug",
+              "reserved_slug",
+              "bad_path"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Not allowed to write this site, or an email outside the allowed domains.",
+            "x-error-codes": [
+              "forbidden_write",
+              "forbidden_domain"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such site or no file at that path.",
+            "x-error-codes": [
+              "site_not_found",
+              "file_not_found"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "$ref": "#/components/responses/Expired"
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "storage_rollback_failed",
+              "handle_failed",
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sites/{slug}/import": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Slug"
+        }
+      ],
+      "post": {
+        "operationId": "importSite",
+        "tags": [
+          "sites"
+        ],
+        "summary": "Unpack a zip into the site",
+        "description": "Each entry becomes a path (last write wins per path; other paths stay). A single wrapping folder is stripped so index.html lands at the root. Junk entries (__MACOSX, .DS_Store) are skipped. Caps: GET /v1/help limits.zip_bytes for the archive and each extracted file, limits.max_import_files entries. The site must already exist.",
+        "requestBody": {
+          "required": true,
+          "description": "A zip archive.",
+          "content": {
+            "application/zip": {}
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Unpacked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteImported"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad slug, unreadable or empty zip, unsafe entry path, or too many entries.",
+            "x-error-codes": [
+              "bad_slug",
+              "reserved_slug",
+              "invalid_zip",
+              "empty_zip",
+              "bad_zip_path",
+              "too_many_files"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Not allowed to write this site, or an email outside the allowed domains.",
+            "x-error-codes": [
+              "forbidden_write",
+              "forbidden_domain"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such site. Create it first.",
+            "x-error-codes": [
+              "site_not_found"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "$ref": "#/components/responses/Expired"
+          },
+          "413": {
+            "description": "Zip or an entry over the cap, or the platform storage cap.",
+            "x-error-codes": [
+              "too_large",
+              "storage_cap"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error. A rollback failure means the import may be partial; retry after storage recovers.",
+            "x-error-codes": [
+              "site_import_rollback_failed",
+              "handle_failed",
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/ContentOriginNotConfigured"
+          }
+        }
+      }
+    },
+    "/v1/sites/{slug}/export": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Slug"
+        }
+      ],
+      "get": {
+        "operationId": "exportSite",
+        "tags": [
+          "sites"
+        ],
+        "summary": "Download the site as a zip",
+        "description": "Token read; skips the share password. Same size and file-count caps as import. An empty site is 400.",
+        "responses": {
+          "200": {
+            "description": "The archive, as an attachment named {slug}.zip.",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "attachment; filename=\"{slug}.zip\""
+              }
+            },
+            "content": {
+              "application/zip": {}
+            }
+          },
+          "400": {
+            "description": "Bad slug, no files, too many files, or a stored path that cannot be zipped.",
+            "x-error-codes": [
+              "bad_slug",
+              "reserved_slug",
+              "empty_site",
+              "too_many_files",
+              "bad_zip_path"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenDomain"
+          },
+          "404": {
+            "description": "No such site.",
+            "x-error-codes": [
+              "site_not_found"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "$ref": "#/components/responses/Expired"
+          },
+          "413": {
+            "description": "The files add up to more than the zip cap. Split the site.",
+            "x-error-codes": [
+              "too_large"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A stored file is missing or the zip could not be assembled.",
+            "x-error-codes": [
+              "export_failed",
+              "handle_failed",
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/files": {
+      "get": {
+        "operationId": "listFiles",
+        "tags": [
+          "files"
+        ],
+        "summary": "List loose files you created or last wrote",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Q"
+          },
+          {
+            "$ref": "#/components/parameters/CreatedBy"
+          },
+          {
+            "$ref": "#/components/parameters/Sort"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/FilesCursor"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LooseFileList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenDomain"
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/ContentOriginNotConfigured"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createFile",
+        "tags": [
+          "files"
+        ],
+        "summary": "Upload one file, or duplicate an existing one",
+        "description": "Three request shapes, chosen by content-type. Raw bytes with X-Filename (any content-type other than application/json or multipart/form-data). multipart/form-data with field file, or duplicate_from. application/json with duplicate_from (or with X-Filename, in which case the JSON text is stored as the file). Options come from headers or the matching multipart field; headers win. A .zip stays a zip. To revise later, PUT /v1/files/{id}; do not POST again.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XFilename"
+          },
+          {
+            "$ref": "#/components/parameters/XEnergonTTL"
+          },
+          {
+            "$ref": "#/components/parameters/XEnergonWritePolicy"
+          },
+          {
+            "$ref": "#/components/parameters/XEnergonSetPassword"
+          },
+          {
+            "$ref": "#/components/parameters/XEnergonDuplicateFrom"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "description": "Raw bytes. X-Filename is required unless X-Energon-Duplicate-From is set."
+            },
+            "*/*": {
+              "description": "Raw bytes under any other content-type; it becomes the content-type hint. X-Filename is required."
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/FileUploadForm"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileDuplicateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created. With duplicate_from the body also has created_by, duplicated, and duplicated_from.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/LooseFileDuplicated"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LooseFileCreated"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad or missing filename, no bytes and no duplicate_from, bytes and duplicate_from together, or a bad ttl, write_policy, or password.",
+            "x-error-codes": [
+              "bad_filename",
+              "missing_file",
+              "missing_filename",
+              "bad_duplicate",
+              "bad_ttl",
+              "ttl_required",
+              "ttl_too_long",
+              "bad_write_policy",
+              "bad_password"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenDomain"
+          },
+          "404": {
+            "description": "duplicate_from names a file that does not exist.",
+            "x-error-codes": [
+              "file_not_found"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "$ref": "#/components/responses/Expired"
+          },
+          "413": {
+            "description": "Over the per-file cap, or the platform storage cap.",
+            "x-error-codes": [
+              "too_large",
+              "storage_cap"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "copy_failed",
+              "id_failed",
+              "handle_failed",
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/ContentOriginNotConfigured"
+          }
+        }
+      }
+    },
+    "/v1/files/{id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/FileId"
+        }
+      ],
+      "get": {
+        "operationId": "getFile",
+        "tags": [
+          "files"
+        ],
+        "summary": "Read the file's bytes",
+        "description": "Token read; the share password is not needed. Any token can read.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Download"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The stored bytes.",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "inline (default) or attachment (?download=1), with the stored filename."
+              },
+              "X-Energon-Write-Policy": {
+                "schema": {
+                  "$ref": "#/components/schemas/WritePolicy"
+                },
+                "description": "Who can write this file."
+              }
+            },
+            "content": {
+              "application/octet-stream": {},
+              "*/*": {}
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenDomain"
+          },
+          "404": {
+            "description": "No loose file with that id.",
+            "x-error-codes": [
+              "file_not_found"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "$ref": "#/components/responses/Expired"
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "putFile",
+        "tags": [
+          "files"
+        ],
+        "summary": "Replace the bytes; same id and URL",
+        "description": "Raw body (optional X-Filename to rename) or multipart field file. Does not extend expiry and does not change write_policy; use PATCH for those. 404 if the id does not exist; there is no implicit create.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/XFilename"
+          },
+          {
+            "$ref": "#/components/parameters/XEnergonSetPassword"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "description": "Raw bytes."
+            },
+            "*/*": {
+              "description": "Raw bytes under any content-type other than multipart/form-data; it becomes the content-type hint."
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/FileReplaceForm"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Replaced.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LooseFileReplaced"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad filename, multipart without a file field, or a bad password.",
+            "x-error-codes": [
+              "bad_filename",
+              "missing_file",
+              "bad_password"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Not allowed to write this file, or an email outside the allowed domains.",
+            "x-error-codes": [
+              "forbidden_write",
+              "forbidden_domain"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No loose file with that id.",
+            "x-error-codes": [
+              "file_not_found"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another write is in progress or landed first; retry.",
+            "x-error-codes": [
+              "file_busy",
+              "file_write_lost"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "$ref": "#/components/responses/Expired"
+          },
+          "413": {
+            "description": "Over the per-file cap, or the platform storage cap.",
+            "x-error-codes": [
+              "too_large",
+              "storage_cap"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "handle_failed",
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/ContentOriginNotConfigured"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchFile",
+        "tags": [
+          "files"
+        ],
+        "summary": "Change share password, retention, or write policy",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContentPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LooseFilePatched"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad body, ttl, write_policy, or password.",
+            "x-error-codes": [
+              "bad_json",
+              "bad_ttl",
+              "ttl_required",
+              "ttl_too_long",
+              "bad_write_policy",
+              "bad_password"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Not allowed to write this file; write_policy changes are creator-only; or an email outside the allowed domains.",
+            "x-error-codes": [
+              "forbidden_write",
+              "forbidden_write_policy",
+              "forbidden_domain"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No loose file with that id.",
+            "x-error-codes": [
+              "file_not_found"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another write is in progress; retry.",
+            "x-error-codes": [
+              "file_busy"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "$ref": "#/components/responses/Expired"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "handle_failed",
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/ContentOriginNotConfigured"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteFile",
+        "tags": [
+          "files"
+        ],
+        "summary": "Delete the file and its object",
+        "description": "No recycle bin.",
+        "responses": {
+          "200": {
+            "description": "Deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LooseFileDeleted"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Not allowed to write this file, or an email outside the allowed domains.",
+            "x-error-codes": [
+              "forbidden_write",
+              "forbidden_domain"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No loose file with that id.",
+            "x-error-codes": [
+              "file_not_found"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another write is in progress or the file changed during deletion; retry.",
+            "x-error-codes": [
+              "file_busy",
+              "file_delete_lost"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "$ref": "#/components/responses/Expired"
+          },
+          "500": {
+            "description": "Server error. A rollback failure means the bytes could not be restored; retry after storage recovers.",
+            "x-error-codes": [
+              "file_delete_rollback_failed",
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Authorization: Bearer {token}. A human mints the token at {origin}/tokens while signed in and exports it under the env var named by GET /v1/help env; the token starts with GET /v1/help token_prefix. The secret is shown once. Never invent a token. A 401 token_expired is terminal: the human mints a new one."
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "description": "Every non-2xx JSON body. Some codes add fields: site_exists and token_expired are typed below; too_large and storage_cap add limit_bytes plus actual_bytes or used_bytes; bad_ttl, ttl_required, and ttl_too_long add presets and default_ttl or max_ttl; forbidden_domain adds allowed_email_domains; site_not_found adds hint. password_required (401) and rate_limited (429) come from the public content gate, not /v1. bad_label, bad_origin, and token_not_found come from the hub /account API. not_found is any unknown route. bad_path is also returned for a URL that is not valid percent-encoding.",
+        "required": [
+          "error",
+          "message"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": [
+              "bad_content_type",
+              "bad_duplicate",
+              "bad_filename",
+              "bad_json",
+              "bad_label",
+              "bad_origin",
+              "bad_password",
+              "bad_path",
+              "bad_slug",
+              "bad_ttl",
+              "bad_write_policy",
+              "bad_zip_path",
+              "content_origin_not_configured",
+              "copy_failed",
+              "empty_site",
+              "empty_zip",
+              "expired",
+              "export_failed",
+              "file_busy",
+              "file_delete_lost",
+              "file_delete_rollback_failed",
+              "file_not_found",
+              "file_write_lost",
+              "forbidden_domain",
+              "forbidden_write",
+              "forbidden_write_policy",
+              "handle_failed",
+              "id_failed",
+              "internal",
+              "invalid_zip",
+              "method_not_allowed",
+              "missing_file",
+              "missing_filename",
+              "not_found",
+              "password_required",
+              "rate_limited",
+              "reserved_slug",
+              "site_busy",
+              "site_copy_rollback_failed",
+              "site_delete_rollback_failed",
+              "site_exists",
+              "site_import_rollback_failed",
+              "site_not_found",
+              "storage_cap",
+              "storage_rollback_failed",
+              "token_expired",
+              "token_not_found",
+              "too_large",
+              "too_many_files",
+              "ttl_required",
+              "ttl_too_long",
+              "unauthorized"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Written for an agent to read aloud to a human."
+          },
+          "hub": {
+            "type": "string",
+            "format": "uri",
+            "description": "{origin}/account. Absent on public content gate errors and on 405 bodies."
+          }
+        },
+        "additionalProperties": true
+      },
+      "UnauthorizedError": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Error"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "error": {
+                "const": "unauthorized"
+              }
+            }
+          }
+        ],
+        "description": "Missing, malformed, unknown, or revoked token. The message names the tokens page and the env var."
+      },
+      "TokenExpiredError": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Error"
+          },
+          {
+            "type": "object",
+            "required": [
+              "expired_at",
+              "tokens_url"
+            ],
+            "properties": {
+              "error": {
+                "const": "token_expired"
+              },
+              "expired_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "tokens_url": {
+                "type": "string",
+                "format": "uri"
+              }
+            }
+          }
+        ],
+        "description": "Terminal. The token cannot be extended; a human mints a new one at tokens_url. Do not retry with it."
+      },
+      "SiteExistsError": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Error"
+          },
+          {
+            "type": "object",
+            "required": [
+              "url",
+              "handle",
+              "last_written_by",
+              "updated_at",
+              "file_count",
+              "password_protected",
+              "expires_at",
+              "hint"
+            ],
+            "properties": {
+              "error": {
+                "const": "site_exists"
+              },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Human URL on the content origin. Opens without a token; gated only by an optional share password."
+              },
+              "handle": {
+                "type": "string"
+              },
+              "last_written_by": {
+                "type": "string",
+                "description": "Account email."
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "file_count": {
+                "type": "integer"
+              },
+              "password_protected": {
+                "type": "boolean"
+              },
+              "expires_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "ISO timestamp, or null for never."
+              },
+              "hint": {
+                "type": "string",
+                "description": "How to claim the slug with overwrite: true, or pick a new one. Show it to the human; do not act on it alone."
+              }
+            }
+          }
+        ]
+      },
+      "WritePolicy": {
+        "type": "string",
+        "enum": [
+          "owner",
+          "instance"
+        ],
+        "description": "owner: only the creating account (keyed by IdP identity) can write. instance: any token on this host can write. Anyone with a token can read via /v1 either way."
+      },
+      "Ttl": {
+        "type": [
+          "string",
+          "integer"
+        ],
+        "description": "A preset id from GET /v1/help retention.presets (such as 7d), any duration matching \\d+[smhd], never (only where retention.allow_unlimited is true), or a positive integer of seconds. Omitted means the instance default_ttl. Above retention.max_ttl is 400 ttl_too_long."
+      },
+      "SharePassword": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "maxLength": 128,
+        "description": "Share password for the public URL. Empty string or null clears it. Whitespace is trimmed. Over 128 characters is 400 bad_password."
+      },
+      "Slug": {
+        "type": "string",
+        "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
+        "description": "1 to 63 lowercase letters, digits, and hyphens; no leading or trailing hyphen."
+      },
+      "FileId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9]{6,12}$",
+        "description": "Loose file id minted by POST /v1/files."
+      },
+      "SiteCreateRequest": {
+        "type": "object",
+        "required": [
+          "slug"
+        ],
+        "properties": {
+          "slug": {
+            "$ref": "#/components/schemas/Slug"
+          },
+          "overwrite": {
+            "type": "boolean",
+            "default": false,
+            "description": "false: an existing slug is 409 site_exists. true: claim the existing site for further writes (200). Never default to true; the human decides."
+          },
+          "password": {
+            "$ref": "#/components/schemas/SharePassword"
+          },
+          "ttl": {
+            "$ref": "#/components/schemas/Ttl"
+          },
+          "write_policy": {
+            "$ref": "#/components/schemas/WritePolicy"
+          },
+          "duplicate_from": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Slug"
+              }
+            ],
+            "description": "Copy every file of that site into the new slug. Cannot be combined with overwrite (400 bad_duplicate). You become created_by; write_policy defaults to the instance default; TTL is fresh; the share password is not copied."
+          }
+        }
+      },
+      "ContentPatch": {
+        "type": "object",
+        "description": "A key that is absent leaves that setting unchanged. Sending only write_policy does not require write access, but is creator-only.",
+        "properties": {
+          "password": {
+            "$ref": "#/components/schemas/SharePassword"
+          },
+          "ttl": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Ttl"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Resets expiry from now. null or never clears expiry where the instance allows it (else 400 ttl_required). Can revive an expired object that has not been purged yet."
+          },
+          "write_policy": {
+            "$ref": "#/components/schemas/WritePolicy"
+          }
+        }
+      },
+      "SiteCreated": {
+        "type": "object",
+        "required": [
+          "slug",
+          "handle",
+          "url",
+          "created",
+          "password_protected",
+          "password",
+          "ttl",
+          "expires_at",
+          "write_policy"
+        ],
+        "properties": {
+          "slug": {
+            "$ref": "#/components/schemas/Slug"
+          },
+          "handle": {
+            "type": "string",
+            "description": "The owner's URL handle."
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Human URL on the content origin. Opens without a token; gated only by an optional share password."
+          },
+          "created": {
+            "const": true
+          },
+          "password_protected": {
+            "type": "boolean"
+          },
+          "password": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. GET never returns it; only a hash is stored."
+          },
+          "ttl": {
+            "type": "string",
+            "description": "The retention that was applied: a preset id such as 7d, a duration, or never."
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "ISO timestamp, or null for never."
+          },
+          "write_policy": {
+            "$ref": "#/components/schemas/WritePolicy"
+          }
+        }
+      },
+      "SiteDuplicated": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SiteCreated"
+          },
+          {
+            "type": "object",
+            "required": [
+              "duplicated",
+              "duplicated_from",
+              "file_count"
+            ],
+            "properties": {
+              "duplicated": {
+                "const": true
+              },
+              "duplicated_from": {
+                "$ref": "#/components/schemas/Slug"
+              },
+              "file_count": {
+                "type": "integer",
+                "description": "Files copied."
+              }
+            }
+          }
+        ]
+      },
+      "SiteClaimed": {
+        "type": "object",
+        "description": "overwrite: true on an existing slug. Nothing is deleted; you are now last_written_by. ttl is present only when the request sent one.",
+        "required": [
+          "slug",
+          "handle",
+          "url",
+          "created",
+          "claimed",
+          "password_protected",
+          "password",
+          "expires_at",
+          "write_policy"
+        ],
+        "properties": {
+          "slug": {
+            "$ref": "#/components/schemas/Slug"
+          },
+          "handle": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Human URL on the content origin. Opens without a token; gated only by an optional share password."
+          },
+          "created": {
+            "const": false
+          },
+          "claimed": {
+            "const": true
+          },
+          "password_protected": {
+            "type": "boolean"
+          },
+          "password": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. GET never returns it; only a hash is stored."
+          },
+          "ttl": {
+            "type": "string",
+            "description": "The retention that was applied: a preset id such as 7d, a duration, or never."
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "ISO timestamp, or null for never."
+          },
+          "write_policy": {
+            "$ref": "#/components/schemas/WritePolicy"
+          }
+        }
+      },
+      "SitePatched": {
+        "type": "object",
+        "description": "ttl is present only when the request sent one.",
+        "required": [
+          "slug",
+          "handle",
+          "url",
+          "password_protected",
+          "password",
+          "expires_at",
+          "write_policy"
+        ],
+        "properties": {
+          "slug": {
+            "$ref": "#/components/schemas/Slug"
+          },
+          "handle": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Human URL on the content origin. Opens without a token; gated only by an optional share password."
+          },
+          "password_protected": {
+            "type": "boolean"
+          },
+          "password": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. GET never returns it; only a hash is stored."
+          },
+          "ttl": {
+            "type": "string",
+            "description": "The retention that was applied: a preset id such as 7d, a duration, or never."
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "ISO timestamp, or null for never."
+          },
+          "write_policy": {
+            "$ref": "#/components/schemas/WritePolicy"
+          }
+        }
+      },
+      "SiteFile": {
+        "type": "object",
+        "required": [
+          "handle",
+          "slug",
+          "path",
+          "size",
+          "content_type",
+          "updated_at",
+          "last_written_by",
+          "url",
+          "api_url"
+        ],
+        "properties": {
+          "handle": {
+            "type": "string"
+          },
+          "slug": {
+            "$ref": "#/components/schemas/Slug"
+          },
+          "path": {
+            "type": "string",
+            "description": "Relative path inside the site; may contain slashes."
+          },
+          "size": {
+            "type": "integer",
+            "description": "Bytes."
+          },
+          "content_type": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_written_by": {
+            "type": "string",
+            "description": "Account email."
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Human URL on the content origin. Opens without a token; gated only by an optional share password."
+          },
+          "api_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "GET /v1/sites/{slug}/files/{path} on the hub origin; needs a token, skips the share password."
+          }
+        }
+      },
+      "SiteDetail": {
+        "type": "object",
+        "required": [
+          "slug",
+          "handle",
+          "url",
+          "created_at",
+          "updated_at",
+          "created_by",
+          "last_written_by",
+          "password_protected",
+          "expires_at",
+          "write_policy",
+          "files"
+        ],
+        "properties": {
+          "slug": {
+            "$ref": "#/components/schemas/Slug"
+          },
+          "handle": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Human URL on the content origin. Opens without a token; gated only by an optional share password."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "type": "string",
+            "description": "Account email."
+          },
+          "last_written_by": {
+            "type": "string",
+            "description": "Account email."
+          },
+          "password_protected": {
+            "type": "boolean"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "ISO timestamp, or null for never."
+          },
+          "write_policy": {
+            "$ref": "#/components/schemas/WritePolicy"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SiteFile"
+            },
+            "description": "Sorted by path."
+          }
+        }
+      },
+      "SiteSummary": {
+        "type": "object",
+        "required": [
+          "handle",
+          "slug",
+          "created_at",
+          "updated_at",
+          "created_by",
+          "last_written_by",
+          "file_count",
+          "size",
+          "url",
+          "password_protected",
+          "expires_at",
+          "write_policy"
+        ],
+        "properties": {
+          "handle": {
+            "type": "string"
+          },
+          "slug": {
+            "$ref": "#/components/schemas/Slug"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "type": "string",
+            "description": "Account email."
+          },
+          "last_written_by": {
+            "type": "string",
+            "description": "Account email."
+          },
+          "file_count": {
+            "type": "integer"
+          },
+          "size": {
+            "type": "integer",
+            "description": "Total bytes across files."
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Human URL on the content origin. Opens without a token; gated only by an optional share password."
+          },
+          "password_protected": {
+            "type": "boolean"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "ISO timestamp, or null for never."
+          },
+          "write_policy": {
+            "$ref": "#/components/schemas/WritePolicy"
+          }
+        }
+      },
+      "SiteList": {
+        "type": "object",
+        "required": [
+          "sites",
+          "total",
+          "next_cursor"
+        ],
+        "properties": {
+          "sites": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SiteSummary"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Matches across all pages."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Pass as cursor for the next page; null on the last page."
+          }
+        }
+      },
+      "SiteFileWritten": {
+        "type": "object",
+        "required": [
+          "url",
+          "api_url",
+          "path",
+          "size",
+          "content_type"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Human URL on the content origin. Opens without a token; gated only by an optional share password."
+          },
+          "api_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "path": {
+            "type": "string",
+            "description": "Normalized relative path that was written."
+          },
+          "size": {
+            "type": "integer"
+          },
+          "content_type": {
+            "type": "string",
+            "description": "Sniffed from the path and bytes; the request content-type is a hint."
+          }
+        }
+      },
+      "SiteFileDeleted": {
+        "type": "object",
+        "required": [
+          "ok",
+          "deleted",
+          "path"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "deleted": {
+            "const": true
+          },
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "SiteDeleted": {
+        "type": "object",
+        "required": [
+          "ok",
+          "deleted"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "deleted": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Slug"
+              }
+            ],
+            "description": "The slug that was deleted (or was already gone)."
+          }
+        }
+      },
+      "SiteImported": {
+        "type": "object",
+        "required": [
+          "slug",
+          "url",
+          "written"
+        ],
+        "properties": {
+          "slug": {
+            "$ref": "#/components/schemas/Slug"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Human URL on the content origin. Opens without a token; gated only by an optional share password."
+          },
+          "written": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Paths written, after stripping a single wrapping folder and junk entries."
+          }
+        }
+      },
+      "FileDuplicateRequest": {
+        "type": "object",
+        "required": [
+          "duplicate_from"
+        ],
+        "properties": {
+          "duplicate_from": {
+            "$ref": "#/components/schemas/FileId"
+          },
+          "filename": {
+            "type": "string",
+            "description": "New filename; defaults to the source filename. Path segments are dropped."
+          },
+          "password": {
+            "$ref": "#/components/schemas/SharePassword"
+          },
+          "ttl": {
+            "$ref": "#/components/schemas/Ttl"
+          },
+          "write_policy": {
+            "$ref": "#/components/schemas/WritePolicy"
+          }
+        }
+      },
+      "FileUploadForm": {
+        "type": "object",
+        "description": "Send file, or duplicate_from (optionally with filename). Both together is 400 bad_duplicate. Header variants (X-Energon-TTL, X-Energon-Write-Policy, X-Energon-Set-Password, X-Energon-Duplicate-From) override the matching field.",
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "description": "The bytes. Its filename and type are used."
+          },
+          "duplicate_from": {
+            "$ref": "#/components/schemas/FileId"
+          },
+          "filename": {
+            "type": "string",
+            "description": "Only with duplicate_from."
+          },
+          "password": {
+            "type": "string",
+            "description": "Share password; empty clears."
+          },
+          "ttl": {
+            "$ref": "#/components/schemas/Ttl"
+          },
+          "write_policy": {
+            "$ref": "#/components/schemas/WritePolicy"
+          }
+        }
+      },
+      "FileReplaceForm": {
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "description": "The new bytes. A different filename renames the file; the id and URL id segment stay."
+          },
+          "password": {
+            "type": "string",
+            "description": "Share password; empty clears. X-Energon-Set-Password overrides it."
+          }
+        }
+      },
+      "LooseFileCreated": {
+        "type": "object",
+        "required": [
+          "url",
+          "api_url",
+          "id",
+          "handle",
+          "filename",
+          "size",
+          "content_type",
+          "password_protected",
+          "password",
+          "ttl",
+          "expires_at",
+          "write_policy"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Human URL: {content_origin}/{handle}/f/{id}/{filename}. Spaces in the filename become underscores in the path."
+          },
+          "api_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "GET /v1/files/{id} on the hub origin. Stable across PUT."
+          },
+          "id": {
+            "$ref": "#/components/schemas/FileId"
+          },
+          "handle": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "content_type": {
+            "type": "string"
+          },
+          "password_protected": {
+            "type": "boolean"
+          },
+          "password": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. GET never returns it; only a hash is stored."
+          },
+          "ttl": {
+            "type": "string",
+            "description": "The retention that was applied: a preset id such as 7d, a duration, or never."
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "ISO timestamp, or null for never."
+          },
+          "write_policy": {
+            "$ref": "#/components/schemas/WritePolicy"
+          }
+        }
+      },
+      "LooseFileDuplicated": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/LooseFileCreated"
+          },
+          {
+            "type": "object",
+            "required": [
+              "created_by",
+              "duplicated",
+              "duplicated_from"
+            ],
+            "properties": {
+              "created_by": {
+                "type": "string",
+                "description": "Account email."
+              },
+              "duplicated": {
+                "const": true
+              },
+              "duplicated_from": {
+                "$ref": "#/components/schemas/FileId"
+              }
+            }
+          }
+        ]
+      },
+      "LooseFileReplaced": {
+        "type": "object",
+        "description": "PUT does not change ttl, expires_at, or write_policy; PATCH does.",
+        "required": [
+          "url",
+          "api_url",
+          "id",
+          "handle",
+          "filename",
+          "size",
+          "content_type",
+          "replaced",
+          "password_protected",
+          "password"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Human URL on the content origin. Opens without a token; gated only by an optional share password."
+          },
+          "api_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "id": {
+            "$ref": "#/components/schemas/FileId"
+          },
+          "handle": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "content_type": {
+            "type": "string"
+          },
+          "replaced": {
+            "const": true
+          },
+          "password_protected": {
+            "type": "boolean"
+          },
+          "password": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. GET never returns it; only a hash is stored."
+          }
+        }
+      },
+      "LooseFilePatched": {
+        "type": "object",
+        "description": "ttl is present only when the request sent one.",
+        "required": [
+          "id",
+          "handle",
+          "filename",
+          "url",
+          "api_url",
+          "password_protected",
+          "password",
+          "expires_at",
+          "write_policy"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/FileId"
+          },
+          "handle": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Human URL on the content origin. Opens without a token; gated only by an optional share password."
+          },
+          "api_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "password_protected": {
+            "type": "boolean"
+          },
+          "password": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. GET never returns it; only a hash is stored."
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "ISO timestamp, or null for never."
+          },
+          "ttl": {
+            "type": "string",
+            "description": "The retention that was applied: a preset id such as 7d, a duration, or never."
+          },
+          "write_policy": {
+            "$ref": "#/components/schemas/WritePolicy"
+          }
+        }
+      },
+      "LooseFileSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "handle",
+          "filename",
+          "size",
+          "content_type",
+          "created_at",
+          "created_by",
+          "updated_at",
+          "last_written_by",
+          "url",
+          "api_url",
+          "password_protected",
+          "expires_at",
+          "write_policy"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/FileId"
+          },
+          "handle": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "null on rows created before handles existed; url then falls back to api_url."
+          },
+          "filename": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "content_type": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "type": "string",
+            "description": "Account email."
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_written_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "api_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "password_protected": {
+            "type": "boolean"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "ISO timestamp, or null for never."
+          },
+          "write_policy": {
+            "$ref": "#/components/schemas/WritePolicy"
+          }
+        }
+      },
+      "LooseFileList": {
+        "type": "object",
+        "required": [
+          "files",
+          "total",
+          "next_cursor"
+        ],
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LooseFileSummary"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Matches across all pages."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Pass as cursor for the next page; null on the last page."
+          }
+        }
+      },
+      "LooseFileDeleted": {
+        "type": "object",
+        "required": [
+          "ok",
+          "deleted"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "deleted": {
+            "$ref": "#/components/schemas/FileId"
+          }
+        }
+      },
+      "Whoami": {
+        "type": "object",
+        "required": [
+          "email",
+          "label",
+          "expires_at"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "Account email."
+          },
+          "label": {
+            "type": "string",
+            "description": "The label the human gave the token at mint."
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When this token stops working; null means never. Warn the human before it passes."
+          }
+        }
+      },
+      "Health": {
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          }
+        }
+      }
+    },
+    "parameters": {
+      "Slug": {
+        "name": "slug",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/Slug"
+        },
+        "description": "Your own site with that slug, else the slug when exactly one site on the instance has it."
+      },
+      "FilePath": {
+        "name": "path",
+        "in": "path",
+        "required": true,
+        "style": "simple",
+        "schema": {
+          "type": "string"
+        },
+        "description": "Relative path inside the site. May contain slashes (docs/a.txt), so it spans the rest of the URL. Percent-encode each segment. Leading slashes and .. segments are 400 bad_path."
+      },
+      "FileId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/FileId"
+        },
+        "description": "Loose file id. A trailing /{filename} segment after the id is accepted and ignored; identity is the id."
+      },
+      "Scope": {
+        "name": "scope",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "involved",
+            "created",
+            "edited"
+          ],
+          "default": "involved"
+        },
+        "description": "Lists only what you created or last wrote. created: you created it. edited: you last wrote it but did not create it. involved: either. Unknown values mean involved."
+      },
+      "Q": {
+        "name": "q",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "description": "Case-insensitive substring of the slug (sites) or filename (files), over the full involved set. %, _, and \\ are stripped; the first 64 characters are used."
+      },
+      "CreatedBy": {
+        "name": "created_by",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        },
+        "description": "Only objects created by this email (lowercased). Still intersected with scope; you cannot list someone else's whole catalog."
+      },
+      "Sort": {
+        "name": "sort",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "updated",
+            "name"
+          ],
+          "default": "updated"
+        },
+        "description": "updated: newest first. name: slug or filename ascending. Anything else means updated."
+      },
+      "Limit": {
+        "name": "limit",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50,
+          "default": 25
+        },
+        "description": "Page size. Clamped to 1..50; non-numeric means 25."
+      },
+      "Cursor": {
+        "name": "cursor",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        },
+        "description": "Opaque keyset cursor from a previous next_cursor. Must match the same sort."
+      },
+      "SitesCursor": {
+        "name": "sites_cursor",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        },
+        "description": "Alias for cursor read when cursor is absent. The hub pages sites and files from one URL with sites_cursor and files_cursor."
+      },
+      "FilesCursor": {
+        "name": "files_cursor",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        },
+        "description": "Alias for cursor read when cursor is absent. The hub pages sites and files from one URL with sites_cursor and files_cursor."
+      },
+      "Download": {
+        "name": "download",
+        "in": "query",
+        "allowEmptyValue": true,
+        "schema": {
+          "type": "string",
+          "enum": [
+            "1",
+            "true",
+            ""
+          ]
+        },
+        "description": "Present (download=1, download=true, or bare download) returns Content-Disposition: attachment instead of inline."
+      },
+      "XFilename": {
+        "name": "X-Filename",
+        "in": "header",
+        "schema": {
+          "type": "string"
+        },
+        "description": "Filename for a raw-body upload; path segments are dropped, 180 characters max. Required on POST /v1/files unless X-Energon-Duplicate-From is set (400 missing_filename). Optional on PUT /v1/files/{id} to rename. With an application/json body and this header, the JSON is stored as file bytes."
+      },
+      "XEnergonTTL": {
+        "name": "X-Energon-TTL",
+        "in": "header",
+        "schema": {
+          "$ref": "#/components/schemas/Ttl"
+        },
+        "description": "Retention for the new file. Overrides the multipart ttl field."
+      },
+      "XEnergonWritePolicy": {
+        "name": "X-Energon-Write-Policy",
+        "in": "header",
+        "schema": {
+          "$ref": "#/components/schemas/WritePolicy"
+        },
+        "description": "Who can write the new file. Overrides the multipart write_policy field. Omitted means the instance default (GET /v1/help retention.write_policy)."
+      },
+      "XEnergonSetPassword": {
+        "name": "X-Energon-Set-Password",
+        "in": "header",
+        "schema": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "description": "Set the share password on the file being written; an empty value clears it. Overrides the multipart password field. This is not X-Energon-Password, which unlocks a gated public URL and is not a /v1 header."
+      },
+      "XEnergonDuplicateFrom": {
+        "name": "X-Energon-Duplicate-From",
+        "in": "header",
+        "schema": {
+          "$ref": "#/components/schemas/FileId"
+        },
+        "description": "Copy an existing loose file into a new id instead of uploading bytes. X-Filename then names the copy."
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "No valid token. unauthorized: missing, not this instance's prefix, unknown, or revoked. token_expired: terminal; stop and tell the human to mint a new token.",
+        "x-error-codes": [
+          "unauthorized",
+          "token_expired"
+        ],
+        "content": {
+          "application/json": {
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                },
+                {
+                  "$ref": "#/components/schemas/TokenExpiredError"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "ForbiddenDomain": {
+        "description": "The token's account email is outside this instance's allowed domains.",
+        "x-error-codes": [
+          "forbidden_domain"
+        ],
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Expired": {
+        "description": "The object passed expires_at and is gone or being purged. Do not retry the same URL.",
+        "x-error-codes": [
+          "expired"
+        ],
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "MethodNotAllowed": {
+        "description": "Method not allowed.",
+        "x-error-codes": [
+          "method_not_allowed"
+        ],
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "UnsupportedMediaType": {
+        "description": "The body must be a JSON object; form and multipart bodies are refused here.",
+        "x-error-codes": [
+          "bad_content_type"
+        ],
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "ContentOriginNotConfigured": {
+        "description": "This host has no CONTENT_ORIGIN, so it cannot mint public URLs. An operator must set it.",
+        "x-error-codes": [
+          "content_origin_not_configured"
+        ],
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    }
+  }
+}

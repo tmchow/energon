@@ -22,11 +22,11 @@ This skill is bound to **https://energon.example.com**. Do not send traffic to a
 5. Published `/sites` and `/files` URLs are **not** behind Access. Anyone with the link can open them unless you set a share password. Agents can GET the human URL (send `X-Energon-Password` if set) or use `api_url` (`GET /v1/...`) with their token — token reads skip the share password.
 6. Default is **no password**. Set one only if they ask. Write responses echo the password you just set so you can tell them. GET never returns it — only a hash is stored. Do **not** write it into the published file. Change with `PATCH` `{ "password": "new" }`; clear with `PATCH` `{ "password": "" }`.
 7. Always return the URL(s). Do not keep the token or the share password in a file you publish. Do not keep the token in your reply.
-8. If you are confused, `GET https://energon.example.com/v1/help` or `GET https://energon.example.com/llms.txt` (no auth). Trust that document for this instance's retention presets and skill name.
+8. If you are confused, `GET https://energon.example.com/v1/help` or `GET https://energon.example.com/llms.txt` (no auth). Trust that document for this instance's retention presets and skill name. For exact request and response schemas, status codes, and error codes, `GET https://energon.example.com/v1/openapi.json` (OpenAPI 3.1, no auth).
 9. `GET /v1/sites` and `GET /v1/files` list only what **you** created or last wrote. To find something Bob created that you edited: `?created_by=bob@example.com&scope=edited`. Do not expect a company-wide catalog. You can still GET a known `/{handle}/s/{slug}` or `/{handle}/f/{id}` URL.
 10. Pass `ttl` on create unless the human wants this instance's default. `GET /v1/help` → `retention` is the source of truth. `PUT` does not extend expiry. `PATCH { "ttl": "7d" }` resets from now. Expired URLs are `410`.
 
-Auth on every `/v1` call except `/v1/help` and `/v1/health`:
+Auth on every `/v1` call except `/v1/help`, `/v1/health`, and `/v1/openapi.json`:
 
 ```
 Authorization: Bearer $ENERGON_TOKEN
@@ -270,4 +270,4 @@ Do not dump the whole API. Do not keep the token in your reply.
 
 ## When you get stuck
 
-`GET https://energon.example.com/v1/help` then follow its `sop` array. Route details: [references/api.md](references/api.md).
+`GET https://energon.example.com/v1/help` then follow its `sop` array. Route details: [references/api.md](references/api.md). Exact schemas: `GET https://energon.example.com/v1/openapi.json`.
