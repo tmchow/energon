@@ -50,7 +50,7 @@ Run this first whenever anything looks off, and before the first drive of a sess
 .cursor/skills/verify-energon/bin/doctor
 ```
 
-It is read-only. It checks: persist path is under `/tmp/energon-verify` (not `.wrangler/state`); recorded pid is alive; that pid (or a child in its session) owns `$PORT`; `GET /health` is `{ok:true}`; `GET /v1/help` has `hub` and `content_origin` equal to `$ORIGIN`, `env=ENERGON_TOKEN`, `token_prefix=ee_live_`; `GET /` is the hub (`Ship a file or a site in seconds.`, `#pick-files`); `GET /account/data` has an email; hub bootstrap JSON has a handle.
+It is read-only. It checks: persist path is under `/tmp/energon-verify` (not `.wrangler/state`); recorded pid is alive; that pid (or a child in its session) owns `$PORT`; `GET /health` is `{ok:true}`; `GET /v1/help` has `hub` and `content_origin` equal to `$ORIGIN`, `env=ENERGON_TOKEN`, `token_prefix=ee_live_`, `openapi=$ORIGIN/v1/openapi.json`; `GET /v1/openapi.json` has `openapi` `3.1.0` and `servers[0].url` equal to `$ORIGIN`; `GET /` is the hub (`Ship a file or a site in seconds.`, `#pick-files`); `GET /account/data` has an email; hub bootstrap JSON has a handle.
 
 If doctor fails, stop. Do not drive a foreign instance.
 
