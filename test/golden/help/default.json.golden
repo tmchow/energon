@@ -4,6 +4,7 @@
   "content_origin": "https://energon.example.com",
   "account": "https://hub.energon.example.com/account",
   "openapi": "https://hub.energon.example.com/v1/openapi.json",
+  "auth_url": "https://hub.energon.example.com/auth.md",
   "env": "ENERGON_TOKEN",
   "skill": "energon",
   "marketplace": "energon",
@@ -162,6 +163,7 @@
   ],
   "routes": {
     "GET /llms.txt": "agent-readable overview, no auth",
+    "GET /auth.md": "authentication instructions, no auth",
     "GET /v1/help": "this document, no auth",
     "GET /v1/health": "liveness, no auth",
     "GET /v1/openapi.json": "OpenAPI 3.1 HTTP contract, no auth",

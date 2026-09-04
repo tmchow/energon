@@ -305,6 +305,7 @@ curl -sS "$ENERGON_ORIGIN/v1/files/{id}" \
 
 | Method and path | Purpose | Authentication |
 | --- | --- | --- |
+| `GET /auth.md` | Authentication setup, credential boundaries, and recovery | None |
 | `GET /v1/help` | Identity, SOP, routes, limits, retention, and token policy | None |
 | `GET /v1/health` | Return `{ "ok": true }` | None |
 | `GET /v1/openapi.json` | OpenAPI 3.1 contract for every `/v1` route, with `servers` set to this instance | None |

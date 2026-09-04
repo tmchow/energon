@@ -27,6 +27,7 @@ export function unauthorized(origin: string, detail?: string, env?: Env): ApiErr
     "unauthorized",
     detail ||
       `${PRODUCT} needs an API token. Open ${origin}/tokens while logged in, mint a token, and send it as Authorization: Bearer ${id.tokenPrefix}…. Export it as ${id.tokenEnv}. Do not invent a token.`,
+    { auth_url: `${origin}/auth.md`, tokens_url: `${origin}/tokens` },
   );
 }
 
@@ -38,7 +39,7 @@ export function tokenExpiredError(origin: string, expiredAt: string, env?: Env):
     401,
     "token_expired",
     `That API token expired${when}. Tokens cannot be extended. Tell the human to open ${origin}/tokens, mint a new one, and export it as ${id.tokenEnv}. Do not retry with this token. Do not invent a token.`,
-    { expired_at: expiredAt, tokens_url: `${origin}/tokens` },
+    { expired_at: expiredAt, auth_url: `${origin}/auth.md`, tokens_url: `${origin}/tokens` },
   );
 }
 
@@ -298,6 +299,7 @@ export function helpBody(origin: string, env?: Env): unknown {
     content_origin: env?.CONTENT_ORIGIN?.trim() || null,
     account: `${origin}/account`,
     openapi: `${origin}/v1/openapi.json`,
+    auth_url: `${origin}/auth.md`,
     env: id.tokenEnv,
     skill: id.skill,
     marketplace: id.marketplace,
@@ -341,6 +343,7 @@ export function helpBody(origin: string, env?: Env): unknown {
     ],
     routes: {
       "GET /llms.txt": "agent-readable overview, no auth",
+      "GET /auth.md": "authentication instructions, no auth",
       "GET /v1/help": "this document, no auth",
       "GET /v1/health": "liveness, no auth",
       "GET /v1/openapi.json": "OpenAPI 3.1 HTTP contract, no auth",

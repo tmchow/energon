@@ -98,7 +98,7 @@ describe("openapi/v1.json", () => {
       .filter(({ op }) => Array.isArray(op.security) && op.security.length === 0)
       .map(({ key }) => key)
       .sort();
-    expect(open).toEqual(["GET /llms.txt", "GET /v1/health", "GET /v1/help", "GET /v1/openapi.json"]);
+    expect(open).toEqual(["GET /auth.md", "GET /llms.txt", "GET /v1/health", "GET /v1/help", "GET /v1/openapi.json"]);
   });
 
   it("documents every /v1 path the router serves, and nothing the router does not", () => {

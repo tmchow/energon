@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { helpBody } from "../../src/auth";
 import { llmsTxt } from "../../src/llms";
+import { authMarkdown } from "../../src/auth-doc";
 import { renderMarkdown } from "../../src/markdown";
 import type { Env } from "../../src/types";
 import { GOLDEN_ROOT, assertGolden, assertJsonGolden, canonicalize } from "./golden";
@@ -31,6 +32,10 @@ describe("canonicalize", () => {
 });
 
 describe("agent docs", () => {
+  it("freezes GET /auth.md for the worker fixture instance", () => {
+    assertGolden("auth/default.md", authMarkdown(FIXTURE_ENV));
+  });
+
   it("freezes GET /v1/help for the worker fixture instance", () => {
     assertJsonGolden("help/default.json", helpBody(FIXTURE_ORIGIN, FIXTURE_ENV));
   });
