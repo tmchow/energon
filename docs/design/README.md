@@ -44,6 +44,6 @@ The handoff CSS contains a glob inside its opening comment that prematurely clos
 
 ## Verification
 
-Page contracts live in `test/pages.spec.ts`; upload staging cases live in `src/ui/uploads.spec.ts` (checked with the UI DOM types). Worker/API suites cover persistence, token policy, connections, passwords, content separation, and sanitization. The local browser/API recipes are in `.cursor/skills/verify-energon/`.
+Page contracts live in `test/pages.spec.ts`; upload staging cases live in `src/ui/uploads.spec.ts` (checked with the UI DOM types). Worker/API suites cover persistence, token policy, connections, passwords, content separation, and sanitization. The local browser/API recipes are in `.agents/skills/verify-energon/`.
 
 Use a separate verification port and persistence directory. Check desktop and mobile views, actual public bytes after mutations, exact-name confirmations, one-time token reveal and revocation, search/pagination, and both folder and ZIP publishing. The reference fidelity pass records matching page bounds and intentional mobile/accessibility adaptations. Its measurements, implementation plan, and validation record are in `docs/plans/2026-09-04-svelte-design-system.md`.

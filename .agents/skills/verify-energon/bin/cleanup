@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tear down the instance this run started. Leaves evidence in place.
-# Usage: .cursor/skills/verify-energon/bin/cleanup
+# Usage: .agents/skills/verify-energon/bin/cleanup
 
 set -euo pipefail
 _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

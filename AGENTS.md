@@ -20,7 +20,7 @@ This file is how to **change this tree**. It is not a product README and not the
 - Do not `wrangler login`, `wrangler deploy`, `npm run db:remote`, stamp `d1_migrations`, or `d1 execute` against production. New schema belongs in `migrations/` first.
 - Do not `pkill -f wrangler` / `workerd`. Do not delete `.wrangler/state` (the human's local DB).
 - Do not hand-edit generated `plugins/{name}/` on a fork. Source is `templates/` + `instance-skill.json`. Render with `npm run skill:render`.
-- Do not put the skill under `.agents/skills` or `.claude/skills` — those autoload it inside this Worker repo.
+- Do not put the **publish** skill (`templates/skill/`, `plugins/{name}/`) under `.agents/skills` or `.claude/skills` — those autoload it inside this Worker repo. Only `verify-energon` belongs there.
 - `tmchow/energon` does not merge unsolicited or fork PRs (a workflow closes fork PRs). Same-repo PRs from the owner are fine. On a company fork, follow that repo's humans. [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## Layout
@@ -36,7 +36,7 @@ This file is how to **change this tree**. It is not a product README and not the
 | `src/catalog.ts`, `src/handles.ts`, `src/urls.ts`, `src/http.ts`, `src/policy.ts`, `src/instance.ts`, `src/expire.ts`, `src/cache.ts`, `src/zip.ts`, `src/markdown.ts`, `src/mime.ts`, `src/memorable.ts`, `src/slugs.ts`, `src/config.ts` | Helpers — prefer `test:unit` |
 | `templates/`, `scripts/render-skill.mjs`, `instance-skill.json` | Skill / plugin source |
 | `plugins/{name}/` | Generated only after a fork runs `npm run skill:init`; absent upstream. |
-| `.cursor/skills/verify-energon/` | Isolated local hub + `/v1` user-path verification |
+| `.agents/skills/verify-energon/` | Isolated local hub + `/v1` user-path verification. Source of truth; `.claude/skills/` and `.cursor/skills/` are symlinks to it. |
 
 ## Schema
 
@@ -80,18 +80,21 @@ Do not run the full suite after every edit. CI (`.github/workflows/ci.yml`) runs
 | Expiry purge races | `npx vitest run test/api.purge-claim.spec.ts` |
 | `src/connections.ts`, `src/connect.ts` | `npx vitest run test/connections.spec.ts` |
 | `src/db.ts`, `migrations/`, shared types, or before commit | `npx wrangler types && npm run typecheck && npm run lint && npm test` |
+| Any user-facing change (hub page, `/v1` route or body, gate, token, public URL) | Also drive it like a user: see [Verify like a user](#verify-like-a-user). Tests passing is not proof the feature works. |
 
 Page tests cover server-rendered navigation, copy, catalog data, safe hydration, and asset isolation. Svelte checks template bindings; drive conditional forms and dialogs in the local browser to verify their behavior. Legacy inline DOM bindings still use `assertDomBindings`. Do not snapshot hub pages into `test/golden/`. Wrangler and Vitest build the UI automatically; `npm run specimen:ui` builds local component examples under `.context/ui-specimen/`.
 
 ## Verify like a user
 
-`.cursor/skills/verify-energon/` is how an agent drives a **local** hub and `/v1` the way a user does (isolated `wrangler dev` via `bin/launch`, default port `18787`, persist under `/tmp/energon-verify/`). Follow that skill's Launch / Doctor / Drive / Cleanup. Do not invent a token. Do not attach to whatever is already on 8787 unless `bin/doctor` says that pid is this run.
+Green CI is not proof a feature works. Before you say a user-facing change is done (hub UI, `/v1` route, gate, token, public URL, or a bug fix a user reported), run the matching recipe from the feature map against a fresh local instance and keep the evidence.
 
-The feature map is `.cursor/skills/verify-energon/features/`. It rots when a user-facing handle moves.
+`.agents/skills/verify-energon/` is how an agent drives a **local** hub and `/v1` the way a user does (isolated `wrangler dev` via `bin/launch`, default port `18787`, persist under `/tmp/energon-verify/`). Follow that skill's Launch / Doctor / Drive / Cleanup. Do not invent a token. Do not attach to whatever is already on 8787 unless `bin/doctor` says that pid is this run.
+
+The feature map is `.agents/skills/verify-energon/features/`. It rots when a user-facing handle moves.
 
 **Same PR:** if you change a path, header, hub control, or proof string that the map or the skill Drive section names (element ids, ARIA labels, `/v1` routes, `X-Energon-Password`, token prefix/env, public `/{handle}/s|f/…` URLs), update those files in this change.
 
-**When the map may be wrong:** user-facing behavior moved and coverage is unclear (new hub flow, new `/v1` route, gate/token/catalog change), or a verify drive failed because the skill was stale. That pass only edits `.cursor/skills/verify-energon/`. If the app is wrong, report a product bug — do not "fix" it by changing the map.
+**When the map may be wrong:** user-facing behavior moved and coverage is unclear (new hub flow, new `/v1` route, gate/token/catalog change), or a verify drive failed because the skill was stale. That pass only edits `.agents/skills/verify-energon/`. If the app is wrong, report a product bug — do not "fix" it by changing the map.
 
 Skip that pass for internal refactors, tests-only, migrations with no user path change, or copy that `pages.spec.ts` already covers and the map never names.
 
