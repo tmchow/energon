@@ -216,7 +216,7 @@
 </script>
 
 <main class="en-wrap">
-  <PageTitle title="Publish a document, prototype, or file."><p class="en-lede">Upload here and get a link. Markdown opens as a document; prepared HTML opens as a working site. <a href="/setup">Connect your agent</a> to publish, read, reference, or update work at the same address when permitted.</p></PageTitle>
+  <PageTitle wide title="Publish a document, prototype, or file."><p class="en-lede">Upload here and get a link. Or <a href="/setup">connect your agent</a> to publish for you.</p></PageTitle>
   <div id="messages" class="en-hub-messages">{#each messages as item}<Flash tone={item.tone} password={item.password}>{item.text}{#if item.url} <a href={item.url}>{item.name}</a>{/if}</Flash>{/each}</div>
   <div class="en-space-after"><Card charged tight>
     <DropZone over={dragDepth > 0} {busy} onFiles={() => filepick.click()} onFolder={() => folderpick.click()} children={staged ? stage : undefined} />
