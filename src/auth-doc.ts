@@ -73,7 +73,7 @@ Humans list and revoke tokens at ${origin}/tokens. Revocation prevents further u
 - [HTTP API contract](${origin}/v1/openapi.json)
 - [Agent overview](${origin}/llms.txt)
 
-These documents are public and require no credential. The connection endpoints follow the shape of OAuth device authorization (a user code, a verification URI, and polling) but are an Energon API, not an OAuth authorization server; this page does not advertise OAuth or the WorkOS auth.md registration protocol.
+These documents are public and require no credential. The connection endpoints are an Energon API, not OAuth device authorization or any OAuth authorization server: they accept only the JSON fields documented above (label, poll_token) and no OAuth parameters such as client_id, device_code, or grant_type. This page does not advertise OAuth or the WorkOS auth.md registration protocol.
 `;
 }
 
