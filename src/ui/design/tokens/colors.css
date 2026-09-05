@@ -1,0 +1,170 @@
+/* ---------- Primitives (from src/chrome.css :root, extended into ramps) ---------- */
+:root {
+  /* Violet — the single accent hue. 400 is the product's --brand / --glow (#b08cff). */
+  --violet-50:  #f5f0ff;
+  --violet-100: #ebe2ff;
+  --violet-200: #d2c0ff;  /* --brand-strong */
+  --violet-300: #c9b0ff;  /* --ring */
+  --violet-400: #b08cff;  /* --brand, --glow */
+  --violet-500: #9668ff;
+  --violet-600: #7a4dff;
+  --violet-700: #6338e0;
+  --violet-800: #4a2ab0;
+  --violet-900: #331d7a;
+  --violet-950: #1e1146;
+  --violet-hot: #f3ecff;  /* --glow-hot: the lit filament */
+  --violet-deep: #5c48d8; /* bar gradient start */
+  --indigo-glow: rgba(70, 90, 180, 0.12); /* second canvas wash */
+
+  /* Ink — violet-tinted darks (dark theme neutrals) */
+  --ink-0:  #070814;  /* --bg */
+  --ink-1:  #0a0d18;  /* inputs, code */
+  --ink-2:  #0d1220;  /* --card */
+  --ink-3:  #151a2c;  /* --muted-bg */
+  --ink-4:  #26233c;  /* --border */
+  --ink-5:  #3a3458;  /* --line */
+  --ink-6:  #5a5478;
+  --ink-7:  #9a93b3;  /* --muted */
+  --ink-8:  #c8c0de;  /* .who, scene copy */
+  --ink-9:  #ece8f8;  /* --fg */
+  --ink-10: #f8f6fd;
+
+  /* Paper — violet-tinted lights (optional light theme) */
+  --paper-0: #f6f4fb;
+  --paper-1: #ffffff;
+  --paper-2: #efecf7;
+  --paper-3: #e4e0f0;
+  --paper-4: #d6d0e8;
+  --paper-5: #bdb5d6;
+  --paper-6: #8c85a6;
+  --paper-7: #6b6486;
+  --paper-8: #3a3452;
+  --paper-9: #14111f;
+
+  /* Status */
+  --green-100: #e6f7ee; --green-200: #9fd9bb; --green-300: #b8f0d4; --green-600: #2f6a50; --green-700: #0f6b45; --green-900: #10241c;
+  --amber-100: #fff4d6; --amber-200: #ecd08a; --amber-300: #e4c27a; --amber-400: #f3d2a8; --amber-600: #7a6432; --amber-700: #8a5a00;
+  --rose-100: #fde8ea; --rose-150: #f2b3b9; --rose-200: #ffc4c8; --rose-300: #ff9aa2; --rose-600: #6e3038; --rose-700: #b3242f; --rose-900: #2a141a;
+}
+
+/* ---------- Semantic: dark (default — the shipped product) ---------- */
+:root {
+  color-scheme: dark;
+
+  --bg-canvas:   var(--ink-0);
+  --bg-surface:  var(--ink-2);
+  --bg-surface-a: rgba(13, 18, 32, 0.86);   /* .card */
+  --bg-chrome:   rgba(7, 8, 20, 0.92);      /* .top */
+  --bg-sunken:   var(--ink-1);
+  --bg-raised:   var(--ink-3);
+  --bg-hover:    rgba(176, 140, 255, 0.08);
+  --bg-selected: rgba(176, 140, 255, 0.14);
+  --bg-pressed:  rgba(176, 140, 255, 0.2);
+  --bg-overlay:  rgba(4, 5, 12, 0.68);
+  --bg-code:     #0a0c16;
+  --bg-primary:  #16102a;                   /* .btn-primary */
+  --bg-primary-hover: #22183e;
+  --bg-dialog:   #10162a;
+  --bg-drop:     #080a16;
+
+  --fg-1: var(--ink-9);
+  --fg-2: var(--ink-8);
+  --fg-3: var(--ink-7);
+  --fg-4: var(--ink-6);
+  --fg-inverse: #0b0814;
+  --fg-brand: var(--violet-200);
+  --fg-hot: var(--violet-hot);
+  --fg-code: #e4def4;
+  --fg-scene: #b8b0ce;
+
+  --border-1: var(--ink-4);
+  --border-2: var(--ink-5);
+  --border-brand-faint: rgba(176, 140, 255, 0.14);
+  --border-brand: rgba(176, 140, 255, 0.22);
+  --border-brand-strong: rgba(176, 140, 255, 0.55);
+
+  --accent: var(--violet-400);
+  --accent-strong: var(--violet-200);
+  --accent-hover: var(--violet-300);
+  --accent-active: var(--violet-500);
+  --accent-fg: #0b0814;
+  --accent-soft: rgba(176, 140, 255, 0.16);
+  --accent-ring: var(--violet-300);
+
+  --ok-fg: var(--green-300);   --ok-bg: var(--green-900);  --ok-border: var(--green-600);
+  --warn-fg: var(--amber-300); --warn-fg-strong: var(--amber-400); --warn-bg: rgba(228, 194, 122, 0.12); --warn-border: var(--amber-600);
+  --danger-fg: var(--rose-300); --danger-fg-strong: var(--rose-200); --danger-bg: var(--rose-900); --danger-border: var(--rose-600);
+
+  --glow: rgba(176, 140, 255, 0.45);
+  --glow-soft: rgba(176, 140, 255, 0.22);
+  --glow-faint: rgba(176, 140, 255, 0.08);
+  --glow-rgb: 176, 140, 255; /* @kind other */
+
+  --canvas-wash:
+    radial-gradient(880px 420px at 50% -10%, rgba(176, 140, 255, 0.16), transparent 58%),
+    radial-gradient(640px 380px at 92% 8%, var(--indigo-glow), transparent 52%); /* @kind other */
+
+  /* aliases matching src/chrome.css */
+  --bg: var(--bg-canvas); --fg: var(--fg-1); --card: var(--bg-surface); --muted: var(--fg-3); --muted-bg: var(--bg-raised);
+  --border: var(--border-1); --line: var(--border-2); --ring: var(--accent-ring); --glow-hot: var(--fg-hot);
+  --brand: var(--accent); --brand-strong: var(--accent-strong); --brand-fg: var(--accent-fg);
+  --danger: var(--danger-fg); --danger-bg: var(--danger-bg); --danger-border: var(--danger-border);
+  --warn: var(--warn-fg);
+}
+
+/* ---------- Semantic: light (optional scope) ---------- */
+[data-theme="light"] {
+  color-scheme: light;
+  --bg-canvas:   var(--paper-0);
+  --bg-surface:  var(--paper-1);
+  --bg-surface-a: rgba(255, 255, 255, 0.88);
+  --bg-chrome:   rgba(246, 244, 251, 0.92);
+  --bg-sunken:   var(--paper-2);
+  --bg-raised:   var(--paper-3);
+  --bg-hover:    rgba(122, 77, 255, 0.06);
+  --bg-selected: rgba(122, 77, 255, 0.10);
+  --bg-pressed:  rgba(122, 77, 255, 0.16);
+  --bg-overlay:  rgba(20, 17, 31, 0.45);
+  --bg-code:     #1a1530;
+  --bg-primary:  var(--violet-600);
+  --bg-primary-hover: var(--violet-700);
+  --bg-dialog:   var(--paper-1);
+  --bg-drop:     var(--paper-2);
+
+  --fg-1: var(--paper-9);
+  --fg-2: var(--paper-8);
+  --fg-3: var(--paper-7);
+  --fg-4: var(--paper-6);
+  --fg-inverse: #ffffff;
+  --fg-brand: var(--violet-700);
+  --fg-hot: var(--violet-800);
+  --fg-code: #e4def4;
+  --fg-scene: var(--paper-8);
+
+  --border-1: var(--paper-4);
+  --border-2: var(--paper-5);
+  --border-brand-faint: rgba(122, 77, 255, 0.14);
+  --border-brand: rgba(122, 77, 255, 0.22);
+  --border-brand-strong: rgba(122, 77, 255, 0.45);
+
+  --accent: var(--violet-600);
+  --accent-strong: var(--violet-700);
+  --accent-hover: var(--violet-700);
+  --accent-active: var(--violet-800);
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(122, 77, 255, 0.10);
+  --accent-ring: var(--violet-500);
+
+  --ok-fg: var(--green-700);   --ok-bg: var(--green-100);  --ok-border: var(--green-200);
+  --warn-fg: var(--amber-700); --warn-fg-strong: #6b4600; --warn-bg: var(--amber-100); --warn-border: var(--amber-200);
+  --danger-fg: var(--rose-700); --danger-fg-strong: #8f1c25; --danger-bg: var(--rose-100); --danger-border: var(--rose-150);
+
+  --glow: rgba(122, 77, 255, 0.28);
+  --glow-soft: rgba(122, 77, 255, 0.14);
+  --glow-faint: rgba(122, 77, 255, 0.06);
+  --glow-rgb: 122, 77, 255; /* @kind other */
+
+  --canvas-wash:
+    radial-gradient(880px 420px at 50% -10%, rgba(122, 77, 255, 0.10), transparent 58%),
+    radial-gradient(640px 380px at 92% 8%, rgba(70, 90, 180, 0.06), transparent 52%); /* @kind other */
+}

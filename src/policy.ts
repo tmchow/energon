@@ -207,7 +207,7 @@ export function tokenPolicy(env: Pick<Env, "ALLOW_UNLIMITED_TOKENS">): TokenPoli
   return { allowUnlimited, defaultTtl: TOKEN_DEFAULT_TTL, presets };
 }
 
-export function tokenPolicyPublic(policy: TokenPolicy, origin: string): Record<string, unknown> {
+export function tokenPolicyPublic(policy: TokenPolicy, origin: string) {
   return {
     presets: policy.presets,
     default: policy.defaultTtl,
@@ -239,7 +239,7 @@ export function tokenExpired(expiresAt: string | null | undefined, now = Date.no
   return !Number.isFinite(t) || t <= now;
 }
 
-export function policyPublic(policy: InstancePolicy): Record<string, unknown> {
+export function policyPublic(policy: InstancePolicy) {
   return {
     allow_unlimited: policy.allowUnlimited,
     default_ttl: policy.defaultTtl,

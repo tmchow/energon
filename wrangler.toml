@@ -11,6 +11,10 @@ workers_dev = true
 # pattern = "content.energon.example.com"
 # custom_domain = true
 
+[build]
+command = "npm run build:ui"
+watch_dir = ["src/ui", "src/config.ts", "src/slugs.ts", "scripts/build-ui.mjs"]
+
 [vars]
 # Placeholder host. Run `npm run skill:init` with your real origin, then
 # set PUBLIC_ORIGIN / TOKEN_ENV / SKILL_NAME / MARKETPLACE_* to match.
@@ -55,6 +59,7 @@ bucket_name = "energon"
 directory = "./public"
 binding = "ASSETS"
 html_handling = "none"
+run_worker_first = ["/static/ui/*"]
 
 [[rules]]
 type = "Text"

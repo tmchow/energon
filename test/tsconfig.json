@@ -1,15 +1,26 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
-    "types": ["../worker-configuration.d.ts", "@cloudflare/vitest-plugin/types", "node"]
+    "types": [
+      "../worker-configuration.d.ts",
+      "@cloudflare/vitest-plugin/types",
+      "node"
+    ]
   },
-  "include": ["./**/*.ts", "../fuzz/**/*.ts", "../src/**/*.ts", "../worker-configuration.d.ts"],
+  "include": [
+    "./**/*.ts",
+    "../fuzz/**/*.ts",
+    "../src/**/*.ts",
+    "../worker-configuration.d.ts"
+  ],
   "exclude": [
     "./unit/skill-render.spec.ts",
     "./unit/markdown.spec.ts",
     "./unit/schema-drift.spec.ts",
     "./unit/openapi-drift.spec.ts",
     "./unit/golden.spec.ts",
-    "./unit/golden.ts"
+    "./unit/golden.ts",
+    "../src/ui",
+    "../src/generated"
   ]
 }

@@ -1,0 +1,45 @@
+:root {
+  /* 4px grid */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 48px;
+  --space-10: 64px;
+  --space-11: 96px;
+  --space-12: 128px;
+
+  /* Component sizing (from src/chrome.css) */
+  --control-h-sm: 32px;   /* .btn-sm 2rem */
+  --control-h-md: 36px;   /* .search, .seg */
+  --control-h-lg: 40px;   /* .btn 2.5rem, inputs */
+  --touch-min: 44px;
+  --icon-btn: 36px;       /* .icon-btn 2.25rem */
+  --icon-size: 19px;      /* 1.2rem */
+  --mark-size: 32px;      /* .brand .mark 2rem */
+  --header-h: 60px;
+
+  /* Padding */
+  --pad-control-x: 14px;  /* .85rem */
+  --pad-card: 18px;       /* 1.15rem */
+  --pad-card-y: 16px;
+  --pad-cell-x: 16px;
+  --pad-cell-y: 11px;     /* .7rem */
+  --pad-page-x: 20px;
+  --pad-page-top: 28px;
+  --pad-page-bottom: 72px;
+
+  /* Measures */
+  --measure-page: 74rem;
+  --measure-md: 46rem;
+  --measure-lede: 36rem;
+  --measure-display: 22rem;
+  --measure-dialog: 26rem;
+  --measure-gate: 24rem;
+  --measure-marketing: 72rem;
+}

@@ -1,5 +1,8 @@
+import { buildUI } from "./scripts/build-ui.mjs";
 import { cloudflareTest } from "@cloudflare/vitest-plugin";
 import { defineConfig } from "vitest/config";
+
+await buildUI();
 
 export default defineConfig({
   plugins: [

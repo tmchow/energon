@@ -26,7 +26,7 @@ Preconditions:
 - Search query `verify-site` matches that site and not an unrelated seeded name.
 
 - **Empty (optional, fresh persist).** On a brand-new launch before any publish, `#sites` contains `No sites yet` and `#files` contains `No files yet`. `#who` shows the doctor email.
-- **List after publish.** Open `$ORIGIN/`. Sites table has a row whose name link text is `verify-site` and whose `created-by` / `last-writer` cells match the email. `#sites-count` is a non-empty count.
+- **List after publish.** Open `$ORIGIN/`. Sites table has a row whose name link text is `verify-site` and whose Created by / Last writer cells match the email. The Sites card heading includes a non-empty count.
 - **Search.** Fill `#q` with `verify-site`. Wait for the 200ms debounce and a new `/account/data?q=verify-site` request. The Sites table contains `verify-site` and does not contain a slug that does not match. Clear `#q` to restore the full list.
 - **Scope.** Choose `Created by you`. The `verify-site` you minted stays visible. Choose `Last edited by you` only if a second actor exists; on a single-user local run this may be empty — record that, do not treat it as a missing site.
 - **Open public URL.** Choose the `verify-site` link. The next document is `$ORIGIN/$HANDLE/s/verify-site/` and contains the published homepage.
@@ -39,7 +39,7 @@ Preconditions:
 
 - Lists are not a company catalog. They only include what this identity created or last wrote. A 200 empty list is not a failed publish if you used a different email.
 - Search debounce is 200ms. Assert the filtered table (or the `q=` network response), not a keystroke.
-- Scope `involved` is the Your work button (`data-scope="involved"`).
+- Scope `involved` is the Your work button inside `#scope`; the selected button has `aria-pressed="true"`.
 - Delete requires the exact slug or filename. Cancel leaves the object in place — confirm with a GET.
 - `Load more` appears only when a cursor is present. Do not treat a short list as a pagination bug.
 - Opening the public link leaves the hub. Re-open `$ORIGIN/` before another catalog assertion.

@@ -1,4 +1,4 @@
-import { brandMark, documentShell, escapeHtml, productName } from "./chrome";
+import { uiPage } from "./ui-render";
 import { PASSWORD_HEADER, SET_PASSWORD_HEADER } from "./config";
 import { ApiError, htmlPage, isLocalHost, sha256Hex } from "./http";
 import type { Env } from "./types";
@@ -126,25 +126,7 @@ export function gateCookieHeader(token: string, cookiePath: string, hostname: st
 }
 
 export function passwordPromptHtml(title: string, action: string, wrong: boolean): string {
-  const err = wrong ? `<p class="err">That password is wrong.</p>` : "";
-  return documentShell({
-    title: `Password — ${title}`,
-    bodyClass: "page-gate",
-    body: `<div class="card gate">
-      <a class="brand" href="/">${brandMark()}</a>
-      <h1>${escapeHtml(productName())}</h1>
-      <p class="lede">This link is password-protected.</p>
-      <p>Ask the person who sent you this link for its share password.</p>
-      ${err}
-      <form method="post" action="${escapeHtml(action)}">
-        <label class="field">Password
-          <input type="password" name="password" autocomplete="current-password" autofocus required>
-        </label>
-        <button type="submit" class="btn-primary">Open</button>
-      </form>
-      <p class="lede" style="margin-top:1rem">Agents: send header <code>${PASSWORD_HEADER}</code>.</p>
-    </div>`,
-  });
+  return uiPage(`Password — ${title}`, { page: "gate", data: { action, wrong, passwordHeader: PASSWORD_HEADER } });
 }
 
 export const GATE_WINDOW_MS = 15 * 60 * 1000;
@@ -203,17 +185,7 @@ function gateLimited(request: Request, title: string): Response {
     );
   }
   return gateHtml(
-    documentShell({
-      title: `Password — ${title}`,
-      bodyClass: "page-gate",
-      body: `<div class="card gate">
-      <a class="brand" href="/">${brandMark()}</a>
-      <h1>${escapeHtml(productName())}</h1>
-      <p class="lede">This link is password-protected.</p>
-      <p class="err">Too many password attempts. Try again later.</p>
-      <p class="lede" style="margin-top:1rem">Agents: send header <code>${PASSWORD_HEADER}</code>.</p>
-    </div>`,
-    }),
+    uiPage(`Password — ${title}`, { page: "gate", data: { action: "", wrong: false, limited: true, passwordHeader: PASSWORD_HEADER } }),
     429,
   );
 }

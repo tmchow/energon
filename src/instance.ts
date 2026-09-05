@@ -6,15 +6,8 @@ export const REPO_SKILL = "energon";
 export const REPO_MARKETPLACE = "energon";
 export const REPO_MARKETPLACE_REPO = "tmchow/energon";
 
-export type InstanceIdentity = {
-  skill: string;
-  plugin: string;
-  marketplace: string;
-  repo: string;
-  tokenEnv: string;
-  tokenPrefix: string;
-  origin: string;
-};
+export type { InstanceIdentity } from "./page-data";
+import type { InstanceIdentity } from "./page-data";
 
 /**
  * Runtime identity for one deployed Worker. Must match the skill committed

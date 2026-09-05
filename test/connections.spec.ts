@@ -104,10 +104,34 @@ describe("agent connections", () => {
     expect(html).toContain("password-protected");
     expect(html).toContain("Approve connection");
     expect(html).not.toContain(connection.user_code);
+    const pattern = html.match(/pattern="([^"]+)"/)?.[1];
+    expect(pattern).toBe("[0-9]{8}");
+    expect(new RegExp(`^(?:${pattern})$`).test(connection.user_code)).toBe(true);
     expect(html).not.toContain(connection.poll_token);
     assertDomBindings(html);
     expect((await req(`https://energon.example.com/connect?request=${connection.id}`)).status).toBe(404);
     expect((await req(`https://hub.energon.example.com/connect?request=${connection.id}`)).status).toBe(401);
+  });
+
+  it("hydrates only public connection fields without exposing stored or issued secrets", async () => {
+    const connection = await start("public connection fields");
+    const row = await env.DB.prepare("SELECT label, expires_at, code_hash, poll_hash FROM agent_connections WHERE id = ?")
+      .bind(connection.id).first<{ label: string; expires_at: string; code_hash: string; poll_hash: string }>();
+    expect(row?.code_hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(row?.poll_hash).toMatch(/^[a-f0-9]{64}$/);
+    const response = await req(`/connect?request=${connection.id}`, { headers: access("connect@esperlabs.app") });
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    const bootstrap = html.match(/<script id="bootstrap" type="application\/json">([\s\S]*?)<\/script>/);
+    expect(bootstrap).not.toBeNull();
+    expect(JSON.parse(bootstrap![1]).data.connection).toEqual({
+      id: connection.id, label: row!.label, expires_at: row!.expires_at,
+    });
+    for (const secret of [row!.code_hash, row!.poll_hash, connection.user_code, connection.poll_token]) {
+      expect(html).not.toContain(secret);
+    }
+    expect(html).not.toContain("code_hash");
+    expect(html).not.toContain("poll_hash");
   });
 
   it("rolls back token issuance if consuming the approval fails", async () => {

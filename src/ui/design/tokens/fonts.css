@@ -1,0 +1,13 @@
+/* Energon webfonts. The product loads IBM Plex from Google Fonts (src/chrome.ts FONT_HREF); the repo ships no font binaries.
+   Michroma is the design-system addition: a wide, squared display face (single weight 400) for marketing headlines and wordmark that echoes the isometric cube.
+   To self-host, drop woff2 files in assets/fonts/ and replace this @import with @font-face rules. */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Michroma&display=swap");
+
+:root {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-display: "Michroma", "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  /* aliases matching src/chrome.css names */
+  --font: var(--font-sans);
+  --mono: var(--font-mono);
+}
