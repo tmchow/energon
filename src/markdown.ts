@@ -1,7 +1,8 @@
+import { uiPage } from "./ui-render";
 import { marked } from "marked";
 import xss, { type IWhiteList, type SafeAttrValueHandler } from "xss";
 import { privateCacheControl } from "./cache";
-import { brandMark, documentShell, escapeHtml } from "./chrome";
+import { escapeHtml } from "./chrome";
 import { PRODUCT } from "./config";
 import { applyIsolation, basename, contentDisposition, mermaidDocumentCsp, MERMAID_SCRIPT_PATH, wantsDownload } from "./http";
 
@@ -76,24 +77,12 @@ export function markdownPage(opts: {
   title: string;
   filename: string;
   rawHref: string;
+  size?: number;
+  updatedAt?: string;
   html: string;
   mermaid: boolean;
 }): string {
-  return documentShell({
-    title: `${opts.title} — ${PRODUCT}`,
-    bodyClass: "page-md",
-    extraHead: opts.mermaid ? mermaidHead() : "",
-    body: `<header class="top"><div class="top-inner">
-      <a class="brand" href="/"><div class="mark">${brandMark()}</div><div><div class="name">${escapeHtml(PRODUCT)}</div></div></a>
-      <div class="top-end">
-        <a class="btn btn-sm" href="${escapeHtml(opts.rawHref)}">Raw</a>
-      </div>
-    </div></header>
-    <main class="wrap md-wrap">
-      <p class="md-file">${escapeHtml(opts.filename)}</p>
-      <article class="md card">${opts.html}</article>
-    </main>`,
-  });
+  return uiPage(`${opts.title} — ${PRODUCT}`, { page: "markdown", data: opts }, opts.mermaid ? mermaidHead() : "");
 }
 
 export async function respondMarkdown(
@@ -128,6 +117,8 @@ export async function respondMarkdown(
       title: filename,
       filename,
       rawHref,
+      size: obj.size,
+      updatedAt: obj.uploaded.toISOString(),
       html: rendered.html,
       mermaid: rendered.mermaid,
     }),

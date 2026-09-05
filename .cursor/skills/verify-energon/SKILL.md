@@ -50,7 +50,7 @@ Run this first whenever anything looks off, and before the first drive of a sess
 .cursor/skills/verify-energon/bin/doctor
 ```
 
-It is read-only. It checks: persist path is under `/tmp/energon-verify` (not `.wrangler/state`); recorded pid is alive; that pid (or a child in its session) owns `$PORT`; `GET /health` is `{ok:true}`; `GET /v1/help` has `hub` and `content_origin` equal to `$ORIGIN`, `env=ENERGON_TOKEN`, `token_prefix=ee_live_`, `openapi=$ORIGIN/v1/openapi.json`; `GET /v1/openapi.json` has `openapi` `3.1.0` and `servers[0].url` equal to `$ORIGIN`; `GET /` is the hub (`Publish a document, prototype, or file.`, `#pick-files`); `GET /account/data` has an email; hub bootstrap JSON has a handle.
+It is read-only. It checks: persist path is under `/tmp/energon-verify` (not `.wrangler/state`); recorded pid is alive; that pid (or a child in its session) owns `$PORT`; `GET /health` is `{ok:true}`; `GET /v1/help` has `hub` and `content_origin` equal to `$ORIGIN`, `env=ENERGON_TOKEN`, `token_prefix=ee_live_`, `openapi=$ORIGIN/v1/openapi.json`; `GET /v1/openapi.json` has `openapi` `3.1.0` and `servers[0].url` equal to `$ORIGIN`; `GET /` is the hub (`Publish a document, prototype, or file.`, `#pick-files`); `GET /account/data` has an email; hub bootstrap JSON has `data.handle`.
 
 If doctor fails, stop. Do not drive a foreign instance.
 
@@ -88,10 +88,10 @@ Save request method+path, response status, and body into `$EVIDENCE/<feature>/`.
 
 ### Browser recipe shape
 
-Playwright is not a repo dependency. Use the environment's browser tools, or a one-off Playwright against `$ORIGIN` if it is already installed. Prefer role/name and the ids above over coordinates.
+Use the environment's browser tools. In an Orca worktree, read `orca skills get orca-cli` and drive its browser with snapshot, interaction, then another snapshot. Use `orca upload` on the hidden file inputs; pass a directory path for `#folderpick`, not a file inside it. Prefer role/name and the ids above over coordinates. Wait for the resulting state after asynchronous actions. For responsive checks, set the viewport after each navigation and verify `innerWidth`; scroll controls into view before clicking.
 
 - Choose files: click `Choose files`, then set files on `#filepick` (the click only opens a native picker).
-- One file stages a loose file (`#stage-loose` visible, `#stage-filename` filled). A folder or zip stages a site (`#stage-slug`).
+- One file selected with Choose files stages a loose file (`#stage-loose` visible, `#stage-filename` filled). A folder or zip stages a site (`#stage-slug`); even a folder containing only one file remains a site. Conditional stage sections are absent when inactive.
 - Nothing is written until `Publish`. After success, `#messages` contains a flash with the public URL and the catalog lists the slug or filename.
 - Tokens: go to `/tokens`, fill the `Label` textbox, choose a lifetime in `#mint-ttl` (`aria-label="Token lifetime"`, default `3 months`), click `Create token`. `#new-token` shows `export ENERGON_TOKEN=ee_live_…`. The list has an `Expires` column; expired rows are greyed (`tr.row-expired`) and keep only `Revoke`.
 
