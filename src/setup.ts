@@ -12,12 +12,9 @@ function marketplaceUrl(id: InstanceIdentity): string {
 function installBlock(id: InstanceIdentity): string {
   const repo = id.repo || "your-org/energon";
   const url = marketplaceUrl(id);
-  return `Add the ${id.skill} plugin marketplace and install ${id.plugin}.
+  return `Add the plugin marketplace at ${url} (${repo}) and install ${id.plugin} at user (global) scope, using your normal plugin install flow. Do not install at project or workspace scope unless I ask.
 
-Repo: ${repo}
-${url}
-
-This repo is a Claude Code marketplace and an Agent Plugins marketplace (https://agent-plugins.org/). That standard works with Cursor, OpenClaw, ChatGPT, Codex, GitHub Copilot, and others. Follow this host’s plugin install flow. Install at user (global) scope so the skill is available in every project. Do not install at project or workspace scope unless the human asked for that. After install, read ${id.origin}/auth.md and request a human-approved connection. Manual tokens from ${id.origin}/tokens are also supported. Store the credential as ${id.tokenEnv}. Do not invent a token.`;
+Then read ${id.origin}/auth.md. If ${id.tokenEnv} is already set, use it. Otherwise connect with a code: show me the link and code, wait for my approval, then save the delivered token as ${id.tokenEnv} where this environment keeps secrets, readable only by me. Do not invent a token.`;
 }
 
 export function setupResponse(actor: Actor, env: Env): Response {

@@ -90,7 +90,7 @@ describe("signed-in pages", () => {
     const tokens = await req("/tokens");
     expect(tokens.status).toBe(200);
     const tokensHtml = await tokens.text();
-    expect(tokensHtml).toContain("Create token");
+    expect(tokensHtml).toContain("Mint token");
     expect(tokensHtml).toContain("ENERGON_TOKEN");
     expect(tokensHtml).toContain("shown once");
     expect(tokensHtml).not.toContain(secret);

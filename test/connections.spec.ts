@@ -103,6 +103,7 @@ describe("agent connections", () => {
     expect(html).toContain("connect@esperlabs.app");
     expect(html).toContain("password-protected");
     expect(html).toContain("Approve connection");
+    expect(html).toContain("hub.energon.example.com");
     expect(html).not.toContain(connection.user_code);
     const pattern = html.match(/pattern="([^"]+)"/)?.[1];
     expect(pattern).toBe("[0-9]{8}");

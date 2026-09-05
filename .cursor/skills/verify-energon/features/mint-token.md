@@ -14,7 +14,7 @@ Mint a token lets a signed-in human create an `ee_live_` secret for agents with 
 
 ## How to get to it (user POV)
 
-- Open `/tokens`, fill `Label`, pick a lifetime in `#mint-ttl`, choose `Create token`.
+- Open `/tokens`. The `Active tokens` card lists tokens first; the `Mint a token by hand` card below it holds the form. Fill `Label`, pick a lifetime in `#mint-ttl`, choose `Mint token`.
 - Choose `Revoke`, type the exact label, confirm.
 - Agent: send `Authorization: Bearer ee_live_…` to `/v1/whoami`.
 - `POST /account/tokens` with `{ "label": "…", "ttl": "7d" }` — the same endpoint the form uses; omit `ttl` for the default.
@@ -26,7 +26,7 @@ Preconditions:
 - Doctor has passed for `$ORIGIN`.
 - No token labeled `verify-run` exists, or use a unique label `verify-run-$RUN`.
 
-- **Hub mint.** Open `$ORIGIN/tokens`. `#who` shows the doctor email. `#mint-ttl` (`aria-label="Token lifetime"`) is preselected to `3 months` and ends with `Never`. Fill the `Label` textbox with `verify-run` and choose `Create token`. `#new-token` contains `export ENERGON_TOKEN=ee_live_` plus a secret. Status of the POST is 201. Body `recoverable` is false and `expires_at` is about 90 days out. The new row's `Expires` cell shows a date and `(N days)`.
+- **Hub mint.** Open `$ORIGIN/tokens`. `#who` shows the doctor email. The lede says agents provision their own token from Setup and links `/setup`; the `Active tokens` card precedes the `Mint a token by hand` card. `#mint-ttl` (`aria-label="Token lifetime"`) is preselected to `3 months` and ends with `Never`. Fill the `Label` textbox with `verify-run` and choose `Mint token`. `#new-token` contains `export ENERGON_TOKEN=ee_live_` plus a secret. Status of the POST is 201. Body `recoverable` is false and `expires_at` is about 90 days out. The new row's `Expires` cell shows a date and `(N days)`.
 - **HTTP mint with a lifetime (same path).** Run `.cursor/skills/verify-energon/bin/mint-token verify-run 1d`. The helper POSTs `/account/tokens` with `Origin` set to `$ORIGIN` and `ttl` `1d`. Stdout is `ee_live_` plus 32+ characters; `state.env` gains `TOKEN_EXPIRES_AT` about one day out. Do not invent a substitute.
 - **Bad lifetime.** Run `curl -sS -o "$EVIDENCE/mint-token/bad-ttl.json" -w '%{http_code}' -X POST "$ORIGIN/account/tokens" -H "content-type: application/json" -H "origin: $ORIGIN" --data '{"label":"verify-bad","ttl":"3h"}'`. Status `400`. Body `error` is `bad_ttl` and `message` lists `1d, 7d, 30d, 60d, 90d, 180d, 365d, never`.
 - **Whoami.** Run `curl -sS -o "$EVIDENCE/mint-token/whoami.json" -w '%{http_code}' "$ORIGIN/v1/whoami" -H "Authorization: Bearer $TOKEN"`. Status `200`. Body `email` matches doctor; `label` is `verify-run`; `expires_at` equals `TOKEN_EXPIRES_AT`.

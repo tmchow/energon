@@ -5,7 +5,7 @@ An agent requests a connection, then a signed-in human enters its code and appro
 ## Sub-features
 
 - `request`: POST `/v1/connections` with a label returns a verification URL, eight-digit code, private poll token, ten-minute lifetime, and five-second polling interval. It grants no file access.
-- `approve`: `/connect?request={id}` shows the requested label, signed-in account, permissions, code input, lifetime, and approval/denial controls.
+- `approve`: `/connect?request={id}` is a chrome-less page that names the hub host, the requested label, the signed-in account, permissions, code input, lifetime, and approval/denial controls.
 - `delivery`: POST `/v1/connections/{id}/token` with the private poll token returns 202 pending before approval and the token once after approval.
 - `revocation`: the issued token appears on `/tokens` and obeys ordinary expiry/revocation rules.
 
@@ -23,7 +23,7 @@ Preconditions:
 
 - **Request.** POST `$ORIGIN/v1/connections` with JSON `{"label":"verification agent"}` and no bearer. Expect 201 with `id`, `poll_token`, `user_code`, `verification_uri`, `expires_in:600`, `interval:5`. Keep the secrets only in a private temporary file. Save a redacted response.
 - **Pending.** POST `$ORIGIN/v1/connections/{id}/token` with JSON containing the returned `poll_token`. Expect 202 `status:pending`. Wait at least five seconds between polls.
-- **Approval.** Open the returned verification URL. Confirm the agent label, the signed-in account, the access disclosure, and the lifetime control. Fill `#connect-code` with the returned code, choose `1d` in `#connect-ttl`, and click `Approve connection`. Expect `#connect-done-title` to say `Connection approved` and the form to be hidden. Save a screenshot.
+- **Approval.** Open the returned verification URL. The page has no app header or footer. The h1 reads `Connect your agent to` followed by this run's hub host (`127.0.0.1:18787`); confirm it matches `$ORIGIN`. Confirm the agent label, the signed-in account, the access disclosure, and the lifetime control. Fill `#connect-code` with the returned code, choose `1d` in `#connect-ttl`, and click `Approve connection`. Expect `#connect-status` to say `Connection approved` and the form to be hidden. Save a screenshot.
 - **Delivery.** Poll again. Expect 200 with the token, label, token id, and non-null `expires_at`. GET `/v1/whoami` using the token must return the approving account and label. Save only status, account, label, and expiry. A second exchange must be 410 `connection_expired`.
 - **Revocation.** Open `/tokens`, find `verification agent`, revoke it, and verify GET `/v1/whoami` rejects it with 401.
 - **Denial.** Start a separate request, open its URL, enter its code and click `Deny connection`. Polling must return 403 `connection_denied` and no token.
