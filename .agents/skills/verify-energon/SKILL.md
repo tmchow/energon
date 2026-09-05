@@ -9,13 +9,13 @@ Energon is a company host for files and small sites. Humans open the hub. Agents
 
 Read `features/README.md` before driving. Use the matching feature file as the recipe. One convenient entry point is not a full proof when the map lists others.
 
-Helpers live in this skill directory. Invoke them from the repo root:
+The skill lives in `.agents/skills/verify-energon/`; `.claude/skills/verify-energon` and `.cursor/skills/verify-energon` are symlinks to it, so Claude Code, Cursor, Codex, and any host that reads `.agents/skills` all see the same files. Helpers need only `bash`, `curl`, `python3`, and `npx`, and locate the repo root from their own path, so they work from any host. Invoke them from the repo root:
 
 ```
-.cursor/skills/verify-energon/bin/launch
-.cursor/skills/verify-energon/bin/doctor
-.cursor/skills/verify-energon/bin/mint-token verify-run
-.cursor/skills/verify-energon/bin/cleanup
+.agents/skills/verify-energon/bin/launch
+.agents/skills/verify-energon/bin/doctor
+.agents/skills/verify-energon/bin/mint-token verify-run
+.agents/skills/verify-energon/bin/cleanup
 ```
 
 ## Launch
@@ -27,7 +27,7 @@ Never use the default `.wrangler/state` directory. Never attach to an already-ru
 ```
 export ENERGON_VERIFY_RUN=my-run          # optional; launch generates one
 export ENERGON_VERIFY_PORT=18787          # default; stays off 8787
-.cursor/skills/verify-energon/bin/launch
+.agents/skills/verify-energon/bin/launch
 ```
 
 Launch applies D1 migrations with `--persist-to /tmp/energon-verify/$RUN/persist`, starts `npx wrangler dev --ip 127.0.0.1 --port $PORT --local --persist-to … --var PUBLIC_ORIGIN:$ORIGIN --var CONTENT_ORIGIN:$ORIGIN --show-interactive-dev-session false` in its own process group (`setsid` where available, bash job control on macOS), and waits until `GET $ORIGIN/health` returns `{"ok":true}` and `GET $ORIGIN/v1/help` echoes that same origin.
@@ -47,7 +47,7 @@ Teardown is `bin/cleanup` (kills the recorded pid / process group and the listen
 Run this first whenever anything looks off, and before the first drive of a session.
 
 ```
-.cursor/skills/verify-energon/bin/doctor
+.agents/skills/verify-energon/bin/doctor
 ```
 
 It is read-only. It checks: persist path is under `/tmp/energon-verify` (not `.wrangler/state`); recorded pid is alive; that pid (or a child in its session) owns `$PORT`; `GET /health` is `{ok:true}`; `GET /v1/help` has `hub` and `content_origin` equal to `$ORIGIN`, `env=ENERGON_TOKEN`, `token_prefix=ee_live_`, `openapi=$ORIGIN/v1/openapi.json`; `GET /v1/openapi.json` has `openapi` `3.1.0` and `servers[0].url` equal to `$ORIGIN`; `GET /` is the hub (`Publish a document, prototype, or file.`, `#pick-files`); `GET /account/data` has an email; hub bootstrap JSON has `data.handle`.
@@ -70,7 +70,7 @@ Load origin and token from the run state after launch/doctor:
 ```
 # shellcheck source=/dev/null
 source /tmp/energon-verify/$ENERGON_VERIFY_RUN/state.env
-TOKEN=$(.cursor/skills/verify-energon/bin/mint-token verify-run)
+TOKEN=$(.agents/skills/verify-energon/bin/mint-token verify-run)
 ```
 
 `state.env` has `ORIGIN`, `PORT`, `PID`, `PERSIST`, `EVIDENCE`, `EMAIL`, and after doctor `HANDLE`. After mint-token, `TOKEN`, `TOKEN_EXPIRES_AT`, and `$STATE_DIR/token`.
@@ -111,7 +111,7 @@ Proof standards:
 ## Cleanup
 
 ```
-.cursor/skills/verify-energon/bin/cleanup
+.agents/skills/verify-energon/bin/cleanup
 ```
 
 Kills the recorded pid (process group first), then any remaining listener on **this run's port** only if it belongs to that pid/session. Deletes `/tmp/energon-verify/$RUN/persist`. Does **not** delete `/tmp/energon-verify-evidence/$RUN/`. After cleanup, confirm the evidence directory still exists.

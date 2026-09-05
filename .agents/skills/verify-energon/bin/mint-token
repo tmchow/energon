@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Mint a token on the verification instance via the same hub endpoint the Tokens page uses.
-# Usage: .cursor/skills/verify-energon/bin/mint-token [label] [ttl]
+# Usage: .agents/skills/verify-energon/bin/mint-token [label] [ttl]
 # ttl is a token preset (1d, 7d, 30d, 60d, 90d, 180d, 365d, never); omitted = instance default.
 # Prints the token on stdout. Saves it at $STATE_DIR/token and TOKEN_EXPIRES_AT in state.env.
 # Do not invent a token.

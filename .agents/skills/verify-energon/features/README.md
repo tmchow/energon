@@ -4,10 +4,10 @@ This directory is the maintained source for verifying the user-facing behavior o
 
 ## Baseline preconditions
 
-- Launch with `.cursor/skills/verify-energon/bin/launch` so the Worker uses `/tmp/energon-verify/$RUN/persist`, not `.wrangler/state`.
+- Launch with `.agents/skills/verify-energon/bin/launch` so the Worker uses `/tmp/energon-verify/$RUN/persist`, not `.wrangler/state`.
 - Origin is `http://127.0.0.1:$PORT` (default port `18787`). `GET /v1/help` `hub`, `content_origin`, and the origin of `openapi` must equal that origin. `GET /v1/openapi.json` (no auth) is the `/v1` contract with `servers[0].url` set to that origin; use it to check a route's request shape or `error` code before reporting a product bug.
-- Run `.cursor/skills/verify-energon/bin/doctor` and require pid ownership of the port, hub HTML, and a signed-in email.
-- Mint with `.cursor/skills/verify-energon/bin/mint-token` when the recipe needs `/v1`. Do not invent a token.
+- Run `.agents/skills/verify-energon/bin/doctor` and require pid ownership of the port, hub HTML, and a signed-in email.
+- Mint with `.agents/skills/verify-energon/bin/mint-token` when the recipe needs `/v1`. Do not invent a token.
 - Identity on localhost is `dev@example.com` unless `.dev.vars` sets `DEV_ACCESS_EMAIL`. Handle is the email local-part (`dev` for the default).
 - Never drive an instance that was not started by this verification run.
 

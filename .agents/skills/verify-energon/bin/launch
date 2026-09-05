@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Start an isolated local Energon for verification.
-# Usage (from repo root): .cursor/skills/verify-energon/bin/launch
+# Usage (from repo root): .agents/skills/verify-energon/bin/launch
 # Env: ENERGON_VERIFY_RUN, ENERGON_VERIFY_PORT (default 18787),
 #      ENERGON_VERIFY_VARS (optional, space-separated KEY:VALUE pairs passed as extra --var,
 #      e.g. "ALLOW_UNLIMITED_TOKENS:false" to drive an instance-policy branch)

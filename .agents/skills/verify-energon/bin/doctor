@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Read-only check: is this verification instance worth driving?
-# Usage: .cursor/skills/verify-energon/bin/doctor
+# Usage: .agents/skills/verify-energon/bin/doctor
 
 set -euo pipefail
 _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
