@@ -73,15 +73,14 @@ describe("signed-in pages", () => {
     expect(setupHtml).toContain("ENERGON_TOKEN");
     expect(setupHtml).toContain("tmchow/energon");
     expect(setupHtml).toContain("https://github.com/tmchow/energon");
-    expect(setupHtml).toContain("https://agent-plugins.org/");
-    expect(setupHtml).toContain("Claude Code");
-    expect(setupHtml).toContain("OpenClaw");
+    expect(setupHtml).not.toContain("agent-plugins.org");
     expect(setupHtml).toContain("energon");
     expect(setupHtml).toContain('href="/tokens"');
     expect(setupHtml).toContain('id="agent-install"');
-    expect(setupHtml).toContain("Let your agent guide the install");
+    expect(setupHtml).toContain("Install and connect in one step");
     expect(setupHtml).toContain("user (global) scope");
-    expect(setupHtml).toContain("unless the human asked for that");
+    expect(setupHtml).toContain("connect with a code");
+    expect(setupHtml).toContain("/auth.md");
     expect(setupHtml).not.toContain('class="app-footer"');
     expect(setup.headers.get("cache-control")).toMatch(/private/);
     expect(setup.headers.get("cache-control") || "").not.toMatch(/no-store/);
@@ -110,7 +109,11 @@ describe("signed-in pages", () => {
     expect(tokensHtml).not.toContain('class="app-footer"');
     expect(tokensHtml).not.toContain("__FOOTER__");
     expect(tokensHtml.indexOf('href="/tokens"')).toBeLessThan(tokensHtml.indexOf('href="/setup"'));
+    expect(tokensHtml.indexOf("Active tokens")).toBeLessThan(tokensHtml.indexOf("Mint a token by hand"));
     assertDomBindings(tokensHtml);
+    const emptyHtml = await (await req("/tokens", { headers: access("notokens@esperlabs.app") })).text();
+    expect(emptyHtml).toContain("No active tokens");
+    expect(emptyHtml).toContain("Set up your agent and approve its code");
   });
 
   it("serves the Energon cube mark", async () => {

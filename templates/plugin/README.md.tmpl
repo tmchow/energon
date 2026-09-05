@@ -4,6 +4,6 @@ Agent-native publishing for documents, prototypes, and working files. Use the pl
 
 Install this plugin from **this {{PRODUCT}} repo** (the fork you instantiated), not from a placeholder host. Claude Code and [Agent Plugins](https://agent-plugins.org/) hosts use the same marketplace. Install at user (global) scope unless the human asked for a project-level install.
 
-After the host exists, mint a token at {{ORIGIN}}/tokens and export it as the env named in `GET {{ORIGIN}}/v1/help`.
+After the host exists, ask your agent to connect: it reads {{ORIGIN}}/auth.md, shows you a link and code, and saves the approved token as the env named in `GET {{ORIGIN}}/v1/help`. For CI, create a token at {{ORIGIN}}/tokens and store it under that name.
 
 Humans and agents: [INSTALL.md](../../INSTALL.md). Copy-paste prompts: [README.md](../../README.md).

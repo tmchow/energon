@@ -15,7 +15,7 @@ This skill is bound to **{{ORIGIN}}**. Do not send traffic to another Energon ho
 
 ## Hard rules
 
-1. Look for env `{{TOKEN_ENV}}`. If it is missing, read {{ORIGIN}}/auth.md and request a human-approved connection, or ask the human to mint and export a token at {{ORIGIN}}/tokens. Do not automate the human approval. Do **not** invent a token. Do **not** reuse a token you saw in chat history unless they just pasted it. A token that has expired (`401` with `error: token_expired`) is the same stop: it cannot be renewed; the human must approve a new connection or mint a replacement.
+1. Look for env `{{TOKEN_ENV}}`. If it is missing and a human can respond, read {{ORIGIN}}/auth.md and connect with a code: show the link and code, wait for approval, save the delivered token as `{{TOKEN_ENV}}` (see Scenario G). If no human can respond (CI, unattended runs), stop and report that `{{TOKEN_ENV}}` must be provisioned from {{ORIGIN}}/tokens. Do not automate the human approval. Do **not** invent a token. Do **not** reuse a token you saw in chat history unless they just pasted it. A token that has expired (`401` with `error: token_expired`) is the same stop: it cannot be renewed; connect again or have the human provision a replacement.
 2. Never default to `overwrite: true`.
 3. Never pick a slug that already exists without the human confirming.
 4. Last write wins **on that path only**. Putting a file does not delete other files. There is no merge, no comments, no presence.
@@ -187,18 +187,16 @@ A single file is never a zip. `GET /v1/files/{id}?download=1` (or the public URL
 
 ## Scenario G — No token, expired token, or 401
 
-Stop using a rejected or expired token. Read {{ORIGIN}}/auth.md for the human-approved connection flow: show the returned link and code, wait for approval, and poll with the private `poll_token`. Store the delivered token without printing it. Denial is terminal; a lost delivery requires human revocation before a new approval. This is not an OAuth flow.
+Stop using a rejected or expired token. Then, in order:
 
-Manual tokens are also supported. Tell the human:
-
-1. Open that page while signed in.
-2. Mint a token with a label (`laptop`, `ci`) and a lifetime (default 3 months).
-3. Copy it **now** — it is shown once.
-4. `export {{TOKEN_ENV}}={{TOKEN_PREFIX}}…` (or add it to their secret store).
+1. Check `{{TOKEN_ENV}}` again. If it is set and was not the rejected token, use it.
+2. If a human can respond, connect with a code. Read {{ORIGIN}}/auth.md, POST `/v1/connections`, show the returned link and code, and poll with the private `poll_token` until approved. Denial is terminal; a lost delivery requires human revocation on {{ORIGIN}}/tokens before a new approval.
+3. Save the delivered token before anything else. Set `{{TOKEN_ENV}}` for this session, then persist it where this environment keeps secrets: the host's credential store if there is one, otherwise a user-level env file or shell profile, otherwise a file in the user's home directory readable only by them (mode 600). Never write it into the project, a flag, a URL, a log, a commit, or your reply. Tell the human where it went, the label, and `expires_at`. If nothing persists here, say the next session will need a new approval or a provisioned `{{TOKEN_ENV}}`.
+4. If no human can respond, stop. Report that a human must create a token at {{ORIGIN}}/tokens (label, lifetime, shown once) and store it as `{{TOKEN_ENV}}` in this environment's secret store.
 
 Then retry with the **new** token. Do not scrape HTML for a token. Do not automate approval or mint through the human hub API; only the connection flow delivers a token after human approval.
 
-If the 401 body has `error: token_expired`, the token passed its lifetime. It cannot be extended and there is no renew call: do not retry with it, do not invent a replacement, hand the human the steps above. `GET /v1/whoami` returns your token's `expires_at` (`null` means never) if you want to warn the human before it happens.
+If the 401 body has `error: token_expired`, the token passed its lifetime. It cannot be extended and there is no renew call: do not retry with it, do not invent a replacement, follow the steps above. `GET /v1/whoami` returns your token's `expires_at` (`null` means never) if you want to warn the human before it happens.
 
 ## Scenario H — Too big, password, or TTL
 

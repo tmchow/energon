@@ -12,7 +12,7 @@
   import Hub from './pages/Hub.svelte';
   let props: PageProps = $props();
 </script>
-{#if 'email' in props.data}<AppHeader active={props.page === 'connect' ? 'tokens' : props.page} email={props.data.email} />{/if}
+{#if 'email' in props.data && props.page !== 'connect'}<AppHeader active={props.page} email={props.data.email} />{/if}
 {#if props.page === 'hub'}<Hub data={props.data} />
 {:else if props.page === 'setup'}<Setup data={props.data} />
 {:else if props.page === 'tokens'}<Tokens data={props.data} />
@@ -21,4 +21,4 @@
 {:else if props.page === 'about'}<About />
 {:else if props.page === 'gate'}<Gate data={props.data} />
 {:else if props.page === 'markdown'}<Markdown data={props.data} />{/if}
-{#if props.page !== 'gate' && props.page !== 'markdown'}<AppFooter text={props.footer} />{/if}
+{#if props.page !== 'gate' && props.page !== 'markdown' && props.page !== 'connect'}<AppFooter text={props.footer} />{/if}

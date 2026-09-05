@@ -14,8 +14,8 @@ This skill talks only to **{{ORIGIN}}**. Install a separately rendered skill for
 
 | Status | Typical `error` | What you do |
 | --- | --- | --- |
-| 401 | `unauthorized` | Stop. Send them to {{ORIGIN}}/tokens |
-| 401 | `token_expired` | Terminal. The token passed its lifetime and cannot be extended. Do not retry with it; the human mints a new one at {{ORIGIN}}/tokens (`expired_at` and `tokens_url` are in the body) |
+| 401 | `unauthorized` | Stop. Connect with a code (auth.md) or have the human provision a token at {{ORIGIN}}/tokens |
+| 401 | `token_expired` | Terminal. The token passed its lifetime and cannot be extended. Do not retry with it; connect again or the human provisions a new one at {{ORIGIN}}/tokens (`expired_at` and `tokens_url` are in the body) |
 | 401 | `password_required` | Retry the human URL with `X-Energon-Password`, or use `api_url` with a token |
 | 404 | `site_not_found` / `file_not_found` | Create the site first; never implicit-create. For files, check the path or id. |
 | 409 | `site_exists` | Show `url` + last writer. Ask: new slug or `overwrite: true` |
@@ -82,6 +82,6 @@ GET /v1/openapi.json  OpenAPI 3.1 contract for every route above
 
 Limits: 25 MB per file and per zip upload; 20 GB platform cap; optional content TTL per instance.
 
-## Human-approved connection
+## Connect with a code
 
-Read {{ORIGIN}}/auth.md for POST `/v1/connections` and POST `/v1/connections/{id}/token`. No bearer is needed to start; polling requires the private `poll_token`. No file access is granted until a signed-in human enters the agent code and approves. Connection tokens use the existing token lifetime and revocation rules. Manual tokens remain available.
+Read {{ORIGIN}}/auth.md for POST `/v1/connections` and POST `/v1/connections/{id}/token`. No bearer is needed to start; polling requires the private `poll_token`. No file access is granted until a signed-in human enters the agent code and approves. The delivered token is an ordinary account token with the lifetime the human chose; save it as `{{TOKEN_ENV}}` per auth.md. Humans can also create tokens ahead of time on {{ORIGIN}}/tokens for CI and unattended runs.

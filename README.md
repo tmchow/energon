@@ -198,7 +198,7 @@ copilot plugin marketplace add your-org/energon
 copilot plugin install yourco-energon@yourco-energon
 ```
 
-The agent can request a connection using `{origin}/auth.md`: a human signs in, enters the agent’s code, and approves; the agent receives its token directly. Manual setup remains available: a human signs in at `{origin}/tokens`, mints a token, and exports it under the environment variable named by `/v1/help`. The secret is shown once and cannot be recovered later.
+An agent follows `{origin}/auth.md`. If the token environment variable named by `/v1/help` is set, it uses that. Otherwise it connects with a code: it shows the human a link and an eight-digit code, the human signs in, enters the code, picks a lifetime, and approves, and the agent receives the token directly and saves it as that variable. For CI, scheduled jobs, and hosted sandboxes, a human creates the token at `{origin}/tokens` and stores it in the environment's secret store. The secret is shown once and cannot be recovered later.
 
 ### Run the source locally
 
@@ -230,7 +230,7 @@ Do not invent a token. Do not reuse another instance's D1 database_id or R2 buck
 ```text
 Read INSTALL.md in this repository, section "Connect an agent", and install Energon for this machine.
 
-Ask me for our Energon origin (https://...) if it is not already in the environment or INSTALL.md. I will mint a token at {origin}/tokens and paste the secret. Export it as the token env named by GET {origin}/v1/help. Install the skill from this instance's repo at user (global) scope. If I already use another Energon, this skill has a different name. Install it too, or pin it in this repo. Do not invent a token.
+Ask me for our Energon origin (https://...) if it is not already in the environment or INSTALL.md. Install the skill from this instance's repo at user (global) scope. Then read {origin}/auth.md: if the token env named by GET {origin}/v1/help is set, use it; otherwise connect with a code, show me the link and code, and after I approve, save the token as that env where this environment keeps secrets. If I already use another Energon, this skill has a different name. Install it too, or pin it in this repo. Do not invent a token.
 ```
 
 The deployed host's `/setup` page has the same prompt filled with its own values.
@@ -309,7 +309,7 @@ curl -sS "$ENERGON_ORIGIN/v1/files/{id}" \
 | `GET /v1/help` | Identity, SOP, routes, limits, retention, and token policy | None |
 | `GET /v1/health` | Return `{ "ok": true }` | None |
 | `GET /v1/openapi.json` | OpenAPI 3.1 contract for every `/v1` route, with `servers` set to this instance | None |
-| `POST /v1/connections` | Start a connection for human approval | None |
+| `POST /v1/connections` | Start a code-based connection for human approval | None |
 | `POST /v1/connections/{id}/token` | Poll for one-time credential delivery | Request poll token |
 | `GET /v1/whoami` | Return token owner, label, and expiry | Token |
 
@@ -436,7 +436,7 @@ Yes. Each fork renders a distinct plugin name and token environment variable. In
 
 ### Can an agent mint or recover a token?
 
-An agent can request a connection, but a signed-in human must approve it before a token is delivered. Humans can also mint tokens manually at `/tokens`. The secret is delivered or displayed once. It cannot be recovered or renewed, and an expired token must be replaced.
+An agent can start a connection, but a signed-in human must enter its code and approve before a token is delivered. Humans can also create tokens at `/tokens` for environments where no agent can ask. The secret is delivered or displayed once. It cannot be recovered or renewed, and an expired token must be replaced.
 
 ### Why separate hub and content hostnames?
 

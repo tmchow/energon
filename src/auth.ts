@@ -26,7 +26,7 @@ export function unauthorized(origin: string, detail?: string, env?: Env): ApiErr
     401,
     "unauthorized",
     detail ||
-      `${PRODUCT} needs an API token. Open ${origin}/tokens while logged in, mint a token, and send it as Authorization: Bearer ${id.tokenPrefix}…. Export it as ${id.tokenEnv}. Do not invent a token.`,
+      `${PRODUCT} needs an API token. Use ${id.tokenEnv} if set. Otherwise, if a human can respond, connect with a code per ${origin}/auth.md; if not, stop and ask a human to mint one at ${origin}/tokens. Send it as Authorization: Bearer ${id.tokenPrefix}…. Do not invent a token.`,
     { auth_url: `${origin}/auth.md`, tokens_url: `${origin}/tokens` },
   );
 }
@@ -89,7 +89,7 @@ export async function requireToken(request: Request, env: Env): Promise<Actor> {
   if (!row || row.revoked_at) {
     throw unauthorized(
       origin,
-      `That API token is missing or revoked. Open ${origin}/account, mint a new one, and export it as ${id.tokenEnv}.`,
+      `That API token is missing or revoked. Stop using it. If a human can respond, connect again with a code per ${origin}/auth.md; if not, ask a human to mint a replacement at ${origin}/tokens and store it as ${id.tokenEnv}.`,
       env,
     );
   }
@@ -323,8 +323,8 @@ export function helpBody(origin: string, env?: Env): unknown {
       repo: id.repo,
     },
     sop: [
-      `Look for env ${id.tokenEnv}. If missing, follow ${origin}/auth.md to request a human-approved connection, or ask the human to mint and export a token at ${origin}/tokens. The secret is shown once. Do not invent a token.`,
-      `Tokens expire after the lifetime the human picked at mint (default 90 days; see tokens.presets). A 401 with error token_expired is terminal: stop using it, ask the human to approve a new connection or mint a replacement at ${origin}/tokens, and do not retry the expired token. Tokens cannot be extended. GET /v1/whoami shows your token's expires_at.`,
+      `Look for env ${id.tokenEnv}. If missing and a human can respond, follow ${origin}/auth.md to connect with a code and save the delivered token as ${id.tokenEnv} where this environment keeps secrets. If no human can respond, stop and ask for a token provisioned at ${origin}/tokens. The secret is delivered once. Do not invent a token.`,
+      `Tokens expire after the lifetime the human picked at mint (default 90 days; see tokens.presets). A 401 with error token_expired is terminal: stop using it, connect again with a code or ask the human to provision a replacement at ${origin}/tokens, and do not retry the expired token. Tokens cannot be extended. GET /v1/whoami shows your token's expires_at.`,
       `This instance's skill is ${id.skill} (install ${installLine(id)}). The origin is ${origin}. Do not guess another host.`,
       `The HTTP schema (paths, request and response bodies, status codes, error codes) is ${origin}/v1/openapi.json. This document is the instance identity and policy: origins, token env, retention presets, token lifetimes, limits.`,
       `Decide: a site (named folder of files) vs a file (one file, short id). Public URLs are /{handle}/s/{slug}/ and /{handle}/f/{id}/{filename}. Both stay put when you PUT again.`,
