@@ -5,7 +5,7 @@ date: 2026-09-05
 artifact_contract: ce-unified-plan/v1
 artifact_readiness: requirements-only
 product_contract_source: conversation
-review: poteto-mode interrogate 2026-09-05 (four models). Act-on items folded in.
+review: poteto-mode interrogate 2026-09-05 (four models on v1). Scope-delta interrogate 2026-09-05 (four models on file-vs-site add/delete).
 ---
 
 # Guest write password - Plan
@@ -13,9 +13,9 @@ review: poteto-mode interrogate 2026-09-05 (four models). Act-on items folded in
 ## Goal Capsule
 
 - **Objective:** An instance member can let someone outside the host update a published loose file, or write into a published site (add, replace, or delete paths), without Access, token minting, or `/connect`. The outside agent learns the protocol from the content host.
-- **Means:** A second shared secret (write password) and header, bytes-only `PUT` on the public content URL, and a Host-branched `/llms.txt` on the content origin. Hub outsider-sharing fields sit behind a collapsed disclosure.
+- **Means:** A second shared secret (write password) and header, bytes-only `PUT` (and site-path `DELETE`) on the public content URL, and a Host-branched `/llms.txt` on the content origin. Hub outsider-sharing fields sit behind a collapsed disclosure.
 - **Authority:** Product Contract below. STRATEGY boundaries stay: not a document editor, not a per-user ACL, last write wins, humans control credentials.
-- **Stop conditions:** Stop if guest write requires a bearer token. Stop if the guest PUT path would satisfy `OWNER_WRITE_SQL` or call `putLooseFromRequest` / `putSiteFile` as-is. Stop if content-origin `/llms.txt` cannot be a different body from hub `/llms.txt` when the two origins differ.
+- **Stop conditions:** Stop if guest write requires a bearer token. Stop if guest PUT or DELETE would satisfy `OWNER_WRITE_SQL` or call `putLooseFromRequest`, `putLooseFile`, `putSiteFile`, `deleteSiteFile`, `deleteSite`, `deleteLooseFile`, or the loose-file claim helpers as-is. Stop if content-origin `/llms.txt` cannot be a different body from hub `/llms.txt` when the two origins differ.
 
 ## Problem Frame
 
@@ -28,17 +28,17 @@ The collaborator is agent-native. They edit in their tools and replace bytes. En
 Session-settled from this conversation, then amended by adversarial review.
 
 - **Guest write is a per-object shared secret, not membership.** No Access user, no API Token, no `/connect`.
-- **Two secrets, two headers.** `X-Energon-Password` stays read-only. `X-Energon-Write-Password` authorizes replace. Authorization is bound to the header that carried the secret. Identical phrases still do not let the read header PUT.
+- **Two secrets, two headers.** `X-Energon-Password` stays read-only. `X-Energon-Write-Password` authorizes PUT, and site-path DELETE. Authorization is bound to the header that carried the secret. Identical phrases still do not let the read header PUT or DELETE.
 - **Write implies read on the agent path only.** The write header unlocks GET. The HTML gate form and cookie accept the share password only. A write secret typed into the browser form is not a goal of this slice.
-- **Write proof is the write header only.** `energon_gate` never authorizes PUT, even if it was minted from a write-hash unlock in a later slice.
+- **Write proof is the write header only.** `energon_gate` never authorizes PUT or DELETE, even if it was minted from a write-hash unlock in a later slice.
 - **Mutation is on the content origin because that is the URL the guest was given, and because it keeps unauthenticated writes off the hub origin.** Hub `/v1` is Access Bypass already. Tokenlessness, not Access, is what blocks `/v1`. Do not put Access on `/v1` to "fix" this.
 - **Do not change artifact bytes.** Discovery is errors and content-origin `/llms.txt`. Response-header `Allow: PUT` is not the teacher (cache-stale after revoke).
 - **Content-origin `/llms.txt`, not `write.md`.** Classify host before serving `/llms.txt`. Content body is guest-only. Hub body stays instance SOP plus a guest-write section for publishers.
 - **One authored protocol fragment in TypeScript.** Skill templates keep literals. Vitest asserts rendered skill contains the exported constants. No `skill:render` import of Worker TS.
 - **Hub: collapse outsider sharing.** URL, expiry, instance write policy, and Publish stay visible. Share password and write password live behind a closed Link access disclosure.
 - **Creator-only to set or clear the write password.** Same bar as `write_policy`. `canMutate` is not enough.
-- **Password writer is not an account.** Guest PUT is a distinct `WriteAuthority`. It does not reuse `Actor`. It does not invent a fake email. Keep `last_written_by` as the last account. Record `written_via` (or equivalent) for hub copy ("Updated via write password").
-- **Scope follows the object kind.** (session-settled: user-directed) A write password on a loose file only replaces that file's bytes, including empty. It does not `DELETE` the file, create another file, or create a site. `DELETE` would remove the published address. A later GET would be `404`, which looks like a missing object or a host error, not "the collaborator emptied the work." The URL must stay so the owner can still open it, revoke the write password, and put bytes back. A write password on a site may `PUT` (add or replace) and `DELETE` paths under that slug. It does not `DELETE` the site, for the same address reason. Guest create of a new site path is bounded by `MAX_IMPORT_FILES` (200) on that site. File-byte and platform-byte caps match token PUT.
+- **Password writer is not an account.** Guest PUT and path DELETE use a distinct `WriteAuthority`. They do not reuse `Actor`. They do not invent a fake email. Keep `last_written_by` as the last account. Record `written_via` (or equivalent) for hub copy ("Updated via write password").
+- **Scope follows the object kind.** (session-settled: user-directed) A write password on a loose file only replaces that file's bytes, including empty. It does not `DELETE` the file, create another file, or create a site. The public file URL (handle, id, filename) is minted once and cannot be reconstituted after `DELETE`. Empty overwrite stays `200` at that URL. A write password on a site may `PUT` (add or replace) and `DELETE` paths under that slug. Path URLs may 404 after delete. The site address `/{handle}/s/{slug}/` must keep resolving (`200`, including the empty-site listing) even if every path is gone. Guest `DELETE` of the site is out. Guest create of a new site path is bounded by `MAX_IMPORT_FILES` (200) on that site, `400 too_many_files` when the path is new and the site is already at the ceiling. Replace and DELETE remain allowed at 200 files. File-byte and platform-byte caps match token PUT. A site write password is full control of that site's served bytes, including replacing `index.html`. Hub copy must say so.
 - **Instance write policy stays a separate door.** Tokens still follow `owner` | `instance`. A valid write-password PUT succeeds even when `write_policy` is `owner`.
 
 ## Product Contract
@@ -49,28 +49,32 @@ Session-settled from this conversation, then amended by adversarial review.
 - R2. Sites: JSON `write_password` on create and PATCH (empty string clears). Loose files: `X-Energon-Set-Write-Password` and multipart `write_password` on create, plus JSON PATCH. Duplicate never copies the write hash. Only the creator (`assertCanSetWritePolicy`) may set or clear it. Guest PUT cannot set it.
 - R3. GET never returns the secret. Set responses echo it once via `secretJson` (`no-store, private`). Catalog rows expose `write_password_protected: boolean`.
 - R4. Combinations: neither; read only; write only; both. Write-only is the usual contractor case (public read).
-- R5. `X-Energon-Password` reads a share-passworded public URL. It never authorizes PUT, even when the phrases are identical.
-- R6. `X-Energon-Write-Password` on `PUT` to the public URL writes bytes. Body is raw bytes only (empty is allowed). Reject multipart, `X-Filename`, `X-Energon-Set-Password`, `X-Energon-Set-Write-Password`, TTL, and write-policy headers on guest PUT with 400. On a site path, `DELETE` with the same header removes that path. `DELETE` of a loose file, of a site, or of a site directory URL is not a guest operation (`405`).
-- R7. Cookie and gate form never authorize PUT.
-- R8. PUT and site-path DELETE status matrix:
-  - no write password set → `405` with `Allow: GET` (do not name the write header)
-  - write password set, header missing or wrong → `401` JSON naming `X-Energon-Write-Password` and `GET {content_origin}/llms.txt`
-  - site or loose file missing → `404` JSON (not HTML)
-  - site path missing on DELETE → `404` JSON
-  - new site path that would exceed `MAX_IMPORT_FILES` on that site → `413` (same 200-file ceiling as zip import)
-  - expired → `410`
-  - oversize / platform storage cap → `413` (same caps as token PUT)
-  - PUT success → `200` replace or `201` create (no `api_url`, no `hub`)
-  - site-path DELETE success → `204` or `200` with no `hub` / `api_url`
-- R9. Write header on GET skips the share gate. Form and cookie stay share-password only.
+- R5. `X-Energon-Password` reads a share-passworded public URL. It never authorizes PUT or DELETE, even when the phrases are identical.
+- R6. `X-Energon-Write-Password` on `PUT` writes bytes. Body is raw bytes only (empty is allowed). Reject multipart, `X-Filename`, `X-Energon-Set-Password`, `X-Energon-Set-Write-Password`, `X-Energon-Duplicate-From`, TTL, and write-policy headers on guest PUT with 400. On a site file path (normalized path non-empty), `DELETE` with the same header removes that one path. No prefix delete. Method is decided from URL kind before any secret check. Loose file: GET and PUT only. Site file path: GET, PUT, and DELETE. Site directory (normalized path empty: `…/s/{slug}` or `…/s/{slug}/`): GET only. Never-guest methods return `405` with `Allow` for that kind and do not check the write secret (no 401 oracle). `DELETE` carrying those rejected headers is ignored or 400, never a mutation.
+- R7. Cookie and gate form never authorize PUT or DELETE.
+- R8. Ordered status for guest PUT/DELETE:
+  1. object missing → `404` JSON
+  2. expired or purge-claimed → `410` JSON
+  3. method not allowed for that URL kind → `405` with `Allow` for the kind (no write-header name)
+  4. write rate limit → `429`
+  5. write password unset, on an allowed method → `405` with `Allow: GET` (no write-header name)
+  6. write password set, header missing or wrong, on an allowed method → `401` JSON naming `X-Energon-Write-Password` and content `/llms.txt`
+  7. forbidden request headers on PUT → `400`
+  8. new site path at `MAX_IMPORT_FILES` → `400 too_many_files` (replace and DELETE still ok)
+  9. oversize / platform cap → `413`
+  10. PUT success → `200` replace or `201` create
+  11. site-path DELETE success → `200` JSON `{ deleted: true, path }` (not 204)
+  Guest error bodies on the content host omit `hub` and hub-origin URLs. `409` busy/lost is retryable and named in content `/llms.txt`.
+- R9. Guest PUT and DELETE are authorized before `protectContent`. A valid write header skips the share gate on GET, PUT, and site-path DELETE and does not consult read rate-limit scopes. Cookie and form never mutate.
 - R10. Rate-limit wrong write secrets on write-specific object and IP scopes. Wrong read secrets stay on read scopes. Twenty failed writes must not block share-password GET. `wantsJsonGate` is true if either password header is present.
 - R10b. Distinct hash prefix for write secrets (`energon-wpw:` or equivalent) so a leaked read-hash table is not a write-hash table.
 
 ### Content host
 
-- R11. Content origin `PUT` on `/{handle}/f/{id}/{filename}` and `/{handle}/s/{slug}/{path}` when the write header matches. Loose-file PUT requires handle, id, and filename to match the row (no 302) and only replaces that file. Site PUT creates or replaces that path under the existing site (`assertFilePath`). Site `DELETE` on a file path removes that path and purges cache (same rollback/hash-in-predicate discipline as guest PUT). `PUT` or `DELETE` of a directory URL (`…/s/{slug}/`) is `400`/`405` JSON, not delete-the-site. Same file-byte and platform-byte caps as token PUT. A new path is refused when the site already has `MAX_IMPORT_FILES` files. Same 410 for expired or purge-claimed objects. Content `/llms.txt` says a site write password can add, replace, or delete paths, and a file write password can only replace that file.
+- R11. Loose-file PUT: after the same decode+basename as GET, the filename segment must equal `urlFilename(row.filename)` (spaces already underscores). Mismatch → `404` JSON, no 302. Empty PUT stores a zero-byte R2 object; later GET of that public URL is `200` with length 0. Site PUT/DELETE: one `assertFilePath` row. Empty normalized path is directory (`405`). Nested trailing slash is the file name after `normalizeRelPath`, not a prefix delete. Last-path DELETE does not delete the `sites` row. `GET /{handle}/s/{slug}/` stays `200` (empty listing if no index). Guest DELETE uses hash-guarded D1 first, then R2, then `releaseStorage` of the previous size, then purge. Guest empty/shrinking PUT releases the previous-minus-new size after commit. Predicate includes `write_password_hash = ?` and not purge-claimed. New `site_files` rows set `last_written_by` to the site's current account writer (`sites.last_written_by` if it looks like an email, else `created_by`), never a guest sentinel. `sites.last_written_by` stays the last account. `written_via` is set on guest PUT and guest path DELETE and cleared on the next account mutation.
+- R2b. Present `write_password` on `overwrite: true` or any create-into-existing requires `assertCanSetWritePolicy`. Hub only sends it on overwrite when the signed-in user is the creator.
 - R12. Guest mutation uses `WriteAuthority` `{ kind: "writePassword", hash }` distinct from `Actor`. Lookup by public URL handle, not `findSiteForActor`. Do not call `putLooseFromRequest`, `putSiteFile`, or `deleteSiteFile` unchanged. Do not satisfy `OWNER_WRITE_SQL` with a fake actor. Loose-file claim/UPDATE includes `write_password_hash = ?` bound to the verified hash (clear/rotate during PUT is 401, not a late write). Site PUT/DELETE keep today's R2 snapshot + D1 rollback; the predicate must still include the current write hash. Sites do not grow a new write-claim table in this slice. Guest never calls `deleteSite` or `deleteLooseFile`.
-- R13. Successful guest PUT purges cache prefixes, updates `updated_at`, sets `written_via` (name TBD, not an email in `last_written_by`). Creator remains in `scope=involved` via `owner_id` or `created_by` even when `owner_id` is null. Hub Last writer stays the last account; show "Updated via write password" from `written_via`. PATCH that sets or clears `write_password` purges the same prefixes as share-password PATCH.
+- R13. Guest PUT and path DELETE purge cache prefixes and bump `sites`/`loose_files.updated_at`. They set `written_via` on those parent rows. They do not change `last_written_by` on the parent. Hub Last writer stays the last account. Show "Updated via write password" from `written_via`. Account PUT/PATCH/import/delete clears `written_via`. PATCH that sets or clears `write_password` purges the same prefixes as share-password PATCH. Catalog involvement is unchanged because guest writes do not modify parent `last_written_by`.
 - R14. GET never prepends protocol text to the body.
 - R15. Do not send `Allow: PUT` on cacheable GET. The 401 body is the teacher. Optional `Link: </llms.txt>; rel="describedby"` on content GET is allowed if it does not claim the object is writable.
 - R16. Classify `contentHost` before `/llms.txt`, `/auth.md`, `/v1/help`, `/v1/openapi.json`. Content origin serves the guest `/llms.txt` body. Content origin 404s `/auth.md` and `/v1/*` (or equivalent "this hostname serves published content only") so guests are not taught `/connect`. When `PUBLIC_ORIGIN == CONTENT_ORIGIN` (local/verify), `/llms.txt` is the hub body with the guest-write section included, and the verify recipe asserts that section rather than two Hosts.
@@ -87,21 +91,21 @@ Session-settled from this conversation, then amended by adversarial review.
 
 - R21. Stage primary: URL, expiration, Who can write (instance door), Publish. Closed disclosure "Link access" holds share password and write password. Open the disclosure when either field is non-empty. Overwrite ("Write into it") must still send write password if staged.
 - R22. Write policy stays visible. Note that it does not grant or deny the write-password door.
-- R23. Catalog lock opens one Link access dialog. Each secret is `unchanged | replace | remove`. Empty box does not clear the other secret. Lock `on` if either hash is set. Badge `password` if share-passworded. Second badge if write-passworded (not "edit", not a role). Copy: instance tokens still follow write policy; write password is for someone not on this host. Non-creators do not get the write-password fields.
+- R23. Catalog lock opens one Link access dialog. Each secret is `unchanged | replace | remove`. Empty box does not clear the other secret. Lock `on` if either hash is set. Badge `password` if share-passworded. Second badge if write-passworded (not "edit", not a role). Copy: a file write password replaces that file only. A site write password is full control of served bytes, including replacing `index.html`. Instance tokens still follow write policy. Write password is for someone not on this host. Non-creators do not get the write-password fields.
 - R24. Gate page stays a share-password unlock. Do not accept the write secret in the form. DESIGN.md: lock `on` if either shared secret is set. CONCEPTS.md gains Write Password. STRATEGY.md "shared writes happen through in-place replacement under write policy" needs a clause for the write-password door.
 
 ### Skill, help, verify
 
 - R25. Instance skill: scenario "outside agent updates this URL." Creator sets write password, human sends public URL plus write password, outside agent `GET {content_origin}/llms.txt` (or reads the guest section of hub `/llms.txt` on single-origin) and PUT with `X-Energon-Write-Password`. Do not mint them a token.
 - R26. `helpBody` and hub `llms.txt` describe both doors. `auth.md` (hub only): a write password is an object-scoped shared secret for public-URL PUT, not an account token, not Access.
-- R27. verify-energon: new recipe plus updates to `share-password.md` and hub-catalog handles this change moves (`#stage-password` disclosure, dialog title, both fields, lock `on` for write-only). Proofs: guest PUT without `Authorization`; guest PUT of a new site path (`201`); guest DELETE of a site path; guest DELETE of a loose file is `405`; empty loose PUT still leaves the file in the catalog; read header cannot PUT; cookie cannot PUT; identical phrases still header-bound; `write_policy=owner` guest PUT succeeds; creator-only set; clear write password then PUT 405; 405 when unset (no write header named); content vs hub `/llms.txt` when origins differ, guest section present when they do not; catalog still shows the object after guest PUT.
+- R27. verify-energon: new recipe plus updates to `share-password.md` and hub-catalog handles this change moves (`#stage-password` disclosure, dialog title, both fields, lock `on` for write-only). Do not require two Hosts unless `bin/launch` / `bin/doctor` change. Proofs: guest PUT without `Authorization`; guest PUT of a new site path (`201`); guest DELETE of a site path (`200` JSON); last-path DELETE leaves `GET /{handle}/s/{slug}/` at `200`; directory URL DELETE is `405`; guest DELETE of a loose file is `405`; empty loose PUT then GET is `200` length 0 at the same public URL; read header cannot PUT or DELETE; cookie cannot PUT or DELETE; identical phrases still header-bound; `write_policy=owner` guest PUT succeeds; creator-only set; clear write password then PUT 405; 405 when unset (no write header named); content vs hub `/llms.txt` when origins differ, guest section present when they do not; catalog still shows the object after guest PUT.
 
 ### Success Criteria
 
 - An outside agent given a site write password can add, replace, or delete paths under that slug without a token, and cannot delete the site.
 - An outside agent given a file write password can replace that file (including empty) and cannot delete it. The public URL still resolves.
-- A viewer given only the share password cannot PUT.
-- A human who only unlocks the gate cannot cause a PUT via the cookie.
+- A viewer given only the share password cannot PUT or DELETE.
+- A human who only unlocks the gate cannot cause a PUT or DELETE via the cookie.
 - Changing guest-write copy in the TS module fails CI if hub llms, content llms, help, or the rendered skill disagree.
 - A coworker token cannot mint a write password on someone else's `owner` object.
 
@@ -143,6 +147,9 @@ Additive `write_password_hash` on `sites` and `loose_files`. Additive `written_v
 - Named invites, guest API tokens
 - Zip import via write password
 - Guest `DELETE` of a loose file or of a whole site
+- New site write-claim table (keep today's R2 snapshot + D1 rollback)
+- Per-site guest byte ceiling beyond the platform cap
+- Two-origin verify-energon unless `bin/launch` / `bin/doctor` change
 - Injecting protocol into file bytes
 - Per-person revoke
 - Fixing the pre-existing concurrent gate limiter
@@ -154,28 +161,41 @@ Additive `write_password_hash` on `sites` and `loose_files`. Additive `written_v
 ## Verification (when implementing)
 
 - `test:unit` goldens, fragment drift, skill-render, gate/password, openapi-drift
-- `test/api.spec.ts` status matrix, new site path `201`, site path DELETE, loose-file DELETE is `405`, empty loose PUT allowed, file-count ceiling, header-bound identical phrases, cookie refused, owner-policy guest PUT, creator-only set, duplicate drops write hash
+- `test/api.spec.ts` status matrix, new site path `201`, site path DELETE `200` JSON, last-path DELETE keeps site `200`, directory DELETE `405`, loose-file DELETE is `405`, empty loose PUT then GET `200` length 0, file-count ceiling `400 too_many_files`, header-bound identical phrases, cookie refused for PUT and DELETE, owner-policy guest PUT, creator-only set including overwrite, duplicate drops write hash, method-first `405` before secret check
 - `test/files.spec.ts` guest PUT rejects rename and set-password headers
 - `test/site-integrity.spec.ts` hash-in-predicate vs clear mid-flight
-- `test/api.purge-claim.spec.ts` expired/purge-claimed guest PUT
-- `test/routes.spec.ts` Host-branched `/llms.txt`, content-host `/auth.md` 404, hub-origin PUT redirect
-- `test/pages.spec.ts` disclosure, dialog unchanged/replace/remove, badges, lock on
+- `test/api.purge-claim.spec.ts` expired/purge-claimed guest PUT and path DELETE
+- `test/routes.spec.ts` Host-branched `/llms.txt`, content-host `/auth.md` 404, hub-origin PUT/DELETE is `307`/`308` or JSON (not 302→GET)
+- `test/pages.spec.ts` disclosure, dialog unchanged/replace/remove, badges, lock on, site write-password copy names homepage control
 - `check:ui`
 - verify-energon recipe updates listed in R27
 
 ## Adversarial review (2026-09-05)
 
-Four-model interrogate. Consensus that would have shipped bugs is folded above.
+Two four-model interrogates. Consensus that would have shipped bugs is folded above. A third pass is not required unless the contract changes again.
+
+### Pass 1 — original overwrite-only slice
 
 **Act on (folded).** Guest PUT is not `putLooseFromRequest`. `WriteAuthority` not a fake `Actor`. Bytes-only. Header-bound even when phrases match. Content `/llms.txt` is a Host branch of an existing public route, not a new 404 exception. Access is not why `/v1` is closed. Creator-only set. Hash in the claim predicate. Split rate-limit scopes. Do not put a sentinel in `last_written_by`. 405 when unset. No cacheable `Allow: PUT`. Purge on write-password PATCH. No CORS for PUT. Form does not take the write secret. Dialog omit vs clear per field. skill-render asserts constants. Single-origin `/llms.txt` rule. OpenAPI still lists every `ApiError` code. Verify map handles this change moves.
 
-**Product override after review.** Reviewers wanted guest site PUT to 404 on missing paths. The product call is that a site write password is write into that folder: add, replace, and delete paths, with the 200-file and byte caps. Unbounded trees stay out. Guest `DELETE` of the site or of a loose file stays out because that removes the published address. A later open would be `404`, which is indistinguishable from "this never existed" or a host miss. Empty overwrite of a loose file is allowed and leaves the URL.
+**Product override after pass 1.** Reviewers wanted guest site PUT to 404 on missing paths. The product call is that a site write password is write into that folder: add, replace, and delete paths, with the 200-file and byte caps. Unbounded trees stay out.
 
 **Dismissed.** Concurrent gate burst rewrite (pre-existing sequential limiter, not this feature). PBKDF2 for write hashes (distinct prefix is the slice; share passwords already SHA-256). Full write-event table (instrument later). Public HEAD as a vehicle for `Allow: PUT` (HEAD is unscoped; do not add it to advertise write).
 
-**Open (do not block).** Badge phrasing (`write password` vs `writable`). Exact `written_via` column name. Whether content-host `/v1/help` is 404 or a one-line "published content only."
+### Pass 2 — file-vs-site add/delete and URL stability
+
+Run after the product override. Scope delta only. Not a re-review of pass-1 protocol.
+
+**Act on (folded).** Cookie/gate never authorize PUT or DELETE. Method-first `405` before the secret check so illegal DELETE is not a 401 writability oracle. Hub-origin PUT/DELETE to a content path is `307`/`308` or JSON, not today's method-blind `302` (which becomes GET). Loose-file PUT compares the filename segment to `urlFilename(row.filename)` and never 302s. Directory URL is empty normalized path (`…/s/{slug}` and `…/s/{slug}/`) → `405`. Nested `foo/` is the file `foo` after `normalizeRelPath`, not prefix-delete. Last-path DELETE keeps the `sites` row; site root stays `200`. DELETE success is `200` JSON `{ deleted: true, path }`, not 204. New path at the file ceiling is `400 too_many_files`, not 413; replace and DELETE still work at 200 files. New `site_files` rows inherit the site's current account writer; never a guest sentinel in `last_written_by`. Authorize guest PUT/DELETE before `protectContent`. Guest error bodies omit `hub`. `releaseStorage` on empty/shrink PUT and path DELETE. Creator-only also on `overwrite: true`. Hub copy: a site write password is full content control, including the homepage. Verify proofs cover last-path DELETE, directory DELETE `405`, cookie cannot DELETE, and empty PUT GET `200` length 0.
+
+**Rationale restated.** Guest `DELETE` of the site or of a loose file stays out because the minted identity (`/{handle}/f/{id}/{filename}` or `/{handle}/s/{slug}/`) cannot be reconstituted. Path DELETE may 404 that path; that is fine because the owner can PUT the same path back. Empty overwrite of a loose file is allowed and leaves the URL.
+
+**Dismissed.** New site write-claim table (pre-existing site PUT race; keep R2 snapshot + D1 rollback). Per-site guest byte ceiling beyond the platform cap (accept explicitly). Two-origin verify-energon unless `bin/launch` / `bin/doctor` change. Concurrent COUNT race at 200 files (best-effort, same as zip). PBKDF2 (still out).
+
+**Open (do not block).** Badge phrasing (`write password` vs `writable`). Exact `written_via` column name. Whether content-host `/v1/help` is 404 or a one-line "published content only." Whether guest loose-file PUT ignores `Content-Type` and reuses the stored type.
 
 ## Open questions
 
 - Badge label. Prefer `write password`.
 - `written_via` vs `last_writer_kind`.
+- Guest loose-file PUT: reuse stored `Content-Type`, or accept the request type.
