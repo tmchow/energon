@@ -38,7 +38,7 @@ Session-settled from this conversation, then amended by adversarial review.
 - **Hub: collapse outsider sharing.** URL, expiry, instance write policy, and Publish stay visible. Share password and write password live behind a closed Link access disclosure.
 - **Creator-only to set or clear the write password.** Same bar as `write_policy`. `canMutate` is not enough.
 - **Password writer is not an account.** Guest PUT is a distinct `WriteAuthority`. It does not reuse `Actor`. It does not invent a fake email. Keep `last_written_by` as the last account. Record `written_via` (or equivalent) for hub copy ("Updated via write password").
-- **A site write password is write into that site.** Guest PUT may replace or add a path under the existing slug (same as a token PUT of one file). That is how a contractor redesigns a slice. Still no new site, no new loose file, no loose-file rename, no zip, no DELETE. Guest create of a new path is bounded by `MAX_IMPORT_FILES` (200) on that site so a leaked secret cannot mint an unbounded tree. File-byte and platform-byte caps match token PUT.
+- **Scope follows the object kind.** (session-settled: user-directed) A write password on a loose file only replaces that file's bytes. It does not create another file, another site, or a path beside it. Rewriting the whole file is allowed and is the risk limit. A write password on a site (a folder of files) may replace or add paths under that slug only. Still no new site, no loose-file rename, no zip, no DELETE. Guest create of a new site path is bounded by `MAX_IMPORT_FILES` (200) on that site. File-byte and platform-byte caps match token PUT.
 - **Instance write policy stays a separate door.** Tokens still follow `owner` | `instance`. A valid write-password PUT succeeds even when `write_policy` is `owner`.
 
 ## Product Contract
@@ -72,7 +72,7 @@ Session-settled from this conversation, then amended by adversarial review.
 - R14. GET never prepends protocol text to the body.
 - R15. Do not send `Allow: PUT` on cacheable GET. The 401 body is the teacher. Optional `Link: </llms.txt>; rel="describedby"` on content GET is allowed if it does not claim the object is writable.
 - R16. Classify `contentHost` before `/llms.txt`, `/auth.md`, `/v1/help`, `/v1/openapi.json`. Content origin serves the guest `/llms.txt` body. Content origin 404s `/auth.md` and `/v1/*` (or equivalent "this hostname serves published content only") so guests are not taught `/connect`. When `PUBLIC_ORIGIN == CONTENT_ORIGIN` (local/verify), `/llms.txt` is the hub body with the guest-write section included, and the verify recipe asserts that section rather than two Hosts.
-- R17. Content `/llms.txt` describes guest public-URL use only. No `/v1`, `/auth.md`, `/tokens`, `/connect` as the way to write.
+- R17. Content `/llms.txt` describes guest public-URL use only. A site write password can PUT a new path under that slug. No new site, no `/v1`, `/auth.md`, `/tokens`, or `/connect` as the way to write.
 - R28. Authorize and rate-limit guest PUT before reading the body. No CORS `*` for PUT. No OPTIONS that allows `X-Energon-Write-Password` from arbitrary origins. Guest write is for non-browser agents. Hub-origin PUT to a content path is `307`/`308` or JSON naming the content origin (not a 302 that becomes GET).
 
 ### Drift
