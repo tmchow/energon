@@ -39,7 +39,7 @@ a.en-brand, a.en-brand:hover, .en-brand:hover { text-decoration: none; color: in
 
 /* ---- Page title ---- */
 .en-kicker { font: var(--type-kicker); letter-spacing: var(--tracking-kicker); text-transform: uppercase; color: var(--fg-brand); margin: 0 0 9px; display: flex; align-items: center; gap: 8px; }
-.en-display { font: var(--type-display); letter-spacing: var(--tracking-display); max-width: var(--measure-display); margin: 0 0 20px; }
+.en-display { font: var(--type-display); letter-spacing: var(--tracking-display); max-width: var(--measure-display); margin: 0 0 20px; text-wrap: balance; }
 .en-display--wide { max-width: 28rem; }
 .en-lede { color: var(--fg-3); margin: 0; max-width: var(--measure-lede); }
 .en-lede + .en-lede { margin-top: 12px; }
