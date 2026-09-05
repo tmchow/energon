@@ -19,6 +19,8 @@ This is an existing organization's file and small-site host. There is no public 
 2. **No credential and a human can respond:** connect with a code (below). This is the default for local and interactive agents.
 3. **No credential and no human can respond** (CI, scheduled jobs, unattended runs): stop and report that \`${tokenEnv}\` must be provisioned. Do not start a connection nobody can approve.
 
+A human can respond when this run has a chat turn a person reads and you have received a message from that person in it. Treat the run as unattended when a scheduler or CI runner launched it, or when there is no chat turn to write to.
+
 ## Connect with a code
 
 1. POST ${origin}/v1/connections with JSON \`{ "label": "my agent" }\`. No bearer token is required. This returns \`id\`, \`poll_token\`, \`user_code\`, \`verification_uri\`, \`expires_in\`, and \`interval\`.

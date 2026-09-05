@@ -109,7 +109,11 @@ describe("signed-in pages", () => {
     expect(tokensHtml).not.toContain('class="app-footer"');
     expect(tokensHtml).not.toContain("__FOOTER__");
     expect(tokensHtml.indexOf('href="/tokens"')).toBeLessThan(tokensHtml.indexOf('href="/setup"'));
+    expect(tokensHtml.indexOf("Active tokens")).toBeLessThan(tokensHtml.indexOf("Mint a token by hand"));
     assertDomBindings(tokensHtml);
+    const emptyHtml = await (await req("/tokens", { headers: access("notokens@esperlabs.app") })).text();
+    expect(emptyHtml).toContain("No active tokens");
+    expect(emptyHtml).toContain("Set up your agent and approve its code");
   });
 
   it("serves the Energon cube mark", async () => {

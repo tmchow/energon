@@ -15,7 +15,12 @@
   let status = $state('');
   let failed = $state(false);
   let complete = $state(false);
-  const minutesLeft = Math.max(1, Math.round((Date.parse(data.connection.expires_at) - Date.now()) / 60000));
+  const remaining = () => Math.max(0, Math.ceil((Date.parse(data.connection.expires_at) - Date.now()) / 60000));
+  let minutesLeft = $state(remaining());
+  $effect(() => {
+    const timer = setInterval(() => { minutesLeft = remaining(); }, 15000);
+    return () => clearInterval(timer);
+  });
   async function decide(event: SubmitEvent) {
     event.preventDefault();
     if (busy || complete) return;
@@ -23,7 +28,7 @@
     busy = true; failed = false;
     try {
       await api(`/account/connections/${encodeURIComponent(data.connection.id)}/${action}`, jsonBody('POST', { user_code: code, ttl }));
-      status = action === 'approve' ? 'Connection approved. Return to your agent; it has received its token.' : 'Connection denied. The agent has been told to stop.';
+      status = action === 'approve' ? 'Connection approved. Return to your agent to finish connecting; it receives the token on its next poll.' : 'Connection denied. Your agent is told to stop on its next poll.';
       complete = true;
     } catch (err) { status = errorMessage(err); failed = true; }
     finally { busy = false; }
@@ -43,7 +48,7 @@
       </div>
     </form>{/if}
     <div id="connect-status" class="en-connect-status" aria-live="polite">{#if status}<Flash tone={failed ? 'err' : 'ok'}>{status}</Flash>{/if}</div>
-    <p class="en-connect-meta">The agent will act as your account. It can read work on this instance, including password-protected links, and publish or update where you have permission. Approve only a code you asked for. This request expires in {minutesLeft} min.</p>
+    <p class="en-connect-meta">The agent will act as your account. It can read work on this instance, including password-protected links, and publish, update, or delete where you have permission. Approve only a code you asked for. {minutesLeft > 0 ? `This request expires in ${minutesLeft} min.` : 'This request has expired; ask your agent to start a new one.'}</p>
   </Card>
   <p class="en-connect-account">Signed in as <code>{data.email}</code> · <a href="/tokens">Manage tokens</a></p>
 </main>

@@ -26,7 +26,7 @@ export function unauthorized(origin: string, detail?: string, env?: Env): ApiErr
     401,
     "unauthorized",
     detail ||
-      `${PRODUCT} needs an API token. Use ${id.tokenEnv} if set; otherwise follow ${origin}/auth.md to connect with a code a human approves, or have a human create one at ${origin}/tokens. Send it as Authorization: Bearer ${id.tokenPrefix}…. Do not invent a token.`,
+      `${PRODUCT} needs an API token. Use ${id.tokenEnv} if set. Otherwise, if a human can respond, connect with a code per ${origin}/auth.md; if not, stop and ask a human to mint one at ${origin}/tokens. Send it as Authorization: Bearer ${id.tokenPrefix}…. Do not invent a token.`,
     { auth_url: `${origin}/auth.md`, tokens_url: `${origin}/tokens` },
   );
 }
@@ -89,7 +89,7 @@ export async function requireToken(request: Request, env: Env): Promise<Actor> {
   if (!row || row.revoked_at) {
     throw unauthorized(
       origin,
-      `That API token is missing or revoked. Open ${origin}/account, mint a new one, and export it as ${id.tokenEnv}.`,
+      `That API token is missing or revoked. Stop using it. If a human can respond, connect again with a code per ${origin}/auth.md; if not, ask a human to mint a replacement at ${origin}/tokens and store it as ${id.tokenEnv}.`,
       env,
     );
   }

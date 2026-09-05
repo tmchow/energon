@@ -373,7 +373,8 @@ describe("Energon", () => {
       body: JSON.stringify({ slug: "after-revoke" }),
     });
     expect(put.status).toBe(401);
-    expect(put.body.message).toContain("/account");
+    expect(put.body.message).toContain("/auth.md");
+    expect(put.body.message).toContain("/tokens");
   });
 
   describe("token lifetime", () => {
