@@ -23,7 +23,7 @@ Preconditions:
 
 - **Request.** POST `$ORIGIN/v1/connections` with JSON `{"label":"verification agent"}` and no bearer. Expect 201 with `id`, `poll_token`, `user_code`, `verification_uri`, `expires_in:600`, `interval:5`. Keep the secrets only in a private temporary file. Save a redacted response.
 - **Pending.** POST `$ORIGIN/v1/connections/{id}/token` with JSON containing the returned `poll_token`. Expect 202 `status:pending`. Wait at least five seconds between polls.
-- **Approval.** Open the returned verification URL. Confirm the account and label, password-protected read access disclosure, and token lifetime. Fill `#connect-code` with the returned code, choose `1d` in `#connect-ttl`, and click `Approve connection`. Expect `#connect-status` to say `Connection approved`. Save a screenshot after the form is hidden.
+- **Approval.** Open the returned verification URL. Confirm the agent label, the signed-in account, the access disclosure, and the lifetime control. Fill `#connect-code` with the returned code, choose `1d` in `#connect-ttl`, and click `Approve connection`. Expect `#connect-done-title` to say `Connection approved` and the form to be hidden. Save a screenshot.
 - **Delivery.** Poll again. Expect 200 with the token, label, token id, and non-null `expires_at`. GET `/v1/whoami` using the token must return the approving account and label. Save only status, account, label, and expiry. A second exchange must be 410 `connection_expired`.
 - **Revocation.** Open `/tokens`, find `verification agent`, revoke it, and verify GET `/v1/whoami` rejects it with 401.
 - **Denial.** Start a separate request, open its URL, enter its code and click `Deny connection`. Polling must return 403 `connection_denied` and no token.

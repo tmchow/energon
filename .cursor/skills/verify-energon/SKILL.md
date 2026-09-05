@@ -93,7 +93,7 @@ Playwright is not a repo dependency. Use the environment's browser tools, or a o
 - Choose files: click `Choose files`, then set files on `#filepick` (the click only opens a native picker).
 - One file stages a loose file (`#stage-loose` visible, `#stage-filename` filled). A folder or zip stages a site (`#stage-slug`).
 - Nothing is written until `Publish`. After success, `#messages` contains a flash with the public URL and the catalog lists the slug or filename.
-- Tokens: go to `/tokens`, fill the `Label` textbox, choose a lifetime in `#mint-ttl` (`aria-label="Token lifetime"`, default `3 months`), click `Mint token`. `#new-token` shows `export ENERGON_TOKEN=ee_live_…`. The list has an `Expires` column; expired rows are greyed (`tr.row-expired`) and keep only `Revoke`.
+- Tokens: go to `/tokens`, fill the `Label` textbox, choose a lifetime in `#mint-ttl` (`aria-label="Token lifetime"`, default `3 months`), click `Create token`. `#new-token` shows `export ENERGON_TOKEN=ee_live_…`. The list has an `Expires` column; expired rows are greyed (`tr.row-expired`) and keep only `Revoke`.
 
 ## Evidence
 

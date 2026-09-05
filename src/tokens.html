@@ -31,14 +31,23 @@
 
   <main class="wrap">
     <h1 class="display">Agent tokens</h1>
-    <p class="lede">Let an agent publish, read, reference, or update work on your behalf. Configure it with <code>__TOKEN_ENV__</code>; updates follow each file or site's write policy. The secret is shown once when you mint. The list shows the last four characters.</p>
-    <p class="lede">A valid token can read work on this instance, including password-protected links. Token expiration stops agent access through that token; it does not expire published links. New here? <a href="/setup">Connect your agent</a>.</p>
+    <p class="lede">Each token is an agent acting as you: it can publish, read, reference, or update work, including password-protected links, subject to each file or site's write policy. Revoke one here to cut that agent off. Expiry stops the agent, not the links it published.</p>
+    <p class="lede">You usually do not create tokens here. <a href="/setup">Set up your agent</a> and it provisions its own token when you approve its code. Create one by hand only for CI, scheduled jobs, or a hosted sandbox with a secret store.</p>
     <div id="messages"></div>
     <section class="card">
       <div class="card-head">
-        <h2>Mint</h2>
+        <h2>Active tokens</h2>
+        <span class="hint">Last four characters shown</span>
+      </div>
+      <div class="card-body tight" id="tokens"></div>
+    </section>
+    <section class="card">
+      <div class="card-head">
+        <h2>Create a token by hand</h2>
+        <span class="hint">For CI and unattended runs</span>
       </div>
       <div class="card-body">
+        <p class="muted-copy">Store the secret as <code>__TOKEN_ENV__</code> in that environment's secret store. It is shown once.</p>
         <form id="mint" class="mint">
           <label class="field">Label
             <input name="label" placeholder="laptop" required maxlength="64">
@@ -47,11 +56,10 @@
             <select name="ttl" id="mint-ttl" aria-label="Token lifetime"></select>
             <span class="pw-note" id="mint-ttl-note"></span>
           </label>
-          <button type="submit" class="btn-primary">Mint token</button>
+          <button type="submit" class="btn-primary">Create token</button>
         </form>
         <div id="new-token"></div>
       </div>
-      <div class="card-body tight" id="tokens"></div>
     </section>
   </main>
   __FOOTER__
@@ -92,7 +100,7 @@ function fillTtlSelect() {
     : (tokenPolicy.presets || [])[0]?.id || "";
   if (fallback) sel.value = fallback;
   $("mint-ttl-note").textContent = tokenPolicy.allow_never
-    ? "Expired tokens stop working; mint a new one to replace them."
+    ? "Expired tokens stop working; connect again or create a new one to replace them."
     : "This instance does not allow never-expiring tokens.";
 }
 
@@ -199,7 +207,7 @@ function render(data) {
   $("who").textContent = data.email ? data.email : "Not signed in";
   const tokens = (data.tokens || []).filter((t) => !t.revoked);
   if (!tokens.length) {
-    $("tokens").innerHTML = '<p class="empty"><strong>No active tokens</strong>Mint one with a label like laptop or ci.</p>';
+    $("tokens").innerHTML = '<p class="empty"><strong>No active tokens</strong>Set up your agent and approve its code, or create one by hand below for CI.</p>';
     return;
   }
   const wrap = document.createElement("div");

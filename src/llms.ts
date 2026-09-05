@@ -15,26 +15,26 @@ export function llmsTxt(origin: string, env?: Env): string {
 
 Reading as reference does not authorize editing. Copies are independent objects, not revision history. Build any required site output before publishing; this host serves files, not server-side application code.
 
-The API and authenticated hub live on ${origin}. Published content is served from ${content}, which must be a separate hostname in production. There is no public signup. Follow ${origin}/auth.md for a human-approved connection, or have the human mint a bearer token at ${origin}/tokens and export it as \`${id.tokenEnv}\`. Tokens look like \`${id.tokenPrefix}…\`.
+The API and authenticated hub live on ${origin}. Published content is served from ${content}, which must be a separate hostname in production. There is no public signup. Use \`${id.tokenEnv}\` if set; otherwise follow ${origin}/auth.md to connect with a code a human approves, or, when no human can respond, stop and ask for a token provisioned at ${origin}/tokens. Tokens look like \`${id.tokenPrefix}…\`.
 
 Do not put secrets, tokens, or share passwords in published files. Last write wins on a single path. Never default to overwrite.
 
 ## Start here
 
-- [Authentication instructions](${origin}/auth.md): connect with a token, verify the account, and recover from rejected credentials. No auth.
+- [Authentication instructions](${origin}/auth.md): use an existing token, connect with a code, save the token, and recover from rejected credentials. No auth.
 - [OpenAPI 3.1 contract](${origin}/v1/openapi.json): every \`/v1\` path with request and response schemas, status codes, and error codes. No auth.
 - [Machine-readable API help](${origin}/v1/help): this instance's identity and policy. SOP, routes, limits, retention, token policy. No auth.
 - [Health](${origin}/v1/health): \`{"ok":true}\`. No auth.
 - [Hub](${origin}/): human UI. Cloudflare Access.
 - [About](${origin}/about) and [Stats](${origin}/stats): signed-in humans only.
-- [Setup](${origin}/setup) and [Tokens](${origin}/tokens): signed-in humans only. Mint at /tokens.
+- [Setup](${origin}/setup) and [Tokens](${origin}/tokens): signed-in humans only. Approve connections at /connect; create or revoke tokens at /tokens.
 
 ## How to publish
 
 - Site (named folder): \`POST /v1/sites\` with \`{"slug":"…","overwrite":false,"ttl":"7d"}\`, then \`PUT /v1/sites/{slug}/files/{path}\`. Public URL: \`/{handle}/s/{slug}/\`.
 - File (one file, short id): \`POST /v1/files\`, then \`PUT /v1/files/{id}\` to replace it. Public URL: \`/{handle}/f/{id}/{filename}\`. Spaces in the filename become underscores in the path; the download name stays the original.
 - Auth on every \`/v1\` call except help, health, openapi.json, and the connection request/poll endpoints: \`Authorization: Bearer $${id.tokenEnv}\`.
-- Tokens expire after the lifetime the human picked at mint (default 90 days). A \`401\` with \`error: token_expired\` is terminal: stop using it, ask the human to approve a new connection or mint a replacement at /tokens, do not retry the expired token, do not invent one. Tokens cannot be extended. \`GET /v1/whoami\` shows \`expires_at\`.
+- Tokens expire after the lifetime the human picked at mint (default 90 days). A \`401\` with \`error: token_expired\` is terminal: stop using it, connect again with a code or ask the human to provision a replacement at /tokens, do not retry the expired token, do not invent one. Tokens cannot be extended. \`GET /v1/whoami\` shows \`expires_at\`.
 - On 409, show the existing URL and ask the human: new slug, or retry with \`overwrite: true\`.
 - \`GET /v1/sites\` and \`GET /v1/files\` list only what you created or last wrote. \`?scope=created|edited|involved\`, \`?q=\`, \`?created_by=\`, \`?limit=\`, \`?cursor=\` (always intersected with your involvement — you cannot dump someone else's catalog). Responses include \`total\` and \`next_cursor\`. Search runs over the full involved set; pages are keyset cursors.
 - Optional share password: \`password\` on create/PATCH, or \`X-Energon-Set-Password\` on file write. Empty string clears. Write responses echo the password you just set. GET never returns it — only a hash is stored. Agents send \`X-Energon-Password\` on the human URL. Token GETs on \`/v1\` skip it.

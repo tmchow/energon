@@ -89,15 +89,14 @@ describe("signed-in pages", () => {
     expect(setupHtml).toContain("ENERGON_TOKEN");
     expect(setupHtml).toContain("tmchow/energon");
     expect(setupHtml).toContain("https://github.com/tmchow/energon");
-    expect(setupHtml).toContain("https://agent-plugins.org/");
-    expect(setupHtml).toContain("Claude Code");
-    expect(setupHtml).toContain("OpenClaw");
+    expect(setupHtml).not.toContain("agent-plugins.org");
     expect(setupHtml).toContain("energon");
     expect(setupHtml).toContain('href="/tokens"');
     expect(setupHtml).toContain('id="agent-install"');
-    expect(setupHtml).toContain("Let your agent guide the install");
+    expect(setupHtml).toContain("Install and connect in one step");
     expect(setupHtml).toContain("user (global) scope");
-    expect(setupHtml).toContain("unless the human asked for that");
+    expect(setupHtml).toContain("connect with a code");
+    expect(setupHtml).toContain("/auth.md");
     expect(setupHtml).not.toContain('class="app-footer"');
     expect(setup.headers.get("cache-control")).toMatch(/private/);
     expect(setup.headers.get("cache-control") || "").not.toMatch(/no-store/);
@@ -106,7 +105,7 @@ describe("signed-in pages", () => {
     const tokens = await req("/tokens");
     expect(tokens.status).toBe(200);
     const tokensHtml = await tokens.text();
-    expect(tokensHtml).toContain("Mint token");
+    expect(tokensHtml).toContain("Create token");
     expect(tokensHtml).toContain("ENERGON_TOKEN");
     expect(tokensHtml).toContain("shown once");
     expect(tokensHtml).not.toContain("Reveal returns the full secret");

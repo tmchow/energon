@@ -160,12 +160,9 @@ Add that as a marketplace, then install the plugin named in `GET {origin}/v1/hel
 Or paste this, filling in the values from `/v1/help` or `/setup`:
 
 ```
-Add the Energon plugin marketplace and install {plugin}.
+Add the plugin marketplace at https://github.com/{owner/repo} ({owner/repo}) and install {plugin} at user (global) scope, using your normal plugin install flow. Do not install at project or workspace scope unless I ask.
 
-Repo: {owner/repo}
-https://github.com/{owner/repo}
-
-This repo is a Claude Code marketplace and an Agent Plugins marketplace (https://agent-plugins.org/). Follow this host’s plugin install flow. Install at user (global) scope so the skill is available in every project. Do not install at project or workspace scope unless the human asked for that. After install, read {origin}/auth.md and request a human-approved connection. Manual token setup at {origin}/tokens using {TOKEN_ENV} is also available. Do not invent a token.
+Then read {origin}/auth.md. If {TOKEN_ENV} is already set, use it. Otherwise connect with a code: show me the link and code, wait for my approval, then save the delivered token as {TOKEN_ENV} where this environment keeps secrets, readable only by me. Do not invent a token.
 ```
 
 Signed-in humans can copy a filled block from `{origin}/setup`.
@@ -211,19 +208,19 @@ copilot plugin install yourco-energon@yourco-energon
 
 ### 2. Connect the agent
 
-Ask the agent to read `{origin}/auth.md` and start a connection. Open its verification link, sign in through Access, enter the code shown by the agent, choose a lifetime, and approve. The token goes directly to the waiting agent and appears on `/tokens` for revocation. There is no public signup.
+Ask the agent to connect. It reads `{origin}/auth.md`, uses `{TOKEN_ENV}` if it is already set, and otherwise shows you a verification link and an eight-digit code. Open the link, sign in through Access, enter the code, choose a lifetime, and approve. The token goes directly to the waiting agent, which saves it as `{TOKEN_ENV}` in this machine's secret store or a user-only file and tells you where. It appears on `/tokens` for revocation. There is no public signup.
 
-For CI, scripts, or manual setup:
+For CI, scheduled jobs, or a hosted sandbox with a secret store, provision the token yourself:
 
 1. Human opens `{origin}/tokens` while signed in through Access.
-2. Mint a key. The secret is shown once. Store it. It cannot be revealed later.
+2. Create a token with a label and lifetime. The secret is shown once. It cannot be revealed later.
 3. Export it. Do **not** invent a token. Do **not** commit it.
 
 ```
 export YOURCO_ENERGON_TOKEN=ee_live_…
 ```
 
-Replace `YOURCO_ENERGON_TOKEN` with the env name from `GET {origin}/v1/help` → `env`. Add that line to `~/.zshrc` (or the equivalent) so new terminals keep it.
+Replace `YOURCO_ENERGON_TOKEN` with the env name from `GET {origin}/v1/help` → `env`. In CI or a sandbox, put it in the platform's secret store under that name. On a workstation, add the line to `~/.zshrc` (or the equivalent) so new terminals keep it.
 
 ### 3. Smoke check
 
