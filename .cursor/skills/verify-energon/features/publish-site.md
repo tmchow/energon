@@ -48,5 +48,5 @@ Preconditions:
 - Never send `"overwrite": true` on the first create. The 409 is the proof that last-write-wins does not apply to the slug itself.
 - Overwrite does not wipe files. A proof that only checks `index.html` after overwrite misses a regression that deleted siblings.
 - `duplicate_from` plus `overwrite` is 400. Pick a new slug.
-- Hub Publish on an existing slug first suggests a numbered slug; Publish again on the original slug becomes `Write into it`. That second click is overwrite, not a new site.
+- Hub Publish on an existing slug first suggests a numbered slug; Publish again on the original slug becomes `Write into it`. The second attempt only offers overwrite; the human must then choose `Write into it` to perform the update. Editing the slug clears that confirmation.
 - Local published URLs use `$ORIGIN`, not `https://energon.example.com`. If `url` in JSON points at the placeholder host, doctor missed an origin mismatch.

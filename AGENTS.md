@@ -28,7 +28,7 @@ This file is how to **change this tree**. It is not a product README and not the
 | --- | --- |
 | `src/index.ts` | Router |
 | `src/sites.ts`, `src/files.ts`, `src/gate.ts`, `src/auth.ts` | Publish API, share passwords, Access identity, tokens |
-| `src/hub.html`, `src/hub.client.js`, `src/tokens.html`, `src/chrome.ts`, `src/setup.ts`, `src/about.ts`, `src/stats.ts`, `src/connect.ts` | Signed-in UI |
+| `src/ui/`, `src/ui-render.ts`, `src/setup.ts`, `src/about.ts`, `src/stats.ts`, `src/connect.ts` | Svelte pages and Worker page data; see [docs/design/README.md](./docs/design/README.md) |
 | `src/auth.ts` `helpBody`, `src/llms.ts` | Runtime agent docs (`/v1/help`, `/llms.txt`). Update both when `/v1` behavior changes; then `templates/skill/` if the SOP changed. Freeze the bodies in `test/golden/`. |
 | `openapi/v1.json`, `src/openapi.ts` | The `/v1` HTTP schema, served at `/v1/openapi.json` with `servers` set to `PUBLIC_ORIGIN`. When a `/v1` route, body, status, or `ApiError` code changes, edit the document by hand and keep `test/unit/openapi-drift.spec.ts` green; it diffs the document against `helpBody().routes`, `src/index.ts`, and every `ApiError` code. |
 | `src/db.ts`, `src/schema.sql`, `migrations/` | Schema (see below) |
@@ -71,7 +71,7 @@ Do not run the full suite after every edit. CI (`.github/workflows/ci.yml`) runs
 | `helpBody`, `llms.txt`, markdown HTML | `npm run test:unit -- test/unit/golden.spec.ts` (`UPDATE_GOLDENS=1` to regenerate; review `git diff test/golden/`) |
 | `openapi/v1.json`, a `/v1` route, or an `ApiError` code | `npm run test:unit -- test/unit/openapi-drift.spec.ts` |
 | `templates/`, `scripts/render-skill.mjs`, `instance-skill.json` | `npm run test:unit -- test/unit/skill-render.spec.ts` |
-| Hub/tokens/setup/about/stats HTML, `src/hub.client.js`, `src/chrome.ts` | `npx vitest run test/pages.spec.ts` |
+| Svelte pages/components, `src/ui-render.ts`, `src/chrome.ts` | `npm run check:ui` and `npx vitest run test/pages.spec.ts` |
 | `src/index.ts` routes, host rules, hub `/account` API | `npx vitest run test/routes.spec.ts` |
 | Publish/delete/list, `src/sites.ts`, `src/files.ts`, `src/auth.ts` (DB), `src/markdown.ts`, `src/gate.ts` | `npx vitest run test/api.spec.ts` |
 | Loose-file write/rename failures | `npx vitest run test/files.spec.ts` |
@@ -80,7 +80,7 @@ Do not run the full suite after every edit. CI (`.github/workflows/ci.yml`) runs
 | `src/connections.ts`, `src/connect.ts` | `npx vitest run test/connections.spec.ts` |
 | `src/db.ts`, `migrations/`, shared types, or before commit | `npx wrangler types && npm run typecheck && npm run lint && npm test` |
 
-Page tests are HTML contracts (nav, copy, element IDs the JS calls), not pixels. If you add `$("some-id")` or `getElementById("some-id")`, that id must exist on the page or `assertDomBindings` in `pages.spec.ts` fails. Do not snapshot hub pages into `test/golden/`.
+Page tests cover server-rendered navigation, copy, catalog data, safe hydration, and asset isolation. Svelte checks template bindings; drive conditional forms and dialogs in the local browser to verify their behavior. Legacy inline DOM bindings still use `assertDomBindings`. Do not snapshot hub pages into `test/golden/`. Wrangler and Vitest build the UI automatically; `npm run specimen:ui` builds local component examples under `.context/ui-specimen/`.
 
 ## Verify like a user
 

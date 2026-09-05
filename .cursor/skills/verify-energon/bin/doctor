@@ -101,7 +101,7 @@ html = open(sys.argv[1], encoding="utf-8").read()
 m = re.search(r"<script id=\"bootstrap\" type=\"application/json\">(.*?)</script>", html, re.S)
 if not m:
     raise SystemExit(1)
-print(json.loads(m.group(1)).get("handle") or "")
+print(json.loads(m.group(1)).get("data", {}).get("handle") or "")
 ' "$hub_file")" || true
 if [[ -n "$handle" ]]; then
   ok "handle=$handle"

@@ -1,0 +1,45 @@
+:root {
+  /* Sizes (px, from src/chrome.css rem values at 15px base... product body is 15px) */
+  --text-2xs: 10.4px;   /* .badge .65rem */
+  --text-xs:  11.5px;   /* .who, .kicker, hints .72rem */
+  --text-sm:  12.5px;   /* labels, table th .78rem-ish */
+  --text-md:  13.5px;   /* buttons .84rem, table cells */
+  --text-base: 15px;    /* body */
+  --text-lg:  17px;     /* card h2 (1.2rem = 18) */
+  --text-xl:  19px;
+  --text-2xl: 24px;     /* gate h1 1.55rem */
+  --text-3xl: 30px;     /* scene h2 max */
+  --text-4xl: 43px;     /* .display max 2.85rem */
+  --text-5xl: 64px;     /* marketing display */
+  --text-6xl: 88px;     /* marketing hero */
+
+  /* Leading */
+  --leading-tight: 1.08;   /* display */
+  --leading-snug: 1.25;
+  --leading-normal: 1.5;   /* body */
+  --leading-relaxed: 1.65;
+
+  /* Tracking */
+  --tracking-display: -0.03em;
+  --tracking-title: -0.02em;
+  --tracking-wide: 0.04em;    /* brand name, badges */
+  --tracking-kicker: 0.12em;  /* .kicker */
+  --tracking-scene: 0.14em;   /* .scene-kicker */
+
+  /* Weights (Plex loads 400/500/600; Michroma is 400 only) */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* Composite styles */
+  --type-body: var(--weight-regular) var(--text-base)/var(--leading-normal) var(--font-sans);
+  --type-ui: var(--weight-medium) var(--text-md)/1 var(--font-sans);
+  --type-label: var(--weight-regular) var(--text-sm)/1.3 var(--font-sans);
+  --type-kicker: var(--weight-medium) var(--text-xs)/1 var(--font-mono);
+  --type-mono: var(--weight-regular) var(--text-sm)/1.4 var(--font-mono);
+  --type-display: var(--weight-medium) clamp(27px, 5.4vw, var(--text-4xl))/var(--leading-tight) var(--font-sans);
+  --type-title: var(--weight-medium) var(--text-lg)/1.25 var(--font-sans);
+  --type-hero: var(--weight-regular) clamp(30px, 4.2vw, 60px)/1.1 var(--font-display);
+  --type-marketing-h2: var(--weight-regular) clamp(24px, 2.8vw, 46px)/1.15 var(--font-display);
+}

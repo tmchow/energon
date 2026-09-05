@@ -104,6 +104,9 @@ describe("agent connections", () => {
     expect(html).toContain("password-protected");
     expect(html).toContain("Approve connection");
     expect(html).not.toContain(connection.user_code);
+    const pattern = html.match(/pattern="([^"]+)"/)?.[1];
+    expect(pattern).toBe("[0-9]{8}");
+    expect(new RegExp(`^(?:${pattern})$`).test(connection.user_code)).toBe(true);
     expect(html).not.toContain(connection.poll_token);
     assertDomBindings(html);
     expect((await req(`https://energon.example.com/connect?request=${connection.id}`)).status).toBe(404);

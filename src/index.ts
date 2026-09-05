@@ -1,10 +1,8 @@
+import { uiPage } from "./ui-render";
 import { connectResponse } from "./connect";
 import { decideConnection, exchangeConnection, purgeConnections, startConnection } from "./connections";
 import { aboutResponse } from "./about";
-import { appFooter, chromeCss, chromeHead, instanceFooter, PRIVATE_HTML_HEADERS } from "./chrome";
-import hubTemplate from "./hub.html";
-import hubScript from "./hub.client.js";
-import tokensTemplate from "./tokens.html";
+import { instanceFooter, PRIVATE_HTML_HEADERS } from "./chrome";
 import logoSvg from "./logo.svg";
 import { actorFromAccess, assertEmailAllowed, helpBody, listTokens, mintToken, rejectWorkersDevForHumans, requireHuman, requireToken, revokeToken, unauthorized } from "./auth";
 import { setupResponse } from "./setup";
@@ -13,7 +11,7 @@ import { parseListQuery } from "./catalog";
 import { llmsResponse } from "./llms";
 import { authMarkdownResponse } from "./auth-doc";
 import { openapiResponse } from "./openapi";
-import { ENV_TOKEN, PRODUCT, RESERVED_HANDLES } from "./config";
+import { PRODUCT, RESERVED_HANDLES } from "./config";
 import { ensureSchema } from "./db";
 import { sweepExpired } from "./expire";
 import { ensureUser } from "./handles";
@@ -118,6 +116,15 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     }
   } else if (contentHost) {
     return json({ error: "not_found", message: "This hostname serves published content only." }, 404);
+  }
+
+  if (path.startsWith("/static/ui/")) {
+    if (method !== "GET" && method !== "HEAD") return methodNotAllowed();
+    const asset = await env.ASSETS.fetch(request);
+    const response = new Response(asset.body, asset);
+    response.headers.set("x-content-type-options", "nosniff");
+    if (response.ok) response.headers.set("cache-control", "public, max-age=31536000, immutable");
+    return response;
   }
 
   if ((path === "/favicon.svg" || path === "/static/logo.svg") && (method === "GET" || method === "HEAD")) {
@@ -449,7 +456,7 @@ async function serveHub(request: Request, env: Env, ctx: ExecutionContext): Prom
   const lists = actor
     ? await hubLists(env, actor.email, parseListQuery(new URL(request.url)), user?.id)
     : { sites: [], files: [], sites_total: 0, files_total: 0, sites_cursor: null, files_cursor: null };
-  const bootstrap = JSON.stringify({
+  const bootstrap = {
     email: actor?.email ?? null,
     handle: user?.handle ?? null,
     origin: publicOrigin(env),
@@ -462,40 +469,20 @@ async function serveHub(request: Request, env: Env, ctx: ExecutionContext): Prom
     files_total: lists.files_total,
     sites_cursor: lists.sites_cursor,
     files_cursor: lists.files_cursor,
-  }).replace(/</g, "\\u003c");
-  return htmlTemplate(hubTemplate, bootstrap, undefined, instanceFooter(env));
+  };
+  return new Response(uiPage(PRODUCT, { page: "hub", data: { ...bootstrap, words: MEMORABLE_WORDS, query: parseListQuery(new URL(request.url)) }, footer: instanceFooter(env) }), { headers: PRIVATE_HTML_HEADERS });
 }
 
 async function serveTokens(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const actor = await requireHuman(request, env, ctx);
   const tokens = await listTokens(env, actor.email, actor.userId);
-  const bootstrap = JSON.stringify({
+  const bootstrap = {
     email: actor.email,
     tokens,
     token_env: identityFromEnv(env).tokenEnv,
     token_policy: tokenPolicyPublic(tokenPolicy(env), publicOrigin(env)),
-  }).replace(/</g, "\\u003c");
-  return htmlTemplate(tokensTemplate, bootstrap, identityFromEnv(env).tokenEnv, instanceFooter(env));
-}
-
-function htmlTemplate(
-  template: string,
-  bootstrap: string,
-  tokenEnv = ENV_TOKEN,
-  footer = "",
-): Response {
-  const html = template
-    .replace("__BOOTSTRAP__", bootstrap)
-    .replace("__LOGO__", inlineLogo())
-    .replace("__CSS__", chromeCss)
-    .replace("__HEAD__", chromeHead())
-    .replace("__WORDS__", JSON.stringify(MEMORABLE_WORDS))
-    .replaceAll("__TOKEN_ENV__", tokenEnv)
-    .replace("__FOOTER__", appFooter(footer))
-    .replace("__SCRIPT__", () => hubScript);
-  return new Response(html, {
-    headers: PRIVATE_HTML_HEADERS,
-  });
+  };
+  return new Response(uiPage(`Tokens — ${PRODUCT}`, { page: "tokens", data: { ...bootstrap, now: Date.now() }, footer: instanceFooter(env) }), { headers: PRIVATE_HTML_HEADERS });
 }
 
 async function postSite(
@@ -586,10 +573,6 @@ async function readJson(request: Request, maxBytes?: number): Promise<Record<str
 
 function methodNotAllowed(): Response {
   return json({ error: "method_not_allowed", message: "Method not allowed." }, 405);
-}
-
-function inlineLogo(): string {
-  return logoSvg.replace(/^<\?xml[\s\S]*?\?>\s*/i, "").trim();
 }
 
 export type { Env };

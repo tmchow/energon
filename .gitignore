@@ -17,3 +17,8 @@ public/static/mermaid/
 *.actual
 
 .context/compound-engineering/
+
+# Compiled Svelte UI
+src/generated/
+public/static/ui/
+.context/ui-specimen/
