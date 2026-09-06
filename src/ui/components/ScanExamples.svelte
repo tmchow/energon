@@ -1,6 +1,7 @@
 <script lang="ts">
   import Table from './Table.svelte';
-  import CatalogScan, { type CatalogScanMark } from './CatalogScan.svelte';
+  import CatalogScan from './CatalogScan.svelte';
+  import type { CatalogScanMark } from '../catalog-scan';
 
   type Example = { name: string; note: string; marks: CatalogScanMark[] };
 

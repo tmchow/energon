@@ -8,7 +8,8 @@
   import IconButton from './IconButton.svelte';
   import CopyButton from './CopyButton.svelte';
   import Button from './Button.svelte';
-  import CatalogScan, { CATALOG_SCAN_LABEL } from './CatalogScan.svelte';
+  import CatalogScan from './CatalogScan.svelte';
+  import { CATALOG_SCAN_LABEL } from '../catalog-scan';
   let { kind, items, cursor, busy, allowUnlimited, writePolicyDefault, onMore, onPassword, onDelete, onLoadMore }:
     { kind: 'site' | 'file'; items: CatalogItem[]; cursor: string | null; busy: boolean; allowUnlimited: boolean;
       writePolicyDefault: string;
