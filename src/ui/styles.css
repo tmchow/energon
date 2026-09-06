@@ -66,20 +66,21 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: calc(var(--scan-glyph) + 2 * var(--scan-pad) + 2px);
-  height: calc(var(--scan-glyph) + 2 * var(--scan-pad) + 2px);
-  padding: var(--scan-pad);
+  width: max(var(--icon-btn), var(--scan-glyph));
+  height: max(var(--icon-btn), var(--scan-glyph));
+  padding: 0;
   margin: 0;
-  border: 1px solid color-mix(in srgb, var(--fg-1) 22%, transparent);
+  border: 0;
   border-radius: var(--radius-1);
   background: transparent;
   color: var(--fg-3);
   cursor: pointer;
 }
-.en-scan--cramped { --scan-glyph: 36px; --scan-pad: 4px; }
-.en-scan--pad8 { --scan-glyph: 36px; --scan-pad: 8px; }
-.en-scan--pad12 { --scan-glyph: 36px; --scan-pad: 12px; }
-.en-scan--glyph32 { --scan-glyph: 32px; --scan-pad: 8px; }
+.en-scan--19 { --scan-glyph: 19px; }
+.en-scan--24 { --scan-glyph: 24px; }
+.en-scan--28 { --scan-glyph: 28px; }
+.en-scan--32 { --scan-glyph: 32px; }
+.en-scan--36 { --scan-glyph: 36px; }
 .en-scan svg { display: block; width: var(--scan-glyph); height: var(--scan-glyph); }
 .en-scan--on { color: var(--fg-hot); }
 .en-scan:hover { background: var(--bg-raised); color: var(--fg-1); }

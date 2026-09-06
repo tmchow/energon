@@ -36,7 +36,7 @@
   let stagePassword = $state('');
   let stageTtl = $state(untrack(() => data.policy.default_ttl));
   let stageWrite = $state(untrack(() => data.policy.write_policy));
-  let scanSize = $state<CatalogScanSize>('pad12');
+  let scanSize = $state<CatalogScanSize>('24');
   let conflictSlug = $state('');
   let overwriteSlug = $state('');
   let stageNote = $state('');
@@ -201,7 +201,7 @@
 
   onMount(() => {
     const scan = new URLSearchParams(location.search).get('scan');
-    if (scan === 'cramped' || scan === 'pad8' || scan === 'pad12' || scan === 'glyph32') scanSize = scan;
+    if (scan === '19' || scan === '24' || scan === '28' || scan === '32' || scan === '36') scanSize = scan;
     const unregister = registerHubTools();
     const hasFiles = (event: DragEvent) => event.dataTransfer?.types.includes('Files');
     const enter = (event: DragEvent) => { if (hasFiles(event)) { event.preventDefault(); dragDepth++; } };
@@ -229,13 +229,14 @@
     <input bind:this={folderpick} id="folderpick" class="en-sr-only" type="file" webkitdirectory onchange={e => picked(e, true)} />
   </Card></div>
   <div class="en-stack en-space-after">
-    <Card title="Catalog marks" hint="Padding around the 36px glyphs. Live rows below use the same size." tight>
+    <Card title="Catalog marks" hint="No box. Same size on the live rows below." tight>
       <div class="en-card-body en-toolbar">
-        <SegmentedControl id="scan-size" bind:value={scanSize} ariaLabel="Catalog mark padding" options={[
-          { value: 'cramped', label: '4px inset' },
-          { value: 'pad8', label: '8px inset' },
-          { value: 'pad12', label: '12px inset' },
-          { value: 'glyph32', label: '32px glyph' },
+        <SegmentedControl id="scan-size" bind:value={scanSize} ariaLabel="Catalog mark size" options={[
+          { value: '19', label: '19px' },
+          { value: '24', label: '24px' },
+          { value: '28', label: '28px' },
+          { value: '32', label: '32px' },
+          { value: '36', label: '36px' },
         ]} />
       </div>
       <div id="scan-examples"><ScanExamples size={scanSize} /></div>
