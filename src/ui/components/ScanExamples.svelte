@@ -1,9 +1,8 @@
 <script lang="ts">
   import Table from './Table.svelte';
-  import CatalogScan, { type CatalogScanMark, type CatalogScanSize } from './CatalogScan.svelte';
+  import CatalogScan, { type CatalogScanMark } from './CatalogScan.svelte';
 
   type Example = { name: string; note: string; marks: CatalogScanMark[] };
-  let { size }: { size: CatalogScanSize } = $props();
 
   const rows: Example[] = [
     { name: 'brief.md', note: 'View password only', marks: ['lock'] },
@@ -17,7 +16,7 @@
 {#snippet marks(row: Example)}
   <div class="en-scan-pair">
     {#each row.marks as mark}
-      <CatalogScan {mark} {size} label={row.note} />
+      <CatalogScan {mark} />
     {/each}
   </div>
 {/snippet}

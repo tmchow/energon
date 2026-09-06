@@ -8,14 +8,16 @@
   import IconButton from './IconButton.svelte';
   import CopyButton from './CopyButton.svelte';
   import Button from './Button.svelte';
-  import CatalogScan, { type CatalogScanSize } from './CatalogScan.svelte';
-  let { kind, items, cursor, busy, allowUnlimited, writePolicyDefault, scanSize, onMore, onPassword, onDelete, onLoadMore }:
+  import CatalogScan, { CATALOG_SCAN_LABEL } from './CatalogScan.svelte';
+  let { kind, items, cursor, busy, allowUnlimited, writePolicyDefault, onMore, onPassword, onDelete, onLoadMore }:
     { kind: 'site' | 'file'; items: CatalogItem[]; cursor: string | null; busy: boolean; allowUnlimited: boolean;
-      writePolicyDefault: string; scanSize: CatalogScanSize;
+      writePolicyDefault: string;
       onMore: (item: CatalogItem) => void; onPassword: (item: CatalogItem) => void; onDelete: (item: CatalogItem) => void; onLoadMore: () => void } = $props();
   const name = (item: CatalogItem) => item.slug ?? item.filename;
   const size = (item: CatalogItem) => formatBytes(item.size) + (kind === 'site' ? ` · ${item.file_count} ${item.file_count === 1 ? 'file' : 'files'}` : '');
   const orgMark = (item: CatalogItem) => item.write_policy === writePolicyDefault ? null : item.write_policy === 'instance' ? 'people' as const : 'peopleOff' as const;
+  const passwordLabel = (item: CatalogItem) => item.password_protected ? CATALOG_SCAN_LABEL.lock : 'Set view password';
+  const orgLabel = (item: CatalogItem) => item.write_policy === 'instance' ? CATALOG_SCAN_LABEL.people : CATALOG_SCAN_LABEL.peopleOff;
 </script>
 {#snippet itemName(item: CatalogItem)}<a href={item.url}>{name(item)}</a>{#if item.password_protected}<Badge tone="lock">password</Badge>{/if}{#if item.expires_at || allowUnlimited}<Badge tone="ttl"><Timestamp value={item.expires_at} dateOnly empty="Never" /></Badge>{/if}{/snippet}
 {#snippet writer(item: CatalogItem)}{item.last_written_by || item.created_by}{/snippet}
@@ -25,9 +27,9 @@
 {#snippet actions(item: CatalogItem)}
   <div class="en-row-actions">
     <div class="en-scan-pair">
-      <CatalogScan mark="lock" size={scanSize} on={item.password_protected} label={item.password_protected ? 'Change or remove password' : 'Set password'} onclick={() => onPassword(item)} />
+      <CatalogScan mark="lock" on={item.password_protected} label={passwordLabel(item)} onclick={() => onPassword(item)} />
       {#if orgMark(item)}
-        <CatalogScan mark={orgMark(item)!} size={scanSize} label={item.write_policy === 'instance' ? 'Anyone with a token on this host can write' : 'Only the creator can write'} />
+        <CatalogScan mark={orgMark(item)!} label={orgLabel(item)} />
       {/if}
     </div>
     {#if kind === 'file' || (item.file_count ?? 0) > 0}<IconButton icon="download" label={kind === 'site' ? 'Download zip' : 'Download'} extra href={kind === 'site' ? `/account/sites/${encodeURIComponent(item.slug ?? item.id)}/export` : `/account/files/${encodeURIComponent(item.id ?? item.slug)}/download`} />{/if}

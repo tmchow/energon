@@ -105,7 +105,7 @@ Retain the existing 120ms hover, 200ms state, and 350ms layout timings. Cube bre
 | Main or supporting action | `Button`, `IconButton` | Use primary sparingly; label the operation; keep Cancel distinct |
 | An editable value | `Field`, `Input`, `Select`, `SegmentedControl` | Visible label, meaningful state, consequence beside the input |
 | Copyable or sensitive output | `UrlField`, `CopyRow`, `CopyBlock`, `TokenReveal` | Make copy and reveal behavior real; preserve exact values |
-| Catalog and usage | `Table`, `Badge`, `Metric`, `ProgressBar` | Preserve scanning, units, and the meaning of state |
+| Catalog and usage | `Table`, `Badge`, `CatalogScan`, `Metric`, `ProgressBar` | Unboxed 28px access marks; hover names the mark. Preserve scanning, units, and the meaning of state |
 | Feedback and confirmation | `Flash`, `Dialog`, `ConfirmDialog`, `Sheet` | Keep results near the task; explain destructive consequences |
 | Upload staging | `DropZone` and the Hub flow | Distinguish selected work from published work |
 
@@ -132,7 +132,7 @@ Do not let visual simplification alter these contracts:
 - Destructive dialogs retain exact-name confirmation and explain what is lost.
 - Minted token secrets are shown once; the token catalog remains redacted.
 - Connection approval remains a deliberate human action. Do not prefill or bypass the code step for convenience.
-- Read access, write policy, expiry, and share passwords remain distinct concepts.
+- Read access, write policy, expiry, and share passwords remain distinct concepts. Catalog marks name those doors on hover: View password, Write password, Org can write, Org cannot write.
 - Copy and success feedback describe an operation that actually completed.
 
 Reuse the existing formatting helpers for bytes, counts, and timestamps. Label the population and period behind a metric. Do not turn lifetime counts into an activity trend or infer readership from writes. Bars must encode actual values on a clear basis; preserve exact values alongside them. Tables should have enough width to scan labels and compare numbers without broken words.

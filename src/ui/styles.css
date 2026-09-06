@@ -62,6 +62,7 @@
 .en-row-actions .en-icon-btn--more { display: inline-flex; }
 .en-scan-pair { display: inline-flex; align-items: center; gap: var(--space-2); vertical-align: middle; }
 .en-scan {
+  --scan-glyph: 28px;
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
@@ -76,11 +77,6 @@
   color: var(--fg-3);
   cursor: pointer;
 }
-.en-scan--19 { --scan-glyph: 19px; }
-.en-scan--24 { --scan-glyph: 24px; }
-.en-scan--28 { --scan-glyph: 28px; }
-.en-scan--32 { --scan-glyph: 32px; }
-.en-scan--36 { --scan-glyph: 36px; }
 .en-scan svg { display: block; width: var(--scan-glyph); height: var(--scan-glyph); }
 .en-scan--on { color: var(--fg-hot); }
 .en-scan:hover { background: var(--bg-raised); color: var(--fg-1); }
