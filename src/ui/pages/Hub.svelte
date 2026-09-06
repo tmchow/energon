@@ -36,7 +36,7 @@
   let stagePassword = $state('');
   let stageTtl = $state(untrack(() => data.policy.default_ttl));
   let stageWrite = $state(untrack(() => data.policy.write_policy));
-  let scanSize = $state<CatalogScanSize>('pad8');
+  let scanSize = $state<CatalogScanSize>('pad12');
   let conflictSlug = $state('');
   let overwriteSlug = $state('');
   let stageNote = $state('');
@@ -200,6 +200,8 @@
   ] : []);
 
   onMount(() => {
+    const scan = new URLSearchParams(location.search).get('scan');
+    if (scan === 'cramped' || scan === 'pad8' || scan === 'pad12' || scan === 'glyph32') scanSize = scan;
     const unregister = registerHubTools();
     const hasFiles = (event: DragEvent) => event.dataTransfer?.types.includes('Files');
     const enter = (event: DragEvent) => { if (hasFiles(event)) { event.preventDefault(); dragDepth++; } };

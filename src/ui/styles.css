@@ -66,9 +66,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: calc(var(--scan-glyph, 36px) + 2 * var(--scan-pad, 8px) + 2px);
-  height: calc(var(--scan-glyph, 36px) + 2 * var(--scan-pad, 8px) + 2px);
-  padding: var(--scan-pad, 8px);
+  width: calc(var(--scan-glyph) + 2 * var(--scan-pad) + 2px);
+  height: calc(var(--scan-glyph) + 2 * var(--scan-pad) + 2px);
+  padding: var(--scan-pad);
   margin: 0;
   border: 1px solid color-mix(in srgb, var(--fg-1) 22%, transparent);
   border-radius: var(--radius-1);
@@ -76,6 +76,11 @@
   color: var(--fg-3);
   cursor: pointer;
 }
+.en-scan--cramped { --scan-glyph: 36px; --scan-pad: 4px; }
+.en-scan--pad8 { --scan-glyph: 36px; --scan-pad: 8px; }
+.en-scan--pad12 { --scan-glyph: 36px; --scan-pad: 12px; }
+.en-scan--glyph32 { --scan-glyph: 32px; --scan-pad: 8px; }
+.en-scan svg { display: block; width: var(--scan-glyph); height: var(--scan-glyph); }
 .en-scan--on { color: var(--fg-hot); }
 .en-scan:hover { background: var(--bg-raised); color: var(--fg-1); }
 .en-scan-example-name { font-weight: 500; }

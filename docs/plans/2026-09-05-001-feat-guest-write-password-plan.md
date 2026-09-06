@@ -197,4 +197,4 @@ Run after the product override. Scope delta only. Not a re-review of pass-1 prot
 
 ## Open questions
 
-Tile stroke is hairline (fg 22%). Inset around the 36px glyph is still open: 8px (54px tile) vs 12px (62px tile). 4px is cramped. Do not shrink the glyph to make padding.
+Tile stroke is hairline (fg 22%). Default inset around the 36px glyph is 12px (62px tile). 8px (54px tile) is the tighter option. 4px is cramped. Do not shrink the glyph to make padding.
