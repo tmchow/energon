@@ -60,6 +60,26 @@
 .en-gate-instructions { margin: 0 0 18px; }
 .en-gate .en-gate-agent { margin-top: 16px; }
 .en-row-actions .en-icon-btn--more { display: inline-flex; }
+.en-scan-pair { display: inline-flex; align-items: center; gap: var(--space-2); vertical-align: middle; }
+.en-scan {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--scan-glyph, 36px) + 2 * var(--scan-pad, 8px) + 2px);
+  height: calc(var(--scan-glyph, 36px) + 2 * var(--scan-pad, 8px) + 2px);
+  padding: var(--scan-pad, 8px);
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--fg-1) 22%, transparent);
+  border-radius: var(--radius-1);
+  background: transparent;
+  color: var(--fg-3);
+  cursor: pointer;
+}
+.en-scan--on { color: var(--fg-hot); }
+.en-scan:hover { background: var(--bg-raised); color: var(--fg-1); }
+.en-scan-example-name { font-weight: 500; }
+.en-scan-example-note { color: var(--fg-3); font: var(--weight-regular) var(--text-sm)/1.3 var(--font-mono); }
 .en-md-wrap { max-width: 46rem; }
 @media (max-width: 719px) {
   .en-mint { grid-template-columns: 1fr; }

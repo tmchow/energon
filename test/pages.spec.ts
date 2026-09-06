@@ -22,7 +22,7 @@ describe("signed-in pages", () => {
     expect(res.headers.get("cache-control")).toMatch(/private/);
     const html = await res.text();
     for (const text of ["Publish a document, prototype, or file.", "Choose files", "Choose folder", "No sites yet", "No files yet", "Drop to stage"]) expect(html).toContain(text);
-    for (const id of ["app", "pick-files", "pick-folder", "filepick", "folderpick", "q", "scope", "sort", "sites", "files", "drop-overlay", "pw-dlg", "write-dlg"]) expect(html).toContain(`id="${id}"`);
+    for (const id of ["app", "pick-files", "pick-folder", "filepick", "folderpick", "q", "scope", "sort", "sites", "files", "drop-overlay", "pw-dlg", "write-dlg", "scan-size", "scan-examples"]) expect(html).toContain(`id="${id}"`);
     expect(html).toContain('aria-label="Energon"');
     expect(html).toContain('aria-label="Pages"');
     expect(html).toMatch(/class="en-card[^"]*en-card--charged/);
@@ -60,6 +60,7 @@ describe("signed-in pages", () => {
     expect(boot.data.files_total).toBe(2);
     expect(boot.data.files_cursor).toBeTruthy();
     expect(boot.data.query).toMatchObject({ q: "svelte", sort: "name" });
+    expect(html).toContain("Catalog marks");
     expect(html).toContain("svelte-one.md");
     expect(html).toContain("Load more");
     for (const label of ["Copy URL", "Set password", "Delete", "More actions", "Download"]) expect(html).toContain(`aria-label="${label}"`);

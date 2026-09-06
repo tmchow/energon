@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, tick, untrack } from 'svelte';
   import type { CatalogData, CatalogItem, HubData } from '../types';
+  import type { CatalogScanSize } from '../components/CatalogScan.svelte';
   import { api, jsonBody, errorMessage } from '../api';
   import { stageFiles, publish, firstFreeSlug, slugify, isCollision, type StagedUpload, type PublishResult } from '../uploads';
   import { nextNumberedSlug } from "../../slugs";
@@ -17,6 +18,7 @@
   import Button from '../components/Button.svelte';
   import Flash from '../components/Flash.svelte';
   import Catalog from '../components/Catalog.svelte';
+  import ScanExamples from '../components/ScanExamples.svelte';
   import Dialog from '../components/Dialog.svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import Sheet from '../components/Sheet.svelte';
@@ -34,6 +36,7 @@
   let stagePassword = $state('');
   let stageTtl = $state(untrack(() => data.policy.default_ttl));
   let stageWrite = $state(untrack(() => data.policy.write_policy));
+  let scanSize = $state<CatalogScanSize>('pad8');
   let conflictSlug = $state('');
   let overwriteSlug = $state('');
   let stageNote = $state('');
@@ -224,15 +227,26 @@
     <input bind:this={folderpick} id="folderpick" class="en-sr-only" type="file" webkitdirectory onchange={e => picked(e, true)} />
   </Card></div>
   <div class="en-stack en-space-after">
+    <Card title="Catalog marks" hint="Padding around the 36px glyphs. Live rows below use the same size." tight>
+      <div class="en-card-body en-toolbar">
+        <SegmentedControl id="scan-size" bind:value={scanSize} ariaLabel="Catalog mark padding" options={[
+          { value: 'cramped', label: '4px inset' },
+          { value: 'pad8', label: '8px inset' },
+          { value: 'pad12', label: '12px inset' },
+          { value: 'glyph32', label: '32px glyph' },
+        ]} />
+      </div>
+      <div id="scan-examples"><ScanExamples size={scanSize} /></div>
+    </Card>
     <Card title="Sites" hint={`${lists.sites.length < lists.sites_total ? `${lists.sites.length} of ` : ''}${lists.sites_total} ${lists.sites_total === 1 ? 'site' : 'sites'}`} tight>
       <div class="en-card-body en-toolbar"><Input size="md" id="q" class="en-search" type="search" placeholder="Search slugs and filenames" aria-label="Search slugs and filenames" bind:value={q} oninput={search} />
         <SegmentedControl id="scope" bind:value={scope} ariaLabel="Catalog scope" onChange={() => refresh()} options={[{ value: 'involved', label: 'Your work' }, { value: 'created', label: 'Created by you' }, { value: 'edited', label: 'Last edited by you' }]} />
         <Select id="sort" aria-label="Sort" bind:value={sort} onchange={() => refresh()} options={[{ value: 'updated', label: 'Updated' }, { value: 'name', label: 'Name' }]} />
       </div>
-      <div id="sites"><Catalog kind="site" items={lists.sites} cursor={lists.sites_cursor} busy={loading} allowUnlimited={data.policy.allow_unlimited} onMore={item => openMore('site', item)} onPassword={item => editPassword('site', item)} onDelete={item => deleteItem('site', item)} onLoadMore={() => refresh('sites')} /></div>
+      <div id="sites"><Catalog kind="site" items={lists.sites} cursor={lists.sites_cursor} busy={loading} allowUnlimited={data.policy.allow_unlimited} writePolicyDefault={data.policy.write_policy} {scanSize} onMore={item => openMore('site', item)} onPassword={item => editPassword('site', item)} onDelete={item => deleteItem('site', item)} onLoadMore={() => refresh('sites')} /></div>
     </Card>
     <Card title="Files" hint={`${lists.files.length < lists.files_total ? `${lists.files.length} of ` : ''}${lists.files_total} ${lists.files_total === 1 ? 'file' : 'files'}`} tight>
-      <div id="files"><Catalog kind="file" items={lists.files} cursor={lists.files_cursor} busy={loading} allowUnlimited={data.policy.allow_unlimited} onMore={item => openMore('file', item)} onPassword={item => editPassword('file', item)} onDelete={item => deleteItem('file', item)} onLoadMore={() => refresh('files')} /></div>
+      <div id="files"><Catalog kind="file" items={lists.files} cursor={lists.files_cursor} busy={loading} allowUnlimited={data.policy.allow_unlimited} writePolicyDefault={data.policy.write_policy} {scanSize} onMore={item => openMore('file', item)} onPassword={item => editPassword('file', item)} onDelete={item => deleteItem('file', item)} onLoadMore={() => refresh('files')} /></div>
     </Card>
   </div>
   <p class="en-lede">Your catalog includes work you created or last edited. To revise an existing file at the same link, ask your agent to update it; uploading it here creates a new file. Links show current contents until expiry or deletion.</p>
