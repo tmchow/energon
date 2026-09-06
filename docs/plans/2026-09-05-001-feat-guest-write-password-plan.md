@@ -193,8 +193,8 @@ Run after the product override. Scope delta only. Not a re-review of pass-1 prot
 
 **Dismissed.** New site write-claim table (pre-existing site PUT race; keep R2 snapshot + D1 rollback). Per-site guest byte ceiling beyond the platform cap (accept explicitly). Two-origin verify-energon unless `bin/launch` / `bin/doctor` change. Concurrent COUNT race at 200 files (best-effort, same as zip). PBKDF2 (still out).
 
-**Session-settled after pass 2.** Last writer stays the last account; never `guest`. Via copy is "Updated via shared write". Column name is `written_via`. Catalog scan is padlock (view password) plus filled pencil (update password), both ≥36px, shown in conjunction when both secrets are set. No `shared write` chip. Org-write exception mark (if shown) is people-family at ≥36px, only when `write_policy` differs from instance default; a thin slash through the group is not the off mark. Content-host `/v1/help` is 404 JSON that names `GET /llms.txt` on this host. Guest loose-file PUT reuses the stored `Content-Type`.
+**Session-settled after pass 2.** Last writer stays the last account; never `guest`. Via copy is "Updated via shared write". Column name is `written_via`. Catalog scan is padlock (view password) plus filled pencil (update password), both ≥36px, shown in conjunction when both secrets are set. No `shared write` chip. Org-write exception, if shown, is a **group pair** at ≥36px: on = group (org can write), off = group with a still-iterating modifier. Instance default picks which of those two is the exception. Do not use a person silhouette (it collides with the pencil). Do not put a pencil on the group. Thin slash through the group is out. Content-host `/v1/help` is 404 JSON that names `GET /llms.txt` on this host. Guest loose-file PUT reuses the stored `Content-Type`.
 
 ## Open questions
 
-Org-write cannot-write mark at 36px: person vs group (no slash) vs prohibition ring vs minus badge. Thin slash through the group is out.
+Org-write off-mark stays in the group family (not person). Candidates at 36px: heavy slash, prohibition ring, minus badge, x badge, outline vs filled. Thin slash and person-as-off are out.
