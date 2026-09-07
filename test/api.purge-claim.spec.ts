@@ -283,12 +283,17 @@ describe("TTL purge claims", () => {
       {
         name: "write policy",
         body: { write_policy: "owner" },
-        sql: "last_written_by = ?, write_policy = ? WHERE",
+        sql: "written_via = NULL, write_policy = ? WHERE",
       },
       {
         name: "password and write policy",
         body: { password: "secret", write_policy: "owner" },
         sql: "password_hash = ?, write_policy = ? WHERE",
+      },
+      {
+        name: "write password",
+        body: { write_password: "secret" },
+        sql: "write_password_hash = ? WHERE",
       },
     ];
 
