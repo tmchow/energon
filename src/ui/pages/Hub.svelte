@@ -58,6 +58,7 @@
   let loadedShareOn = $state(false);
   let loadedWriteOn = $state(false);
   let passwordLoading = $state(false);
+  let linkAccessLoaded = $state(false);
   let linkAccessSeq = 0;
   let writeOpen = $state(false);
   let write = $state('owner');
@@ -86,7 +87,8 @@
   const writeDirty = $derived(!isTargetCreator ? false : writeDoor !== (loadedWriteOn ? 'on' : 'off') || (writeDoor === 'on' && writePassword.trim() !== loadedWrite && !(writeUnrecovered && !writePassword.trim())));
   const sharePhraseOk = $derived(shareDoor === 'off' || !!password.trim() || (shareUnrecovered && shareDoor === 'on'));
   const writePhraseOk = $derived(!isTargetCreator || writeDoor === 'off' || !!writePassword.trim() || (writeUnrecovered && writeDoor === 'on'));
-  const linkAccessReady = $derived(!passwordLoading && (shareDirty || writeDirty) && sharePhraseOk && writePhraseOk);
+  const linkAccessReady = $derived(linkAccessLoaded && !passwordLoading && (shareDirty || writeDirty) && sharePhraseOk && writePhraseOk);
+  const linkAccessBusy = $derived(mutationBusy || passwordLoading || !linkAccessLoaded);
 
   function message(text: string, tone: 'ok' | 'err' = 'ok', result?: PublishResult) {
     messages = [{ tone, text, url: result?.url, name: result?.slug || result?.filename, password: result?.password, writePassword: result?.write_password }, ...messages];
@@ -182,6 +184,7 @@
     loadedWriteOn = !!item.write_password_protected;
     shareDoor = loadedShareOn ? 'on' : 'off';
     writeDoor = item.created_by === data.email && loadedWriteOn ? 'on' : 'off';
+    linkAccessLoaded = false;
     passwordOpen = true;
     void loadLinkAccess();
   }
@@ -226,6 +229,7 @@
         writeUnrecovered = false;
         writeDoor = 'off';
       }
+      linkAccessLoaded = true;
     } catch (error) {
       if (seq === linkAccessSeq && passwordOpen) modalError = errorMessage(error);
     } finally { if (seq === linkAccessSeq) passwordLoading = false; }
@@ -280,6 +284,7 @@
       writeDoor = 'off';
       loadedShareOn = false;
       loadedWriteOn = false;
+      linkAccessLoaded = false;
     });
   }
   async function saveWrite() {
@@ -363,19 +368,19 @@
   <form onsubmit={e => { e.preventDefault(); void saveLinkAccess(); }}>
     <Field label="Share password" htmlFor={shareDoor === 'on' ? 'pw-dlg-input' : undefined} noteId="pw-dlg-note" note={shareDoor === 'off' ? 'Anyone with the link can open it. Valid API tokens on this instance can still read the work.' : shareUnrecovered && !password.trim() ? 'This password was set before Energon kept phrases for display. Generate a new one to copy it, or turn it off.' : 'Anyone with this password can open the link. Valid API tokens on this instance can still read the work.'}>
       {#snippet action()}
-        <SegmentedControl id="pw-dlg-share-door" className="en-seg--door" bind:value={shareDoor} onChange={setShareDoor} ariaLabel="Share password" options={doorOptions} disabled={mutationBusy || passwordLoading} />
+        <SegmentedControl id="pw-dlg-share-door" className="en-seg--door" bind:value={shareDoor} onChange={setShareDoor} ariaLabel="Share password" options={doorOptions} disabled={linkAccessBusy} />
       {/snippet}
       {#if shareDoor === 'on'}
-        <PasswordField id="pw-dlg-input" generateId="pw-dlg-gen" copyId="pw-dlg-copy" describedby="pw-dlg-note" words={data.words} bind:value={password} disabled={mutationBusy || passwordLoading} />
+        <PasswordField id="pw-dlg-input" generateId="pw-dlg-gen" copyId="pw-dlg-copy" describedby="pw-dlg-note" words={data.words} bind:value={password} disabled={linkAccessBusy} />
       {/if}
     </Field>
     {#if isTargetCreator}
       <Field label="Write password" htmlFor={writeDoor === 'on' ? 'pw-dlg-write-input' : undefined} noteId="pw-dlg-write-note" note={writeDoor === 'off' ? 'Turn on so someone not on this host can write. Valid tokens still follow Who can write.' : writeUnrecovered && !writePassword.trim() ? 'This password was set before Energon kept phrases for display. Generate a new one to copy it, or turn it off.' : writePasswordNote}>
         {#snippet action()}
-          <SegmentedControl id="pw-dlg-write-door" className="en-seg--door" bind:value={writeDoor} onChange={setWriteDoor} ariaLabel="Write password" options={doorOptions} disabled={mutationBusy || passwordLoading} />
+          <SegmentedControl id="pw-dlg-write-door" className="en-seg--door" bind:value={writeDoor} onChange={setWriteDoor} ariaLabel="Write password" options={doorOptions} disabled={linkAccessBusy} />
         {/snippet}
         {#if writeDoor === 'on'}
-          <PasswordField id="pw-dlg-write-input" generateId="pw-dlg-write-gen" copyId="pw-dlg-write-copy" describedby="pw-dlg-write-note" words={data.words} bind:value={writePassword} disabled={mutationBusy || passwordLoading} />
+          <PasswordField id="pw-dlg-write-input" generateId="pw-dlg-write-gen" copyId="pw-dlg-write-copy" describedby="pw-dlg-write-note" words={data.words} bind:value={writePassword} disabled={linkAccessBusy} />
         {/if}
       </Field>
     {/if}
