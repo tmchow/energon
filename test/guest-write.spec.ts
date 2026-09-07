@@ -1,3 +1,5 @@
+import { env } from "cloudflare:test";
+import { zipSync, strToU8 } from "fflate";
 import { describe, expect, it } from "vitest";
 import { MAX_IMPORT_FILES, WRITE_PASSWORD_HEADER } from "../src/config";
 import { GUEST_WRITE_401_MESSAGE } from "../src/guest-write-protocol";
@@ -300,10 +302,15 @@ describe("guest write password", () => {
       headers: auth(token, { "content-type": "application/json" }),
       body: JSON.stringify({ slug: "guest-cap", write_password: "guest-write-ok" }),
     });
-    for (let i = 0; i < MAX_IMPORT_FILES; i++) {
-      const put = await json(`/v1/sites/guest-cap/files/f${i}.txt`, { method: "PUT", headers: auth(token), body: "x" });
-      expect(put.status).toBe(201);
-    }
+    const files = Object.fromEntries(
+      Array.from({ length: MAX_IMPORT_FILES }, (_, i) => [`f${i}.txt`, strToU8("x")]),
+    );
+    const imported = await json("/v1/sites/guest-cap/import", {
+      method: "POST",
+      headers: auth(token, { "content-type": "application/zip" }),
+      body: zipSync(files),
+    });
+    expect(imported.status).toBe(200);
     const extra = await json(`${CONTENT}/guest-cap/s/guest-cap/overflow.txt`, { method: "PUT", headers: WRITE, body: "x" });
     expect(extra.status).toBe(400);
     expect(extra.body.error).toBe("too_many_files");
@@ -312,4 +319,27 @@ describe("guest write password", () => {
     const del = await json(`${CONTENT}/guest-cap/s/guest-cap/f0.txt`, { method: "DELETE", headers: WRITE });
     expect(del.status).toBe(200);
   }, 15_000);
+
+  it("omits hub from a guest 500", async () => {
+    const token = await mint("guest-500", "guest-500@esperlabs.app");
+    await json("/v1/sites", {
+      method: "POST",
+      headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "guest-500", write_password: "guest-write-ok" }),
+    });
+    const originalPut = env.BUCKET.put.bind(env.BUCKET);
+    env.BUCKET.put = async () => {
+      throw new Error("r2 down");
+    };
+    try {
+      const failed = await json(`${CONTENT}/guest-500/s/guest-500/x.txt`, { method: "PUT", headers: WRITE, body: "x" });
+      expect(failed.status).toBe(500);
+      expect(failed.body.error).toBe("internal");
+      expect(failed.body.hub).toBeUndefined();
+      expect(JSON.stringify(failed.body)).not.toContain("/v1/help");
+      expect(JSON.stringify(failed.body)).not.toContain("/account");
+    } finally {
+      env.BUCKET.put = originalPut;
+    }
+  });
 });

@@ -87,7 +87,8 @@ export async function guestWrite(
     if (err instanceof ApiError) {
       return guestJson({ error: err.code, message: err.message, ...err.extra }, err.status);
     }
-    throw err;
+    console.error(err instanceof Error ? err.stack || err.message : err);
+    return guestJson({ error: "internal", message: "Something went wrong. Try again." }, 500);
   }
 }
 
