@@ -398,7 +398,7 @@ describe("TTL purge claims", () => {
       .bind(fileId)
       .first<{ password_hash: string | null; write_policy: string }>();
     expect(row?.password_hash).toBeNull();
-    expect(row?.write_policy).toBe("instance");
+    expect(row?.write_policy).toBe("org");
   });
 
   it("does not partially apply a multi-field site PATCH when purge claims", async () => {
@@ -452,7 +452,7 @@ describe("TTL purge claims", () => {
       .bind("atomic-site")
       .first<{ password_hash: string | null; write_policy: string }>();
     expect(row?.password_hash).toBeNull();
-    expect(row?.write_policy).toBe("instance");
+    expect(row?.write_policy).toBe("org");
   });
 
   it("purge claims before deleting R2 so a concurrent PATCH ttl cannot orphan bytes", async () => {

@@ -3,7 +3,7 @@
   "info": {
     "title": "Energon",
     "version": "1.0.0",
-    "description": "The /v1 HTTP contract for an Energon host: paths, request and response schemas, status codes, and error codes. Live instance identity is GET /v1/help: hub and content origins, token env var, retention presets, token policy, and limits. Read both. Published content lives on the content origin at /{handle}/s/{slug}/{path} and /{handle}/f/{id}/{filename}; those URLs are not part of /v1, need no token, and are gated only by an optional share password (X-Energon-Password) or, for guest writes, an optional write password (X-Energon-Write-Password). Never invent a token. Never default to overwrite: true.",
+    "description": "The /v1 HTTP contract for an Energon host: paths, request and response schemas, status codes, and error codes. Live identity for this Energon is GET /v1/help: hub and content origins, token env var, retention presets, token policy, and limits. Read both. Published content lives on the content origin at /{handle}/s/{slug}/{path} and /{handle}/f/{id}/{filename}; those URLs are not part of /v1, need no token, and are gated only by an optional share password (X-Energon-Password) or, for guest writes, an optional write password (X-Energon-Write-Password). Never invent a token. Never default to overwrite: true.",
     "license": {
       "name": "MIT",
       "identifier": "MIT"
@@ -12,7 +12,7 @@
   "servers": [
     {
       "url": "/",
-      "description": "Replaced at runtime with this instance PUBLIC_ORIGIN by GET /v1/openapi.json"
+      "description": "Replaced at runtime with this Energon's PUBLIC_ORIGIN by GET /v1/openapi.json"
     }
   ],
   "security": [
@@ -22,7 +22,7 @@
   ],
   "tags": [
     {
-      "name": "instance",
+      "name": "discovery",
       "description": "Discovery and identity. help, health, openapi, llms.txt, and auth.md need no token."
     },
     {
@@ -39,14 +39,14 @@
       "get": {
         "operationId": "getAuthMarkdown",
         "tags": [
-          "instance"
+          "discovery"
         ],
         "summary": "Authentication instructions for agents",
         "description": "Public Markdown describing human-approved connections, manual tokens, credential boundaries, account verification, and recovery. HEAD is accepted. The documented connection flow is an Energon API, not OAuth or WorkOS agent registration.",
         "security": [],
         "responses": {
           "200": {
-            "description": "Instance-specific authentication instructions.",
+            "description": "Authentication instructions for this Energon.",
             "content": {
               "text/markdown": {
                 "schema": {
@@ -65,10 +65,10 @@
       "get": {
         "operationId": "getLlmsTxt",
         "tags": [
-          "instance"
+          "discovery"
         ],
         "summary": "Agent-readable overview",
-        "description": "Markdown for agents: what this instance is, how to publish, where the API, help, and this contract live. Not under /v1, but GET /v1/help routes lists it.",
+        "description": "Markdown for agents: what this Energon is, how to publish, where the API, help, and this contract live. Not under /v1, but GET /v1/help routes lists it.",
         "security": [],
         "responses": {
           "200": {
@@ -91,10 +91,10 @@
       "get": {
         "operationId": "getHelp",
         "tags": [
-          "instance"
+          "discovery"
         ],
-        "summary": "This instance's identity, policy, and SOP",
-        "description": "Live values for this deployment: hub and content origins, token env var and prefix, skill and marketplace names, limits, retention presets, token lifetimes, an agent SOP, and a routes map. This document is the HTTP schema; help is what varies per instance. Fields are not schematized here on purpose; read them from the live response.",
+        "summary": "This Energon's identity, policy, and SOP",
+        "description": "Live values for this deployment: hub and content origins, token env var and prefix, skill and marketplace names, limits, retention presets, token lifetimes, an agent SOP, and a routes map. This document is the HTTP schema; help is what varies per Energon. Fields are not schematized here on purpose; read them from the live response.",
         "security": [],
         "responses": {
           "200": {
@@ -118,7 +118,7 @@
       "get": {
         "operationId": "getHealth",
         "tags": [
-          "instance"
+          "discovery"
         ],
         "summary": "Liveness",
         "description": "Also served at /health. HEAD is accepted.",
@@ -144,10 +144,10 @@
       "get": {
         "operationId": "getOpenapi",
         "tags": [
-          "instance"
+          "discovery"
         ],
         "summary": "This contract",
-        "description": "This OpenAPI 3.1 document with servers[0].url set to this instance's PUBLIC_ORIGIN. Cacheable for 300 seconds; access-control-allow-origin: *. HEAD is accepted.",
+        "description": "This OpenAPI 3.1 document with servers[0].url set to this Energon's PUBLIC_ORIGIN. Cacheable for 300 seconds; access-control-allow-origin: *. HEAD is accepted.",
         "security": [],
         "responses": {
           "200": {
@@ -171,7 +171,7 @@
       "get": {
         "operationId": "whoami",
         "tags": [
-          "instance"
+          "discovery"
         ],
         "summary": "Who this token is",
         "responses": {
@@ -1805,10 +1805,10 @@
       "post": {
         "operationId": "startConnection",
         "tags": [
-          "instance"
+          "discovery"
         ],
         "summary": "Request a human-approved agent connection",
-        "description": "No bearer token. Does not grant API access. Show the human verification_uri and user_code; they must sign in through Access, enter the code, and approve. Requests expire in ten minutes. Limits: 20 requests per IP and 1000 per instance per ten-minute window. All successful responses use Cache-Control: no-store, private. This is an Energon API, not OAuth device authorization.",
+        "description": "No bearer token. Does not grant API access. Show the human verification_uri and user_code; they must sign in through Access, enter the code, and approve. Requests expire in ten minutes. Limits: 20 requests per IP and 1000 on this Energon per ten-minute window. All successful responses use Cache-Control: no-store, private. This is an Energon API, not OAuth device authorization.",
         "security": [],
         "requestBody": {
           "required": true,
@@ -1894,7 +1894,7 @@
       "post": {
         "operationId": "exchangeConnection",
         "tags": [
-          "instance"
+          "discovery"
         ],
         "summary": "Poll for one-time token delivery",
         "description": "No bearer token; requires the private poll_token in the JSON body. Poll at most once every five seconds while pending. After human approval, exactly one request receives the account token. If delivery is lost, ask the human to revoke the token before approving a new connection. Denial is terminal; do not automatically restart.",
@@ -2255,16 +2255,16 @@
         "type": "string",
         "enum": [
           "owner",
-          "instance"
+          "org"
         ],
-        "description": "owner: only the creating account (keyed by IdP identity) can write. instance: any token on this host can write. Anyone with a token can read via /v1 either way."
+        "description": "owner: only the creating account (keyed by IdP identity) can write. org: any token on this host can write. Anyone with a token can read via /v1 either way."
       },
       "Ttl": {
         "type": [
           "string",
           "integer"
         ],
-        "description": "A preset id from GET /v1/help retention.presets (such as 7d), any duration matching \\d+[smhd], never (only where retention.allow_unlimited is true), or a positive integer of seconds. Omitted means the instance default_ttl. Above retention.max_ttl is 400 ttl_too_long."
+        "description": "A preset id from GET /v1/help retention.presets (such as 7d), any duration matching \\d+[smhd], never (only where retention.allow_unlimited is true), or a positive integer of seconds. Omitted means this Energon's default_ttl. Above retention.max_ttl is 400 ttl_too_long."
       },
       "SharePassword": {
         "type": [
@@ -2324,7 +2324,7 @@
                 "$ref": "#/components/schemas/Slug"
               }
             ],
-            "description": "Copy every file of that site into the new slug. Cannot be combined with overwrite (400 bad_duplicate). You become created_by; write_policy defaults to the instance default; TTL is fresh; the share password and write password are not copied."
+            "description": "Copy every file of that site into the new slug. Cannot be combined with overwrite (400 bad_duplicate). You become created_by; write_policy defaults to this Energon's default; TTL is fresh; the share password and write password are not copied."
           }
         }
       },
@@ -2347,7 +2347,7 @@
                 "type": "null"
               }
             ],
-            "description": "Resets expiry from now. null or never clears expiry where the instance allows it (else 400 ttl_required). Can revive an expired object that has not been purged yet."
+            "description": "Resets expiry from now. null or never clears expiry where this Energon allows it (else 400 ttl_required). Can revive an expired object that has not been purged yet."
           },
           "write_policy": {
             "$ref": "#/components/schemas/WritePolicy"
@@ -3500,7 +3500,7 @@
         "schema": {
           "$ref": "#/components/schemas/Slug"
         },
-        "description": "Your own site with that slug, else the slug when exactly one site on the instance has it."
+        "description": "Your own site with that slug, else the slug when exactly one site on this Energon has it."
       },
       "FilePath": {
         "name": "path",
@@ -3636,7 +3636,7 @@
         "schema": {
           "$ref": "#/components/schemas/WritePolicy"
         },
-        "description": "Who can write the new file. Overrides the multipart write_policy field. Omitted means the instance default (GET /v1/help retention.write_policy)."
+        "description": "Who can write the new file. Overrides the multipart write_policy field. Omitted means this Energon's default (GET /v1/help retention.write_policy)."
       },
       "XEnergonSetPassword": {
         "name": "X-Energon-Set-Password",
@@ -3667,7 +3667,7 @@
     },
     "responses": {
       "Unauthorized": {
-        "description": "No valid token. unauthorized: missing, not this instance's prefix, unknown, or revoked. token_expired: terminal; stop and tell the human to mint a new token.",
+        "description": "No valid token. unauthorized: missing, not this Energon's prefix, unknown, or revoked. token_expired: terminal; stop and tell the human to mint a new token.",
         "x-error-codes": [
           "unauthorized",
           "token_expired"
@@ -3688,7 +3688,7 @@
         }
       },
       "ForbiddenDomain": {
-        "description": "The token's account email is outside this instance's allowed domains.",
+        "description": "The token's account email is outside this Energon's allowed domains.",
         "x-error-codes": [
           "forbidden_domain"
         ],

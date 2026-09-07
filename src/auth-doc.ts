@@ -63,7 +63,7 @@ Never put tokens, share passwords, or write passwords in published files, source
 ## Recover
 
 - Missing token: follow the order of operations above.
-- \`401 unauthorized\`: check the configured instance and environment variable without revealing the secret. If the credential is rejected or revoked, stop and ask the human for a replacement. Do not repeatedly retry it.
+- \`401 unauthorized\`: check this Energon and the environment variable without revealing the secret. If the credential is rejected or revoked, stop and ask the human for a replacement. Do not repeatedly retry it.
 - \`401 token_expired\`: stop using the token. Tokens cannot be extended or refreshed; connect again with a code or ask the human to provision a replacement. \`expires_at: null\` means no scheduled expiry, not immunity from revocation.
 - \`403\`: access or write policy denied the action. Do not retry with broader access automatically.
 
@@ -71,7 +71,7 @@ Humans list and revoke tokens at ${origin}/tokens. Revocation prevents further u
 
 ## Continue
 
-- [Instance identity and policy](${origin}/v1/help)
+- [This Energon's identity and policy](${origin}/v1/help)
 - [HTTP API contract](${origin}/v1/openapi.json)
 - [Agent overview](${origin}/llms.txt)
 

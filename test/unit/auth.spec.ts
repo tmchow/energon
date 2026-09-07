@@ -108,7 +108,7 @@ describe("mintToken lifetime", () => {
     expect(Date.parse(String(minted.expires_at)) - Date.now()).toBeGreaterThan(86000 * 1000);
   });
 
-  it("refuses never when the instance forbids it, before touching the database", async () => {
+  it("refuses never when this Energon forbids it, before touching the database", async () => {
     const { env, binds } = mintEnv({ ALLOW_UNLIMITED_TOKENS: "false" });
     let error: unknown;
     try {
@@ -122,7 +122,7 @@ describe("mintToken lifetime", () => {
     expect(tokenPolicy(env).presets.map((p) => p.id)).not.toContain("never");
   });
 
-  it("still authenticates a never-expiring row when the instance forbids new ones", async () => {
+  it("still authenticates a never-expiring row when this Energon forbids new ones", async () => {
     const row: TokenRow = {
       id: "legacy-id",
       user_email: "agent@esperlabs.app",

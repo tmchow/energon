@@ -46,7 +46,7 @@ describe("putLooseFile", () => {
                 expires_at: null,
                 created_by: "ada@esperlabs.app",
                 last_written_by: "ada@esperlabs.app",
-                write_policy: "instance",
+                write_policy: "org",
               };
             }
             if (sql.includes("COALESCE(SUM(size)")) return { total: 8 };
@@ -127,7 +127,7 @@ describe("putLooseFile", () => {
                 expires_at: null,
                 created_by: "ada@esperlabs.app",
                 last_written_by: "ada@esperlabs.app",
-                write_policy: "instance",
+                write_policy: "org",
               };
             }
             if (sql.includes("COALESCE(SUM(size)")) return { total: 8 };
@@ -201,7 +201,7 @@ describe("putLooseFile", () => {
                 expires_at: null,
                 created_by: "ada@esperlabs.app",
                 last_written_by: "ada@esperlabs.app",
-                write_policy: "instance",
+                write_policy: "org",
               };
             }
             if (sql.includes("COALESCE(SUM(size)")) return { total: 8 };
@@ -295,7 +295,7 @@ describe("putLooseFile", () => {
                 created_by: "ada@esperlabs.app",
                 last_written_by: "ada@esperlabs.app",
                 updated_at: "2026-09-02T00:00:00.000Z",
-                write_policy: "instance",
+                write_policy: "org",
               };
             }
             if (sql.includes("SELECT expires_at, last_written_by")) {
@@ -345,7 +345,7 @@ describe("putLooseFile", () => {
                 created_by: "ada@esperlabs.app",
                 last_written_by: "ada@esperlabs.app",
                 updated_at: "2026-09-02T00:00:00.000Z",
-                write_policy: "instance",
+                write_policy: "org",
               };
             }
             if (sql.includes("SELECT used FROM platform_quota")) {

@@ -24,7 +24,7 @@ Do not put secrets, tokens, or share passwords in published files. Last write wi
 
 - [Authentication instructions](${origin}/auth.md): use an existing token, connect with a code, save the token, and recover from rejected credentials. No auth.
 - [OpenAPI 3.1 contract](${origin}/v1/openapi.json): every \`/v1\` path with request and response schemas, status codes, and error codes. No auth.
-- [Machine-readable API help](${origin}/v1/help): this instance's identity and policy. SOP, routes, limits, retention, token policy. No auth.
+- [Machine-readable API help](${origin}/v1/help): this Energon's identity and policy. SOP, routes, limits, retention, token policy. No auth.
 - [Health](${origin}/v1/health): \`{"ok":true}\`. No auth.
 - [Hub](${origin}/): human UI. Cloudflare Access.
 - [About](${origin}/about) and [Stats](${origin}/stats): signed-in humans only.
@@ -39,8 +39,8 @@ Do not put secrets, tokens, or share passwords in published files. Last write wi
 - On 409, show the existing URL and ask the human: new slug, or retry with \`overwrite: true\`.
 - \`GET /v1/sites\` and \`GET /v1/files\` list only what you created or last wrote. \`?scope=created|edited|involved\`, \`?q=\`, \`?created_by=\`, \`?limit=\`, \`?cursor=\` (always intersected with your involvement — you cannot dump someone else's catalog). Responses include \`total\` and \`next_cursor\`. Search runs over the full involved set; pages are keyset cursors.
 - Optional share password: \`password\` on create/PATCH, or \`X-Energon-Set-Password\` on file write. Empty string clears. Write responses echo the password you just set. \`/v1\` GET never returns the phrase — only \`password_protected\`. Agents send \`X-Energon-Password\` on the human URL. Token GETs on \`/v1\` skip it.
-- Retention: this instance default is \`${policy.defaultTtl}\`. Allowed: ${presets}. \`PUT\` does not extend expiry. \`PATCH { "ttl": "7d" }\` resets from now. Expired public URLs are \`410\` and then deleted.
-- Who can write: this instance default is \`${policy.writePolicy}\` (\`owner\` = the creating account, \`instance\` = any token on this host). Set \`write_policy\` on create to override. \`PATCH write_policy\` is creator-only. Anyone with a token can still read via \`/v1\`.
+- Retention: this Energon's default is \`${policy.defaultTtl}\`. Allowed: ${presets}. \`PUT\` does not extend expiry. \`PATCH { "ttl": "7d" }\` resets from now. Expired public URLs are \`410\` and then deleted.
+- Who can write: this Energon's default is \`${policy.writePolicy}\` (\`owner\` = the creating account, \`org\` = any token on this host). Set \`write_policy\` on create to override. \`PATCH write_policy\` is creator-only. Anyone with a token can still read via \`/v1\`.
 - Make a copy: \`POST /v1/sites\` with \`duplicate_from\` + a new slug, or \`POST /v1/files\` with \`duplicate_from\`. You own the copy. Do not zip a site through context just to fork it. If you already have replacement bytes, POST/PUT those instead.
 - Site zip export: \`GET /v1/sites/{slug}/export\` (token). Same ${formatBytes(policy.fileBytes)} / file-count caps as import. A single file is never a zip; \`?download=1\` on a file URL sets \`Content-Disposition: attachment\`.
 - \`.md\` files: browsers (\`Accept: text/html\`) get a rendered page (GFM + mermaid). \`curl\` and \`?raw=1\` get the markdown source. \`index.md\` is the site homepage when \`index.html\` is missing.
@@ -48,7 +48,7 @@ Do not put secrets, tokens, or share passwords in published files. Last write wi
 ${hubGuestWriteSection(content)}
 ## Optional
 
-- Agent skill for this instance: add marketplace \`${id.repo}\` (\`https://github.com/${id.repo}\`) and install \`${id.plugin}\` at user (global) scope (\`${id.plugin}@${id.marketplace}\`). Do not install at project or workspace scope unless the human asked for that. The skill files name this origin (${id.origin}). A fork replaces the shipped skill with \`npm run skill:init\`. Claude Code and [Agent Plugins](https://agent-plugins.org/) hosts use the same repo.
+- Agent skill for this Energon: add marketplace \`${id.repo}\` (\`https://github.com/${id.repo}\`) and install \`${id.plugin}\` at user (global) scope (\`${id.plugin}@${id.marketplace}\`). Do not install at project or workspace scope unless the human asked for that. The skill files name this origin (${id.origin}). A fork replaces the shipped skill with \`npm run skill:init\`. Claude Code and [Agent Plugins](https://agent-plugins.org/) hosts use the same repo.
 - WebMCP tools register only on the signed-in hub. Agents that are not in that tab should use HTTP + the token.
 `;
 }

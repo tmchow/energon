@@ -21,7 +21,7 @@ Publish a file lets a user mint one object with a short stable id, open it at `/
 Preconditions:
 
 - Doctor has passed for `$ORIGIN`.
-- `TOKEN` is a minted `ee_live_` secret for this instance.
+- `TOKEN` is a minted `ee_live_` secret for this Energon.
 - `$HANDLE` is the bootstrap handle.
 
 - **Mint file.** Run `curl -sS -D "$EVIDENCE/publish-file/create.headers" -o "$EVIDENCE/publish-file/create.json" -w '%{http_code}' -X POST "$ORIGIN/v1/files" -H "Authorization: Bearer $TOKEN" -H "X-Filename: brief.md" -H "content-type: text/markdown" --data 'verify-file-v1'`. Status `201`. Body has `id`, `filename` `brief.md`, and `url` matching `$ORIGIN/$HANDLE/f/{id}/brief.md`.

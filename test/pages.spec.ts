@@ -43,7 +43,7 @@ describe("signed-in pages", () => {
     expect(boot.page).toBe("hub");
     expect(boot.data.handle).toBe("dev");
     expect(boot.data.content_origin).toBe("https://energon.example.com");
-    expect(boot.data.policy.write_policy).toBe("instance");
+    expect(boot.data.policy.write_policy).toBe("org");
     expect(boot.data.policy.default_ttl).toBe("never");
     expect(boot.data.words.length).toBeGreaterThan(100);
     expect(boot.data.query).toMatchObject({ q: "", scope: "involved", sort: "updated" });

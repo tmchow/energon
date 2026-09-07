@@ -8,8 +8,8 @@
 </script>
 <main class="en-wrap">
   <PageTitle title="Add Energon to your agent." wide>
-    <p class="en-lede">Give your agent a way to publish work, read a link as reference, or revise a file at the same address when permitted. The same instance-specific skill works across compatible agent tools. You can also <a href="/">upload from your browser</a>.</p>
-    <p class="en-lede">Install this instance's plugin in your agent at user (global) scope so it follows you across projects. Then ask your agent to connect. It shows you a link and a code; open the link, enter the code, and approve. The agent receives its token directly and saves it as <code>{data.identity.tokenEnv}</code>. No copying tokens around. For CI, scheduled jobs, or a hosted sandbox with a secret store, <a href="/tokens">mint a token</a> yourself instead.</p>
+    <p class="en-lede">Give your agent a way to publish work, read a link as reference, or revise a file at the same address when permitted. The same skill works across compatible agent tools. You can also <a href="/">upload from your browser</a>.</p>
+    <p class="en-lede">Install this Energon's plugin in your agent at user (global) scope so it follows you across projects. Then ask your agent to connect. It shows you a link and a code; open the link, enter the code, and approve. The agent receives its token directly and saves it as <code>{data.identity.tokenEnv}</code>. No copying tokens around. For CI, scheduled jobs, or a hosted sandbox with a secret store, <a href="/tokens">mint a token</a> yourself instead.</p>
   </PageTitle>
   <div class="en-stack en-setup-stack">
     <Card title="Marketplace" hint="Use the form your agent tool asks for">

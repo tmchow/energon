@@ -66,7 +66,7 @@ describe("path and download helpers", () => {
     expect(isWorkersDev("energon.example.com")).toBe(false);
   });
 
-  it("tooLarge names the instance cap", () => {
+  it("tooLarge names this Energon's cap", () => {
     const err = tooLarge(6 * 1024 * 1024, "", 5 * 1024 * 1024);
     expect(err.status).toBe(413);
     expect(err.code).toBe("too_large");

@@ -15,10 +15,10 @@
       onMore: (item: CatalogItem) => void; onPassword: (item: CatalogItem) => void; onDelete: (item: CatalogItem) => void; onLoadMore: () => void } = $props();
   const name = (item: CatalogItem) => item.slug ?? item.filename;
   const size = (item: CatalogItem) => formatBytes(item.size) + (kind === 'site' ? ` · ${item.file_count} ${item.file_count === 1 ? 'file' : 'files'}` : '');
-  const orgMark = (item: CatalogItem) => item.write_policy === writePolicyDefault ? null : item.write_policy === 'instance' ? 'people' as const : 'peopleOff' as const;
+  const orgMark = (item: CatalogItem) => item.write_policy === writePolicyDefault ? null : item.write_policy === 'org' ? 'people' as const : 'peopleOff' as const;
   const passwordMark = (item: CatalogItem) => item.write_password_protected ? 'lockup' as const : item.password_protected ? 'lock' as const : null;
   const passwordLabel = (item: CatalogItem) => item.write_password_protected ? CATALOG_SCAN_LABEL.lockup : CATALOG_SCAN_LABEL.lock;
-  const orgLabel = (item: CatalogItem) => item.write_policy === 'instance' ? CATALOG_SCAN_LABEL.people : CATALOG_SCAN_LABEL.peopleOff;
+  const orgLabel = (item: CatalogItem) => item.write_policy === 'org' ? CATALOG_SCAN_LABEL.people : CATALOG_SCAN_LABEL.peopleOff;
 </script>
 {#snippet itemName(item: CatalogItem)}<a href={item.url}>{name(item)}</a>{/snippet}
 {#snippet writer(item: CatalogItem)}{item.last_written_by || item.created_by}{#if item.written_via === 'write_password'} · Updated via shared write{/if}{/snippet}

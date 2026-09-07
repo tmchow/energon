@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS sites (
   password_hash TEXT,
   password_secret TEXT,
   expires_at TEXT,
-  write_policy TEXT NOT NULL DEFAULT 'instance',
+  write_policy TEXT NOT NULL DEFAULT 'org',
   write_password_hash TEXT,
   write_password_secret TEXT,
   written_via TEXT,
@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS loose_files (
   handle TEXT,
   owner_id TEXT,
   expires_at TEXT,
-  write_policy TEXT NOT NULL DEFAULT 'instance',
+  write_policy TEXT NOT NULL DEFAULT 'org',
   write_password_hash TEXT,
   write_password_secret TEXT,
   written_via TEXT

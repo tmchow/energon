@@ -59,7 +59,7 @@ describe("Energon", () => {
       true,
     );
     expect(body.retention.presets.at(-1)).toMatchObject({ id: "never", label: "Never" });
-    expect(body.retention.write_policy).toBe("instance");
+    expect(body.retention.write_policy).toBe("org");
     expect(body.tokens.default).toBe("90d");
     expect(body.tokens.allow_never).toBe(true);
     expect(body.tokens.tokens_url).toBe("https://hub.energon.example.com/tokens");
@@ -416,7 +416,7 @@ describe("Energon", () => {
       expect(bad.body.message).toContain("1d, 7d, 30d, 60d, 90d, 180d, 365d, never");
     });
 
-    it("mints a never-expiring token on the default instance", async () => {
+  it("mints a never-expiring token on the default Energon", async () => {
       const email = "ttl-never@esperlabs.app";
       await mint("forever", email, undefined, "never");
       const listed = await json("/account/data", { headers: access(email) });
@@ -479,7 +479,7 @@ describe("Energon", () => {
     const paths = listing.body.files.map((f: { path: string }) => f.path).sort();
     expect(paths).toEqual(["a.txt", "b.txt"]);
     expect(listing.body.last_written_by).toBe("bob@esperlabs.app");
-    expect(listing.body.write_policy).toBe("instance");
+    expect(listing.body.write_policy).toBe("org");
   });
 
   it("owner write_policy 403s a second token on mutate and lets the creator flip it", async () => {
@@ -505,17 +505,17 @@ describe("Energon", () => {
     const bobPatch = await json("/v1/sites/private-draft", {
       method: "PATCH",
       headers: auth(bob, { "content-type": "application/json" }),
-      body: JSON.stringify({ write_policy: "instance" }),
+      body: JSON.stringify({ write_policy: "org" }),
     });
     expect(bobPatch.status).toBe(403);
     expect(bobPatch.body.error).toBe("forbidden_write_policy");
     const adaPatch = await json("/v1/sites/private-draft", {
       method: "PATCH",
       headers: auth(ada, { "content-type": "application/json" }),
-      body: JSON.stringify({ write_policy: "instance" }),
+      body: JSON.stringify({ write_policy: "org" }),
     });
     expect(adaPatch.status).toBe(200);
-    expect(adaPatch.body.write_policy).toBe("instance");
+    expect(adaPatch.body.write_policy).toBe("org");
     const bobPutAfter = await json("/v1/sites/private-draft/files/b.txt", {
       method: "PUT",
       headers: auth(bob),
@@ -599,12 +599,12 @@ describe("Energon", () => {
     expect(copied.body.file_count).toBe(1);
     expect(copied.body.password_protected).toBe(false);
     expect(copied.body.write_password_protected).toBe(false);
-    expect(copied.body.write_policy).toBe("instance");
+    expect(copied.body.write_policy).toBe("org");
     expect(copied.body.handle).not.toBe(copied.body.duplicated_from);
     const listing = await json("/v1/sites/source-draft-2", { headers: auth(bob) });
     expect(listing.status).toBe(200);
     expect(listing.body.created_by).toBe("bob-dup@esperlabs.app");
-    expect(listing.body.write_policy).toBe("instance");
+    expect(listing.body.write_policy).toBe("org");
     expect(listing.body.password_protected).toBe(false);
     expect(listing.body.write_password_protected).toBe(false);
     expect(listing.body.files.map((f: { path: string }) => f.path)).toEqual(["index.html"]);
@@ -651,13 +651,13 @@ describe("Energon", () => {
     expect(copied.body.duplicated_from).toBe(created.body.id);
     expect(copied.body.id).not.toBe(created.body.id);
     expect(copied.body.filename).toBe("notes-copy.txt");
-    expect(copied.body.write_policy).toBe("instance");
+    expect(copied.body.write_policy).toBe("org");
     expect(copied.body.write_password_protected).toBe(false);
     expect(copied.body.created_by).toBe("bob-file-dup@esperlabs.app");
     const listed = await json("/v1/files", { headers: auth(bob) });
     const row = listed.body.files.find((f: { id: string }) => f.id === copied.body.id);
     expect(row.created_by).toBe("bob-file-dup@esperlabs.app");
-    expect(row.write_policy).toBe("instance");
+    expect(row.write_policy).toBe("org");
     expect(row.write_password_protected).toBe(false);
     const got = await req(`/v1/files/${copied.body.id}`, { headers: auth(bob) });
     expect(got.status).toBe(200);
@@ -1608,7 +1608,7 @@ describe("Energon", () => {
     }
   });
 
-  it("rejects minting from an email domain this instance does not allow", async () => {
+  it("rejects minting from an email domain this Energon does not allow", async () => {
     const { env } = await import("cloudflare:test");
     const { status, body } = await json("/account/tokens", {
       method: "POST",

@@ -36,7 +36,7 @@ const TABLE_STATEMENTS = [
     password_hash TEXT,
     password_secret TEXT,
     expires_at TEXT,
-    write_policy TEXT NOT NULL DEFAULT 'instance',
+    write_policy TEXT NOT NULL DEFAULT 'org',
     write_password_hash TEXT,
     write_password_secret TEXT,
     written_via TEXT,
@@ -66,7 +66,7 @@ const TABLE_STATEMENTS = [
     handle TEXT,
     owner_id TEXT,
     expires_at TEXT,
-    write_policy TEXT NOT NULL DEFAULT 'instance',
+    write_policy TEXT NOT NULL DEFAULT 'org',
     write_password_hash TEXT,
     write_password_secret TEXT,
     written_via TEXT
@@ -150,6 +150,8 @@ export async function ensureSchema(db: D1Database): Promise<void> {
     await db.prepare(
       `UPDATE loose_files SET owner_id = (SELECT id FROM users WHERE users.email = loose_files.created_by) WHERE owner_id IS NULL OR owner_id = ''`,
     ).run();
+    await db.prepare(`UPDATE sites SET write_policy = 'org' WHERE write_policy = 'instance'`).run();
+    await db.prepare(`UPDATE loose_files SET write_policy = 'org' WHERE write_policy = 'instance'`).run();
   }
   for (const sql of INDEX_STATEMENTS) {
     await db.prepare(sql).run();

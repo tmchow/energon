@@ -4,7 +4,7 @@ Base: `{{ORIGIN}}/v1`
 Auth: `Authorization: Bearer {{TOKEN_PREFIX}}…` (`{{TOKEN_ENV}}`)  
 Unauthenticated: `GET /v1/help`, `GET /v1/health`, `GET /v1/openapi.json`
 
-This page is the short form. The full contract (every path, request and response schema, status code, and `error` code) is `GET {{ORIGIN}}/v1/openapi.json` (OpenAPI 3.1). `GET /v1/help` is this instance's identity: origins, token env, retention presets, token policy, limits.
+This page is the short form. The full contract (every path, request and response schema, status code, and `error` code) is `GET {{ORIGIN}}/v1/openapi.json` (OpenAPI 3.1). `GET /v1/help` is this Energon's identity: origins, token env, retention presets, token policy, limits.
 
 Errors are JSON: `{ error, message, hub }` plus extra fields. `message` is written for agents to read aloud to humans.
 
@@ -66,24 +66,24 @@ Guest write on the public URL uses header `X-Energon-Write-Password` (not a `/v1
 
 ## Retention
 
-`GET /v1/help` → `retention` lists this instance's presets (human labels included), default, and whether `never` is allowed. Grammar for durations is `\\d+[smhd]`. `never` is a flag, not a duration.
+`GET /v1/help` → `retention` lists this Energon's presets (human labels included), default, and whether `never` is allowed. Grammar for durations is `\\d+[smhd]`. `never` is a flag, not a duration.
 
 Expired public and `/v1` reads are `410`. A cron sweep deletes the R2 objects and D1 rows so storage does not wait for a click.
 
 ## Token lifetime
 
-Humans pick a lifetime when minting on {{ORIGIN}}/tokens. `GET /v1/help` → `tokens` lists the presets (`1d`…`365d`, plus `never` only when this instance allows it), the default (`90d`), `allow_never`, and `tokens_url`. This is separate from content `retention`. After expiry every `/v1` call is `401 token_expired`; there is no renew. `GET /v1/whoami` shows `expires_at` (`null` = never).
+Humans pick a lifetime when minting on {{ORIGIN}}/tokens. `GET /v1/help` → `tokens` lists the presets (`1d`…`365d`, plus `never` only when this Energon allows it), the default (`90d`), `allow_never`, and `tokens_url`. This is separate from content `retention`. After expiry every `/v1` call is `401 token_expired`; there is no renew. `GET /v1/whoami` shows `expires_at` (`null` = never).
 
 ## Other
 
 ```
 GET /v1/whoami        { email, label, expires_at }
-GET /v1/help          this instance: SOP, limits, routes, retention, tokens, identity
+GET /v1/help          this Energon: SOP, limits, routes, retention, tokens, identity
 GET /v1/health        { ok: true }
 GET /v1/openapi.json  OpenAPI 3.1 contract for every route above
 ```
 
-Limits: 25 MB per file and per zip upload; 20 GB platform cap; optional content TTL per instance.
+Limits: 25 MB per file and per zip upload; 20 GB platform cap; optional content TTL per Energon.
 
 ## Connect with a code
 

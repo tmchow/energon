@@ -1,6 +1,6 @@
 # Energon Design System
 
-Energon is **agent-native publishing for documents, prototypes, and working files**. A self-hosted Cloudflare Worker (one instance per operator) lets agents — Claude Code, Cursor, Codex, curl — publish ordinary files over HTTP and get back a stable link that people can open and other agents can read, reference, or revise. Markdown renders as a document; a ready-to-serve folder becomes a working site. Links are public by default with optional share passwords and expiry. It is not a system of record: code stays in git.
+Energon is **agent-native publishing for documents, prototypes, and working files**. A self-hosted Cloudflare Worker (one Energon per operator) lets agents — Claude Code, Cursor, Codex, curl — publish ordinary files over HTTP and get back a stable link that people can open and other agents can read, reference, or revise. Markdown renders as a document; a ready-to-serve folder becomes a working site. Links are public by default with optional share passwords and expiry. It is not a system of record: code stays in git.
 
 Brand line: **Built for agents. Ready for people.** Friction line: *No repo to create. No deployment pipeline to configure. No new link for every update.*
 

@@ -11,7 +11,7 @@ This file is how to **change this tree**. It is not a product README and not the
 | Publish or fetch against a live host | the installed plugin skill; `GET {origin}/v1/help` and `{origin}/llms.txt`. Never invent a token. |
 | Stand up or connect a host | [INSTALL.md](./INSTALL.md) |
 | Deploy vars, Access, fork hygiene | [docs/DEPLOY.md](./docs/DEPLOY.md) |
-| Domain terms (purge claim, write claim, instance identity) | [CONCEPTS.md](./CONCEPTS.md) |
+| Domain terms (purge claim, write claim, this Energon's identity) | [CONCEPTS.md](./CONCEPTS.md) |
 
 ## Hard stops
 
@@ -86,7 +86,7 @@ Page tests cover server-rendered navigation, copy, catalog data, safe hydration,
 
 ## Verify like a user
 
-Green CI is not proof a feature works. Before you say a user-facing change is done (hub UI, `/v1` route, gate, token, public URL, or a bug fix a user reported), run the matching recipe from the feature map against a fresh local instance and keep the evidence.
+Green CI is not proof a feature works. Before you say a user-facing change is done (hub UI, `/v1` route, gate, token, public URL, or a bug fix a user reported), run the matching recipe from the feature map against a fresh local Energon and keep the evidence.
 
 `.agents/skills/verify-energon/` is how an agent drives a **local** hub and `/v1` the way a user does (isolated `wrangler dev` via `bin/launch`, default port `18787`, persist under `/tmp/energon-verify/`). Follow that skill's Launch / Doctor / Drive / Cleanup. Do not invent a token. Do not attach to whatever is already on 8787 unless `bin/doctor` says that pid is this run.
 

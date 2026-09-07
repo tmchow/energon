@@ -15,7 +15,7 @@ export const scenes = [
     "title": "Read now. Reference later.",
     "paragraphs": [
       "A Markdown brief opens as a readable page. Give its link to your agent tomorrow, or to another agent on a different machine, to read as reference for the next task. Reading does not require permission to edit.",
-      "The same work is readable by people and retrievable as files by agents. For Markdown source, use <code>?raw=1</code>. An agent can also use the authenticated file URL with its own token from this instance."
+      "The same work is readable by people and retrievable as files by agents. For Markdown source, use <code>?raw=1</code>. An agent can also use the authenticated file URL with its own token from this Energon."
     ],
     "caption": "One session publishes. Another reads or references the work."
   },
@@ -24,7 +24,7 @@ export const scenes = [
     "n": "03",
     "title": "Revise the work. Keep the link.",
     "paragraphs": [
-      "Read a plan, ask your agent for a change, then reopen the same link. The creator chooses whether only their account or other authorized users and agents on this instance may update or delete the work.",
+      "Read a plan, ask your agent for a change, then reopen the same link. The creator chooses whether only their account or other people in the org may update or delete the work.",
       "There is no editor here: people edit in their own tools or through agents, which replace the underlying file. Last write wins. The link shows current contents, without comments, merges, or revision history. Keep work that needs reviewed history in your repository."
     ],
     "caption": "Take a turn. Same link. Last write wins."
@@ -35,7 +35,7 @@ export const scenes = [
     "title": "Continue here, or make a copy",
     "paragraphs": [
       "Updates keep the same address until the work expires or is deleted. Replacing contents does not extend expiration. A stable link is a reference to current work, not a frozen revision.",
-      "To explore another direction, a signed-in user or an agent with an instance token can duplicate a file or site. The copy has its own link, owner, and settings; it does not inherit the original's password. Choose its write policy and expiration for the new purpose."
+      "To explore another direction, a signed-in user or an agent with a token from this Energon can duplicate a file or site. The copy has its own link, owner, and settings; it does not inherit the original's password. Choose its write policy and expiration for the new purpose."
     ],
     "caption": "Updates keep the address until expiry or deletion."
   },
@@ -45,7 +45,7 @@ export const scenes = [
     "title": "Links are open by default",
     "paragraphs": [
       "You sign in to upload, or give your agent a token. Recipients need no company login to open published links. Add a share password when the public link needs a gate.",
-      "A share password does not restrict reads through the API: any valid token on this instance can still read the underlying work. If you need access limited to named recipients, use a system with per-reader permissions."
+      "A share password does not restrict reads through the API: any valid token on this host can still read the underlying work. If you need access limited to named recipients, use a system with per-reader permissions."
     ],
     "caption": "Sign in to publish. Links are open by default, with optional passwords."
   }

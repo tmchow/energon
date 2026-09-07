@@ -247,7 +247,7 @@ export async function seedExpiredLooseFiles(
           "ada",
           null,
           expiresAt,
-          "instance",
+          "org",
         ),
       ),
     );

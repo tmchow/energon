@@ -20,7 +20,7 @@
 
 Built for agents to publish, read, reference, and revise ordinary files without operating a human editor. Ready for people to open, explore, and upload directly. Markdown renders as a document; a ready-to-serve HTML folder becomes a working site. Permitted updates keep the same URL across sessions and agent tools. Energon runs in your own Cloudflare account.
 
-**No repo to create. No deployment pipeline to configure. No new link for every update.** Once your instance is running, publish prepared files directly. Build your prototype before uploading if it needs a build step; Energon serves the output. Updates keep the address until expiry or deletion. Make an independent copy when you want to try another direction.
+**No repo to create. No deployment pipeline to configure. No new link for every update.** Once yours is running, publish prepared files directly. Build your prototype before uploading if it needs a build step; Energon serves the output. Updates keep the address until expiry or deletion. Make an independent copy when you want to try another direction.
 
 <div align="center">
   <a href="./docs/SCENARIOS.md">
@@ -30,7 +30,7 @@ Built for agents to publish, read, reference, and revise ordinary files without 
 
 <p align="center"><em>Prototype publishing, human review, and cross-machine agent handoff. <a href="./docs/SCENARIOS.md">Explore the animated workflows →</a></em></p>
 
-> Energon is self-hosted software, not a hosted service or a curl installer. Start with [Deploy an instance](#deploy-an-instance), or give [this prompt](#give-this-to-an-agent) to an agent.
+> Energon is self-hosted software, not a hosted service or a curl installer. Start with [Deploy your own Energon](#deploy-your-own-energon), or give [this prompt](#give-this-to-an-agent) to an agent.
 
 ## TL;DR
 
@@ -40,8 +40,8 @@ Built for agents to publish, read, reference, and revise ordinary files without 
 
 ### Start from your browser or your agent
 
-- **From your browser:** open your instance's hub, choose one file or a prepared site folder, review the password, expiration, and write settings, then publish. Open the result or copy its link for a person or agent. A ZIP selected in the hub is unpacked as a site; use the API to store an archive as one downloadable file.
-- **From your agent:** [connect to your instance](#connect-an-agent-to-an-existing-host), then ask it to publish a brief or prototype, read a link as reference, or update an existing artifact. Updating requires the object's write policy to allow it; reading and referencing do not imply permission to edit.
+- **From your browser:** open the hub, choose one file or a prepared site folder, review the password, expiration, and write settings, then publish. Open the result or copy its link for a person or agent. A ZIP selected in the hub is unpacked as a site; use the API to store an archive as one downloadable file.
+- **From your agent:** [connect to your Energon](#connect-an-agent-to-an-existing-host), then ask it to publish a brief or prototype, read a link as reference, or update an existing artifact. Updating requires the object's write policy to allow it; reading and referencing do not imply permission to edit.
 
 For example: publish a prototype, open it, ask your agent for a change, and refresh the same link. Later, give that link to another session as reference. An authenticated user or agent can make a separate copy to explore an alternative. There is no built-in editor, merge model, or revision history; a stable link shows the current contents.
 
@@ -51,13 +51,13 @@ For example: publish a prototype, open it, ask your agent for a change, and refr
 | --- | --- | --- |
 | View the actual work | Renders Markdown and serves prepared HTML sites with their assets | Open a brief as a page or interact with a prototype |
 | Publish without an agent | Provides a signed-in browser hub for files and site folders | Upload a PDF and send its link to a teammate |
-| Publish from different agents | Ships an instance-specific [Agent Plugin](https://agent-plugins.org/) for Cursor, Claude Code, Codex, Copilot, Grok, and other compatible clients | “Publish the onboarding flow prototype to Energon and post the link to `#design` in Slack” |
+| Publish from different agents | Ships an [Agent Plugin](https://agent-plugins.org/) bound to this Energon for Cursor, Claude Code, Codex, Copilot, Grok, and other compatible clients | “Publish the onboarding flow prototype to Energon and post the link to `#design` in Slack” |
 | Keep related files together | Publishes a named site with nested paths | `/ada/s/onboarding-flow/` |
 | Hand off one artifact | Publishes a loose file with a short, stable ID | `/ada/f/x7k2q9/brief.md` |
 | Revise without moving the link | Replaces one site path or loose file in place | `PUT /v1/files/x7k2q9` |
 | Reference work in another session | Lets an agent retrieve current contents without joining the original conversation | “Read this brief as reference; don't change it” |
 | Explore an alternative | Copies a file or site to an independent identity owned by the authenticated caller | Try a second prototype without replacing the first |
-| Control who may overwrite | Stores `owner` or `instance` write policy per site or file | Lock a final brief to its creator |
+| Control who may overwrite | Stores `owner` or `org` write policy per site or file | Lock a final brief to its creator |
 | Share with other people | Serves content without an Access session, optionally behind a share password | Send the same preview URL to a client or collaborator |
 | Keep files on infrastructure you control | Runs as a Cloudflare Worker backed by your D1 and R2 | No public paste-service account |
 
@@ -68,7 +68,7 @@ The installed skill turns the natural-language request above into the same porta
 ```bash
 export ENERGON_ORIGIN=https://energon.your.co
 
-# Inspect this instance's live routes, limits, retention, and token env name.
+# Inspect this Energon's live routes, limits, retention, and token env name.
 curl -sS "$ENERGON_ORIGIN/v1/help"
 
 # Confirm the token and its expiry.
@@ -134,11 +134,11 @@ The hostname split matters: active content never inherits the hub's Access sessi
 
 ## Design principles
 
-1. **One publishing primitive across agent harnesses.** The deployed instance renders its own plugin name, origin, token environment variable, and operating instructions. Personal and organization instances can use separate names without colliding.
+1. **One publishing primitive across agent harnesses.** The deployed Energon renders its own plugin name, origin, token environment variable, and operating instructions. Personal and organization Energons can use separate names without colliding.
 2. **Stable addresses, explicit mutation.** A site owns a human-chosen slug. A loose file gets a short ID. Updates use `PUT`; they do not mint a new URL. Writes are last-write-wins on the affected path.
 3. **Humans control credentials and destructive choices.** Humans mint tokens through Access. Agents must not invent tokens, guess ownership of an existing slug, or silently opt into overwrite.
-4. **Open links are deliberate.** Published URLs are public by default so recipients do not need an instance login. Share passwords gate sensitive links; token-authenticated `/v1` reads bypass those passwords.
-5. **The running instance is the source of truth.** `GET /v1/help` describes the deployed host's identity, routes, limits, retention policy, and token policy. `GET /v1/openapi.json` is the HTTP contract for every `/v1` route. Installed skills tell agents to consult them instead of assuming upstream defaults.
+4. **Open links are deliberate.** Published URLs are public by default so recipients do not need to sign in. Share passwords gate sensitive links; token-authenticated `/v1` reads bypass those passwords.
+5. **The running Energon is the source of truth.** `GET /v1/help` describes its identity, routes, limits, retention policy, and token policy. `GET /v1/openapi.json` is the HTTP contract for every `/v1` route. Installed skills tell agents to consult them instead of assuming upstream defaults.
 
 ## When to use Energon
 
@@ -148,7 +148,7 @@ The hostname split matters: active content never inherits the hub's Access sessi
 | One file and multi-file sites | Both | Objects, no site behavior | Sites | Documents |
 | Stable replace-in-place URL | Yes | Depends on your URL layer | Usually | Yes |
 | Operator-owned infrastructure | Your Cloudflare account | Usually | Usually | Vendor hosted |
-| External link without instance login | Yes, optional password | Depends on policy | Usually | Depends on sharing policy |
+| External link without signing in | Yes, optional password | Depends on policy | Usually | Depends on sharing policy |
 | Comments, suggestions, and merge history | No | No | Git-based at best | Yes |
 
 Use Energon for prototypes, rendered Markdown, agent-to-agent handoffs, screenshots, PDFs, and small sites that need a durable link. Use a document editor for collaborative review, a full application platform for builds and server-side runtimes, and direct object storage when you only need a storage API.
@@ -157,7 +157,7 @@ Use Energon for prototypes, rendered Markdown, agent-to-agent handoffs, screensh
 
 There are three distinct installation paths. They are not interchangeable.
 
-### Deploy an instance
+### Deploy your own Energon
 
 Fork [`tmchow/energon`](https://github.com/tmchow/energon) into your account or organization, then follow [INSTALL.md](./INSTALL.md). The short version is:
 
@@ -170,11 +170,11 @@ npx wrangler d1 create energon
 npm run skill:init -- --name yourco --origin https://energon.your.co
 ```
 
-Then configure a distinct hub hostname and content hostname, Cloudflare Access, D1, R2, and deployment credentials. Workers Paid is required for the supported upload limits. Do not reuse another instance's D1 database ID or R2 bucket.
+Then configure a distinct hub hostname and content hostname, Cloudflare Access, D1, R2, and deployment credentials. Workers Paid is required for the supported upload limits. Do not reuse another Energon's D1 database ID or R2 bucket.
 
 ### Connect an agent to an existing host
 
-Open the deployed host's `/setup`, or read `GET {origin}/v1/help`. Both provide the actual marketplace, plugin, and token environment variable for that instance.
+Open the deployed host's `/setup`, or read `GET {origin}/v1/help`. Both provide the actual marketplace, plugin, and token environment variable for that Energon.
 
 ```text
 # Claude Code
@@ -215,14 +215,14 @@ Open <http://127.0.0.1:8787>. Localhost skips Cloudflare Access and defaults to 
 
 ## Give this to an agent
 
-### Stand up an instance
+### Stand up Energon
 
 ```text
 Read INSTALL.md in this repository and stand up an Energon host for me or my organization.
 
-Follow INSTALL.md exactly. Ask me for our hub hostname, content hostname, who may mint tokens, and whether coworkers' tokens should overwrite each other's files (WRITE_POLICY=instance) or only the creator (owner).
+Follow INSTALL.md exactly. Ask me for our hub hostname, content hostname, who may mint tokens, and whether coworkers' tokens should overwrite each other's files (WRITE_POLICY=org) or only the creator (owner).
 
-Do not invent a token. Do not reuse another instance's D1 database_id or R2 bucket. After skill:init, commit the generated plugin and catalogs so teammates install from this fork.
+Do not invent a token. Do not reuse another Energon's D1 database_id or R2 bucket. After skill:init, commit the generated plugin and catalogs so teammates install from this fork.
 ```
 
 ### Connect an agent to a host that exists
@@ -230,20 +230,20 @@ Do not invent a token. Do not reuse another instance's D1 database_id or R2 buck
 ```text
 Read INSTALL.md in this repository, section "Connect an agent", and install Energon for this machine.
 
-Ask me for our Energon origin (https://...) if it is not already in the environment or INSTALL.md. Install the skill from this instance's repo at user (global) scope. Then read {origin}/auth.md: if the token env named by GET {origin}/v1/help is set, use it; otherwise connect with a code, show me the link and code, and after I approve, save the token as that env where this environment keeps secrets. If I already use another Energon, this skill has a different name. Install it too, or pin it in this repo. Do not invent a token.
+Ask me for our Energon origin (https://...) if it is not already in the environment or INSTALL.md. Install the skill from this Energon's repo at user (global) scope. Then read {origin}/auth.md: if the token env named by GET {origin}/v1/help is set, use it; otherwise connect with a code, show me the link and code, and after I approve, save the token as that env where this environment keeps secrets. If I already use another Energon, this skill has a different name. Install it too, or pin it in this repo. Do not invent a token.
 ```
 
 The deployed host's `/setup` page has the same prompt filled with its own values.
 
 ## API reference
 
-All authenticated routes use the instance’s token environment variable (`YOURCO_ENERGON_TOKEN` in these examples):
+All authenticated routes use this Energon's token environment variable (`YOURCO_ENERGON_TOKEN` in these examples):
 
 ```bash
 -H "Authorization: Bearer $YOURCO_ENERGON_TOKEN"
 ```
 
-Errors are JSON with `error`, `message`, and `hub`. The live schema (paths, request and response bodies, status codes, error codes) is `GET {origin}/v1/openapi.json`, an OpenAPI 3.1 document committed at `openapi/v1.json`. `GET {origin}/v1/help` is the instance's identity: origins, token env, retention presets, token policy, limits.
+Errors are JSON with `error`, `message`, and `hub`. The live schema (paths, request and response bodies, status codes, error codes) is `GET {origin}/v1/openapi.json`, an OpenAPI 3.1 document committed at `openapi/v1.json`. `GET {origin}/v1/help` is this Energon's identity: origins, token env, retention presets, token policy, limits.
 
 ### Sites
 
@@ -261,7 +261,7 @@ Errors are JSON with `error`, `message`, and `hub`. The live schema (paths, requ
 | `GET /v1/sites/{slug}/export` | Export the site as a zip |
 
 ```bash
-# Create a password-protected site using the instance default write policy.
+# Create a password-protected site using this Energon's default write policy.
 curl -sS "$ENERGON_ORIGIN/v1/sites" \
   -H "Authorization: Bearer $YOURCO_ENERGON_TOKEN" \
   -H "Content-Type: application/json" \
@@ -301,14 +301,14 @@ curl -sS "$ENERGON_ORIGIN/v1/files/{id}" \
   --data-binary @brief.pdf
 ```
 
-### Instance and identity
+### Identity
 
 | Method and path | Purpose | Authentication |
 | --- | --- | --- |
 | `GET /auth.md` | Authentication setup, credential boundaries, and recovery | None |
 | `GET /v1/help` | Identity, SOP, routes, limits, retention, and token policy | None |
 | `GET /v1/health` | Return `{ "ok": true }` | None |
-| `GET /v1/openapi.json` | OpenAPI 3.1 contract for every `/v1` route, with `servers` set to this instance | None |
+| `GET /v1/openapi.json` | OpenAPI 3.1 contract for every `/v1` route, with `servers` set to this Energon | None |
 | `POST /v1/connections` | Start a code-based connection for human approval | None |
 | `POST /v1/connections/{id}/token` | Poll for one-time credential delivery | Request poll token |
 | `GET /v1/whoami` | Return token owner, label, and expiry | Token |
@@ -317,7 +317,7 @@ For headers, response shapes, filters, duplication, ZIP behavior, and error hand
 
 ## Configuration
 
-The committed [wrangler.toml](./wrangler.toml) is a complete instance example with placeholder origins and database ID. A typical fork changes these values:
+The committed [wrangler.toml](./wrangler.toml) is a complete example with placeholder origins and database ID. A typical fork changes these values:
 
 ```toml
 [vars]
@@ -332,7 +332,7 @@ TOKEN_PREFIX = "ee_live_"
 ALLOW_UNLIMITED_RETENTION = "true"
 DEFAULT_TTL = "never"
 MAX_TTL = "never"
-WRITE_POLICY = "instance"                                 # owner or instance
+WRITE_POLICY = "org"                                      # owner or org
 
 ALLOW_UNLIMITED_TOKENS = "true"                           # Affects future mints only
 ALLOWED_EMAIL_DOMAINS = "your.co,your.com"
@@ -358,7 +358,7 @@ See [docs/DEPLOY.md](./docs/DEPLOY.md) for every variable, custom-domain and Acc
 | `npm run test:worker` | Boot the Worker and run integration/API tests |
 | `npm run test:watch` | Run Vitest in watch mode |
 | `npm test` | Run unit and Worker suites |
-| `npm run skill:init -- --name yourco --origin https://energon.your.co` | Render a fork's instance-specific plugin and catalogs |
+| `npm run skill:init -- --name yourco --origin https://energon.your.co` | Render a fork's plugin and catalogs for this Energon |
 | `npm run skill:render` | Validate templates upstream; regenerate the plugin on initialized forks |
 | `npm run skill:render -- --check` | Validate templates; fail if initialized output has drifted |
 | `npm run vendor:mermaid` | Refresh the locally served Mermaid browser asset |
@@ -408,13 +408,13 @@ Verify that `PUBLIC_ORIGIN` and `CONTENT_ORIGIN` are different custom hostnames 
 
 ## Limitations
 
-- **No hosted public instance:** [getenergon.com](https://getenergon.com) explains the project but does not host files or provide an Energon account. This repository is source for an instance you run. It ships templates and placeholder configuration, with no generated plugin. Run `npm run skill:init` with a unique instance name and real HTTPS origin before distributing a plugin.
+- **No hosted public Energon:** [getenergon.com](https://getenergon.com) explains the project but does not host files or provide an Energon account. This repository is source for an Energon you run. It ships templates and placeholder configuration, with no generated plugin. Run `npm run skill:init` with a unique name and real HTTPS origin before distributing a plugin.
 - **Cloudflare-specific:** the supported deployment uses Workers, D1, R2, Access, custom domains, and a Workers Paid plan.
 - **Public by default:** anyone with a published link can open it unless a share password is set. A share password protects public reads, not token-authenticated `/v1` reads.
 - **Not collaborative editing:** there are no comments, suggestions, merges, or version history. Writes are last-write-wins per path.
 - **No recycle bin:** deletes are destructive; expired content is purged.
 - **Bounded artifacts:** defaults cap one file or ZIP at 25 MB, one ZIP at 200 files, and total stored content at 20 GB.
-- **Scoped catalog:** `GET /v1/sites` and `GET /v1/files` return only objects the token owner created or last wrote, not an instance-wide inventory.
+- **Scoped catalog:** `GET /v1/sites` and `GET /v1/files` return only objects the token owner created or last wrote, not an org-wide inventory.
 
 ## FAQ
 
@@ -428,7 +428,7 @@ Use a site for several related files, a prototype, or a document with assets. Us
 
 ### Can two coworkers update the same URL?
 
-Yes when its write policy is `instance`. With `owner`, only the creator can mutate it. The creator can change that policy later. Concurrent edits do not merge; the last successful write to a path wins.
+Yes when its write policy is `org`. With `owner`, only the creator can mutate it. The creator can change that policy later. Concurrent edits do not merge; the last successful write to a path wins.
 
 ### Can I use more than one Energon host?
 
@@ -450,7 +450,7 @@ Published HTML can be active content. Serving it from a separate hostname preven
 
 > *About Contributions:* Please don't take this the wrong way, but I do not accept outside contributions for any of my projects. I simply don't have the mental bandwidth to review anything, and it's my name on the thing, so I'm responsible for any problems it causes; thus, the risk-reward is highly asymmetric from my perspective. I'd also have to worry about other "stakeholders," which seems unwise for tools I mostly make for myself for free. Feel free to submit issues, and even PRs if you want to illustrate a proposed fix, but know I won't merge them directly. Instead, I'll have Claude or Codex review submissions via `gh` and independently decide whether and how to address them. Bug reports in particular are welcome. Sorry if this offends, but I want to avoid wasted time and hurt feelings. I understand this isn't in sync with the prevailing open-source ethos that seeks community contributions, but it's the only way I can move at this velocity and keep my sanity.
 
-For Energon specifically, [issues are welcome](https://github.com/tmchow/energon/issues/new/choose), but do not open a pull request against `tmchow/energon` unless the owner asked for it. A workflow closes pull requests from forks. Keep instance-specific changes on your fork. See [CONTRIBUTING.md](./CONTRIBUTING.md).
+For Energon specifically, [issues are welcome](https://github.com/tmchow/energon/issues/new/choose), but do not open a pull request against `tmchow/energon` unless the owner asked for it. A workflow closes pull requests from forks. Keep your fork's changes on your fork. See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 Report vulnerabilities privately; do not put secrets or customer content in a public issue. Follow [SECURITY.md](./SECURITY.md) for the current reporting channel.
 

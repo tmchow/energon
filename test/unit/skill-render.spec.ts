@@ -173,7 +173,7 @@ describe("skill:init", () => {
     disposableRoots.push(root);
     expect(() => runRender([
       "--init", "--name", "yourco", "--origin", "https://energon.your.co", "--repo", "acme/energon", option, value,
-    ], { root })).toThrow(/must identify your instance|must be an HTTPS origin/);
+    ], { root })).toThrow(/must name this Energon|must be an HTTPS origin/);
     expect(existsSync(join(root, "plugins"))).toBe(false);
     expect(existsSync(join(root, "instance-skill.json"))).toBe(false);
     for (const rel of CATALOG_PATHS) expect(existsSync(join(root, rel))).toBe(false);
@@ -197,7 +197,7 @@ describe("skill:init", () => {
     }));
     mkdirSync(join(root, "plugins", "energon"), { recursive: true });
     writeFileSync(join(root, "plugins", "energon", "SKILL.md"), "old generic skill");
-    expect(() => runRender([], { root })).toThrow(/must identify your instance/);
+    expect(() => runRender([], { root })).toThrow(/must name this Energon/);
     expect(readFileSync(join(root, "plugins", "energon", "SKILL.md"), "utf8")).toBe("old generic skill");
     runRender(["--init", "--name", "yourco", "--origin", "https://energon.your.co", "--repo", "acme/energon"], { root });
     expect(existsSync(join(root, "plugins", "energon"))).toBe(false);

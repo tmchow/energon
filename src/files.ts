@@ -619,7 +619,7 @@ export async function patchLoose(
     assertCanSetWritePolicy(actor, existing.created_by, existing.owner_id);
     const parsed = requestedWritePolicy(patch.write_policy);
     if (parsed === "invalid" || parsed === null) {
-      throw new ApiError(400, "bad_write_policy", "write_policy must be owner or instance.");
+      throw new ApiError(400, "bad_write_policy", "write_policy must be owner or org.");
     }
     nextWrite = parsed;
   }

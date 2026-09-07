@@ -20,7 +20,7 @@ const FIXTURE_ENV = {
   ALLOW_UNLIMITED_RETENTION: "true",
   DEFAULT_TTL: "never",
   MAX_TTL: "never",
-  WRITE_POLICY: "instance",
+  WRITE_POLICY: "org",
   ALLOW_UNLIMITED_TOKENS: "true",
   ALLOWED_EMAIL_DOMAINS: "esperlabs.app,esperlabs.ai",
 } as Env;
@@ -33,15 +33,15 @@ describe("canonicalize", () => {
 });
 
 describe("agent docs", () => {
-  it("freezes GET /auth.md for the worker fixture instance", () => {
+  it("freezes GET /auth.md for the worker fixture Energon", () => {
     assertGolden("auth/default.md", authMarkdown(FIXTURE_ENV));
   });
 
-  it("freezes GET /v1/help for the worker fixture instance", () => {
+  it("freezes GET /v1/help for the worker fixture Energon", () => {
     assertJsonGolden("help/default.json", helpBody(FIXTURE_ORIGIN, FIXTURE_ENV));
   });
 
-  it("freezes GET /llms.txt for the worker fixture instance", () => {
+  it("freezes GET /llms.txt for the worker fixture Energon", () => {
     assertGolden("llms/default.txt", llmsTxt(FIXTURE_ORIGIN, FIXTURE_ENV));
   });
 

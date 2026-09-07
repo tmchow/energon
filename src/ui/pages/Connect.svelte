@@ -48,7 +48,7 @@
       </div>
     </form>{/if}
     <div id="connect-status" class="en-connect-status" aria-live="polite">{#if status}<Flash tone={failed ? 'err' : 'ok'}>{status}</Flash>{/if}</div>
-    <p class="en-connect-meta">The agent will act as your account. It can read work on this instance, including password-protected links, and publish, update, or delete where you have permission. Approve only a code you asked for. {minutesLeft > 0 ? `This request expires in ${minutesLeft} min.` : 'This request has expired; ask your agent to start a new one.'}</p>
+    <p class="en-connect-meta">The agent will act as your account. It can read work on this host, including password-protected links, and publish, update, or delete where you have permission. Approve only a code you asked for. {minutesLeft > 0 ? `This request expires in ${minutesLeft} min.` : 'This request has expired; ask your agent to start a new one.'}</p>
   </Card>
   <p class="en-connect-account">Signed in as <code>{data.email}</code> · <a href="/tokens">Manage tokens</a></p>
 </main>

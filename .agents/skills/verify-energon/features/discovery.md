@@ -1,13 +1,13 @@
 # Discovery documents
 
-Discovery documents are the unauthenticated first reads on a host: `/v1/help` for this instance's identity and policy, `/v1/openapi.json` for the `/v1` HTTP schema, `/v1/health` for liveness, `/llms.txt` for the agent overview, and `/auth.md` for authentication instructions for connections and manual tokens. They answer before a token exists.
+Discovery documents are the unauthenticated first reads on a host: `/v1/help` for this Energon's identity and policy, `/v1/openapi.json` for the `/v1` HTTP schema, `/v1/health` for liveness, `/llms.txt` for the agent overview, and `/auth.md` for authentication instructions for connections and manual tokens. They answer before a token exists.
 
 ## Sub-features
 
 - `help` returns JSON with `hub` and `content_origin` equal to this origin, `env`, `token_prefix`, limits, retention, token policy, `sop`, and `routes`.
 - `help-openapi` sets `openapi` to `$ORIGIN/v1/openapi.json` and lists `GET /v1/openapi.json` in `routes`.
 - `openapi` returns OpenAPI 3.1.0 with `servers[0].url` equal to this origin, no token, CORS `*`.
-- `auth` returns public Markdown with this instance's token env, token prefix, `/tokens` and `/v1/whoami` URLs, credential boundaries, and recovery instructions. `help.auth_url` and token-rejection JSON `auth_url` point to it.
+- `auth` returns public Markdown with this Energon's token env, token prefix, `/tokens` and `/v1/whoami` URLs, credential boundaries, and recovery instructions. `help.auth_url` and token-rejection JSON `auth_url` point to it.
 - `health` returns `{"ok":true}` at `/health` and `/v1/health`.
 - `llms` returns markdown that links the OpenAPI contract and help.
 
@@ -34,5 +34,5 @@ Preconditions:
 ## Gotchas
 
 - These routes skip Access and skip `ensureSchema`. A 401 here is a product bug, not a missing token.
-- `/v1/help` is this instance (origins, token env, retention). `/v1/openapi.json` is the HTTP schema. Do not treat policy numbers in help as part of the OpenAPI document.
+- `/v1/help` is this Energon (origins, token env, retention). `/v1/openapi.json` is the HTTP schema. Do not treat policy numbers in help as part of the OpenAPI document.
 - Doctor already covers the identity checks. This recipe is the extra shape and error-path proof, not a second doctor.
