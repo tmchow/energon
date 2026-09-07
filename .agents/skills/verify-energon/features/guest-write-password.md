@@ -14,7 +14,7 @@ Guest write password lets the creator give someone outside the host a second sha
 ## How to get to it (user POV)
 
 - Hub stage: open `#stage-access` (Link access). Share input is `#stage-password`. Write input is `#stage-write-password`. URL, expiration, Who can write, and Publish stay visible outside the disclosure.
-- Hub catalog: lockup hover `Write password`, padlock hover `View password`, More actions still `Set password` / `Change or remove password`. Dialog `#pw-dlg` title is Link access.
+- Hub catalog: lockup hover `Write password`, padlock hover `View password`, More actions still `Set password` / `Change or remove password`. Dialog `#pw-dlg` title is Link access. `#pw-dlg-write-door` Off/On; `#pw-dlg-write-input` shows the stored phrase when On.
 - API: `"write_password"` on `POST /v1/sites` or `PATCH /v1/sites/{slug}` / `PATCH /v1/files/{id}`; `X-Energon-Set-Write-Password` or multipart `write_password` on file create.
 - Outside agent: `GET $ORIGIN/llms.txt` (single-origin local includes the guest section) then `PUT` the public URL with `X-Energon-Write-Password`.
 
@@ -39,7 +39,7 @@ Preconditions:
 - **Owner policy.** Create a site with `"write_policy":"owner","write_password":"guest-write-ok"`. Guest PUT of a path still succeeds.
 - **Unset is 405.** `PATCH` `{ "write_password": "" }` then guest PUT is `405` and the body does not name `X-Energon-Write-Password`.
 - **Creator-only.** A second-account token `PATCH` of `write_password` is `403`.
-- **Hub marks.** Write-only row lockup hover is `Write password` (no sibling padlock). View-only row padlock hover is `View password`. Unprotected row has no password mark. No Password chip. More menu still offers `Set password`. `#scan-examples` is gone. Last writer stays the account; via copy is `Updated via shared write` after a guest PUT. Open Link access on the write-only row: `#pw-dlg-write-input` shows `guest-write-ok` and can be copied.
+- **Hub marks.** Write-only row lockup hover is `Write password` (no sibling padlock). View-only row padlock hover is `View password`. Unprotected row has no password mark. No Password chip. More menu still offers `Set password`. `#scan-examples` is gone. Last writer stays the account; via copy is `Updated via shared write` after a guest PUT. Open Link access on the write-only row: `#pw-dlg-write-door` is On and `#pw-dlg-write-input` shows `guest-write-ok` and can be copied. Turn Off and Save to clear.
 - **Discovery.** `GET $ORIGIN/llms.txt` contains the guest-write section and `X-Energon-Write-Password`.
 - **Proof.** Save create echo, guest PUT `201`, path DELETE `200` JSON, last-path site GET `200`, empty-file GET length `0`, 405 bodies, catalog `/account/data` row (`write_password_protected`, `written_via`, `last_written_by`). Browser proof: Hub stage with `#stage-access` closed, then open showing both fields; catalog lockup on the write-password row with `#who` visible.
 

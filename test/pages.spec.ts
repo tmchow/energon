@@ -28,7 +28,10 @@ describe("signed-in pages", () => {
     expect(html).not.toContain("Set view password");
     expect(html).toContain("Link access");
     expect(html).toContain("Copy a phrase to share the link");
-    expect(html).toContain('id="pw-dlg-input"');
+    expect(html).toContain("Turn a password off and save to remove it");
+    expect(html).toContain('id="pw-dlg-share-door"');
+    expect(html).not.toContain('id="pw-dlg-input"');
+    expect(html).not.toContain("Empty a box");
     expect(html).not.toContain("Energon only stores hashes");
     expect(html).not.toContain('id="pw-dlg-share-mode"');
     expect(html).toContain('aria-label="Energon"');

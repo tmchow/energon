@@ -4,6 +4,7 @@
   import { api, jsonBody, errorMessage } from '../api';
   import { stageFiles, publish, firstFreeSlug, slugify, isCollision, type StagedUpload, type PublishResult } from '../uploads';
   import { nextNumberedSlug } from "../../slugs";
+  import { memorablePassword } from '../../memorable';
   import { registerHubTools } from '../model-context';
   import PageTitle from '../components/PageTitle.svelte';
   import Card from '../components/Card.svelte';
@@ -53,9 +54,12 @@
   let loadedWrite = $state('');
   let shareUnrecovered = $state(false);
   let writeUnrecovered = $state(false);
-  let shareRemove = $state(false);
-  let writeRemove = $state(false);
+  let shareDoor = $state('off');
+  let writeDoor = $state('off');
+  let loadedShareOn = $state(false);
+  let loadedWriteOn = $state(false);
   let passwordLoading = $state(false);
+  let linkAccessSeq = 0;
   let writeOpen = $state(false);
   let write = $state('owner');
   let mutationBusy = $state(false);
@@ -71,6 +75,7 @@
   const handle = $derived(data.handle || 'you');
   const ttlOptions = $derived(data.policy.presets.map(p => ({ value: p.id, label: p.label })));
   const writeOptions = [{ value: 'owner', label: 'Only the creator' }, { value: 'instance', label: 'Anyone with a token on this host.' }];
+  const doorOptions = [{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }];
   const targetName = $derived(target ? (target.item.slug ?? target.item.filename) : '');
   const targetPath = $derived(target ? `/account/${target.kind === 'site' ? 'sites' : 'files'}/${encodeURIComponent(target.item.slug ?? target.item.id)}` : '');
   const ttlNote = $derived('You can delete this whenever you want. Expiration is only the automatic stop.' + (!data.policy.allow_unlimited && ttlOptions.length ? ` Longest allowed is ${ttlOptions.at(-1)?.label}.` : ''));
@@ -78,9 +83,11 @@
   const writePasswordNote = $derived(target?.kind === 'file'
     ? 'Replaces that file only. Someone not on this host can PUT the public URL.'
     : 'Full control of served bytes, including replacing index.html. Someone not on this host can PUT or DELETE paths.');
-  const shareDirty = $derived(shareUnrecovered ? (shareRemove || !!password.trim()) : password.trim() !== loadedShare);
-  const writeDirty = $derived(!isTargetCreator ? false : writeUnrecovered ? (writeRemove || !!writePassword.trim()) : writePassword.trim() !== loadedWrite);
-  const linkAccessReady = $derived(!passwordLoading && (shareDirty || writeDirty));
+  const shareDirty = $derived(shareDoor !== (loadedShareOn ? 'on' : 'off') || (shareDoor === 'on' && password.trim() !== loadedShare && !(shareUnrecovered && !password.trim())));
+  const writeDirty = $derived(!isTargetCreator ? false : writeDoor !== (loadedWriteOn ? 'on' : 'off') || (writeDoor === 'on' && writePassword.trim() !== loadedWrite && !(writeUnrecovered && !writePassword.trim())));
+  const sharePhraseOk = $derived(shareDoor === 'off' || !!password.trim() || (shareUnrecovered && shareDoor === 'on'));
+  const writePhraseOk = $derived(!isTargetCreator || writeDoor === 'off' || !!writePassword.trim() || (writeUnrecovered && writeDoor === 'on'));
+  const linkAccessReady = $derived(!passwordLoading && (shareDirty || writeDirty) && sharePhraseOk && writePhraseOk);
 
   function message(text: string, tone: 'ok' | 'err' = 'ok', result?: PublishResult) {
     messages = [{ tone, text, url: result?.url, name: result?.slug || result?.filename, password: result?.password, writePassword: result?.write_password }, ...messages];
@@ -172,30 +179,51 @@
     loadedWrite = '';
     shareUnrecovered = false;
     writeUnrecovered = false;
-    shareRemove = false;
-    writeRemove = false;
+    loadedShareOn = !!item.password_protected;
+    loadedWriteOn = !!item.write_password_protected;
+    shareDoor = loadedShareOn ? 'on' : 'off';
+    writeDoor = item.created_by === data.email && loadedWriteOn ? 'on' : 'off';
     passwordOpen = true;
     void loadLinkAccess();
   }
+  function setShareDoor(value: string) {
+    shareDoor = value === 'on' ? 'on' : 'off';
+    if (shareDoor === 'on' && !password.trim() && !shareUnrecovered) password = memorablePassword();
+  }
+  function setWriteDoor(value: string) {
+    writeDoor = value === 'on' ? 'on' : 'off';
+    if (writeDoor === 'on' && !writePassword.trim() && !writeUnrecovered) writePassword = memorablePassword();
+  }
   async function loadLinkAccess() {
     if (!target) return;
+    const seq = ++linkAccessSeq;
     const path = `/account/${target.kind === 'site' ? 'sites' : 'files'}/${encodeURIComponent(target.item.slug ?? target.item.id)}`;
     passwordLoading = true;
     modalError = '';
     try {
       const detail = await api<LinkAccess>(path);
-      if (!passwordOpen) return;
+      if (seq !== linkAccessSeq || !passwordOpen) return;
+      loadedShareOn = !!detail.password_protected;
       loadedShare = detail.password || '';
       password = loadedShare;
-      shareUnrecovered = detail.password_protected && !detail.password;
+      shareUnrecovered = loadedShareOn && !detail.password;
+      shareDoor = loadedShareOn ? 'on' : 'off';
       if (isTargetCreator) {
+        loadedWriteOn = !!detail.write_password_protected;
         loadedWrite = detail.write_password || '';
         writePassword = loadedWrite;
-        writeUnrecovered = !!detail.write_password_protected && !detail.write_password;
+        writeUnrecovered = loadedWriteOn && !detail.write_password;
+        writeDoor = loadedWriteOn ? 'on' : 'off';
+      } else {
+        loadedWriteOn = false;
+        loadedWrite = '';
+        writePassword = '';
+        writeUnrecovered = false;
+        writeDoor = 'off';
       }
     } catch (error) {
-      if (passwordOpen) modalError = errorMessage(error);
-    } finally { passwordLoading = false; }
+      if (seq === linkAccessSeq && passwordOpen) modalError = errorMessage(error);
+    } finally { if (seq === linkAccessSeq) passwordLoading = false; }
   }
   function openMore(kind: 'site' | 'file', item: CatalogItem) { selectTarget(kind, item); moreOpen = true; }
   async function mutate(run: () => Promise<void>) {
@@ -227,8 +255,8 @@
   async function saveLinkAccess() {
     if (!target || !linkAccessReady) return;
     const body: Record<string, unknown> = {};
-    if (shareDirty) body.password = password.trim();
-    if (isTargetCreator && writeDirty) body.write_password = writePassword.trim();
+    if (shareDirty) body.password = shareDoor === 'off' ? '' : password.trim();
+    if (isTargetCreator && writeDirty) body.write_password = writeDoor === 'off' ? '' : writePassword.trim();
     if (!Object.keys(body).length) return;
     await mutate(async () => {
       const result = await api<PublishResult>(targetPath, jsonBody('PATCH', body));
@@ -236,7 +264,17 @@
       if ('password' in body) bits.push(result.password_protected ? `Share password set for ${targetName}.` : `Share password removed from ${targetName}.`);
       if ('write_password' in body) bits.push(result.write_password_protected ? `Write password set for ${targetName}.` : `Write password removed from ${targetName}.`);
       message(bits.join(' ') || 'Link access updated.', 'ok', { url: '', password: result.password, write_password: result.write_password });
-      passwordOpen = false; password = ''; writePassword = ''; loadedShare = ''; loadedWrite = ''; shareUnrecovered = false; writeUnrecovered = false; shareRemove = false; writeRemove = false;
+      passwordOpen = false;
+      password = '';
+      writePassword = '';
+      loadedShare = '';
+      loadedWrite = '';
+      shareUnrecovered = false;
+      writeUnrecovered = false;
+      shareDoor = 'off';
+      writeDoor = 'off';
+      loadedShareOn = false;
+      loadedWriteOn = false;
     });
   }
   async function saveWrite() {
@@ -315,17 +353,25 @@
 <Sheet bind:open={moreOpen} title={targetName} meta={target ? `${target.kind === 'site' ? 'Site' : 'File'} · ${target.item.write_policy === 'instance' ? 'Anyone with a token on this host.' : 'Only the creator'}` : ''} items={moreItems} />
 <ConfirmDialog bind:open={confirmOpen} title={`${confirmAction} ${target?.kind || 'site'}`} message={confirmAction === 'Delete' ? `This removes the ${target?.kind} and its bytes. There is no recycle bin. Type the name to confirm.` : 'Creates a new site you own. Expiration starts now. The share password and write password are not copied.'}
   label={confirmAction === 'Delete' ? `Type “${targetName}” to delete` : 'New slug'} initial={confirmAction === 'Duplicate' ? duplicateSlug : ''} match={confirmAction === 'Delete' ? targetName : undefined} action={confirmAction} danger={confirmAction === 'Delete'} busy={mutationBusy} onConfirm={confirm} error={modalError} />
-<Dialog dismissible={!mutationBusy} id="pw-dlg" bind:open={passwordOpen} title="Link access" message="Copy a phrase to share the link. Empty a box and save to remove that door.">
+<Dialog dismissible={!mutationBusy} id="pw-dlg" bind:open={passwordOpen} title="Link access" message="Copy a phrase to share the link. Turn a password off and save to remove it.">
   {#if modalError}<Flash tone="err">{modalError}</Flash>{/if}
   <form onsubmit={e => { e.preventDefault(); void saveLinkAccess(); }}>
-    <Field label="Share password" htmlFor="pw-dlg-input" noteId="pw-dlg-note" note={shareUnrecovered && !password.trim() && !shareRemove ? 'This password was set before Energon kept phrases for display. Generate a new one to copy it, or remove it.' : 'Anyone with this password can open the link. Valid API tokens on this instance can still read the work.'}>
-      <PasswordField id="pw-dlg-input" generateId="pw-dlg-gen" copyId="pw-dlg-copy" describedby="pw-dlg-note" words={data.words} bind:value={password} disabled={mutationBusy || passwordLoading} />
-      {#if shareUnrecovered && !password.trim() && !shareRemove}<Button id="pw-dlg-remove-share" variant="ghost" size="sm" disabled={mutationBusy || passwordLoading} onclick={() => { shareRemove = true; password = ''; }}>Remove share password</Button>{/if}
+    <Field label="Share password" htmlFor={shareDoor === 'on' ? 'pw-dlg-input' : undefined} noteId="pw-dlg-note" note={shareDoor === 'off' ? 'Anyone with the link can open it. Valid API tokens on this instance can still read the work.' : shareUnrecovered && !password.trim() ? 'This password was set before Energon kept phrases for display. Generate a new one to copy it, or turn it off.' : 'Anyone with this password can open the link. Valid API tokens on this instance can still read the work.'}>
+      {#snippet action()}
+        <SegmentedControl id="pw-dlg-share-door" className="en-seg--door" bind:value={shareDoor} onChange={setShareDoor} ariaLabel="Share password" options={doorOptions} disabled={mutationBusy || passwordLoading} />
+      {/snippet}
+      {#if shareDoor === 'on'}
+        <PasswordField id="pw-dlg-input" generateId="pw-dlg-gen" copyId="pw-dlg-copy" describedby="pw-dlg-note" words={data.words} bind:value={password} disabled={mutationBusy || passwordLoading} />
+      {/if}
     </Field>
     {#if isTargetCreator}
-      <Field label="Write password" htmlFor="pw-dlg-write-input" noteId="pw-dlg-write-note" note={writeUnrecovered && !writePassword.trim() && !writeRemove ? 'This password was set before Energon kept phrases for display. Generate a new one to copy it, or remove it.' : writePasswordNote}>
-        <PasswordField id="pw-dlg-write-input" generateId="pw-dlg-write-gen" copyId="pw-dlg-write-copy" describedby="pw-dlg-write-note" words={data.words} bind:value={writePassword} disabled={mutationBusy || passwordLoading} />
-        {#if writeUnrecovered && !writePassword.trim() && !writeRemove}<Button id="pw-dlg-remove-write" variant="ghost" size="sm" disabled={mutationBusy || passwordLoading} onclick={() => { writeRemove = true; writePassword = ''; }}>Remove write password</Button>{/if}
+      <Field label="Write password" htmlFor={writeDoor === 'on' ? 'pw-dlg-write-input' : undefined} noteId="pw-dlg-write-note" note={writeDoor === 'off' ? 'Turn on so someone not on this host can write. Valid tokens still follow Who can write.' : writeUnrecovered && !writePassword.trim() ? 'This password was set before Energon kept phrases for display. Generate a new one to copy it, or turn it off.' : writePasswordNote}>
+        {#snippet action()}
+          <SegmentedControl id="pw-dlg-write-door" className="en-seg--door" bind:value={writeDoor} onChange={setWriteDoor} ariaLabel="Write password" options={doorOptions} disabled={mutationBusy || passwordLoading} />
+        {/snippet}
+        {#if writeDoor === 'on'}
+          <PasswordField id="pw-dlg-write-input" generateId="pw-dlg-write-gen" copyId="pw-dlg-write-copy" describedby="pw-dlg-write-note" words={data.words} bind:value={writePassword} disabled={mutationBusy || passwordLoading} />
+        {/if}
       </Field>
     {/if}
     <div class="en-dialog-actions"><Button disabled={mutationBusy} onclick={() => passwordOpen = false}>Cancel</Button><Button id="pw-dlg-ok" type="submit" variant="primary" disabled={mutationBusy || !linkAccessReady}>Save</Button></div>

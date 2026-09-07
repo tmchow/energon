@@ -88,6 +88,26 @@
 .en-scan svg { display: block; width: var(--scan-glyph); height: var(--scan-glyph); }
 .en-scan--on { color: var(--fg-hot); }
 .en-scan:hover { background: var(--bg-raised); color: var(--fg-1); }
+.en-field-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.en-field-head label { margin: 0; }
+.en-field-head .en-seg,
+.en-field-head .en-seg--door {
+  width: auto;
+  flex: none;
+}
+.en-field-head .en-seg button {
+  flex: none;
+}
+.en-seg button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 .en-md-wrap { max-width: 46rem; }
 @media (max-width: 719px) {
   .en-mint { grid-template-columns: 1fr; }
