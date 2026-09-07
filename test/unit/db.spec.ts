@@ -66,8 +66,9 @@ describe("schema upgrades", () => {
     await expect(ensureSchema(db as unknown as D1Database)).resolves.toBeUndefined();
 
     expect([...db.tables.get("sites") || []]).toEqual(
-      expect.arrayContaining(["password_hash", "handle", "owner_id", "expires_at", "write_policy"]),
+      expect.arrayContaining(["id", "password_hash", "handle", "owner_id", "expires_at", "write_policy"]),
     );
+    expect([...db.tables.get("site_files") || []]).toEqual(expect.arrayContaining(["site_id"]));
     expect([...db.tables.get("loose_files") || []]).toEqual(
       expect.arrayContaining(["updated_at", "last_written_by", "password_hash", "handle", "owner_id", "expires_at", "write_policy"]),
     );
@@ -79,6 +80,7 @@ describe("schema upgrades", () => {
     expect([...db.indexes]).toEqual(
       expect.arrayContaining([
         "idx_site_files_site",
+        "idx_site_files_id_path",
         "idx_sites_owner",
         "idx_loose_files_owner",
         "idx_sites_updated_slug",

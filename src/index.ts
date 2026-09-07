@@ -14,6 +14,7 @@ import { openapiResponse } from "./openapi";
 import { PRODUCT, RESERVED_HANDLES } from "./config";
 import { ensureSchema } from "./db";
 import { sweepExpired } from "./expire";
+import { remapLegacySiteR2 } from "./site-r2-migrate";
 import { guestWrite } from "./guest-write";
 import { CONTENT_ONLY_404_MESSAGE } from "./guest-write-protocol";
 import { ensureUser } from "./handles";
@@ -38,7 +39,7 @@ import {
   putSiteFile,
   serveSite,
 } from "./sites";
-import { sitePublicUrl } from "./urls";
+import { isSiteId, sitePublicUrl } from "./urls";
 import type { Actor, Env } from "./types";
 
 const CONNECTION_JSON_MAX_BYTES = 4096;
@@ -66,6 +67,7 @@ export default {
   },
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     await ensureSchema(env.DB);
+    await remapLegacySiteR2(env, ctx);
     await sweepExpired(env, ctx);
     await purgeConnections(env);
   },
@@ -148,6 +150,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   }
 
   await ensureSchema(env.DB);
+  await remapLegacySiteR2(env, ctx);
 
   if (path === "/v1" || path === "/v1/") {
     return unauthorized(publicOrigin(env), undefined, env).toResponse(publicOrigin(env));
@@ -231,17 +234,17 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   const accountPatch = path.match(/^\/account\/sites\/([^/]+)$/);
   if (accountPatch && method === "GET") {
     const actor = await requireHuman(request, env, ctx);
-    return hubSiteLinkAccess(env, actor, decodeURIComponent(accountPatch[1]), accountHandleHint(url));
+    return hubSiteLinkAccess(env, actor, decodeURIComponent(accountPatch[1]));
   }
   if (accountPatch && method === "DELETE") {
     const actor = await requireHuman(request, env, ctx);
-    await deleteSite(env, ctx, actor, decodeURIComponent(accountPatch[1]), accountHandleHint(url));
+    await deleteSite(env, ctx, actor, decodeURIComponent(accountPatch[1]));
     return json({ ok: true, deleted: decodeURIComponent(accountPatch[1]) });
   }
   if (accountPatch && method === "PATCH") {
     const actor = await requireHuman(request, env, ctx);
     const body = await readJson(request);
-    return patchSite(env, actor, decodeURIComponent(accountPatch[1]), contentPatch(body), ctx, accountHandleHint(url));
+    return patchSite(env, actor, decodeURIComponent(accountPatch[1]), contentPatch(body), ctx);
   }
 
   const accountPut = path.match(/^\/account\/sites\/([^/]+)\/files\/(.+)$/);
@@ -271,7 +274,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   const accountExport = path.match(/^\/account\/sites\/([^/]+)\/export$/);
   if (accountExport && method === "GET") {
     const actor = await requireHuman(request, env, ctx);
-    return exportSiteZip(env, ctx, actor, decodeURIComponent(accountExport[1]), accountHandleHint(url));
+    return exportSiteZip(env, ctx, actor, decodeURIComponent(accountExport[1]));
   }
 
   if (path === "/account/files" && method === "POST") {
@@ -327,20 +330,21 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     }
   }
 
-  const pubSite = path.match(/^\/([^/]+)\/s\/([^/]+)\/?(.*)$/);
+  const pubSite = path.match(/^\/([^/]+)\/s\/([^/]+)\/([^/]+)\/?(.*)$/);
   if (pubSite) {
     const handle = decodeURIComponent(pubSite[1]).toLowerCase();
-    const slug = decodeURIComponent(pubSite[2]);
-    if (!RESERVED_HANDLES.has(handle)) {
+    const id = decodeURIComponent(pubSite[2]);
+    const slug = decodeURIComponent(pubSite[3]);
+    if (!RESERVED_HANDLES.has(handle) && isSiteId(id)) {
       if (method === "PUT" || method === "DELETE") {
-        return guestWrite(env, ctx, request, { kind: "site", handle, slug, rawPath: pubSite[3] || "" });
+        return guestWrite(env, ctx, request, { kind: "site", handle, id, slug, rawPath: pubSite[4] || "" });
       }
       if (method === "GET" || method === "POST") {
-        if (method === "GET" && !pubSite[3] && !path.endsWith("/")) {
-          return Response.redirect(sitePublicUrl(env, handle, slug), 302);
+        if (method === "GET" && !pubSite[4] && !path.endsWith("/")) {
+          return Response.redirect(sitePublicUrl(env, handle, id, slug), 302);
         }
         return contentResponse(
-          await serveSite(env, ctx, handle, slug, pubSite[3] || "", request),
+          await serveSite(env, ctx, handle, id, slug, pubSite[4] || "", request),
           env,
           contentHost,
         );
@@ -442,15 +446,15 @@ async function api(
   const putMatch = path.match(/^\/v1\/sites\/([^/]+)\/files\/(.+)$/);
   if (putMatch && (method === "GET" || method === "PUT" || method === "DELETE")) {
     const actor = await requireToken(request, env);
-    const slug = decodeURIComponent(putMatch[1]);
+    const id = decodeURIComponent(putMatch[1]);
     const filePath = putMatch[2];
-    if (method === "GET") return getSiteFile(env, ctx, actor, slug, filePath);
+    if (method === "GET") return getSiteFile(env, ctx, actor, id, filePath);
     if (method === "DELETE") {
-      await deleteSiteFile(env, ctx, actor, slug, filePath);
+      await deleteSiteFile(env, ctx, actor, id, filePath);
       return json({ ok: true, deleted: true, path: filePath });
     }
     const bytes = await readBodyCapped(request, instancePolicy(env).fileBytes, publicOrigin(env));
-    const result = await putSiteFile(env, ctx, actor, slug, filePath, bytes, request.headers.get("content-type"));
+    const result = await putSiteFile(env, ctx, actor, id, filePath, bytes, request.headers.get("content-type"));
     return json(
       { url: result.url, api_url: result.api_url, path: result.path, size: result.size, content_type: result.content_type },
       result.created ? 201 : 200,
@@ -460,16 +464,16 @@ async function api(
   const siteMatch = path.match(/^\/v1\/sites\/([^/]+)$/);
   if (siteMatch && (method === "GET" || method === "DELETE" || method === "PATCH")) {
     const actor = await requireToken(request, env);
-    const slug = decodeURIComponent(siteMatch[1]);
+    const id = decodeURIComponent(siteMatch[1]);
     if (method === "DELETE") {
-      await deleteSite(env, ctx, actor, slug);
-      return json({ ok: true, deleted: slug });
+      await deleteSite(env, ctx, actor, id);
+      return json({ ok: true, deleted: id });
     }
     if (method === "PATCH") {
       const body = await readJson(request);
-      return patchSite(env, actor, slug, contentPatch(body), ctx);
+      return patchSite(env, actor, id, contentPatch(body), ctx);
     }
-    return listSiteJson(env, ctx, actor, slug);
+    return listSiteJson(env, ctx, actor, id);
   }
 
   await requireToken(request, env);
@@ -550,7 +554,6 @@ async function postSite(
     env,
     actor,
     String(body.slug || ""),
-    overwriteFlag(body.overwrite),
     passwordField(body),
     ctx,
     body.ttl,
@@ -559,14 +562,9 @@ async function postSite(
   );
 }
 
-/** Only JSON `true` claims a slug. Strings like `"false"` must not. */
+/** Only JSON `true` counts. Strings like `"false"` must not. */
 function overwriteFlag(raw: unknown): boolean {
   return raw === true;
-}
-
-function accountHandleHint(url: URL): string | null {
-  const handle = url.searchParams.get("handle");
-  return handle && handle.trim() ? handle.trim().toLowerCase() : null;
 }
 
 function contentPatch(body: Record<string, unknown>): {

@@ -38,6 +38,36 @@ export function auth(token: string, extra?: HeadersInit): HeadersInit {
   return { authorization: `Bearer ${token}`, ...extra };
 }
 
+export async function createSite(
+  token: string,
+  slug: string,
+  extra?: Record<string, unknown>,
+): Promise<{ status: number; body: any; id: string; slug: string; url: string; handle: string }> {
+  const created = await json("/v1/sites", {
+    method: "POST",
+    headers: auth(token, { "content-type": "application/json" }),
+    body: JSON.stringify({ slug, ...extra }),
+  });
+  return {
+    ...created,
+    id: String(created.body.id ?? ""),
+    slug: String(created.body.slug ?? slug),
+    url: String(created.body.url ?? ""),
+    handle: String(created.body.handle ?? ""),
+  };
+}
+
+export function sitePub(handle: string, id: string, slug: string, path = ""): string {
+  return path ? `/${handle}/s/${id}/${slug}/${path}` : `/${handle}/s/${id}/${slug}/`;
+}
+
+export async function siteIdFor(token: string, slug: string): Promise<string> {
+  const listed = await json(`/v1/sites?q=${encodeURIComponent(slug)}&limit=100`, { headers: auth(token) });
+  const match = (listed.body.sites || []).find((s: { slug: string; id?: string }) => s.slug === slug);
+  if (!match?.id) throw new Error(`no site listed for slug ${slug}`);
+  return String(match.id);
+}
+
 export function access(email: string, extra?: HeadersInit): HeadersInit {
   return { "Cf-Access-Authenticated-User-Email": email, origin, ...extra };
 }

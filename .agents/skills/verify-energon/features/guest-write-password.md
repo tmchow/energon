@@ -15,7 +15,7 @@ Guest write password lets the creator give someone outside the host a second sha
 
 - Hub stage: open `#stage-access` (Link access). Share input is `#stage-password`. Write input is `#stage-write-password`. URL, expiration, Who can write, and Publish stay visible outside the disclosure.
 - Hub catalog: lockup hover `Write password`, padlock hover `View password`, More actions still `Set password` / `Change or remove password`. Dialog `#pw-dlg` title is Link access. `#pw-dlg-write-door` Off/On; `#pw-dlg-write-input` shows the stored phrase when On.
-- API: `"write_password"` on `POST /v1/sites` or `PATCH /v1/sites/{slug}` / `PATCH /v1/files/{id}`; `X-Energon-Set-Write-Password` or multipart `write_password` on file create.
+- API: `"write_password"` on `POST /v1/sites` or `PATCH /v1/sites/{id}` / `PATCH /v1/files/{id}`; `X-Energon-Set-Write-Password` or multipart `write_password` on file create.
 - Outside agent: `GET $ORIGIN/llms.txt` (single-origin local includes the guest section) then `PUT` the public URL with `X-Energon-Write-Password`.
 
 ## Driving it with energon-verify
@@ -26,12 +26,12 @@ Preconditions:
 - Phrase to use: `guest-write-ok`. Do not reuse a production password.
 - Single-origin local: assert the guest-write section of hub `/llms.txt` rather than two Hosts.
 
-- **Create writable site.** `POST $ORIGIN/v1/sites` with `{"slug":"verify-guest","write_password":"guest-write-ok"}`. Status `201`. Body `write_password` is `guest-write-ok`. `write_password_protected` is true. `/v1` GET of that JSON later must not contain the phrase. Hub `GET /account/sites/verify-guest` returns `write_password` `guest-write-ok`.
-- **Put homepage with token.** `PUT /v1/sites/verify-guest/files/index.html` with body `<h1>guest-home</h1>`.
-- **Guest PUT new path.** `PUT $ORIGIN/$HANDLE/s/verify-guest/note.txt` with `-H "X-Energon-Write-Password: guest-write-ok"` and body `from-guest`, no `Authorization`. Status `201`. Body has no `hub`. Public GET of that path is `200` with `from-guest`.
-- **Guest DELETE path.** `DELETE $ORIGIN/$HANDLE/s/verify-guest/note.txt` with the write header. Status `200`. Body `{ "deleted": true, "path": "note.txt" }`.
-- **Last-path DELETE.** Guest-DELETE `index.html`. `GET $ORIGIN/$HANDLE/s/verify-guest/` is still `200`.
-- **Directory DELETE.** `DELETE $ORIGIN/$HANDLE/s/verify-guest/` with the write header. Status `405`. `Allow` is `GET`.
+- **Create writable site.** `POST $ORIGIN/v1/sites` with `{"slug":"verify-guest","write_password":"guest-write-ok"}`. Status `201`. Body has `id`. Body `write_password` is `guest-write-ok`. `write_password_protected` is true. `/v1` GET of that JSON later must not contain the phrase. Hub `GET /account/sites/$SITE_ID` returns `write_password` `guest-write-ok`.
+- **Put homepage with token.** `PUT /v1/sites/$SITE_ID/files/index.html` with body `<h1>guest-home</h1>`.
+- **Guest PUT new path.** `PUT $ORIGIN/$HANDLE/s/$SITE_ID/verify-guest/note.txt` with `-H "X-Energon-Write-Password: guest-write-ok"` and body `from-guest`, no `Authorization`. Status `201`. Body has no `hub`. Public GET of that path is `200` with `from-guest`.
+- **Guest DELETE path.** `DELETE $ORIGIN/$HANDLE/s/$SITE_ID/verify-guest/note.txt` with the write header. Status `200`. Body `{ "deleted": true, "path": "note.txt" }`.
+- **Last-path DELETE.** Guest-DELETE `index.html`. `GET $ORIGIN/$HANDLE/s/$SITE_ID/verify-guest/` is still `200`.
+- **Directory DELETE.** `DELETE $ORIGIN/$HANDLE/s/$SITE_ID/verify-guest/` with the write header. Status `405`. `Allow` is `GET`.
 - **Create writable file.** `POST /v1/files` with `X-Filename: guest.bin`, `X-Energon-Set-Write-Password: guest-write-ok`, body `abc`, `content-type: application/octet-stream`. Status `201`.
 - **Empty loose PUT then GET.** `PUT` the public file URL with the write header and empty body. Status `200`. Later GET is `200` with length `0` and the same `Content-Type`.
 - **Loose DELETE.** `DELETE` that public file URL with the write header. Status `405`.
@@ -48,7 +48,7 @@ Preconditions:
 - Local verify uses one origin. Do not fail the recipe because content-origin `/v1/help` is not a 404.
 - Guest PUT is raw bytes on the public URL. Do not send `Authorization`. Do not send `overwrite: true`.
 - Empty string on PATCH clears. Omitting `write_password` leaves the existing hash.
-- Hub `GET /account/sites/{slug}` returns the stored write phrase to the creator. `/v1` GET does not.
+- Hub `GET /account/sites/{id}` returns the stored write phrase to the creator. `/v1` GET does not.
 - Identical phrases still bind to the header that carried them.
 - The HTML gate accepts the write password for reading. The gate and `energon_gate` cookie never authorize PUT or DELETE.
 - Catalog Last writer stays the last account. `Updated via shared write` is the via copy, not a person named guest.

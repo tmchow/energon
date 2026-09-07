@@ -19,10 +19,6 @@
   const passwordMark = (item: CatalogItem) => item.write_password_protected ? 'lockup' as const : item.password_protected ? 'lock' as const : null;
   const passwordLabel = (item: CatalogItem) => item.write_password_protected ? CATALOG_SCAN_LABEL.lockup : CATALOG_SCAN_LABEL.lock;
   const orgLabel = (item: CatalogItem) => item.write_policy === 'org' ? CATALOG_SCAN_LABEL.people : CATALOG_SCAN_LABEL.peopleOff;
-  const siteAccountPath = (item: CatalogItem) =>
-    `/account/sites/${encodeURIComponent(item.slug!)}/export?handle=${encodeURIComponent(item.handle!)}`;
-  const fileAccountPath = (item: CatalogItem) =>
-    `/account/files/${encodeURIComponent(item.id!)}/download`;
 </script>
 {#snippet itemName(item: CatalogItem)}<a href={item.url}>{name(item)}</a>{/snippet}
 {#snippet writer(item: CatalogItem)}{item.last_written_by || item.created_by}{#if item.written_via === 'write_password'} · Updated via shared write{/if}{/snippet}
@@ -40,14 +36,14 @@
         <CatalogScan mark={orgMark(item)!} label={orgLabel(item)} />
       {/if}
     </div>
-    {#if kind === 'file' || (item.file_count ?? 0) > 0}<IconButton icon="download" label={kind === 'site' ? 'Download zip' : 'Download'} extra iconSize={CATALOG_ACTION_SIZE} href={kind === 'site' ? siteAccountPath(item) : fileAccountPath(item)} />{/if}
+    {#if kind === 'file' || (item.file_count ?? 0) > 0}<IconButton icon="download" label={kind === 'site' ? 'Download zip' : 'Download'} extra iconSize={CATALOG_ACTION_SIZE} href={kind === 'site' ? `/account/sites/${encodeURIComponent(item.id)}/export` : `/account/files/${encodeURIComponent(item.id)}/download`} />{/if}
     <CopyButton text={item.url} label="Copy URL" iconOnly iconSize={CATALOG_ACTION_SIZE} />
     <IconButton icon="trash" label="Delete" tone="danger" extra iconSize={CATALOG_ACTION_SIZE} onclick={() => onDelete(item)} />
     <IconButton icon="more" label="More actions" more iconSize={CATALOG_ACTION_SIZE} onclick={() => onMore(item)} />
   </div>
 {/snippet}
 {#snippet pager()}<Button variant="ghost" size="sm" disabled={busy} onclick={onLoadMore}>{busy ? 'Loading…' : 'Load more'}</Button>{/snippet}
-{#if items.length}<Table rows={items} rowKey={item => item.url} pager={cursor ? pager : undefined}
+{#if items.length}<Table rows={items} rowKey={item => item.id} pager={cursor ? pager : undefined}
   columns={[{ header: kind === 'site' ? 'Slug' : 'File', cell: itemName, className: 'name' }, { header: 'Last writer', cell: writer, className: 'clip' }, { header: 'Updated', cell: updated, className: 'when' }, { header: 'Expires', cell: expires, className: 'when' }, { header: 'Size', cell: itemSize, className: 'num' }, { cell: meta, className: 'meta' }, { cell: actions, className: 'actions' }]} />
 {:else if kind === 'site'}<EmptyState title="No sites yet">Publish a prepared folder or ask your agent to publish a prototype.</EmptyState>
 {:else}<EmptyState title="No files yet">Upload a document or ask your agent to publish one, then share its link.</EmptyState>{/if}
