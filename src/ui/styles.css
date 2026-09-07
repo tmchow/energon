@@ -88,6 +88,10 @@
 .en-scan svg { display: block; width: var(--scan-glyph); height: var(--scan-glyph); }
 .en-scan--on { color: var(--fg-hot); }
 .en-scan:hover { background: var(--bg-raised); color: var(--fg-1); }
+span.en-scan { cursor: default; }
+span.en-scan:hover { background: transparent; color: var(--fg-3); }
+span.en-scan.en-scan--on,
+span.en-scan.en-scan--on:hover { color: var(--fg-hot); }
 .en-field-head {
   display: flex;
   flex-wrap: wrap;

@@ -315,9 +315,6 @@
     return () => { unregister(); document.removeEventListener('dragenter', enter); document.removeEventListener('dragover', over); document.removeEventListener('dragleave', leave); document.removeEventListener('drop', drop); };
   });
   onDestroy(() => { clearTimeout(timer); controller?.abort(); stageSequence++; });
-  $effect(() => {
-    if (stagePassword.trim() || stageWritePassword.trim()) stageAccessOpen = true;
-  });
 </script>
 
 <main class="en-wrap">
