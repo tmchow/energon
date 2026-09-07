@@ -4,7 +4,6 @@
   import { api, jsonBody, errorMessage } from '../api';
   import { stageFiles, publish, firstFreeSlug, slugify, isCollision, type StagedUpload, type PublishResult } from '../uploads';
   import { nextNumberedSlug } from "../../slugs";
-  import { memorablePassword } from '../../memorable';
   import { registerHubTools } from '../model-context';
   import PageTitle from '../components/PageTitle.svelte';
   import Card from '../components/Card.svelte';
@@ -186,13 +185,19 @@
     passwordOpen = true;
     void loadLinkAccess();
   }
+  function fillPhrase(): string {
+    const words = data.words;
+    if (!words.length) return '';
+    const random = crypto.getRandomValues(new Uint32Array(5));
+    return [...random].map(n => words[n % words.length]).join('-');
+  }
   function setShareDoor(value: string) {
     shareDoor = value === 'on' ? 'on' : 'off';
-    if (shareDoor === 'on' && !password.trim() && !shareUnrecovered) password = memorablePassword();
+    if (shareDoor === 'on' && !password.trim() && !shareUnrecovered) password = fillPhrase();
   }
   function setWriteDoor(value: string) {
     writeDoor = value === 'on' ? 'on' : 'off';
-    if (writeDoor === 'on' && !writePassword.trim() && !writeUnrecovered) writePassword = memorablePassword();
+    if (writeDoor === 'on' && !writePassword.trim() && !writeUnrecovered) writePassword = fillPhrase();
   }
   async function loadLinkAccess() {
     if (!target) return;
