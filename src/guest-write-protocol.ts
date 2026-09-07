@@ -1,7 +1,5 @@
 import { WRITE_PASSWORD_HEADER } from "./config";
 
-export { WRITE_PASSWORD_HEADER };
-
 export const GUEST_WRITE_401_MESSAGE =
   `This link requires header ${WRITE_PASSWORD_HEADER} to write. GET /llms.txt on this host.`;
 

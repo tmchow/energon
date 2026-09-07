@@ -9,6 +9,7 @@ import {
 import {
   PURGE_CLAIM_LIKE,
   WRITE_CLAIM_LIKE,
+  d1Changed,
   expiredError,
   isExpired,
   isPurgeClaimed,
@@ -492,7 +493,7 @@ function rejectForbiddenPutHeaders(request: Request): void {
 
 function accountWriter(emailLike: string | null | undefined, fallback: string): string {
   const value = (emailLike || "").trim();
-  if (value.includes("@") && !value.startsWith("__energon_")) return value;
+  if (value.includes("@") && !isPurgeClaimed(value) && !isWriteClaimed(value)) return value;
   return fallback;
 }
 
@@ -517,10 +518,6 @@ function guestJson(data: unknown, status: number, extra?: HeadersInit): Response
     status,
     headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...extra },
   });
-}
-
-function d1Changed(result: { meta?: { changes?: number } }): boolean {
-  return Number(result.meta?.changes ?? 0) > 0;
 }
 
 async function snapshotR2Object(bucket: R2Bucket, key: string): Promise<R2Snapshot | null> {

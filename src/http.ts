@@ -98,6 +98,11 @@ export function secretJson(data: unknown, status = 200): Response {
   return json(data, status, { "cache-control": "no-store, private", pragma: "no-cache" });
 }
 
+export function jsonMaybeSecret(data: { write_password?: unknown }, status = 200): Response {
+  if (typeof data.write_password === "string" && data.write_password) return secretJson(data, status);
+  return json(data, status);
+}
+
 /** Unique origin for publisher HTML/SVG so a page cannot read other objects' cookies. */
 export const ACTIVE_DOCUMENT_CSP =
   "sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads allow-top-navigation-by-user-activation";

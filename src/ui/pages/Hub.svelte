@@ -73,12 +73,13 @@
   const writePasswordNote = $derived(target?.kind === 'file'
     ? 'Replaces that file only. Someone not on this host can PUT the public URL.'
     : 'Full control of served bytes, including replacing index.html. Someone not on this host can PUT or DELETE paths.');
-  const shareModes = $derived(target?.item.password_protected
-    ? [{ value: 'unchanged', label: 'Keep' }, { value: 'replace', label: 'Replace' }, { value: 'remove', label: 'Remove' }]
-    : [{ value: 'unchanged', label: 'Keep unset' }, { value: 'replace', label: 'Set' }]);
-  const writeModes = $derived(target?.item.write_password_protected
-    ? [{ value: 'unchanged', label: 'Keep' }, { value: 'replace', label: 'Replace' }, { value: 'remove', label: 'Remove' }]
-    : [{ value: 'unchanged', label: 'Keep unset' }, { value: 'replace', label: 'Set' }]);
+  function passwordActionModes(isSet: boolean) {
+    return isSet
+      ? [{ value: 'unchanged', label: 'Keep' }, { value: 'replace', label: 'Replace' }, { value: 'remove', label: 'Remove' }]
+      : [{ value: 'unchanged', label: 'Keep unset' }, { value: 'replace', label: 'Set' }];
+  }
+  const shareModes = $derived(passwordActionModes(!!target?.item.password_protected));
+  const writeModes = $derived(passwordActionModes(!!target?.item.write_password_protected));
   const linkAccessReady = $derived(
     shareMode === 'remove' ||
     (shareMode === 'replace' && !!password.trim()) ||

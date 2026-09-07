@@ -21,7 +21,7 @@ import { identityFromEnv } from "./instance";
 import { MEMORABLE_WORDS } from "./memorable";
 import { deleteLooseFile, getLooseFile, hubLists, listLooseJson, patchLoose, postLooseFromRequest, putLooseFromRequest, serveLoose } from "./files";
 import { passwordField, writePasswordField } from "./gate";
-import { ApiError, accountOriginRequired, assertTrustedAccountOrigin, contentOrigin, dedicatedContentOrigin, isLocalHost, isMermaidAssetPath, isPublicContentPath, json, publicOrigin, readBodyCapped, secretJson, serveMermaidAsset, wantsDownload } from "./http";
+import { ApiError, accountOriginRequired, assertTrustedAccountOrigin, contentOrigin, dedicatedContentOrigin, isLocalHost, isMermaidAssetPath, isPublicContentPath, json, jsonMaybeSecret, publicOrigin, readBodyCapped, secretJson, serveMermaidAsset, wantsDownload } from "./http";
 import { instancePolicy, policyPublic, tokenPolicy, tokenPolicyPublic } from "./policy";
 import {
   createSite,
@@ -224,7 +224,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     const actor = await requireHuman(request, env, ctx);
     const body = await readJson(request);
     const result = await postSite(env, actor, body, ctx);
-    return publishJson(result.body, result.status);
+    return jsonMaybeSecret(result.body, result.status);
   }
 
   const accountPatch = path.match(/^\/account\/sites\/([^/]+)$/);
@@ -387,7 +387,7 @@ async function api(
     const actor = await requireToken(request, env);
     const body = await readJson(request);
     const result = await postSite(env, actor, body, ctx);
-    return publishJson(result.body, result.status);
+    return jsonMaybeSecret(result.body, result.status);
   }
 
   if (path === "/v1/files" && method === "GET") {
@@ -575,11 +575,6 @@ function contentPatch(body: Record<string, unknown>): {
     patch.write_policy = body.write_policy;
   }
   return patch;
-}
-
-function publishJson(body: Record<string, unknown>, status: number): Response {
-  if (typeof body.write_password === "string" && body.write_password) return secretJson(body, status);
-  return json(body, status);
 }
 
 async function readJson(request: Request, maxBytes?: number): Promise<Record<string, unknown>> {

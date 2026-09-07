@@ -47,7 +47,7 @@ export function expiredHtml(kind: "site" | "file"): Response {
   );
 }
 
-function d1Changed(result: { meta?: { changes?: number } }): boolean {
+export function d1Changed(result: { meta?: { changes?: number } }): boolean {
   return Number(result.meta?.changes ?? 0) > 0;
 }
 

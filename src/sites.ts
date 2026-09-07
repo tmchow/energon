@@ -24,7 +24,7 @@ import {
 import { isMarkdownName, respondMarkdown } from "./markdown";
 import { maybeUnlockWithWritePassword, passwordEcho, passwordHashFromInput, protectContent, writePasswordHashFromInput } from "./gate";
 import { ensureHandle, ensureUser } from "./handles";
-import { ApiError, applyIsolation, assertStorageRoom, basename, contentDisposition, copyR2Object, deletePrefix, htmlPage, json, nanoid, normalizeRelPath, publicOrigin, releaseStorage, secretJson, tooLarge, wantsDownload } from "./http";
+import { ApiError, applyIsolation, assertStorageRoom, basename, contentDisposition, copyR2Object, deletePrefix, htmlPage, json, jsonMaybeSecret, nanoid, normalizeRelPath, publicOrigin, releaseStorage, tooLarge, wantsDownload } from "./http";
 import { contentTypeFor } from "./mime";
 import {
   OWNER_WRITE_SQL,
@@ -563,8 +563,7 @@ export async function patchSite(
     ttl: resolved ? resolved.ttl : undefined,
     write_policy: nextWrite,
   };
-  const echoed = typeof body.write_password === "string" && body.write_password;
-  return echoed ? secretJson(body) : json(body);
+  return jsonMaybeSecret(body);
 }
 
 export async function requireSite(

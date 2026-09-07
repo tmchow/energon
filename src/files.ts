@@ -40,11 +40,11 @@ import {
   contentDisposition,
   copyR2Object,
   json,
+  jsonMaybeSecret,
   nanoid,
   publicOrigin,
   readBodyCapped,
   releaseStorage,
-  secretJson,
   tooLarge,
   wantsDownload,
 } from "./http";
@@ -134,7 +134,7 @@ export async function createLooseFile(
     expires_at: resolved.expiresAt,
     write_policy: storedWrite,
   };
-  return storedWritePw ? secretJson(body, 201) : json(body, 201);
+  return jsonMaybeSecret(body, 201);
 }
 
 export async function duplicateLooseFile(
@@ -228,7 +228,7 @@ export async function duplicateLooseFile(
     duplicated: true,
     duplicated_from: source.id,
   };
-  return storedWritePw ? secretJson(body, 201) : json(body, 201);
+  return jsonMaybeSecret(body, 201);
 }
 
 function duplicateFromHeader(request: Request): string {
@@ -677,8 +677,7 @@ export async function patchLoose(
     ttl: resolved ? resolved.ttl : undefined,
     write_policy: nextWrite,
   };
-  const echoed = typeof body.write_password === "string" && body.write_password;
-  return echoed ? secretJson(body) : json(body);
+  return jsonMaybeSecret(body);
 }
 
 async function throwLooseFileMutationConflict(env: Env, id: string): Promise<never> {
