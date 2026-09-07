@@ -67,4 +67,26 @@ describe("legacy site R2 remap", () => {
     await remapLegacySiteR2(env);
     expect(await (await env.BUCKET.get(idKey))!.text()).toBe("stable");
   });
+
+  it("purges the pre-id public path prefix so shared cache cannot keep serving slug URLs", async () => {
+    const token = await mint("site-r2-remap-purge");
+    const site = await createSite(token, "cached-slug-url");
+    expect(site.status).toBe(201);
+    expect(site.id).not.toBe(site.slug);
+
+    const purged: string[][] = [];
+    const ctx = {
+      waitUntil() {},
+      cache: {
+        async purge({ pathPrefixes }: { pathPrefixes: string[] }) {
+          purged.push(pathPrefixes);
+        },
+      },
+    } as unknown as ExecutionContext;
+
+    resetLegacySiteR2RemapForTests();
+    await remapLegacySiteR2(env, ctx);
+
+    expect(purged).toEqual([[`/${site.handle}/s/${site.slug}/`]]);
+  });
 });

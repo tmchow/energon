@@ -67,7 +67,7 @@ export default {
   },
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     await ensureSchema(env.DB);
-    await remapLegacySiteR2(env);
+    await remapLegacySiteR2(env, ctx);
     await sweepExpired(env, ctx);
     await purgeConnections(env);
   },
@@ -150,7 +150,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   }
 
   await ensureSchema(env.DB);
-  await remapLegacySiteR2(env);
+  await remapLegacySiteR2(env, ctx);
 
   if (path === "/v1" || path === "/v1/") {
     return unauthorized(publicOrigin(env), undefined, env).toResponse(publicOrigin(env));
