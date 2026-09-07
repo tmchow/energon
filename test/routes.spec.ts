@@ -14,6 +14,10 @@ describe("host and route contracts", () => {
     expect((await req("/auth.md", { method: "POST" })).status).toBe(405);
     expect((await json("/v1/help")).body.auth_url).toBe("https://hub.energon.example.com/auth.md");
     expect(await (await req("/llms.txt")).text()).toContain("https://hub.energon.example.com/auth.md");
+    expect(await (await req("/llms.txt")).text()).toContain("Guest write password");
+    const contentHelp = await json("https://energon.example.com/v1/help");
+    expect(contentHelp.status).toBe(404);
+    expect(contentHelp.body.message).toContain("GET /llms.txt");
     for (const path of ["/v1", "/v1/", "/v1/whoami"]) {
       const rejected = await json(path);
       expect(rejected.status).toBe(401);

@@ -37,6 +37,12 @@ The instance-specific marker at the beginning of an API Token that identifies wh
 ### Token Expiry
 The lifetime a human chooses when minting an API Token, after which authentication rejects it. An expired token is kept in the account's token list as a record and can still be revoked, but it cannot be renewed; like every API Token it has no recoverable secret. Token expiry is governed by its own instance policy, separate from content retention.
 
+### Write Password
+A per-object shared secret that lets someone outside the host replace bytes at a published URL without an API Token, Access, or `/connect`. It is independent of the share password. The write header authorizes PUT (and site-path DELETE). The write header also unlocks GET. The HTML gate form accepts the write password for reading when a share password is also set. The cookie never authorizes PUT or DELETE. It is not an account and is not recorded as Last writer. The Hub keeps the phrase for the creator so they can copy it again. `/v1` GET returns only whether it is set.
+
+### Share Password
+A per-object shared secret that gates reading a published URL. Browsers use the gate form and cookie. Agents send the share-password header. If a write password is also set, that phrase also unlocks the gate form. The share-password header does not accept the write phrase. The cookie never authorizes PUT or DELETE. The Hub keeps the phrase so the signed-in owner can copy it again. `/v1` GET returns only whether it is set. Verification still uses a hash.
+
 ## Instance Identity
 
 ### Instance Identity
@@ -50,6 +56,7 @@ An Instance Identity is resolved from deployment configuration with project defa
 - An Instance Identity defines the Token Prefix used by an API Token.
 - An API Token authenticates against the Instance Identity that issued it.
 - Purge claims and Write claims make competing content mutations resolve before storage changes begin.
+- A Share Password gates reading a published URL. A Write Password authorizes guest PUT (and site-path DELETE) on that same object without an account.
 
 ## Schema lifecycle
 

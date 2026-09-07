@@ -20,7 +20,7 @@ This skill is bound to **{{ORIGIN}}**. Do not send traffic to another Energon ho
 3. Never pick a slug that already exists without the human confirming.
 4. Last write wins **on that path only**. Putting a file does not delete other files. There is no merge, no comments, no presence.
 5. Published `/sites` and `/files` URLs are **not** behind Access. Anyone with the link can open them unless you set a share password. Agents can GET the human URL (send `X-Energon-Password` if set) or use `api_url` (`GET /v1/...`) with their token — token reads skip the share password.
-6. Default is **no password**. Set one only if they ask. Write responses echo the password you just set so you can tell them. GET never returns it — only a hash is stored. Do **not** write it into the published file. Change with `PATCH` `{ "password": "new" }`; clear with `PATCH` `{ "password": "" }`.
+6. Default is **no password**. Set a share password only if they ask. Set a write password only if they want someone outside this host to update the public URL without a token. Write responses echo the secret you just set so you can tell them. `/v1` GET never returns the phrase. Do **not** write secrets into the published file. Change with `PATCH` `{ "password": "new" }` or `{ "write_password": "new" }`; clear with an empty string. Only the creator can set or clear `write_password`.
 7. Always return the URL(s). Do not keep the token or the share password in a file you publish. Do not keep the token in your reply.
 8. If you are confused, `GET {{ORIGIN}}/v1/help` or `GET {{ORIGIN}}/llms.txt` (no auth). Trust that document for this instance's retention presets and skill name. For exact request and response schemas, status codes, and error codes, `GET {{ORIGIN}}/v1/openapi.json` (OpenAPI 3.1, no auth).
 9. `GET /v1/sites` and `GET /v1/files` list only what **you** created or last wrote. To find something Bob created that you edited: `?created_by=bob@example.com&scope=edited`. Do not expect a company-wide catalog. You can still GET a known `/{handle}/s/{slug}` or `/{handle}/f/{id}` URL.
@@ -243,7 +243,7 @@ They want the same bytes under a **new** URL (fork an owner-locked site, copy a 
 
 1. `POST /v1/sites` with `{"slug":"new-slug","duplicate_from":"existing-slug"}`.
 2. Or `POST /v1/files` with `{"duplicate_from":"id"}` (optional `filename`).
-3. You become `created_by`. `write_policy` is the instance default. Fresh TTL. Share password is not copied.
+3. You become `created_by`. `write_policy` is the instance default. Fresh TTL. Share password and write password are not copied.
 4. Anyone who can **read** via `/v1` can duplicate. A 403 on PUT of the original does not block this.
 
 If you already have replacement bytes this turn, POST/PUT those as a new object. `duplicate_from` is only for “copy what is already on Energon.”
@@ -255,12 +255,38 @@ curl -sS {{ORIGIN}}/v1/sites \
   -d '{"slug":"onboarding-draft-2","duplicate_from":"onboarding-draft"}'
 ```
 
+## Scenario J — Outside agent updates this URL
+
+They want someone who is not on this host to replace bytes at a public URL. Do **not** mint them a token. Do **not** send them to /connect.
+
+1. The creator sets `write_password` on create or PATCH (empty string clears). Duplicate does not copy it. Only the creator can set or clear it.
+2. The human sends the public URL and the write password to the outside agent.
+3. That agent `GET`s the content-origin `/llms.txt` (or the guest-write section of hub `/llms.txt` when the origins are the same) and `PUT`s the public URL with header `X-Energon-Write-Password` and a raw body. Site paths also accept `DELETE`.
+
+A file write password only replaces that file (including empty). A site write password can add, replace, or delete paths under that slug, including `index.html`, and cannot delete the site.
+
+```bash
+# creator
+curl -sS {{ORIGIN}}/v1/sites \
+  -H "Authorization: Bearer ${{TOKEN_ENV}}" \
+  -H "content-type: application/json" \
+  -d '{"slug":"shared-draft","overwrite":false,"write_password":"the-write-password"}'
+
+# outside agent — no Authorization
+curl -sS "$CONTENT_ORIGIN/llms.txt"
+curl -sS "$PUBLIC_URL" \
+  -X PUT \
+  -H "X-Energon-Write-Password: the-write-password" \
+  --data-binary @notes.md
+```
+
 ## After you publish
 
 Give:
 
 - The human `url`
 - The share password if you set one
+- The write password if you set one
 - When it expires (`expires_at` / the `ttl` they picked)
 - The agent `api_url` if another session will fetch it (or the human URL plus the password header)
 - What you did (created vs claimed, files written)

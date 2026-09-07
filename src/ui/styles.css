@@ -59,7 +59,55 @@
 .en-gate-inner { width: auto; }
 .en-gate-instructions { margin: 0 0 18px; }
 .en-gate .en-gate-agent { margin-top: 16px; }
+.en-row-actions {
+  --scan-glyph: 24px;
+  --icon-size: 24px;
+}
 .en-row-actions .en-icon-btn--more { display: inline-flex; }
+.en-row-actions .en-icon-btn svg {
+  width: 24px;
+  height: 24px;
+}
+.en-scan-pair { display: inline-flex; align-items: center; gap: var(--space-2); vertical-align: middle; }
+.en-scan {
+  --scan-glyph: 24px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: max(var(--icon-btn), var(--scan-glyph));
+  height: max(var(--icon-btn), var(--scan-glyph));
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: var(--radius-1);
+  background: transparent;
+  color: var(--fg-3);
+  cursor: pointer;
+}
+.en-scan svg { display: block; width: var(--scan-glyph); height: var(--scan-glyph); }
+.en-scan--on { color: var(--fg-hot); }
+.en-scan:hover { background: var(--bg-raised); color: var(--fg-1); }
+.en-field-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.en-field-head label, .en-field-head span { margin: 0; }
+.en-field-head .en-seg,
+.en-field-head .en-seg--door {
+  width: auto;
+  flex: none;
+}
+.en-field-head .en-seg button {
+  flex: none;
+}
+.en-seg button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 .en-md-wrap { max-width: 46rem; }
 @media (max-width: 719px) {
   .en-mint { grid-template-columns: 1fr; }

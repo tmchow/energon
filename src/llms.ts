@@ -1,4 +1,5 @@
 import { PRODUCT, formatBytes } from "./config";
+import { guestWriteLlmsBody, hubGuestWriteSection } from "./guest-write-protocol";
 import { publicOrigin } from "./http";
 import { identityFromEnv } from "./instance";
 import { instancePolicy } from "./policy";
@@ -37,13 +38,14 @@ Do not put secrets, tokens, or share passwords in published files. Last write wi
 - Tokens expire after the lifetime the human picked at mint (default 90 days). A \`401\` with \`error: token_expired\` is terminal: stop using it, connect again with a code or ask the human to provision a replacement at /tokens, do not retry the expired token, do not invent one. Tokens cannot be extended. \`GET /v1/whoami\` shows \`expires_at\`.
 - On 409, show the existing URL and ask the human: new slug, or retry with \`overwrite: true\`.
 - \`GET /v1/sites\` and \`GET /v1/files\` list only what you created or last wrote. \`?scope=created|edited|involved\`, \`?q=\`, \`?created_by=\`, \`?limit=\`, \`?cursor=\` (always intersected with your involvement — you cannot dump someone else's catalog). Responses include \`total\` and \`next_cursor\`. Search runs over the full involved set; pages are keyset cursors.
-- Optional share password: \`password\` on create/PATCH, or \`X-Energon-Set-Password\` on file write. Empty string clears. Write responses echo the password you just set. GET never returns it — only a hash is stored. Agents send \`X-Energon-Password\` on the human URL. Token GETs on \`/v1\` skip it.
+- Optional share password: \`password\` on create/PATCH, or \`X-Energon-Set-Password\` on file write. Empty string clears. Write responses echo the password you just set. \`/v1\` GET never returns the phrase — only \`password_protected\`. Agents send \`X-Energon-Password\` on the human URL. Token GETs on \`/v1\` skip it.
 - Retention: this instance default is \`${policy.defaultTtl}\`. Allowed: ${presets}. \`PUT\` does not extend expiry. \`PATCH { "ttl": "7d" }\` resets from now. Expired public URLs are \`410\` and then deleted.
 - Who can write: this instance default is \`${policy.writePolicy}\` (\`owner\` = the creating account, \`instance\` = any token on this host). Set \`write_policy\` on create to override. \`PATCH write_policy\` is creator-only. Anyone with a token can still read via \`/v1\`.
 - Make a copy: \`POST /v1/sites\` with \`duplicate_from\` + a new slug, or \`POST /v1/files\` with \`duplicate_from\`. You own the copy. Do not zip a site through context just to fork it. If you already have replacement bytes, POST/PUT those instead.
 - Site zip export: \`GET /v1/sites/{slug}/export\` (token). Same ${formatBytes(policy.fileBytes)} / file-count caps as import. A single file is never a zip; \`?download=1\` on a file URL sets \`Content-Disposition: attachment\`.
 - \`.md\` files: browsers (\`Accept: text/html\`) get a rendered page (GFM + mermaid). \`curl\` and \`?raw=1\` get the markdown source. \`index.md\` is the site homepage when \`index.html\` is missing.
 
+${hubGuestWriteSection(content)}
 ## Optional
 
 - Agent skill for this instance: add marketplace \`${id.repo}\` (\`https://github.com/${id.repo}\`) and install \`${id.plugin}\` at user (global) scope (\`${id.plugin}@${id.marketplace}\`). Do not install at project or workspace scope unless the human asked for that. The skill files name this origin (${id.origin}). A fork replaces the shipped skill with \`npm run skill:init\`. Claude Code and [Agent Plugins](https://agent-plugins.org/) hosts use the same repo.
@@ -51,9 +53,14 @@ Do not put secrets, tokens, or share passwords in published files. Last write wi
 `;
 }
 
-export function llmsResponse(env: Env): Response {
+export function contentLlmsTxt(): string {
+  return guestWriteLlmsBody();
+}
+
+export function llmsResponse(env: Env, kind: "hub" | "content" = "hub"): Response {
   const origin = publicOrigin(env);
-  return new Response(llmsTxt(origin, env), {
+  const body = kind === "content" ? contentLlmsTxt() : llmsTxt(origin, env);
+  return new Response(body, {
     headers: {
       "content-type": "text/markdown; charset=utf-8",
       "cache-control": "public, max-age=300",

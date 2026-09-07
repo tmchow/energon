@@ -43,9 +43,15 @@ export type SiteRow = {
   created_by: string;
   last_written_by: string;
   password_hash?: string | null;
+  password_secret?: string | null;
   expires_at?: string | null;
   write_policy?: string | null;
+  write_password_hash?: string | null;
+  write_password_secret?: string | null;
+  written_via?: string | null;
 };
+
+export type WriteAuthority = { kind: "writePassword"; hash: string };
 
 export type SiteFileRow = {
   handle: string;
@@ -69,8 +75,12 @@ export type LooseFileRow = {
   updated_at: string | null;
   last_written_by: string | null;
   password_hash?: string | null;
+  password_secret?: string | null;
   expires_at?: string | null;
   write_policy?: string | null;
+  write_password_hash?: string | null;
+  write_password_secret?: string | null;
+  written_via?: string | null;
 };
 
 export type TokenRow = {

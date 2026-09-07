@@ -8,13 +8,19 @@ export type Token = { id: string; label: string; hint: string | null; recoverabl
 export type CatalogItem = {
   url: string; created_by: string; last_written_by: string | null;
   created_at: string; updated_at: string | null; expires_at: string | null; size: number;
-  password_protected: boolean; write_policy: string;
+  password_protected: boolean; write_password_protected?: boolean; written_via?: string | null; write_policy: string;
 } & ({ slug: string; file_count: number; id?: never; filename?: never } | { id: string; filename: string; slug?: never; file_count?: never });
 export type CatalogData = {
   email: string | null; sites: CatalogItem[]; files: CatalogItem[]; sites_total: number; files_total: number;
   sites_cursor: string | null; files_cursor: string | null; tokens?: Token[];
 };
 export type HubData = CatalogData & { handle: string | null; origin: string; content_origin: string; policy: RetentionPolicy; words: readonly string[]; query?: { q: string; scope: string; sort: string } };
+export type LinkAccess = {
+  password_protected: boolean;
+  password?: string | null;
+  write_password_protected?: boolean;
+  write_password?: string | null;
+};
 export type TokensData = { email: string; tokens: Token[]; token_env: string; token_policy: TokenPolicy; now: number };
 export type SetupData = { email: string; identity: InstanceIdentity; install: string };
 export type ConnectData = { email: string; host: string; connection: { id: string; label: string; expires_at: string }; token_policy: TokenPolicy };

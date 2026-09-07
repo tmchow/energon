@@ -3,7 +3,7 @@
   "info": {
     "title": "Energon",
     "version": "1.0.0",
-    "description": "The /v1 HTTP contract for an Energon host: paths, request and response schemas, status codes, and error codes. Live instance identity is GET /v1/help: hub and content origins, token env var, retention presets, token policy, and limits. Read both. Published content lives on the content origin at /{handle}/s/{slug}/{path} and /{handle}/f/{id}/{filename}; those URLs are not part of /v1, need no token, and are gated only by an optional share password sent as header X-Energon-Password (401 password_required, 429 rate_limited). Never invent a token. Never default to overwrite: true.",
+    "description": "The /v1 HTTP contract for an Energon host: paths, request and response schemas, status codes, and error codes. Live instance identity is GET /v1/help: hub and content origins, token env var, retention presets, token policy, and limits. Read both. Published content lives on the content origin at /{handle}/s/{slug}/{path} and /{handle}/f/{id}/{filename}; those URLs are not part of /v1, need no token, and are gated only by an optional share password (X-Energon-Password) or, for guest writes, an optional write password (X-Energon-Write-Password). Never invent a token. Never default to overwrite: true.",
     "license": {
       "name": "MIT",
       "identifier": "MIT"
@@ -1267,6 +1267,9 @@
             "$ref": "#/components/parameters/XEnergonSetPassword"
           },
           {
+            "$ref": "#/components/parameters/XEnergonSetWritePassword"
+          },
+          {
             "$ref": "#/components/parameters/XEnergonDuplicateFrom"
           }
         ],
@@ -2064,6 +2067,7 @@
               "bad_origin",
               "bad_password",
               "bad_path",
+              "bad_request",
               "bad_slug",
               "bad_ttl",
               "bad_write_policy",
@@ -2106,6 +2110,7 @@
               "site_exists",
               "site_import_rollback_failed",
               "site_not_found",
+              "site_write_lost",
               "storage_cap",
               "storage_rollback_failed",
               "token_expired",
@@ -2197,6 +2202,7 @@
               "updated_at",
               "file_count",
               "password_protected",
+              "write_password_protected",
               "expires_at",
               "hint"
             ],
@@ -2224,6 +2230,9 @@
                 "type": "integer"
               },
               "password_protected": {
+                "type": "boolean"
+              },
+              "write_password_protected": {
                 "type": "boolean"
               },
               "expires_at": {
@@ -2265,6 +2274,14 @@
         "maxLength": 128,
         "description": "Share password for the public URL. Empty string or null clears it. Whitespace is trimmed. Over 128 characters is 400 bad_password."
       },
+      "WritePassword": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "maxLength": 128,
+        "description": "Write password for guest PUT (and site-path DELETE) on the public URL. Empty string or null clears it. Whitespace is trimmed. Over 128 characters is 400 bad_password. Creator-only to set or clear. Duplicate does not copy it."
+      },
       "Slug": {
         "type": "string",
         "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
@@ -2292,6 +2309,9 @@
           "password": {
             "$ref": "#/components/schemas/SharePassword"
           },
+          "write_password": {
+            "$ref": "#/components/schemas/WritePassword"
+          },
           "ttl": {
             "$ref": "#/components/schemas/Ttl"
           },
@@ -2304,16 +2324,19 @@
                 "$ref": "#/components/schemas/Slug"
               }
             ],
-            "description": "Copy every file of that site into the new slug. Cannot be combined with overwrite (400 bad_duplicate). You become created_by; write_policy defaults to the instance default; TTL is fresh; the share password is not copied."
+            "description": "Copy every file of that site into the new slug. Cannot be combined with overwrite (400 bad_duplicate). You become created_by; write_policy defaults to the instance default; TTL is fresh; the share password and write password are not copied."
           }
         }
       },
       "ContentPatch": {
         "type": "object",
-        "description": "A key that is absent leaves that setting unchanged. Sending only write_policy does not require write access, but is creator-only.",
+        "description": "A key that is absent leaves that setting unchanged. Sending only write_policy or write_password does not require write access, but is creator-only.",
         "properties": {
           "password": {
             "$ref": "#/components/schemas/SharePassword"
+          },
+          "write_password": {
+            "$ref": "#/components/schemas/WritePassword"
           },
           "ttl": {
             "anyOf": [
@@ -2340,6 +2363,8 @@
           "created",
           "password_protected",
           "password",
+          "write_password_protected",
+          "write_password",
           "ttl",
           "expires_at",
           "write_policy"
@@ -2363,12 +2388,22 @@
           "password_protected": {
             "type": "boolean"
           },
+          "write_password_protected": {
+            "type": "boolean"
+          },
           "password": {
             "type": [
               "string",
               "null"
             ],
-            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. GET never returns it; only a hash is stored."
+            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. `/v1` GET never returns it."
+          },
+          "write_password": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The write password you just set, trimmed, or null when none was set or it was cleared. `/v1` GET never returns it."
           },
           "ttl": {
             "type": "string",
@@ -2425,6 +2460,8 @@
           "claimed",
           "password_protected",
           "password",
+          "write_password",
+          "write_password_protected",
           "expires_at",
           "write_policy"
         ],
@@ -2449,12 +2486,22 @@
           "password_protected": {
             "type": "boolean"
           },
+          "write_password_protected": {
+            "type": "boolean"
+          },
           "password": {
             "type": [
               "string",
               "null"
             ],
-            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. GET never returns it; only a hash is stored."
+            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. `/v1` GET never returns it."
+          },
+          "write_password": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The write password you just set, trimmed, or null when none was set or it was cleared. `/v1` GET never returns it."
           },
           "ttl": {
             "type": "string",
@@ -2482,6 +2529,8 @@
           "url",
           "password_protected",
           "password",
+          "write_password",
+          "write_password_protected",
           "expires_at",
           "write_policy"
         ],
@@ -2500,12 +2549,22 @@
           "password_protected": {
             "type": "boolean"
           },
+          "write_password_protected": {
+            "type": "boolean"
+          },
           "password": {
             "type": [
               "string",
               "null"
             ],
-            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. GET never returns it; only a hash is stored."
+            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. `/v1` GET never returns it."
+          },
+          "write_password": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The write password you just set, trimmed, or null when none was set or it was cleared. `/v1` GET never returns it."
           },
           "ttl": {
             "type": "string",
@@ -2588,6 +2647,7 @@
           "password_protected",
           "expires_at",
           "write_policy",
+          "write_password_protected",
           "files"
         ],
         "properties": {
@@ -2619,6 +2679,9 @@
             "description": "Account email."
           },
           "password_protected": {
+            "type": "boolean"
+          },
+          "write_password_protected": {
             "type": "boolean"
           },
           "expires_at": {
@@ -2654,6 +2717,7 @@
           "size",
           "url",
           "password_protected",
+          "write_password_protected",
           "expires_at",
           "write_policy"
         ],
@@ -2693,6 +2757,9 @@
             "description": "Human URL on the content origin. Opens without a token; gated only by an optional share password."
           },
           "password_protected": {
+            "type": "boolean"
+          },
+          "write_password_protected": {
             "type": "boolean"
           },
           "expires_at": {
@@ -2847,6 +2914,9 @@
           "password": {
             "$ref": "#/components/schemas/SharePassword"
           },
+          "write_password": {
+            "$ref": "#/components/schemas/WritePassword"
+          },
           "ttl": {
             "$ref": "#/components/schemas/Ttl"
           },
@@ -2857,7 +2927,7 @@
       },
       "FileUploadForm": {
         "type": "object",
-        "description": "Send file, or duplicate_from (optionally with filename). Both together is 400 bad_duplicate. Header variants (X-Energon-TTL, X-Energon-Write-Policy, X-Energon-Set-Password, X-Energon-Duplicate-From) override the matching field.",
+        "description": "Send file, or duplicate_from (optionally with filename). Both together is 400 bad_duplicate. Header variants (X-Energon-TTL, X-Energon-Write-Policy, X-Energon-Set-Password, X-Energon-Set-Write-Password, X-Energon-Duplicate-From) override the matching field.",
         "properties": {
           "file": {
             "type": "string",
@@ -2874,6 +2944,10 @@
           "password": {
             "type": "string",
             "description": "Share password; empty clears."
+          },
+          "write_password": {
+            "type": "string",
+            "description": "Write password; empty clears. X-Energon-Set-Write-Password overrides it."
           },
           "ttl": {
             "$ref": "#/components/schemas/Ttl"
@@ -2912,6 +2986,8 @@
           "content_type",
           "password_protected",
           "password",
+          "write_password",
+          "write_password_protected",
           "ttl",
           "expires_at",
           "write_policy"
@@ -2945,12 +3021,22 @@
           "password_protected": {
             "type": "boolean"
           },
+          "write_password_protected": {
+            "type": "boolean"
+          },
           "password": {
             "type": [
               "string",
               "null"
             ],
-            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. GET never returns it; only a hash is stored."
+            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. `/v1` GET never returns it."
+          },
+          "write_password": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The write password you just set, trimmed, or null when none was set or it was cleared. `/v1` GET never returns it."
           },
           "ttl": {
             "type": "string",
@@ -3009,7 +3095,8 @@
           "content_type",
           "replaced",
           "password_protected",
-          "password"
+          "password",
+          "write_password_protected"
         ],
         "properties": {
           "url": {
@@ -3042,12 +3129,15 @@
           "password_protected": {
             "type": "boolean"
           },
+          "write_password_protected": {
+            "type": "boolean"
+          },
           "password": {
             "type": [
               "string",
               "null"
             ],
-            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. GET never returns it; only a hash is stored."
+            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. `/v1` GET never returns it."
           }
         }
       },
@@ -3062,6 +3152,8 @@
           "api_url",
           "password_protected",
           "password",
+          "write_password",
+          "write_password_protected",
           "expires_at",
           "write_policy"
         ],
@@ -3087,12 +3179,22 @@
           "password_protected": {
             "type": "boolean"
           },
+          "write_password_protected": {
+            "type": "boolean"
+          },
           "password": {
             "type": [
               "string",
               "null"
             ],
-            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. GET never returns it; only a hash is stored."
+            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. `/v1` GET never returns it."
+          },
+          "write_password": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The write password you just set, trimmed, or null when none was set or it was cleared. `/v1` GET never returns it."
           },
           "expires_at": {
             "type": [
@@ -3126,6 +3228,7 @@
           "url",
           "api_url",
           "password_protected",
+          "write_password_protected",
           "expires_at",
           "write_policy"
         ],
@@ -3179,6 +3282,9 @@
             "format": "uri"
           },
           "password_protected": {
+            "type": "boolean"
+          },
+          "write_password_protected": {
             "type": "boolean"
           },
           "expires_at": {
@@ -3540,6 +3646,15 @@
           "maxLength": 128
         },
         "description": "Set the share password on the file being written; an empty value clears it. Overrides the multipart password field. This is not X-Energon-Password, which unlocks a gated public URL and is not a /v1 header."
+      },
+      "XEnergonSetWritePassword": {
+        "name": "X-Energon-Set-Write-Password",
+        "in": "header",
+        "schema": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "description": "Set the write password on the file being created; an empty value clears it. Overrides the multipart write_password field. Creator-only. This is not X-Energon-Write-Password, which authorizes guest PUT on a public URL and is not a /v1 header."
       },
       "XEnergonDuplicateFrom": {
         "name": "X-Energon-Duplicate-From",

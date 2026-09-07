@@ -72,7 +72,7 @@ Keep the supplied canvas wash. Cards and controls use the established surfaces, 
 
 Charge belongs on the cube, primary action, focal drop zone, URL field, selected controls, progress indicators, focus, and conduit units. Use at most one charged card per page. Do not glow body copy or every panel. App actions use their existing interaction states; do not add breathing animations to buttons.
 
-Green indicates a successful result, amber a warning or expiry condition, and rose an error or destructive confirmation. Existing destructive icon buttons use amber. Preserve that distinction and always provide a text label or other non-color cue. A lock describes a share password, not an individual access-control list.
+Green indicates a successful result, amber a warning or expiry condition, and rose an error or destructive confirmation. Existing destructive icon buttons use amber. Preserve that distinction and always provide a text label or other non-color cue. A lock describes a share password, not an individual access-control list. The lockup (lock northwest, filled pencil southeast) describes a write password.
 
 The application ships dark. Light tokens and specimen examples exist for exploration; their presence is not a reason to add a theme switch or claim a production light theme is complete.
 
@@ -105,7 +105,7 @@ Retain the existing 120ms hover, 200ms state, and 350ms layout timings. Cube bre
 | Main or supporting action | `Button`, `IconButton` | Use primary sparingly; label the operation; keep Cancel distinct |
 | An editable value | `Field`, `Input`, `Select`, `SegmentedControl` | Visible label, meaningful state, consequence beside the input |
 | Copyable or sensitive output | `UrlField`, `CopyRow`, `CopyBlock`, `TokenReveal` | Make copy and reveal behavior real; preserve exact values |
-| Catalog and usage | `Table`, `Badge`, `Metric`, `ProgressBar` | Preserve scanning, units, and the meaning of state |
+| Catalog and usage | `Table`, `Badge`, `CatalogScan`, `Metric`, `ProgressBar` | Unboxed 24px access marks; row action glyphs match that size inside the 36px control. Hover names the mark. Preserve scanning, units, and the meaning of state |
 | Feedback and confirmation | `Flash`, `Dialog`, `ConfirmDialog`, `Sheet` | Keep results near the task; explain destructive consequences |
 | Upload staging | `DropZone` and the Hub flow | Distinguish selected work from published work |
 
@@ -131,8 +131,9 @@ Do not let visual simplification alter these contracts:
 - Publishing collisions require an explicit choice before replacing existing work.
 - Destructive dialogs retain exact-name confirmation and explain what is lost.
 - Minted token secrets are shown once; the token catalog remains redacted.
+- Share and write passwords stay visible on Hub Link access so they can be copied after creation. They are sharing secrets, not login passwords. `/v1` GET does not return them. Each door has an Off/On control. Phrase, generate, and copy appear only when that door is On. Off and Save removes it. Do not treat an emptied field as remove.
 - Connection approval remains a deliberate human action. Do not prefill or bypass the code step for convenience.
-- Read access, write policy, expiry, and share passwords remain distinct concepts.
+- Read access, write policy, expiry, and share passwords remain distinct concepts. Catalog marks name those doors on hover: View password, Write password, Org can write, Org cannot write. Do not add a Password chip next to the lock. Show expiry in its own column only when a date is set; do not label unlimited work as Never.
 - Copy and success feedback describe an operation that actually completed.
 
 Reuse the existing formatting helpers for bytes, counts, and timestamps. Label the population and period behind a metric. Do not turn lifetime counts into an activity trend or infer readership from writes. Bars must encode actual values on a clear basis; preserve exact values alongside them. Tables should have enough width to scan labels and compare numbers without broken words.

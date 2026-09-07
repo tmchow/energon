@@ -2,9 +2,10 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { helpBody } from "../../src/auth";
-import { llmsTxt } from "../../src/llms";
+import { contentLlmsTxt, llmsTxt } from "../../src/llms";
 import { authMarkdown } from "../../src/auth-doc";
 import { renderMarkdown } from "../../src/markdown";
+import { WRITE_PASSWORD_HEADER } from "../../src/config";
 import type { Env } from "../../src/types";
 import { GOLDEN_ROOT, assertGolden, assertJsonGolden, canonicalize } from "./golden";
 
@@ -42,6 +43,20 @@ describe("agent docs", () => {
 
   it("freezes GET /llms.txt for the worker fixture instance", () => {
     assertGolden("llms/default.txt", llmsTxt(FIXTURE_ORIGIN, FIXTURE_ENV));
+  });
+
+  it("freezes content-origin /llms.txt and keeps guest-write copy in hub llms, content llms, and help", () => {
+    const hub = llmsTxt(FIXTURE_ORIGIN, FIXTURE_ENV);
+    const content = contentLlmsTxt();
+    const help = helpBody(FIXTURE_ORIGIN, FIXTURE_ENV) as { sop: string[] };
+    assertGolden("llms/content.txt", content);
+    expect(hub).toContain("Guest write password");
+    expect(hub).toContain(WRITE_PASSWORD_HEADER);
+    expect(content).toContain(WRITE_PASSWORD_HEADER);
+    expect(help.sop.join("\n")).toContain("Guest write password");
+    for (const banned of ["/v1", "/auth.md", "/tokens", "/connect"]) {
+      expect(content).not.toContain(banned);
+    }
   });
 });
 

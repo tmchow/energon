@@ -23,6 +23,17 @@ describe("signed-in pages", () => {
     const html = await res.text();
     for (const text of ["Publish a document, prototype, or file.", "Choose files", "Choose folder", "No sites yet", "No files yet", "Drop to stage"]) expect(html).toContain(text);
     for (const id of ["app", "pick-files", "pick-folder", "filepick", "folderpick", "q", "scope", "sort", "sites", "files", "drop-overlay", "pw-dlg", "write-dlg"]) expect(html).toContain(`id="${id}"`);
+    expect(html).not.toContain("scan-examples");
+    expect(html).not.toContain("Catalog marks");
+    expect(html).not.toContain("Set view password");
+    expect(html).toContain("Link access");
+    expect(html).toContain("Copy a phrase to share the link");
+    expect(html).toContain("Turn a password off and save to remove it");
+    expect(html).toContain('id="pw-dlg-share-door"');
+    expect(html).not.toContain('id="pw-dlg-input"');
+    expect(html).not.toContain("Empty a box");
+    expect(html).not.toContain("Energon only stores hashes");
+    expect(html).not.toContain('id="pw-dlg-share-mode"');
     expect(html).toContain('aria-label="Energon"');
     expect(html).toContain('aria-label="Pages"');
     expect(html).toMatch(/class="en-card[^"]*en-card--charged/);
@@ -62,7 +73,32 @@ describe("signed-in pages", () => {
     expect(boot.data.query).toMatchObject({ q: "svelte", sort: "name" });
     expect(html).toContain("svelte-one.md");
     expect(html).toContain("Load more");
-    for (const label of ["Copy URL", "Set password", "Delete", "More actions", "Download"]) expect(html).toContain(`aria-label="${label}"`);
+    expect(html).toContain(">Expires<");
+    expect(html).toContain(">Last writer<");
+    expect(html).not.toMatch(/<th[^>]*>Created by<\/th>/);
+    expect(html).not.toMatch(/<span class="en-badge[^"]*">password<\/span>/i);
+    for (const label of ["Copy URL", "Delete", "More actions", "Download"]) expect(html).toContain(`aria-label="${label}"`);
+    expect(html).not.toContain("Set view password");
+    expect(html).not.toContain("Catalog marks");
+  });
+
+  it("catalog password marks appear only when a hash is set", async () => {
+    const email = "svelte-marks@esperlabs.app";
+    const token = await mint("svelte-marks", email);
+    await json("/v1/files", { method: "POST", headers: { authorization: `Bearer ${token}`, "X-Filename": "mark-open.md", "content-type": "text/markdown" }, body: "# open" });
+    await json("/v1/files", { method: "POST", headers: { authorization: `Bearer ${token}`, "X-Filename": "mark-view.md", "X-Energon-Set-Password": "view-secret", "content-type": "text/markdown" }, body: "# view" });
+    await json("/v1/files", { method: "POST", headers: { authorization: `Bearer ${token}`, "X-Filename": "mark-write.md", "X-Energon-Set-Write-Password": "write-secret", "content-type": "text/markdown" }, body: "# write" });
+    const html = await (await req("/?q=mark-&sort=name", { headers: access(email) })).text();
+    expect(html).toContain("mark-open.md");
+    expect(html).toContain("mark-view.md");
+    expect(html).toContain("mark-write.md");
+    expect(html).toContain('aria-label="View password"');
+    expect(html).toContain('aria-label="Write password"');
+    expect(html).not.toContain("Set view password");
+    expect(html).not.toContain("scan-examples");
+    expect(html).toContain("id=\"pw-dlg\"");
+    expect(html).toContain("Link access");
+    expect(html).not.toMatch(/<span class="en-badge[^"]*">password<\/span>/i);
   });
 
   it("setup and tokens are signed-in pages with working element bindings", async () => {

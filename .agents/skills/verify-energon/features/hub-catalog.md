@@ -4,7 +4,7 @@ Hub catalog lets a signed-in human see sites and files they created or last wrot
 
 ## Sub-features
 
-- `catalog-list` shows Sites and Files cards with counts, creator, last writer, and updated time.
+- `catalog-list` shows Sites and Files cards with counts, last writer, updated time, and expires when a date is set.
 - `catalog-empty` shows `No sites yet` / `No files yet` when the signed-in user has none.
 - `catalog-search` filters by slug or filename through `#q`.
 - `catalog-scope` switches Your work / Created by you / Last edited by you.
@@ -26,7 +26,7 @@ Preconditions:
 - Search query `verify-site` matches that site and not an unrelated seeded name.
 
 - **Empty (optional, fresh persist).** On a brand-new launch before any publish, `#sites` contains `No sites yet` and `#files` contains `No files yet`. `#who` shows the doctor email.
-- **List after publish.** Open `$ORIGIN/`. Sites table has a row whose name link text is `verify-site` and whose Created by / Last writer cells match the email. The Sites card heading includes a non-empty count.
+- **List after publish.** Open `$ORIGIN/`. Sites table has a row whose name link text is `verify-site` and whose Last writer cell matches the email. There is no Created by column. Unlimited rows do not show Never in the slug cell. If the site expires, the Expires cell has a date. The Sites card heading includes a non-empty count.
 - **Search.** Fill `#q` with `verify-site`. Wait for the 200ms debounce and a new `/account/data?q=verify-site` request. The Sites table contains `verify-site` and does not contain a slug that does not match. Clear `#q` to restore the full list.
 - **Scope.** Choose `Created by you`. The `verify-site` you minted stays visible. Choose `Last edited by you` only if a second actor exists; on a single-user local run this may be empty — record that, do not treat it as a missing site.
 - **Open public URL.** Choose the `verify-site` link. The next document is `$ORIGIN/$HANDLE/s/verify-site/` and contains the published homepage.
@@ -43,3 +43,4 @@ Preconditions:
 - Delete requires the exact slug or filename. Cancel leaves the object in place — confirm with a GET.
 - `Load more` appears only when a cursor is present. Do not treat a short list as a pagination bug.
 - Opening the public link leaves the hub. Re-open `$ORIGIN/` before another catalog assertion.
+- Password marks: view-password-only is a padlock (`View password`). Any write password is the lockup (`Write password`). Neither hash: no password mark. More still offers `Set password`. No Password chip next to the slug.

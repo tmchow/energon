@@ -47,7 +47,7 @@ export function expiredHtml(kind: "site" | "file"): Response {
   );
 }
 
-function d1Changed(result: { meta?: { changes?: number } }): boolean {
+export function d1Changed(result: { meta?: { changes?: number } }): boolean {
   return Number(result.meta?.changes ?? 0) > 0;
 }
 
@@ -60,6 +60,8 @@ function newPurgeToken(): string {
 function newWriteToken(): string {
   return `${WRITE_CLAIM}:${crypto.randomUUID()}`;
 }
+
+export { newWriteToken };
 
 export function staleClaimCutoff(now = Date.now()): string {
   return new Date(now - STALE_CLAIM_MS).toISOString();
@@ -140,7 +142,7 @@ export async function finalizeLooseFileWriteClaim(
   token: string,
   lastWrittenBy: string,
 ): Promise<void> {
-  await env.DB.prepare(`UPDATE loose_files SET last_written_by = ? WHERE id = ? AND last_written_by = ?`)
+  await env.DB.prepare(`UPDATE loose_files SET last_written_by = ?, written_via = NULL WHERE id = ? AND last_written_by = ?`)
     .bind(lastWrittenBy, id, token)
     .run();
 }

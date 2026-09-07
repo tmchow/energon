@@ -12,6 +12,9 @@ export const FILE_ID_RE = /^[A-Za-z0-9]{6,12}$/;
 export const CACHE_UNTIL_PURGE_SECONDS = 31536000;
 export const PASSWORD_HEADER = "X-Energon-Password";
 export const SET_PASSWORD_HEADER = "X-Energon-Set-Password";
+export const WRITE_PASSWORD_HEADER = "X-Energon-Write-Password";
+export const SET_WRITE_PASSWORD_HEADER = "X-Energon-Set-Write-Password";
+export const WRITTEN_VIA_WRITE_PASSWORD = "write_password";
 
 export const RESERVED_HANDLES = new Set(["v1", "account", "static", "health", "about", "stats", "setup", "tokens"]);
 export const RESERVED_SLUGS = new Set<string>();

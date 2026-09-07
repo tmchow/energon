@@ -5,8 +5,11 @@ import {
   clearGateAttempts,
   gateIsBlocked,
   gateScopes,
+  hashSharePassword,
+  hashWritePassword,
   parseFormPassword,
   recordGateFailures,
+  writeGateScopes,
 } from "../../src/gate";
 import type { Env } from "../../src/types";
 
@@ -47,6 +50,7 @@ describe("gate attempt limits", () => {
       headers: { "CF-Connecting-IP": "203.0.113.10" },
     });
     expect(gateScopes(request, "/ada/s/gated/")).toEqual(["obj:/ada/s/gated/", "ip:203.0.113.10"]);
+    expect(writeGateScopes(request, "/ada/s/gated/")).toEqual(["wobj:/ada/s/gated/", "wip:203.0.113.10"]);
   });
 
   it("blocks after GATE_MAX_FAILS in the window and clears on success", async () => {
@@ -106,5 +110,16 @@ describe("parseFormPassword", () => {
       status: 413,
       code: "too_large",
     });
+  });
+});
+
+describe("write password hashes", () => {
+  it("uses a distinct prefix from the share-password hash", async () => {
+    const phrase = "same-phrase";
+    const share = await hashSharePassword(phrase);
+    const write = await hashWritePassword(phrase);
+    expect(share).not.toBe(write);
+    expect(share).not.toContain("energon-pw:");
+    expect(write).not.toContain("energon-wpw:");
   });
 });

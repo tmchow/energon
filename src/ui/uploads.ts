@@ -3,7 +3,7 @@ import { api, jsonBody, RequestError } from './api';
 
 export type UploadFile = { path: string; file: File };
 export type StagedUpload = { kind: 'loose' | 'folder' | 'zip'; file?: File; files: UploadFile[]; slug: string; filename: string };
-export type PublishResult = { url: string; slug?: string; filename?: string; file_count?: number; password?: string; password_protected?: boolean; written?: string[] };
+export type PublishResult = { url: string; slug?: string; filename?: string; file_count?: number; password?: string; password_protected?: boolean; write_password?: string; write_password_protected?: boolean; written?: string[] };
 
 export function safeFilename(name: string, fallback: string): string {
   const base = String(name || fallback || 'file').replace(/\\/g, '/').split('/').pop() || 'file';
@@ -60,18 +60,22 @@ export async function stageFiles(files: File[], entries: FileSystemEntry[] = [],
   return { kind: 'folder', files: files.map(file => ({ path: file.webkitRelativePath || file.name, file })), slug: slugify(files[0].webkitRelativePath?.split('/')[0] || 'site'), filename: '' };
 }
 
-export async function publish(upload: StagedUpload, options: { password: string; ttl: string; write_policy: string; overwrite: boolean }): Promise<PublishResult> {
+export async function publish(upload: StagedUpload, options: { password: string; write_password: string; ttl: string; write_policy: string; overwrite: boolean }): Promise<PublishResult> {
   if (upload.kind === 'loose' && upload.file) {
     const form = new FormData();
     form.set('file', upload.file, safeFilename(upload.filename, upload.file.name));
     if (options.password) form.set('password', options.password);
+    if (options.write_password) form.set('write_password', options.write_password);
     if (options.ttl) form.set('ttl', options.ttl);
     if (options.write_policy) form.set('write_policy', options.write_policy);
     return api('/account/files', { method: 'POST', body: form });
   }
   const slug = slugify(upload.slug);
   const settings = options.overwrite ? {} : { ttl: options.ttl, write_policy: options.write_policy };
-  const site = await api<PublishResult>('/account/sites', jsonBody('POST', { slug, overwrite: options.overwrite, ...(options.password ? { password: options.password } : {}), ...settings }));
+  const siteBody: Record<string, unknown> = { slug, overwrite: options.overwrite, ...settings };
+  if (options.password) siteBody.password = options.password;
+  if (options.write_password) siteBody.write_password = options.write_password;
+  const site = await api<PublishResult>('/account/sites', jsonBody('POST', siteBody));
   try {
     if (upload.kind === 'zip') {
       const imported = await api<PublishResult>(`/account/sites/${encodeURIComponent(slug)}/import`, { method: 'POST', headers: { 'content-type': 'application/zip' }, body: upload.file });

@@ -22,14 +22,15 @@ import {
   schedulePurgeExpiredSite,
 } from "./expire";
 import { isMarkdownName, respondMarkdown } from "./markdown";
-import { passwordEcho, passwordHashFromInput, protectContent } from "./gate";
+import { maybeUnlockWithWritePassword, passwordEcho, passwordHashFromInput, protectContent, assignPasswordStore, hubLinkAccessFields, storedPasswordSecret, writePasswordHashFromInput } from "./gate";
 import { ensureHandle, ensureUser } from "./handles";
-import { ApiError, applyIsolation, assertStorageRoom, basename, contentDisposition, copyR2Object, deletePrefix, htmlPage, json, nanoid, normalizeRelPath, publicOrigin, releaseStorage, tooLarge, wantsDownload } from "./http";
+import { ApiError, applyIsolation, assertStorageRoom, basename, contentDisposition, copyR2Object, deletePrefix, htmlPage, json, jsonMaybeSecret, nanoid, normalizeRelPath, publicOrigin, releaseStorage, secretJson, tooLarge, wantsDownload } from "./http";
 import { contentTypeFor } from "./mime";
 import {
   OWNER_WRITE_SQL,
   assertCanMutate,
   assertCanSetWritePolicy,
+  canSetWritePolicy,
   instancePolicy,
   ownerWriteBinds,
   requestedWritePolicy,
@@ -42,7 +43,7 @@ import { sitePublicUrl } from "./urls";
 import { packZip, unpackZip } from "./zip";
 
 const SITE_SELECT =
-  `handle, slug, owner_id, created_at, updated_at, created_by, last_written_by, password_hash, expires_at, write_policy`;
+  `handle, slug, owner_id, created_at, updated_at, created_by, last_written_by, password_hash, password_secret, expires_at, write_policy, write_password_hash, write_password_secret, written_via`;
 const D1_BATCH_MAX_STATEMENTS = 100;
 
 type R2Snapshot = {
@@ -245,7 +246,7 @@ async function writeSite(
   values: unknown[],
 ): Promise<void> {
   const updated = await env.DB.prepare(
-    `UPDATE sites SET ${assignments} WHERE handle = ? AND slug = ? AND ${OWNER_WRITE_SQL}`,
+    `UPDATE sites SET ${assignments}, written_via = NULL WHERE handle = ? AND slug = ? AND ${OWNER_WRITE_SQL}`,
   )
     .bind(...values, handle, slug, ...ownerWriteBinds(actor))
     .run();
@@ -272,6 +273,16 @@ async function findSiteForActor(env: Env, actor: Actor, slug: string): Promise<S
   return null;
 }
 
+function involvedInSite(
+  actor: Actor,
+  site: { created_by: string; last_written_by: string | null; owner_id?: string | null },
+): boolean {
+  const email = actor.email.toLowerCase();
+  if (site.created_by.toLowerCase() === email) return true;
+  if (site.last_written_by && site.last_written_by.toLowerCase() === email) return true;
+  return Boolean(actor.userId && site.owner_id === actor.userId);
+}
+
 async function fileCount(env: Env, handle: string, slug: string): Promise<number> {
   const row = await env.DB.prepare(`SELECT COUNT(*) AS n FROM site_files WHERE handle = ? AND slug = ?`)
     .bind(handle, slug)
@@ -288,6 +299,7 @@ export async function createSite(
   ctx?: ExecutionContext,
   ttl?: unknown,
   writePolicy?: unknown,
+  writePassword?: string,
 ): Promise<{ body: Record<string, unknown>; status: number }> {
   const slug = assertSlug(slugRaw);
   const user = await ensureUser(env, actor.email, actor.idpSub);
@@ -302,17 +314,19 @@ export async function createSite(
   }
   const url = sitePublicUrl(env, handle, slug);
   const hash = await passwordHashFromInput(password);
+  const writeHash = await writePasswordHashFromInput(writePassword);
   const policy = instancePolicy(env);
   if (!existing) {
     const resolved = resolveExpiresAt(policy, ttl);
     const storedWrite = resolveCreateWritePolicy(env, writePolicy);
     const ts = new Date().toISOString();
     const stored = hash === undefined ? null : hash;
+    const storedWritePw = writeHash === undefined ? null : writeHash;
     await env.DB.prepare(
-      `INSERT INTO sites (handle, slug, owner_id, created_at, updated_at, created_by, last_written_by, password_hash, expires_at, write_policy)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO sites (handle, slug, owner_id, created_at, updated_at, created_by, last_written_by, password_hash, password_secret, expires_at, write_policy, write_password_hash, write_password_secret)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-      .bind(handle, slug, user.id, ts, ts, actor.email, actor.email, stored, resolved.expiresAt, storedWrite)
+      .bind(handle, slug, user.id, ts, ts, actor.email, actor.email, stored, storedPasswordSecret(stored, password), resolved.expiresAt, storedWrite, storedWritePw, storedPasswordSecret(storedWritePw, writePassword))
       .run();
     return {
       status: 201,
@@ -323,6 +337,8 @@ export async function createSite(
         created: true,
         password_protected: Boolean(stored),
         password: passwordEcho(password, stored) ?? null,
+        write_password_protected: Boolean(storedWritePw),
+        write_password: passwordEcho(writePassword, storedWritePw) ?? null,
         ttl: resolved.ttl,
         expires_at: resolved.expiresAt,
         write_policy: storedWrite,
@@ -342,26 +358,33 @@ export async function createSite(
         updated_at: existing.updated_at,
         file_count: count,
         password_protected: Boolean(existing.password_hash),
+        write_password_protected: Boolean(existing.write_password_hash),
+        created_by: existing.created_by,
         expires_at: existing.expires_at ?? null,
         hint: "Retry with {\"slug\":\"" + slug + "\",\"overwrite\":true} to claim this bucket. That does not delete existing files. Or pick a new slug.",
       },
     );
   }
   assertCanMutate(actor, existing);
+  if (writeHash !== undefined) {
+    assertCanSetWritePolicy(actor, existing.created_by, existing.owner_id);
+  }
   const ts = new Date().toISOString();
   const resolved = ttl === undefined ? null : resolveExpiresAt(policy, ttl);
   const assignments = ["updated_at = ?", "last_written_by = ?"];
   const values: unknown[] = [ts, actor.email];
   if (hash !== undefined) {
-    assignments.push("password_hash = ?");
-    values.push(hash);
+    assignPasswordStore(assignments, values, hash, password, "password_hash", "password_secret");
+  }
+  if (writeHash !== undefined) {
+    assignPasswordStore(assignments, values, writeHash, writePassword, "write_password_hash", "write_password_secret");
   }
   if (resolved) {
     assignments.push("expires_at = ?");
     values.push(resolved.expiresAt);
   }
   await writeSite(env, actor, handle, slug, assignments.join(", "), values);
-  if (hash !== undefined) {
+  if (hash !== undefined || writeHash !== undefined) {
     await purgeContent(ctx, [sitePrefix(handle, slug)]);
   }
   return {
@@ -374,6 +397,8 @@ export async function createSite(
       claimed: true,
       password_protected: hash === undefined ? Boolean(existing.password_hash) : Boolean(hash),
       password: passwordEcho(password, hash) ?? null,
+      write_password_protected: writeHash === undefined ? Boolean(existing.write_password_hash) : Boolean(writeHash),
+      write_password: passwordEcho(writePassword, writeHash) ?? null,
       expires_at: resolved ? resolved.expiresAt : existing.expires_at ?? null,
       ttl: resolved ? resolved.ttl : undefined,
       write_policy: resolveWritePolicy(existing.write_policy),
@@ -390,6 +415,7 @@ export async function duplicateSite(
   ttl?: unknown,
   writePolicy?: unknown,
   password?: string,
+  writePassword?: string,
 ): Promise<{ body: Record<string, unknown>; status: number }> {
   const fromSlug = assertSlug(fromSlugRaw);
   const source = await requireSite(env, actor, fromSlug, { ctx });
@@ -412,7 +438,7 @@ export async function duplicateSite(
   let destSlug = "";
   const copiedKeys: string[] = [];
   try {
-    const created = await createSite(env, actor, newSlugRaw, false, password, ctx, ttl, writePolicy);
+    const created = await createSite(env, actor, newSlugRaw, false, password, ctx, ttl, writePolicy, writePassword);
     destHandle = String(created.body.handle);
     destSlug = String(created.body.slug);
     const ts = new Date().toISOString();
@@ -465,11 +491,12 @@ export async function patchSite(
   env: Env,
   actor: Actor,
   slugRaw: string,
-  patch: { password?: string; ttl?: unknown; setTtl?: boolean; write_policy?: unknown },
+  patch: { password?: string; write_password?: string; ttl?: unknown; setTtl?: boolean; write_policy?: unknown },
   ctx?: ExecutionContext,
 ): Promise<Response> {
   const slug = assertSlug(slugRaw);
   const wantsWrite = Object.prototype.hasOwnProperty.call(patch, "write_policy");
+  const wantsWritePassword = Object.prototype.hasOwnProperty.call(patch, "write_password");
   const wantsOther = patch.password !== undefined || Boolean(patch.setTtl);
   const site = await requireSite(env, actor, slug, {
     allowExpired: Boolean(patch.setTtl),
@@ -485,16 +512,22 @@ export async function patchSite(
     }
     nextWrite = parsed;
   }
+  const writeHash = await writePasswordHashFromInput(patch.write_password);
+  if (wantsWritePassword) {
+    assertCanSetWritePolicy(actor, site.created_by, site.owner_id);
+  }
   const hash = await passwordHashFromInput(patch.password);
   const ts = new Date().toISOString();
   const resolved = patch.setTtl ? resolveExpiresAt(instancePolicy(env), patch.ttl) : null;
   const notClaimed = `last_written_by NOT LIKE ?`;
-  if (hash !== undefined || resolved || wantsWrite) {
-    const assignments = ["updated_at = ?", "last_written_by = ?"];
+  if (hash !== undefined || writeHash !== undefined || resolved || wantsWrite) {
+    const assignments = ["updated_at = ?", "last_written_by = ?", "written_via = NULL"];
     const values: unknown[] = [ts, actor.email];
     if (hash !== undefined) {
-      assignments.push("password_hash = ?");
-      values.push(hash);
+      assignPasswordStore(assignments, values, hash, patch.password, "password_hash", "password_secret");
+    }
+    if (writeHash !== undefined) {
+      assignPasswordStore(assignments, values, writeHash, patch.write_password, "write_password_hash", "write_password_secret");
     }
     if (resolved) {
       assignments.push("expires_at = ?");
@@ -520,20 +553,24 @@ export async function patchSite(
       throw new ApiError(403, "forbidden_write", "Only the creator can write this.");
     }
   }
-  if (hash !== undefined || resolved) {
+  if (hash !== undefined || writeHash !== undefined || resolved) {
     await purgeContent(ctx, [sitePrefix(site.handle, slug)]);
   }
   const protectedNow = hash === undefined ? Boolean(site.password_hash) : Boolean(hash);
-  return json({
+  const writeProtectedNow = writeHash === undefined ? Boolean(site.write_password_hash) : Boolean(writeHash);
+  const body = {
     slug,
     handle: site.handle,
     url: sitePublicUrl(env, site.handle, slug),
     password_protected: protectedNow,
     password: passwordEcho(patch.password, hash) ?? null,
+    write_password_protected: writeProtectedNow,
+    write_password: passwordEcho(patch.write_password, writeHash) ?? null,
     expires_at: resolved ? resolved.expiresAt : site.expires_at ?? null,
     ttl: resolved ? resolved.ttl : undefined,
     write_policy: nextWrite,
-  });
+  };
+  return jsonMaybeSecret(body);
 }
 
 export async function requireSite(
@@ -605,7 +642,7 @@ export async function putSiteFile(
     const wrote = await env.DB.batch([
       siteFileUpsert(env, site.handle, slug, path, bytes.byteLength, contentType, ts, actor.email),
       env.DB.prepare(
-        `UPDATE sites SET updated_at = ?, last_written_by = ? WHERE handle = ? AND slug = ? AND ${OWNER_WRITE_SQL}`,
+        `UPDATE sites SET updated_at = ?, last_written_by = ?, written_via = NULL WHERE handle = ? AND slug = ? AND ${OWNER_WRITE_SQL}`,
       ).bind(ts, actor.email, site.handle, slug, ...ownerWriteBinds(actor)),
     ]);
     if (!Number(wrote[1]?.meta?.changes ?? 0)) {
@@ -888,7 +925,7 @@ export async function deleteSiteFile(
         `DELETE FROM site_files WHERE handle = ? AND slug = ? AND path = ? AND EXISTS (SELECT 1 FROM sites WHERE handle = ? AND slug = ? AND ${OWNER_WRITE_SQL})`,
       ).bind(site.handle, slug, path, site.handle, slug, ...ownerWriteBinds(actor)),
       env.DB.prepare(
-        `UPDATE sites SET updated_at = ?, last_written_by = ? WHERE handle = ? AND slug = ? AND ${OWNER_WRITE_SQL}`,
+        `UPDATE sites SET updated_at = ?, last_written_by = ?, written_via = NULL WHERE handle = ? AND slug = ? AND ${OWNER_WRITE_SQL}`,
       ).bind(ts, actor.email, site.handle, slug, ...ownerWriteBinds(actor)),
     ]);
     if (!Number(wrote[1]?.meta?.changes ?? 0)) {
@@ -929,6 +966,8 @@ export async function listSiteJson(
     created_by: site.created_by,
     last_written_by: site.last_written_by,
     password_protected: Boolean(site.password_hash),
+    write_password_protected: Boolean(site.write_password_hash),
+    written_via: site.written_via ?? null,
     expires_at: site.expires_at ?? null,
     write_policy: resolveWritePolicy(site.write_policy),
     files: (files.results || []).map((f) => ({
@@ -936,6 +975,25 @@ export async function listSiteJson(
       url: sitePublicUrl(env, site.handle, slug, f.path),
       api_url: `${origin}/v1/sites/${slug}/files/${f.path}`,
     })),
+  });
+}
+
+export async function hubSiteLinkAccess(env: Env, actor: Actor, slugRaw: string): Promise<Response> {
+  const slug = assertSlug(slugRaw);
+  const site = await requireSite(env, actor, slug);
+  if (!involvedInSite(actor, site)) {
+    throw new ApiError(
+      404,
+      "site_not_found",
+      `Site '${slug}' does not exist. Create it first with POST /v1/sites {"slug":"${slug}"}, then PUT files. See ${publicOrigin(env)}/v1/help.`,
+      { hint: `POST ${publicOrigin(env)}/v1/sites with {"slug":"${slug}"}` },
+    );
+  }
+  return secretJson({
+    slug,
+    handle: site.handle,
+    url: sitePublicUrl(env, site.handle, slug),
+    ...hubLinkAccessFields(canSetWritePolicy(actor, site.created_by, site.owner_id), site),
   });
 }
 
@@ -961,6 +1019,8 @@ export async function listSitesFor(
     file_count: number;
     size: number;
     password_protected: boolean;
+    write_password_protected: boolean;
+    written_via: string | null;
     expires_at: string | null;
     write_policy: string;
   }>
@@ -988,7 +1048,7 @@ export async function listSitesFor(
   const total = Number(countRow?.n ?? 0);
   const rows = await env.DB.prepare(
     `SELECT s.handle, s.slug, s.created_at, s.updated_at, s.created_by, s.last_written_by,
-            s.password_hash, s.expires_at, s.write_policy,
+            s.password_hash, s.write_password_hash, s.written_via, s.expires_at, s.write_policy,
             COUNT(f.path) AS file_count, COALESCE(SUM(f.size), 0) AS size
      FROM sites s
      LEFT JOIN site_files f ON s.handle = f.handle AND s.slug = f.slug
@@ -1006,6 +1066,8 @@ export async function listSitesFor(
       created_by: string;
       last_written_by: string;
       password_hash: string | null;
+      write_password_hash: string | null;
+      written_via: string | null;
       expires_at: string | null;
       write_policy: string | null;
       file_count: number;
@@ -1013,11 +1075,13 @@ export async function listSitesFor(
     }>();
   const page = takePage(rows.results || [], query.limit);
   const items = page.items.map((s) => {
-    const { password_hash, write_policy, ...rest } = s;
+    const { password_hash, write_password_hash, write_policy, ...rest } = s;
     return {
       ...rest,
       url: sitePublicUrl(env, s.handle, s.slug),
       password_protected: Boolean(password_hash),
+      write_password_protected: Boolean(write_password_hash),
+      written_via: s.written_via ?? null,
       expires_at: s.expires_at ?? null,
       write_policy: resolveWritePolicy(write_policy),
     };
@@ -1061,14 +1125,18 @@ export async function serveSite(
   }
 
   const cookiePath = `/${handle}/s/${slug}/`;
-  const gated = await protectContent(request, site.password_hash, cookiePath, slug, env);
+  const unlocked = await maybeUnlockWithWritePassword(request, env, site.write_password_hash, cookiePath);
+  if (unlocked instanceof Response) return unlocked;
+  const gated = unlocked === "unlocked"
+    ? null
+    : await protectContent(request, site.password_hash, cookiePath, slug, env, site.write_password_hash);
   if (gated) return gated;
   if (request.method === "POST") {
     return json({ error: "method_not_allowed", message: "Method not allowed." }, 405);
   }
 
   const remaining = remainingCacheSeconds(site.expires_at);
-  const cacheable = !site.password_hash;
+  const cacheable = !site.password_hash && unlocked !== "unlocked";
   const wantsIndex = pathRaw === "" || pathRaw === "/";
   if (wantsIndex) {
     const index = await env.BUCKET.get(siteKey(handle, slug, "index.html"));

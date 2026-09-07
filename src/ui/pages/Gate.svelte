@@ -12,7 +12,7 @@
   <div class="en-gate en-gate-inner">
     <span class="en-mark en-mark--breathe" style:--mark-size="35px"><CubeMark size={35} /></span>
     <h1>Energon</h1><p class="en-lede">This link is password-protected.</p>
-    <p class="en-gate-instructions">Ask the person who sent you this link for its share password.</p>
+    <p class="en-gate-instructions">Ask the person who sent you this link for the password.</p>
     {#if data.wrong}<Flash tone="err">That password is wrong.</Flash>{/if}
     {#if data.limited}<Flash tone="err">Too many password attempts. Try again later.</Flash>
     {:else}<form method="post" action={data.action}>

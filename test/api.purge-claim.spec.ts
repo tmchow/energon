@@ -276,19 +276,24 @@ describe("TTL purge claims", () => {
       {
         name: "password and ttl",
         body: { password: "secret", ttl: "7d" },
-        sql: "password_hash = ?, expires_at = ?",
+        sql: "password_hash = ?, password_secret = ?, expires_at = ?",
       },
-      { name: "password", body: { password: "secret" }, sql: "password_hash = ? WHERE" },
+      { name: "password", body: { password: "secret" }, sql: "password_hash = ?, password_secret = ? WHERE" },
       { name: "ttl", body: { ttl: "7d" }, sql: "expires_at = ? WHERE" },
       {
         name: "write policy",
         body: { write_policy: "owner" },
-        sql: "last_written_by = ?, write_policy = ? WHERE",
+        sql: "written_via = NULL, write_policy = ? WHERE",
       },
       {
         name: "password and write policy",
         body: { password: "secret", write_policy: "owner" },
-        sql: "password_hash = ?, write_policy = ? WHERE",
+        sql: "password_hash = ?, password_secret = ?, write_policy = ? WHERE",
+      },
+      {
+        name: "write password",
+        body: { write_password: "secret" },
+        sql: "write_password_hash = ?, write_password_secret = ? WHERE",
       },
     ];
 
@@ -356,7 +361,7 @@ describe("TTL purge claims", () => {
     let injected = false;
     db.prepare = ((sql: string) => {
       const statement = originalPrepare(sql);
-      if (injected || !sql.includes("password_hash = ?, write_policy = ? WHERE")) return statement;
+      if (injected || !sql.includes("password_hash = ?, password_secret = ?, write_policy = ? WHERE")) return statement;
       const originalBind = statement.bind.bind(statement);
       return {
         ...statement,
@@ -410,7 +415,7 @@ describe("TTL purge claims", () => {
     let injected = false;
     db.prepare = ((sql: string) => {
       const statement = originalPrepare(sql);
-      if (injected || !sql.includes("password_hash = ?, write_policy = ? WHERE")) return statement;
+      if (injected || !sql.includes("password_hash = ?, password_secret = ?, write_policy = ? WHERE")) return statement;
       const originalBind = statement.bind.bind(statement);
       return {
         ...statement,

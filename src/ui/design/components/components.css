@@ -207,6 +207,11 @@ a.en-brand, a.en-brand:hover, .en-brand:hover { text-decoration: none; color: in
 .en-stage-status { font: var(--weight-medium) var(--text-sm)/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-brand); display: flex; align-items: center; gap: 8px; }
 .en-stage-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 2px; }
 .en-stage-exists { color: var(--warn-fg-strong); font-size: 13.5px; margin: 0; }
+.en-stage-access { border: 1px solid var(--border-brand-faint); border-radius: var(--radius-1); padding: 10px 12px; }
+.en-stage-access > summary { cursor: pointer; font: var(--type-ui); color: var(--fg-2); }
+.en-stage-access[open] > summary { margin-bottom: 12px; color: var(--fg-1); }
+.en-stage-access .en-field { margin-top: 12px; }
+.en-stage-access .en-seg { margin-bottom: 8px; }
 
 /* ---- Public / gate / md ---- */
 .en-gate-page { display: grid; place-items: center; padding: 32px 16px; min-height: 100vh; }

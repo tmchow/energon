@@ -21,8 +21,12 @@ CREATE TABLE IF NOT EXISTS sites (
   created_by TEXT NOT NULL,
   last_written_by TEXT NOT NULL,
   password_hash TEXT,
+  password_secret TEXT,
   expires_at TEXT,
   write_policy TEXT NOT NULL DEFAULT 'instance',
+  write_password_hash TEXT,
+  write_password_secret TEXT,
+  written_via TEXT,
   PRIMARY KEY (handle, slug)
 );
 
@@ -47,10 +51,14 @@ CREATE TABLE IF NOT EXISTS loose_files (
   updated_at TEXT,
   last_written_by TEXT,
   password_hash TEXT,
+  password_secret TEXT,
   handle TEXT,
   owner_id TEXT,
   expires_at TEXT,
-  write_policy TEXT NOT NULL DEFAULT 'instance'
+  write_policy TEXT NOT NULL DEFAULT 'instance',
+  write_password_hash TEXT,
+  write_password_secret TEXT,
+  written_via TEXT
 );
 
 CREATE TABLE IF NOT EXISTS tokens (
