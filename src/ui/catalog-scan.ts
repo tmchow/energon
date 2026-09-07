@@ -7,5 +7,5 @@ export const CATALOG_SCAN_LABEL: Record<CatalogScanMark, string> = {
   peopleOff: 'Org cannot write',
 };
 
-export const CATALOG_SCAN_SIZE = 28;
-export const CATALOG_ACTION_SIZE = 36;
+export const CATALOG_SCAN_SIZE = 24;
+export const CATALOG_ACTION_SIZE = 24;
