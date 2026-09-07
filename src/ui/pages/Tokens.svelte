@@ -55,7 +55,7 @@
     const labels = bulk.sample.map(t => t.label).join(', ');
     const more = bulk.matched > bulk.sample.length ? ` and ${bulk.matched - bulk.sample.length} more` : '';
     const who = bulk.target === 'all' ? 'Every token on your account' : 'Every token unused for 30 days';
-    return `${who} is revoked: ${labels}${more}. Agents using them will get 401. Type “${bulkMatch}” to confirm.`;
+    return `${who} is revoked: ${labels}${more}. Agents using them will get 401. Type the count to confirm.`;
   });
   function expiry(token: Token) {
     if (!token.expires_at) return '';
@@ -150,4 +150,4 @@
   </Card>
 </main>
 <ConfirmDialog bind:open={confirmOpen} title="Revoke token" message="Agents using this key will get 401. Type the label to confirm." label={`Type “${target?.label || ''}” to revoke`} match={target?.label} action="Revoke" danger {busy} onConfirm={revoke} {error} />
-<ConfirmDialog id="bulk-dlg" bind:open={bulkOpen} title={bulkTitle} message={bulkMessage} label={`Type “${bulkMatch}” to revoke`} match={bulkMatch} action="Revoke" danger {busy} onConfirm={revokeBulk} {error} />
+<ConfirmDialog id="bulk-dlg" bind:open={bulkOpen} title={bulkTitle} message={bulkMessage} label={`Type “${bulkMatch}” to revoke`} match={bulkMatch} noun="count" action="Revoke" danger {busy} onConfirm={revokeBulk} {error} />
