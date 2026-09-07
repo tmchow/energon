@@ -140,6 +140,13 @@ describe("Energon", () => {
       headers: auth(token, { "content-type": "text/html" }),
       body: "<h1>one</h1>",
     });
+    const stringFalse = await json("/v1/sites", {
+      method: "POST",
+      headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "keep-both", overwrite: "false" }),
+    });
+    expect(stringFalse.status).toBe(409);
+    expect(stringFalse.body.error).toBe("site_exists");
     const claim = await json("/v1/sites", {
       method: "POST",
       headers: auth(token, { "content-type": "application/json" }),
@@ -824,6 +831,22 @@ describe("Energon", () => {
     expect(imported.body.error).toBe("bad_zip_path");
   });
 
+  it("rejects scheme-like site file paths", async () => {
+    const token = await mint("scheme-path");
+    await json("/v1/sites", {
+      method: "POST",
+      headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "safe-paths" }),
+    });
+    const put = await json("/v1/sites/safe-paths/files/javascript:alert(1)", {
+      method: "PUT",
+      headers: auth(token, { "content-type": "text/plain" }),
+      body: "nope",
+    });
+    expect(put.status).toBe(400);
+    expect(put.body.error).toBe("bad_path");
+  });
+
   it("site slugs are not reserved; account is a fine site name", async () => {
     const token = await mint("reserved");
     const created = await json("/v1/sites", {
@@ -1009,6 +1032,36 @@ describe("Energon", () => {
     const owner = await json("/account/sites/phrase-leak", { headers: access("ada@esperlabs.app") });
     expect(owner.status).toBe(200);
     expect(owner.body.password).toBe("correct-horse");
+  });
+
+  it("Hub share phrase is owner-only, not last writer", async () => {
+    const ownerEmail = "phrase-owner2@esperlabs.app";
+    const editorEmail = "phrase-editor@esperlabs.app";
+    const ownerToken = await mint("phrase-owner2", ownerEmail);
+    const created = await json("/v1/sites", {
+      method: "POST",
+      headers: auth(ownerToken, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "phrase-writer", password: "owner-only-phrase", write_policy: "org" }),
+    });
+    expect(created.status).toBe(201);
+
+    const editorToken = await mint("phrase-editor", editorEmail);
+    const put = await json("/v1/sites/phrase-writer/files/note.txt", {
+      method: "PUT",
+      headers: auth(editorToken, { "content-type": "text/plain" }),
+      body: "edited",
+    });
+    expect(put.status).toBe(201);
+
+    const asEditor = await json("/account/sites/phrase-writer", { headers: access(editorEmail) });
+    expect(asEditor.status).toBe(200);
+    expect(asEditor.body.password_protected).toBe(true);
+    expect(asEditor.body.password).toBeNull();
+    expect(JSON.stringify(asEditor.body)).not.toContain("owner-only-phrase");
+
+    const asOwner = await json("/account/sites/phrase-writer", { headers: access(ownerEmail) });
+    expect(asOwner.status).toBe(200);
+    expect(asOwner.body.password).toBe("owner-only-phrase");
   });
 
   it("share password guesses are rate limited per object and source", async () => {

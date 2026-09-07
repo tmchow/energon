@@ -83,6 +83,15 @@ describe("agent connections", () => {
     const denied = await start();
     expect((await decide(denied, "deny")).status).toBe(200);
     expect((await exchange(denied)).status).toBe(403);
+    const deniedBlank = await start("blank deny");
+    const blankDeny = await json(`/account/connections/${deniedBlank.id}/deny`, {
+      method: "POST",
+      headers: access("connect@esperlabs.app", { "content-type": "application/json" }),
+      body: JSON.stringify({}),
+    });
+    expect(blankDeny.status).toBe(200);
+    expect(blankDeny.body.status).toBe("denied");
+    expect((await exchange(deniedBlank)).status).toBe(403);
     const expired = await start();
     await env.DB.prepare("UPDATE agent_connections SET expires_at = ? WHERE id = ?").bind("2000-01-01T00:00:00.000Z", expired.id).run();
     expect((await decide(expired)).status).toBe(410);

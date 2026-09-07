@@ -143,8 +143,11 @@ describe("hub account API", () => {
   it("exposes list totals and cursors without leaking token secrets", async () => {
     const email = "hub-data@esperlabs.app";
     const token = await mint("listed", email);
-    const data = await json("/account/data", { headers: access(email) });
-    expect(data.status).toBe(200);
+    const res = await req("/account/data", { headers: access(email) });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toMatch(/no-store/);
+    expect(res.headers.get("cache-control")).toMatch(/private/);
+    const data = { status: res.status, body: await res.json() };
     expect(data.body.email).toBe(email);
     expect(data.body.sites).toEqual(expect.any(Array));
     expect(data.body.files).toEqual(expect.any(Array));

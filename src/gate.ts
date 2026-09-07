@@ -82,7 +82,7 @@ export function assignPasswordStore(
 }
 
 export function hubLinkAccessFields(
-  canSeeWrite: boolean,
+  canSeeSecrets: boolean,
   row: {
     password_hash?: string | null;
     password_secret?: string | null;
@@ -102,10 +102,10 @@ export function hubLinkAccessFields(
     write_password?: string | null;
   } = {
     password_protected: Boolean(row.password_hash),
-    password: row.password_secret ?? null,
+    password: canSeeSecrets ? (row.password_secret ?? null) : null,
     write_password_protected: Boolean(row.write_password_hash),
   };
-  if (canSeeWrite) body.write_password = row.write_password_secret ?? null;
+  if (canSeeSecrets) body.write_password = row.write_password_secret ?? null;
   return body;
 }
 
@@ -212,7 +212,21 @@ export async function parseFormPassword(request: Request): Promise<string | null
       throw new ApiError(413, "too_large", "Password request is too large.");
     }
   }
-  const buf = new Uint8Array(await request.arrayBuffer());
+  let received = 0;
+  const capped = request.body
+    ? request.body.pipeThrough(
+        new TransformStream<Uint8Array, Uint8Array>({
+          transform(chunk, controller) {
+            received += chunk.byteLength;
+            if (received > GATE_BODY_MAX) {
+              throw new ApiError(413, "too_large", "Password request is too large.");
+            }
+            controller.enqueue(chunk);
+          },
+        }),
+      )
+    : null;
+  const buf = new Uint8Array(await new Response(capped).arrayBuffer());
   if (buf.byteLength > GATE_BODY_MAX) {
     throw new ApiError(413, "too_large", "Password request is too large.");
   }

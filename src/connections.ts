@@ -1,5 +1,6 @@
 import { assertEmailAllowed, hashToken, maskToken } from "./auth";
 import { TOKEN_SECRET_LEN } from "./config";
+import { hashesEqual } from "./gate";
 import { ApiError, nanoid, publicOrigin, secretJson, sha256Hex } from "./http";
 import { identityFromEnv } from "./instance";
 import { resolveTokenExpiresAt, tokenPolicy } from "./policy";
@@ -67,13 +68,17 @@ export async function connectionForHuman(env: Env, id: string): Promise<HumanCon
 
 export async function decideConnection(env: Env, id: string, actor: Actor, body: Record<string, unknown>, approve: boolean): Promise<Response> {
   const row = await connectionForHuman(env, id);
-  const code = typeof body.user_code === "string" ? body.user_code.trim() : "";
-  if (await sha256Hex(`${id}:${code}`) !== row.code_hash) {
-    await env.DB.prepare(
-      `UPDATE agent_connections SET attempts = attempts + 1, status = CASE WHEN attempts >= 4 THEN 'denied' ELSE status END
-       WHERE id = ? AND status = 'pending'`,
-    ).bind(id).run();
-    throw new ApiError(400, "connection_bad_code", "Enter the code shown by your agent. Five incorrect attempts end this request.");
+  // Deny is available without the agent code so a surprise request can be rejected.
+  // Approve still requires the code shown by the agent.
+  if (approve) {
+    const code = typeof body.user_code === "string" ? body.user_code.trim() : "";
+    if (!hashesEqual(await sha256Hex(`${id}:${code}`), row.code_hash)) {
+      await env.DB.prepare(
+        `UPDATE agent_connections SET attempts = attempts + 1, status = CASE WHEN attempts >= 4 THEN 'denied' ELSE status END
+         WHERE id = ? AND status = 'pending'`,
+      ).bind(id).run();
+      throw new ApiError(400, "connection_bad_code", "Enter the code shown by your agent. Five incorrect attempts end this request.");
+    }
   }
   const now = new Date();
   const tokenExpiresAt = approve ? resolveTokenExpiresAt(tokenPolicy(env), body.ttl, now) : null;

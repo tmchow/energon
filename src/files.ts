@@ -812,6 +812,7 @@ export async function getLooseFile(
   const headers = new Headers();
   headers.set("content-type", obj.httpMetadata?.contentType || row.content_type || "application/octet-stream");
   headers.set("x-content-type-options", "nosniff");
+  headers.set("cache-control", "private, no-store");
   headers.set("content-disposition", contentDisposition(opts?.attachment ? "attachment" : "inline", row.filename));
   headers.set("x-energon-write-policy", resolveWritePolicy(row.write_policy));
   if (obj.size != null) headers.set("content-length", String(obj.size));
