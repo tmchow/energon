@@ -4,14 +4,14 @@ This file is for **humans and agents**. Same steps. Do not invent a token.
 
 There are two jobs:
 
-1. **Stand up a company host** — fork this repo, create Cloudflare resources, render the skill, deploy.
+1. **Deploy your own Energon** — fork this repo, create Cloudflare resources, render the skill, deploy.
 2. **Connect an agent** — add the company marketplace, install the skill, export a token.
 
 If you only need (2), skip to [Connect an agent](#connect-an-agent).
 
 ---
 
-## Stand up a company host
+## Deploy your own Energon
 
 You need a Cloudflare account (Workers Paid — unzip + 25 MB uploads), a hostname, and a GitHub repo that will be the marketplace teammates install from.
 
@@ -19,13 +19,13 @@ You need a Cloudflare account (Workers Paid — unzip + 25 MB uploads), a hostna
 
 Fork [`tmchow/energon`](https://github.com/tmchow/energon) into your org (or clone and add your own `origin`). After `skill:init`, the marketplace lives in this same tree. Point `origin` at **your** repo before you render the skill.
 
-`tmchow/energon` accepts [issues](https://github.com/tmchow/energon/issues/new/choose) and does not merge unsolicited pull requests. Keep your instance on the fork. See [CONTRIBUTING.md](./CONTRIBUTING.md).
+`tmchow/energon` accepts [issues](https://github.com/tmchow/energon/issues/new/choose) and does not merge unsolicited pull requests. Keep your Energon on the fork. See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ```
 your-org/energon
 ```
 
-Do not reuse another instance’s D1 `database_id` or R2 bucket. The committed `wrangler.toml` uses a placeholder id on purpose.
+Do not reuse another Energon’s D1 `database_id` or R2 bucket. The committed `wrangler.toml` uses a placeholder id on purpose.
 
 ### 2. Create Cloudflare resources (once)
 
@@ -42,11 +42,11 @@ Ask the human for:
 - Hub hostname (example: `https://energon.your.co`)
 - Content hostname (example: `https://content.energon.your.co`; this must be separate from the hub)
 - Email domains that may mint tokens (example: `your.co,your.com`)
-- Write default: `instance` (any token on this host — usual for coworker/agent sharing) or `owner` (only the creator)
+- Write default: `org` (any token on this host — usual for coworker/agent sharing) or `owner` (only the creator)
 - Whether content may live forever (`ALLOW_UNLIMITED_RETENTION=true`) or must expire
 - Whether API tokens may be minted with no expiry (`ALLOW_UNLIMITED_TOKENS`, default allowed). Every token still gets a lifetime picked at mint (default 90 days); this only decides whether Never is on the menu for future mints. Tokens already minted keep working until revoked on `/tokens`.
 
-### 3. Render this host’s skill
+### 3. Render this Energon’s skill
 
 ```bash
 npm run skill:init -- --name yourco --origin https://energon.your.co
@@ -54,7 +54,7 @@ npm run skill:init -- --name yourco --origin https://energon.your.co
 
 `--name yourco` becomes skill **and** marketplace `yourco-energon` (install `yourco-energon@yourco-energon`), token env `YOURCO_ENERGON_TOKEN`, and the GitHub repo from `git remote get-url origin`. Pass `--repo your-org/energon` if origin is still `tmchow/energon`.
 
-Choose a name unique to this instance (for example, `yourco` or `yourco-staging`). Generic `energon` identities and placeholder origins are rejected. Use your deployed HTTPS hub origin without a path.
+Choose a name unique to this Energon (for example, `yourco` or `yourco-staging`). Generic `energon` identities and placeholder origins are rejected. Use your deployed HTTPS hub origin without a path.
 
 That writes `plugins/yourco-energon/` (Agent Plugins package), the harness catalogs (`.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`, and the Copilot/root copies), and `instance-skill.json`. The plugin lives in that subdirectory — not at the repo root, and not under `.agents/skills` or `.claude/skills`. Commit the result. After that, this fork is the marketplace teammates add.
 
@@ -80,7 +80,7 @@ Strings only (Wrangler). Committed defaults are company-shaped. Full table: [doc
 | `ALLOW_UNLIMITED_RETENTION` | `true` |
 | `ALLOW_UNLIMITED_TOKENS` | `true` (Never stays on the token lifetime menu; only affects future mints) |
 | `DEFAULT_TTL` / `MAX_TTL` | `never` |
-| `WRITE_POLICY` | `instance` |
+| `WRITE_POLICY` | `org` |
 | `ALLOWED_EMAIL_DOMAINS` | `your.co,your.com` |
 | `FOOTER_TEXT` | omit, or one internal line |
 
@@ -131,7 +131,7 @@ Open http://127.0.0.1:8787. Access is not required on localhost.
 
 ## Connect an agent
 
-Use this after a host exists. If you are standing the host up, finish the section above first.
+Use this after yours is running. If you are still deploying, finish the section above first.
 
 Ask the human for the **origin** (`https://energon.your.co`) and the **GitHub repo** that is the marketplace (usually the company fork). If they only have the origin, `GET {origin}/v1/help` (no auth) names `repo`, `install`, and `env`.
 
@@ -143,9 +143,9 @@ The human may have pasted the “Connect an agent” block from [README.md](./RE
 
 Install at **user (global) scope** so it is available in every project. Project or workspace scope only if the human asked for that.
 
-Each instance ships its own skill in its own repo, with its own name and token env. `yourco-energon` and another company's `esper-energon` can both live on the same machine. Install the one you want everywhere at user scope. If you belong to more than one organization, install each skill, or pin the second in that company's project settings. Do not install two marketplaces that share the same `name`.
+Each Energon ships its own skill in its own repo, with its own name and token env. `yourco-energon` and another company's `esper-energon` can both live on the same machine. Install the one you want everywhere at user scope. If you belong to more than one organization, install each skill, or pin the second in that company's project settings. Do not install two marketplaces that share the same `name`.
 
-Most hosts only need the company repo:
+Usually you only add the company repo:
 
 ```
 your-org/energon
@@ -167,7 +167,7 @@ Then read {origin}/auth.md. If {TOKEN_ENV} is already set, use it. Otherwise con
 
 Signed-in humans can copy a filled block from `{origin}/setup`.
 
-Harness-specific commands (replace repo / plugin with this host’s values):
+Harness-specific commands (replace repo / plugin with this Energon’s values):
 
 **Claude Code**
 
@@ -254,7 +254,7 @@ Put that in `.claude/settings.json` and/or `.github/copilot/settings.json`, usin
 ## What you should not do
 
 - Do not invent a token.
-- Do not reuse another instance’s D1 or R2.
+- Do not reuse another Energon’s D1 or R2.
 - Do not put Access on `/v1`.
 - Do not install two marketplaces that share the same `name`.
 - Do not leave `{{ORIGIN}}` in a skill you ship to agents.

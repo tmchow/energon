@@ -2,11 +2,11 @@ import { MAX_FILE_BYTES, MAX_PLATFORM_BYTES, PRODUCT } from "./config";
 import { ApiError } from "./http";
 import type { Actor, Env } from "./types";
 
-export type WritePolicy = "owner" | "instance";
+export type WritePolicy = "owner" | "org";
 
 const UNIT_SECONDS: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
 
-/** Code-owned catalog. Instance policy intersects this with MAX_TTL. */
+/** Code-owned catalog. This Energon's policy intersects this with MAX_TTL. */
 export const TTL_CATALOG = ["30m", "1h", "1d", "7d", "14d", "30d", "60d", "90d", "180d", "365d"] as const;
 
 const HUMAN_BY_ID: Record<string, string> = {
@@ -260,7 +260,7 @@ export function resolveExpiresAt(policy: InstancePolicy, input: unknown, now = n
       throw new ApiError(
         400,
         "ttl_required",
-        `This ${PRODUCT} instance does not keep content forever. Pass ttl as one of: ${policy.presets.map((p) => p.id).join(", ")}.`,
+        `This ${PRODUCT} does not keep content forever. Pass ttl as one of: ${policy.presets.map((p) => p.id).join(", ")}.`,
         { presets: policy.presets.map((p) => p.id), default_ttl: policy.defaultTtl },
       );
     }
@@ -289,7 +289,7 @@ export function resolveExpiresAt(policy: InstancePolicy, input: unknown, now = n
     throw new ApiError(
       400,
       "ttl_too_long",
-      `This instance caps retention at ${formatTtlLabel(capId, policy.maxSeconds)}. Pick a shorter ttl.`,
+      `${PRODUCT} caps retention at ${formatTtlLabel(capId, policy.maxSeconds)}. Pick a shorter ttl.`,
       { max_ttl: capId, presets: policy.presets.map((p) => p.id) },
     );
   }
@@ -314,35 +314,35 @@ export function forbiddenDomain(policy: InstancePolicy): ApiError {
   return new ApiError(
     403,
     "forbidden_domain",
-    `${PRODUCT} on this instance only allows emails at ${list}.`,
+    `${PRODUCT} only allows emails at ${list}.`,
     { allowed_email_domains: policy.allowedEmailDomains },
   );
 }
 
-/** Unset or unrecognized instance var → owner (public-safe). */
+/** Unset or unrecognized env → owner (public-safe). Only `org` opts in. */
 export function parseWritePolicyEnv(raw: string | undefined): WritePolicy {
-  return (raw || "").trim().toLowerCase() === "instance" ? "instance" : "owner";
+  return (raw || "").trim().toLowerCase() === "org" ? "org" : "owner";
 }
 
-/** Stored NULL / junk → instance so legacy rows stay writable. */
+/** Stored NULL / unknown → org so any token on this host can write. */
 export function resolveWritePolicy(stored: string | null | undefined): WritePolicy {
-  return stored === "owner" ? "owner" : "instance";
+  return stored === "owner" ? "owner" : "org";
 }
 
-/** Request field. Empty/omitted → null (use instance default). Junk → invalid. */
+/** Request field. Empty/omitted → null (use this Energon's default). Junk → invalid. */
 export function requestedWritePolicy(raw: unknown): WritePolicy | "invalid" | null {
   if (raw === undefined || raw === null) return null;
   if (typeof raw !== "string") return "invalid";
   const v = raw.trim().toLowerCase();
   if (v === "") return null;
-  if (v === "owner" || v === "instance") return v;
+  if (v === "owner" || v === "org") return v;
   return "invalid";
 }
 
 export function resolveCreateWritePolicy(env: Pick<Env, "WRITE_POLICY">, requested: unknown): WritePolicy {
   const parsed = requestedWritePolicy(requested);
   if (parsed === "invalid") {
-    throw new ApiError(400, "bad_write_policy", "write_policy must be owner or instance.");
+    throw new ApiError(400, "bad_write_policy", "write_policy must be owner or org.");
   }
   return parsed ?? instancePolicy(env).writePolicy;
 }
@@ -361,13 +361,13 @@ export function canMutate(
   actor: Actor,
   row: { created_by: string; write_policy?: string | null; owner_id?: string | null },
 ): boolean {
-  if (resolveWritePolicy(row.write_policy) === "instance") return true;
+  if (resolveWritePolicy(row.write_policy) === "org") return true;
   if (actor.userId) return Boolean(row.owner_id) && actor.userId === row.owner_id;
   return actor.email.toLowerCase() === String(row.created_by || "").toLowerCase();
 }
 
 /** Atomic D1 predicate matching canMutate. Bind ownerWriteBinds(actor). */
-export const OWNER_WRITE_SQL = `(ifnull(write_policy, 'instance') != 'owner' OR (? IS NOT NULL AND owner_id = ?) OR (? IS NULL AND lower(created_by) = lower(?)))`;
+export const OWNER_WRITE_SQL = `(ifnull(write_policy, 'org') != 'owner' OR (? IS NOT NULL AND owner_id = ?) OR (? IS NULL AND lower(created_by) = lower(?)))`;
 
 export function ownerWriteBinds(actor: Actor): [string | null, string, string | null, string] {
   const id = actor.userId ?? null;

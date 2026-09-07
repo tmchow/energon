@@ -12,7 +12,7 @@ describe("identityFromEnv", () => {
     expect(installLine(id)).toBe("energon@energon");
   });
 
-  it("a private instance advertises its own rendered skill and hostname", () => {
+  it("a private Energon advertises its own rendered skill and hostname", () => {
     const id = identityFromEnv({
       PUBLIC_ORIGIN: "https://energon.cybertron.com",
       TOKEN_ENV: "CYBERTRON_ENERGON_TOKEN",

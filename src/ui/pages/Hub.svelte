@@ -74,7 +74,7 @@
   const contentOrigin = $derived(data.content_origin.replace(/\/$/, ''));
   const handle = $derived(data.handle || 'you');
   const ttlOptions = $derived(data.policy.presets.map(p => ({ value: p.id, label: p.label })));
-  const writeOptions = [{ value: 'owner', label: 'Only the creator' }, { value: 'instance', label: 'Anyone with a token on this host.' }];
+  const writeOptions = [{ value: 'owner', label: 'Only the creator' }, { value: 'org', label: 'Anyone in the org' }];
   const doorOptions = [{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }];
   const targetName = $derived(target ? (target.item.slug ?? target.item.filename) : '');
   const targetPath = $derived(target ? `/account/${target.kind === 'site' ? 'sites' : 'files'}/${encodeURIComponent(target.item.slug ?? target.item.id)}` : '');
@@ -353,20 +353,20 @@
     <Field label="Who can write" htmlFor="stage-write" note="Controls who with a token can update or delete this work. It does not grant or deny the write-password door."><Select id="stage-write" aria-label="Who can write" options={writeOptions} bind:value={stageWrite} disabled={busy} /></Field>
     <details id="stage-access" class="en-stage-access" bind:open={stageAccessOpen}>
       <summary>Link access</summary>
-      <Field label="Share password" htmlFor="stage-password" noteId="stage-password-note" note="Leave empty so anyone with the link can open it. Valid API tokens on this instance can read the work even with a share password."><PasswordField id="stage-password" generateId="stage-pw-gen" copyId="stage-pw-copy" words={data.words} bind:value={stagePassword} describedby="stage-password-note" disabled={busy} /></Field>
+      <Field label="Share password" htmlFor="stage-password" noteId="stage-password-note" note="Leave empty so anyone with the link can open it. Valid API tokens on this host can read the work even with a share password."><PasswordField id="stage-password" generateId="stage-pw-gen" copyId="stage-pw-copy" words={data.words} bind:value={stagePassword} describedby="stage-password-note" disabled={busy} /></Field>
       <Field label="Write password" htmlFor="stage-write-password" noteId="stage-write-password-note" note={staged.kind === 'loose' ? 'Replaces this file only. Leave empty to keep guests from writing.' : 'Full control of served bytes, including replacing index.html. Leave empty to keep guests from writing.'}><PasswordField id="stage-write-password" generateId="stage-wpw-gen" copyId="stage-wpw-copy" words={data.words} bind:value={stageWritePassword} describedby="stage-write-password-note" disabled={busy} /></Field>
     </details>
     <div class="en-stage-actions"><Button id="stage-cancel" onclick={resetStage} disabled={busy}>Cancel</Button><Button type="submit" id="stage-go" variant="primary" disabled={busy}>{publishing ? 'Publishing…' : busy ? 'Preparing…' : overwriteSlug === staged.slug ? 'Write into it' : 'Publish'}</Button></div>
   </form>
 {/if}{/snippet}
 
-<Sheet bind:open={moreOpen} title={targetName} meta={target ? `${target.kind === 'site' ? 'Site' : 'File'} · ${target.item.write_policy === 'instance' ? 'Anyone with a token on this host.' : 'Only the creator'}` : ''} items={moreItems} />
+<Sheet bind:open={moreOpen} title={targetName} meta={target ? `${target.kind === 'site' ? 'Site' : 'File'} · ${target.item.write_policy === 'org' ? 'Anyone in the org' : 'Only the creator'}` : ''} items={moreItems} />
 <ConfirmDialog bind:open={confirmOpen} title={`${confirmAction} ${target?.kind || 'site'}`} message={confirmAction === 'Delete' ? `This removes the ${target?.kind} and its bytes. There is no recycle bin. Type the name to confirm.` : 'Creates a new site you own. Expiration starts now. The share password and write password are not copied.'}
   label={confirmAction === 'Delete' ? `Type “${targetName}” to delete` : 'New slug'} initial={confirmAction === 'Duplicate' ? duplicateSlug : ''} match={confirmAction === 'Delete' ? targetName : undefined} action={confirmAction} danger={confirmAction === 'Delete'} busy={mutationBusy} onConfirm={confirm} error={modalError} />
 <Dialog dismissible={!mutationBusy} id="pw-dlg" bind:open={passwordOpen} title="Link access" message="Copy a phrase to share the link. Turn a password off and save to remove it.">
   {#if modalError}<Flash tone="err">{modalError}</Flash>{/if}
   <form onsubmit={e => { e.preventDefault(); void saveLinkAccess(); }}>
-    <Field label="Share password" htmlFor={shareDoor === 'on' ? 'pw-dlg-input' : undefined} noteId="pw-dlg-note" note={shareDoor === 'off' ? 'Anyone with the link can open it. Valid API tokens on this instance can still read the work.' : shareUnrecovered && !password.trim() ? 'This password was set before Energon kept phrases for display. Generate a new one to copy it, or turn it off.' : 'Anyone with this password can open the link. Valid API tokens on this instance can still read the work.'}>
+    <Field label="Share password" htmlFor={shareDoor === 'on' ? 'pw-dlg-input' : undefined} noteId="pw-dlg-note" note={shareDoor === 'off' ? 'Anyone with the link can open it. Valid API tokens on this host can still read the work.' : shareUnrecovered && !password.trim() ? 'This password was set before Energon kept phrases for display. Generate a new one to copy it, or turn it off.' : 'Anyone with this password can open the link. Valid API tokens on this host can still read the work.'}>
       {#snippet action()}
         <SegmentedControl id="pw-dlg-share-door" className="en-seg--door" bind:value={shareDoor} onChange={setShareDoor} ariaLabel="Share password" options={doorOptions} disabled={linkAccessBusy} />
       {/snippet}

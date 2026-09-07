@@ -18,7 +18,7 @@ Do not set `UPDATE_GOLDENS` in CI. GitHub Actions sets `CI=true`, and the helper
 - origin / `PUBLIC_ORIGIN`: `https://hub.energon.example.com`
 - `CONTENT_ORIGIN`: `https://energon.example.com`
 - `ALLOWED_EMAIL_DOMAINS`: `esperlabs.app,esperlabs.ai`
-- `ALLOW_UNLIMITED_RETENTION=true`, `DEFAULT_TTL=never`, `MAX_TTL=never`, `WRITE_POLICY=instance`, `ALLOW_UNLIMITED_TOKENS=true`
+- `ALLOW_UNLIMITED_RETENTION=true`, `DEFAULT_TTL=never`, `MAX_TTL=never`, `WRITE_POLICY=org`, `ALLOW_UNLIMITED_TOKENS=true`
 
 Markdown goldens are `renderMarkdown(source).html` only — not the chrome page shell. Sources live next to the `.html.golden` files.
 

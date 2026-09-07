@@ -18,7 +18,7 @@ Do **not** include:
 - Cloudflare API tokens, Access JWTs, or wrangler login material
 - Customer file contents, share passwords, or other people’s emails
 
-This repo is source you self-host. A report about **your** instance
+This repo is source you self-host. A report about **your** Energon
 misconfiguration (open Access policy, public `*.workers.dev` hub, a
 leaked token) belongs in an issue only if it is also a bug in this
-code. Otherwise fix the instance; do not paste secrets here.
+code. Otherwise fix your Energon; do not paste secrets here.

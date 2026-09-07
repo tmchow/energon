@@ -12,7 +12,7 @@ describe("authentication discovery", () => {
     ALLOW_UNLIMITED_TOKENS: "false",
   } as Env;
 
-  it("describes the configured instance and only its available token lifetimes", () => {
+  it("describes this Energon and only its available token lifetimes", () => {
     const doc = authMarkdown(env);
     expect(doc).toContain("https://hub.acme.test/tokens");
     expect(doc).toContain("https://hub.acme.test/v1/whoami");

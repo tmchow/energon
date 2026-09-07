@@ -20,7 +20,7 @@ Before choosing components, identify what someone came to do, what they need to 
 | --- | --- | --- |
 | Hub | Choose work, inspect staging, publish | Existing catalog, search, public URL, expiry, write policy, item actions |
 | Tokens | Mint a token and understand its authority | One-time secret reveal, redacted catalog, expiry, revoke consequence |
-| Setup | A usable instruction for connecting an agent | Instance-specific details and the next step |
+| Setup | A usable instruction for connecting an agent | Details for this Energon and the next step |
 | Connect | Identify the requesting agent and enter its code | Expiry, scope, explicit approve and deny actions |
 | About | A concrete publishing or reference workflow | What people and agents can do with the same work |
 | Stats | Storage and usage with clear units | Scope, totals, and comparable per-person values |
@@ -121,6 +121,7 @@ Write plain, declarative copy. Lead with the consequence, then explain the mecha
 | Stable link | Permanent link |
 | Independent copy | Version control, branch, or revision history |
 | Share password | Private workspace or per-person access promises |
+| This Energon; Want to deploy your own Energon?; anyone in the org; on this host (the place) | Instance as the product unit; host identity; this Energon’s identity; deploy your own instance/host |
 | “Nothing is written until you Publish.” | A success state while files are only staged |
 | “There is no recycle bin. Type the name to confirm.” | A vague “Are you sure?” for irreversible deletion |
 

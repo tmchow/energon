@@ -5,7 +5,7 @@ description: Drive a local Energon hub and /v1 API the way a user does — publi
 
 # Verify Energon
 
-Energon is a company host for files and small sites. Humans open the hub. Agents publish through `/v1`. This skill drives a **local** `wrangler dev` instance you start, not production, and not a teammate's `npm run dev` on port 8787.
+Energon hosts company files and small sites. Humans open the hub. Agents publish through `/v1`. This skill drives a **local** `wrangler dev` you start, not production, and not a teammate's `npm run dev` on port 8787.
 
 Read `features/README.md` before driving. Use the matching feature file as the recipe. One convenient entry point is not a full proof when the map lists others.
 
@@ -34,9 +34,9 @@ Launch applies D1 migrations with `--persist-to /tmp/energon-verify/$RUN/persist
 
 Ready when launch prints `verify-energon launch ok` and `GET $ORIGIN/health` is 200. Typical first boot is under a minute. Log: `/tmp/energon-verify/$RUN/wrangler.log`.
 
-Two instances can run side by side: different `ENERGON_VERIFY_RUN` and `ENERGON_VERIFY_PORT` values, each with its own persist dir. If port 18787 is taken, set another free port — do not reuse 8787 unless doctor proves it is this run.
+Two runs can sit side by side: different `ENERGON_VERIFY_RUN` and `ENERGON_VERIFY_PORT` values, each with its own persist dir. If port 18787 is taken, set another free port — do not reuse 8787 unless doctor proves it is this run.
 
-To drive an instance-policy branch, set `ENERGON_VERIFY_VARS` to space-separated `KEY:VALUE` pairs before launch; each becomes an extra `--var`. Example: `ENERGON_VERIFY_VARS="ALLOW_UNLIMITED_TOKENS:false"` for the strict-tokens recipe. Launch records the pairs as `VARS=` in `state.env`.
+To drive a policy branch, set `ENERGON_VERIFY_VARS` to space-separated `KEY:VALUE` pairs before launch; each becomes an extra `--var`. Example: `ENERGON_VERIFY_VARS="ALLOW_UNLIMITED_TOKENS:false"` for the strict-tokens recipe. Launch records the pairs as `VARS=` in `state.env`.
 
 If launch dies with an origin mismatch, a project `.dev.vars` overrode `--var`. Align `PUBLIC_ORIGIN` and `CONTENT_ORIGIN` with the verification port, or drop those keys from `.dev.vars` for the run.
 
@@ -52,7 +52,7 @@ Run this first whenever anything looks off, and before the first drive of a sess
 
 It is read-only. It checks: persist path is under `/tmp/energon-verify` (not `.wrangler/state`); recorded pid is alive; that pid (or a child in its session) owns `$PORT`; `GET /health` is `{ok:true}`; `GET /v1/help` has `hub` and `content_origin` equal to `$ORIGIN`, `env=ENERGON_TOKEN`, `token_prefix=ee_live_`, `openapi=$ORIGIN/v1/openapi.json`; `GET /v1/openapi.json` has `openapi` `3.1.0` and `servers[0].url` equal to `$ORIGIN`; `GET /` is the hub (`Publish a document, prototype, or file.`, `#pick-files`); `GET /account/data` has an email; hub bootstrap JSON has `data.handle`.
 
-If doctor fails, stop. Do not drive a foreign instance.
+If doctor fails, stop. Do not drive a foreign run.
 
 ## Drive
 
@@ -127,8 +127,8 @@ All executable, all from repo root:
 | Command | What it does |
 |---|---|
 | `bin/launch` | Isolated wrangler + migrations. Prints origin, pid, persist, evidence. |
-| `bin/doctor` | Read-only health/identity/ownership check. Exit 1 → do not drive. |
-| `bin/mint-token [label] [ttl]` | `POST /account/tokens` with `Origin: $ORIGIN` (same path as the Tokens page). Optional `ttl` preset (`1d`…`365d`, `never`); omitted = instance default (`90d`). Prints `ee_live_…`. Saves `$STATE_DIR/token` and `TOKEN_EXPIRES_AT` in `state.env`. |
+| `bin/doctor` | Read-only health/help/ownership check. Exit 1 → do not drive. |
+| `bin/mint-token [label] [ttl]` | `POST /account/tokens` with `Origin: $ORIGIN` (same path as the Tokens page). Optional `ttl` preset (`1d`…`365d`, `never`); omitted = this Energon's default (`90d`). Prints `ee_live_…`. Saves `$STATE_DIR/token` and `TOKEN_EXPIRES_AT` in `state.env`. |
 | `bin/cleanup` | Kill this run, remove persist, keep evidence. |
 
 `bin/_lib.sh` is sourced by those scripts; do not invoke it directly.

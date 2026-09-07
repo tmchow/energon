@@ -29,13 +29,13 @@ If a mutation fails before catalog commit, claim rollback restores the observed 
 ## Authentication
 
 ### API Token
-An instance-issued credential that authorizes an agent to use Energon's authenticated API as its owning account.
+A credential this Energon issues that authorizes an agent to use the authenticated API as its owning account.
 
 ### Token Prefix
-The instance-specific marker at the beginning of an API Token that identifies which token format the instance accepts. It is part of the instance identity and must remain consistent when tokens are minted, authenticated, masked, or described to agents.
+The marker at the beginning of an API Token that identifies which token format this Energon accepts. It must stay consistent when tokens are minted, authenticated, masked, or described to agents.
 
 ### Token Expiry
-The lifetime a human chooses when minting an API Token, after which authentication rejects it. An expired token is kept in the account's token list as a record and can still be revoked, but it cannot be renewed; like every API Token it has no recoverable secret. Token expiry is governed by its own instance policy, separate from content retention.
+The lifetime a human chooses when minting an API Token, after which authentication rejects it. An expired token is kept in the account's token list as a record and can still be revoked, but it cannot be renewed; like every API Token it has no recoverable secret. Token expiry is governed by its own policy on this Energon, separate from content retention.
 
 ### Write Password
 A per-object shared secret that lets someone outside the host replace bytes at a published URL without an API Token, Access, or `/connect`. It is independent of the share password. The write header authorizes PUT (and site-path DELETE). The write header also unlocks GET. The HTML gate form accepts the write password for reading when a share password is also set. The cookie never authorizes PUT or DELETE. It is not an account and is not recorded as Last writer. The Hub keeps the phrase for the creator so they can copy it again. `/v1` GET returns only whether it is set.
@@ -43,18 +43,24 @@ A per-object shared secret that lets someone outside the host replace bytes at a
 ### Share Password
 A per-object shared secret that gates reading a published URL. Browsers use the gate form and cookie. Agents send the share-password header. If a write password is also set, that phrase also unlocks the gate form. The share-password header does not accept the write phrase. The cookie never authorizes PUT or DELETE. The Hub keeps the phrase so the signed-in owner can copy it again. `/v1` GET returns only whether it is set. Verification still uses a hash.
 
-## Instance Identity
+## Org, this Energon, and host
 
-### Instance Identity
-The runtime configuration that tells agents which Energon instance they are using and how to interact with it. It includes the instance origin, skill and marketplace coordinates, token environment variable, and Token Prefix.
+### This Energon
+The deployed product: one Worker, D1, R2, Access app, and rendered skill. Speak of “this Energon” or “your Energon.” The user-facing CTA is **Want to deploy your own Energon?**
 
-An Instance Identity is resolved from deployment configuration with project defaults as fallbacks. Authentication and credential presentation use the same identity so an instance cannot advertise or issue credentials in a format it will reject.
+`GET /v1/help` describes this Energon: origins, skill and marketplace coordinates, token environment variable, Token Prefix, retention, token policy, limits. Those values come from deployment configuration with project defaults as fallbacks, so this Energon does not advertise or issue credentials in a format it will reject.
+
+### Org
+Everyone who can mint a token on this Energon (Cloudflare Access, with an optional email-domain lock). Not a database entity. Write policy `org` means any of those tokens may write the object. Hub copy says “Anyone in the org.”
+
+### Host
+Locative only: the place (this origin, vs someone not on this host). Not the name of the product. Do not say “host identity,” “deploy your own host,” or “deploy your own instance.”
 
 ## Relationships
 
 - A Site contains Site files; a Loose file is published outside any Site.
-- An Instance Identity defines the Token Prefix used by an API Token.
-- An API Token authenticates against the Instance Identity that issued it.
+- This Energon’s Token Prefix is the format an API Token from that Energon uses.
+- An API Token authenticates against the Energon that issued it.
 - Purge claims and Write claims make competing content mutations resolve before storage changes begin.
 - A Share Password gates reading a published URL. A Write Password authorizes guest PUT (and site-path DELETE) on that same object without an account.
 

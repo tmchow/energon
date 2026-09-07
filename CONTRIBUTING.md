@@ -11,7 +11,7 @@ this project can take. Please:
 1. [Open an issue](https://github.com/tmchow/energon/issues/new/choose)
    for a bug or an idea. Include enough to reproduce. Do not paste tokens,
    Access credentials, or file contents that are not yours.
-2. Fork the repo if you need a change on your instance. Keep that work
+2. Fork the repo if you need a change on your Energon. Keep that work
    on your fork.
 3. Do not open a pull request against `tmchow/energon` unless the owner
    asked for that patch.

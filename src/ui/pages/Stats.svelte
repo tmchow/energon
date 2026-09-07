@@ -14,7 +14,7 @@
   const hint = $derived(sort === 'files' ? 'Most files first.' : sort === 'sites' ? 'Most sites first.' : 'Largest storage first.');
 </script>
 <main class="en-wrap">
-  <PageTitle kicker="How much is here" title="Storage and usage." wide lede="Your numbers cover work you created or last updated. Organization covers this instance. Files includes individual uploads and files inside sites. These are stored-content totals, not counts of views or handoffs." />
+  <PageTitle kicker="How much is here" title="Storage and usage." wide lede="Your numbers cover work you created or last updated. Organization is everyone here. Files includes individual uploads and files inside sites. These are stored-content totals, not counts of views or handoffs." />
   <div class="en-grid-2 en-stats-grid">
     {#each [{ title: 'You', sub: data.email, bucket: data.you }, { title: 'Organization', sub: `${formatCount(data.system.people)} ${data.system.people === 1 ? 'person' : 'people'}`, bucket: data.system }] as pane}
       <Card className="en-stats-pane"><h2>{pane.title}</h2><p class="en-stats-sub">{pane.sub}</p><div class="en-metrics"><Metric label="Sites" value={formatCount(pane.bucket.sites)} /><Metric label="Files" value={formatCount(pane.bucket.files)} /><Metric label="Storage" value={formatBytes(pane.bucket.bytes)} /></div></Card>

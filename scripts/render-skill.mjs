@@ -36,7 +36,7 @@ const MARKETPLACES = [
   { rel: ".agents/plugins/marketplace.json", tmpl: "agents.json.tmpl" },
 ];
 
-/** Missing instance configuration leaves the tree uninitialized. */
+/** Missing skill configuration leaves the tree uninitialized. */
 const OSS_DEFAULTS = {
   skill: "energon",
   plugin: "energon",
@@ -160,7 +160,7 @@ function loadInstance(root) {
     const raw = JSON.parse(readFileSync(instancePath(root), "utf8"));
     const repo = raw.repo || raw.marketplaceRepo || OSS_DEFAULTS.repo;
     const opts = { ...OSS_DEFAULTS, ...raw, repo, marketplaceRepo: repo };
-    validateIdentifiers(opts, "instance configuration");
+    validateIdentifiers(opts, "skill configuration");
     return opts;
   } catch (err) {
     if (err && err.code === "ENOENT") return { ...OSS_DEFAULTS };
@@ -372,7 +372,7 @@ function isPlaceholder(opts) {
 function validateInstance(opts) {
   for (const field of IDENTIFIER_FIELDS) {
     if (opts[field] === "energon" || opts[field] === "energon-energon") {
-      throw new Error(`${field} must identify your instance; run skill:init with --name YOUR_ORG`);
+      throw new Error(`${field} must name this Energon; run skill:init with --name YOUR_ORG`);
     }
   }
   let origin;
@@ -563,10 +563,10 @@ function main() {
     }
   } else if (isPlaceholder(opts)) {
     if (dirty.includes(pluginRel(opts))) {
-      console.error("placeholder plugin remains; remove plugins/energon or run skill:init for your instance");
+      console.error("placeholder plugin remains; remove plugins/energon or run skill:init for your Energon");
       process.exitCode = 1;
     } else {
-      console.log("templates validated; run skill:init with your instance name and origin to generate a plugin");
+      console.log("templates validated; run skill:init with your Energon name and origin to generate a plugin");
     }
   } else {
     console.log(`rendered ${opts.plugin}/${opts.skill}${dirty.length ? ` (${dirty.length} changed)` : ""}`);

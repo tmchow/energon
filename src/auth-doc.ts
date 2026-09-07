@@ -11,7 +11,7 @@ export function authMarkdown(env: Env): string {
   const tokenEnv = identity.tokenEnv;
   return `# Authenticate to ${PRODUCT}
 
-This is an existing organization's file and small-site host. There is no public signup. Every API call uses a bearer token that a signed-in human authorized, either by approving a connection you start or by creating one on ${origin}/tokens ahead of time.
+This is an existing organization's Energon. There is no public signup. Every API call uses a bearer token that a signed-in human authorized, either by approving a connection you start or by creating one on ${origin}/tokens ahead of time.
 
 ## Order of operations
 
@@ -63,7 +63,7 @@ Never put tokens, share passwords, or write passwords in published files, source
 ## Recover
 
 - Missing token: follow the order of operations above.
-- \`401 unauthorized\`: check the configured instance and environment variable without revealing the secret. If the credential is rejected or revoked, stop and ask the human for a replacement. Do not repeatedly retry it.
+- \`401 unauthorized\`: check this Energon and the environment variable without revealing the secret. If the credential is rejected or revoked, stop and ask the human for a replacement. Do not repeatedly retry it.
 - \`401 token_expired\`: stop using the token. Tokens cannot be extended or refreshed; connect again with a code or ask the human to provision a replacement. \`expires_at: null\` means no scheduled expiry, not immunity from revocation.
 - \`403\`: access or write policy denied the action. Do not retry with broader access automatically.
 
@@ -71,7 +71,7 @@ Humans list and revoke tokens at ${origin}/tokens. Revocation prevents further u
 
 ## Continue
 
-- [Instance identity and policy](${origin}/v1/help)
+- [This Energon's origins, policy, and SOP](${origin}/v1/help)
 - [HTTP API contract](${origin}/v1/openapi.json)
 - [Agent overview](${origin}/llms.txt)
 

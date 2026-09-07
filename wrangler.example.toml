@@ -1,5 +1,5 @@
 # Copy over wrangler.toml after `wrangler d1 create` / `wrangler r2 bucket create`.
-# Do not reuse another instance's database_id or bucket. See INSTALL.md and docs/DEPLOY.md.
+# Do not reuse another Energon's database_id or bucket. See INSTALL.md and docs/DEPLOY.md.
 
 name = "energon"
 main = "src/index.ts"
@@ -25,7 +25,7 @@ MARKETPLACE_REPO = "your-org/energon"
 ALLOW_UNLIMITED_RETENTION = "true"
 DEFAULT_TTL = "never"
 MAX_TTL = "never"
-WRITE_POLICY = "instance"
+WRITE_POLICY = "org"
 # API tokens: humans pick 1d..365d at mint (default 90d). "true" also offers Never.
 # Only affects future mints; tokens already minted keep working until revoked on /tokens.
 ALLOW_UNLIMITED_TOKENS = "true"

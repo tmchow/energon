@@ -101,11 +101,12 @@ describe("instancePolicy", () => {
     expect(policy.writePolicy).toBe("owner");
   });
 
-  it("WRITE_POLICY unset is owner; instance opts in", () => {
+  it("WRITE_POLICY unset is owner; org opts in", () => {
     expect(instancePolicy(env()).writePolicy).toBe("owner");
-    expect(instancePolicy(env({ WRITE_POLICY: "instance" })).writePolicy).toBe("instance");
+    expect(instancePolicy(env({ WRITE_POLICY: "org" })).writePolicy).toBe("org");
     expect(instancePolicy(env({ WRITE_POLICY: "owner" })).writePolicy).toBe("owner");
     expect(instancePolicy(env({ WRITE_POLICY: "weird" })).writePolicy).toBe("owner");
+    expect(instancePolicy(env({ WRITE_POLICY: "instance" })).writePolicy).toBe("owner");
   });
 
   it("honors MAX_FILE_BYTES and MAX_PLATFORM_BYTES from env", () => {
@@ -143,24 +144,24 @@ describe("instancePolicy", () => {
 });
 
 describe("resolveExpiresAt", () => {
-  it("uses the instance default when ttl is omitted", () => {
+  it("uses this Energon's default when ttl is omitted", () => {
     const now = new Date("2026-01-01T00:00:00.000Z");
     const resolved = resolveExpiresAt(instancePolicy(env()), undefined, now);
     expect(resolved.ttl).toBe("7d");
     expect(resolved.expiresAt).toBe("2026-01-08T00:00:00.000Z");
   });
 
-  it("rejects never on a public-strict instance", () => {
+  it("rejects never on a public-strict Energon", () => {
     expect(() => resolveExpiresAt(instancePolicy(env()), "never")).toThrow(/does not keep content forever/);
   });
 
-  it("allows never on a company instance", () => {
+  it("allows never on a company Energon", () => {
     const policy = instancePolicy(env({ ALLOW_UNLIMITED_RETENTION: "true", DEFAULT_TTL: "never" }));
     expect(resolveExpiresAt(policy, undefined)).toEqual({ expiresAt: null, ttl: "never" });
     expect(resolveExpiresAt(policy, "never")).toEqual({ expiresAt: null, ttl: "never" });
   });
 
-  it("rejects a ttl longer than the instance cap", () => {
+  it("rejects a ttl longer than this Energon's cap", () => {
     expect(() => resolveExpiresAt(instancePolicy(env({ MAX_TTL: "1d" })), "7d")).toThrow(/caps retention/);
   });
 });
@@ -171,7 +172,7 @@ describe("emailAllowed", () => {
     expect(emailAllowed(policy, "stranger@gmail.com")).toBe(true);
   });
 
-  it("locks a company instance to listed domains", () => {
+  it("locks a company Energon to listed domains", () => {
     const policy = instancePolicy(env({ ALLOWED_EMAIL_DOMAINS: "esperlabs.app,esperlabs.ai" }));
     expect(emailAllowed(policy, "ada@esperlabs.app")).toBe(true);
     expect(emailAllowed(policy, "Ada@EsperLabs.AI")).toBe(true);
@@ -180,17 +181,19 @@ describe("emailAllowed", () => {
 });
 
 describe("write policy helpers", () => {
-  it("parses the instance var as owner unless it is instance", () => {
+  it("parses the env as owner unless it is org", () => {
     expect(parseWritePolicyEnv(undefined)).toBe("owner");
     expect(parseWritePolicyEnv("")).toBe("owner");
-    expect(parseWritePolicyEnv("instance")).toBe("instance");
-    expect(parseWritePolicyEnv("INSTANCE")).toBe("instance");
+    expect(parseWritePolicyEnv("org")).toBe("org");
+    expect(parseWritePolicyEnv("ORG")).toBe("org");
+    expect(parseWritePolicyEnv("instance")).toBe("owner");
   });
 
-  it("treats stored NULL as instance so legacy rows stay writable", () => {
-    expect(resolveWritePolicy(null)).toBe("instance");
-    expect(resolveWritePolicy(undefined)).toBe("instance");
-    expect(resolveWritePolicy("instance")).toBe("instance");
+  it("treats stored NULL as org so any token can write", () => {
+    expect(resolveWritePolicy(null)).toBe("org");
+    expect(resolveWritePolicy(undefined)).toBe("org");
+    expect(resolveWritePolicy("org")).toBe("org");
+    expect(resolveWritePolicy("instance")).toBe("org");
     expect(resolveWritePolicy("owner")).toBe("owner");
   });
 
@@ -198,26 +201,28 @@ describe("write policy helpers", () => {
     expect(requestedWritePolicy(undefined)).toBeNull();
     expect(requestedWritePolicy("")).toBeNull();
     expect(requestedWritePolicy("owner")).toBe("owner");
-    expect(requestedWritePolicy("instance")).toBe("instance");
+    expect(requestedWritePolicy("org")).toBe("org");
+    expect(requestedWritePolicy("instance")).toBe("invalid");
     expect(requestedWritePolicy("team")).toBe("invalid");
     expect(requestedWritePolicy(1)).toBe("invalid");
   });
 
-  it("create copies the instance default unless the request sets it", () => {
+  it("create copies this Energon's default unless the request sets it", () => {
     expect(resolveCreateWritePolicy(env(), undefined)).toBe("owner");
-    expect(resolveCreateWritePolicy(env({ WRITE_POLICY: "instance" }), undefined)).toBe("instance");
-    expect(resolveCreateWritePolicy(env({ WRITE_POLICY: "instance" }), "owner")).toBe("owner");
-    expect(() => resolveCreateWritePolicy(env(), "team")).toThrow(/write_policy must be owner or instance/);
+    expect(resolveCreateWritePolicy(env({ WRITE_POLICY: "org" }), undefined)).toBe("org");
+    expect(resolveCreateWritePolicy(env({ WRITE_POLICY: "org" }), "owner")).toBe("owner");
+    expect(() => resolveCreateWritePolicy(env(), "team")).toThrow(/write_policy must be owner or org/);
+    expect(() => resolveCreateWritePolicy(env(), "instance")).toThrow(/write_policy must be owner or org/);
   });
 
-  it("instance mode lets any token mutate; owner mode is creator-only", () => {
+  it("org mode lets any token mutate; owner mode is creator-only", () => {
     const ada = { email: "ada@esperlabs.app", via: "token" as const };
     const bob = { email: "bob@esperlabs.app", via: "token" as const };
     const ownerRow = { created_by: "ada@esperlabs.app", write_policy: "owner" };
-    const instanceRow = { created_by: "ada@esperlabs.app", write_policy: "instance" };
+    const orgRow = { created_by: "ada@esperlabs.app", write_policy: "org" };
     expect(canMutate(ada, ownerRow)).toBe(true);
     expect(canMutate(bob, ownerRow)).toBe(false);
-    expect(canMutate(bob, instanceRow)).toBe(true);
+    expect(canMutate(bob, orgRow)).toBe(true);
     expect(canMutate(bob, { created_by: "ada@esperlabs.app", write_policy: null })).toBe(true);
     expect(() => assertCanMutate(bob, ownerRow)).toThrow(/Only the creator can write this/);
     expect(() => assertCanSetWritePolicy(bob, "ada@esperlabs.app")).toThrow(/Only the creator can change who can write/);
@@ -321,7 +326,7 @@ describe("resolveTokenExpiresAt", () => {
     );
   });
 
-  it("returns null for never only when the instance allows it", () => {
+  it("returns null for never only when this Energon allows it", () => {
     expect(resolveTokenExpiresAt(policy, "never", now)).toBeNull();
     const strict = tokenPolicy(env({ ALLOW_UNLIMITED_TOKENS: "false" }));
     let error: unknown;

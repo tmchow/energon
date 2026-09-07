@@ -25,7 +25,7 @@ Publish a site lets a user create a named folder of files at a stable `/{handle}
 Preconditions:
 
 - Doctor has passed for `$ORIGIN`.
-- `TOKEN` is a minted `ee_live_` secret for this instance.
+- `TOKEN` is a minted `ee_live_` secret for this Energon.
 - `$HANDLE` is the bootstrap handle (usually `dev`).
 - No site is slugged `verify-site` or `verify-site-copy`.
 

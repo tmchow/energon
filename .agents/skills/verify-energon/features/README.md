@@ -1,6 +1,6 @@
 # Energon verification map
 
-This directory is the maintained source for verifying the user-facing behavior of a local Energon host. Read the index before driving the app, then use the matching feature file as the recipe.
+This directory is the maintained source for verifying the user-facing behavior of a local Energon. Read the index before driving the app, then use the matching feature file as the recipe.
 
 ## Baseline preconditions
 
@@ -9,7 +9,7 @@ This directory is the maintained source for verifying the user-facing behavior o
 - Run `.agents/skills/verify-energon/bin/doctor` and require pid ownership of the port, hub HTML, and a signed-in email.
 - Mint with `.agents/skills/verify-energon/bin/mint-token` when the recipe needs `/v1`. Do not invent a token.
 - Identity on localhost is `dev@example.com` unless `.dev.vars` sets `DEV_ACCESS_EMAIL`. Handle is the email local-part (`dev` for the default).
-- Never drive an instance that was not started by this verification run.
+- Never drive a run that was not started by this verification launch.
 
 ## Driving conventions
 

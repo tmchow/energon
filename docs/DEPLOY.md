@@ -1,22 +1,22 @@
 # Deploy your own Energon
 
-One codebase. Each host is its own Cloudflare account, D1, R2, Access app, and **rendered skill**. Do not mix two companies’ uploads in one bucket.
+One codebase. Each Energon is its own Cloudflare account, D1, R2, Access app, and **rendered skill**. Do not mix two companies’ uploads in one bucket.
 
 Start with [INSTALL.md](../INSTALL.md). This page is the deeper reference for vars, expiry, Access, and fork hygiene.
 
-## Company instance (this repo’s job)
+## Company Energon (this repo’s job)
 
 This tree is meant to be forked and run inside a company. There is no hosted public service here.
 
-| | This host (company) | If you omit the vars |
+| | This Energon (company) | If you omit the vars |
 | --- | --- | --- |
 | Cloudflare account | Your org | — |
 | Access | Workspace / Okta, locked to your domain | any Access email |
 | `ALLOWED_EMAIL_DOMAINS` | `your.co,your.com` | empty |
 | `ALLOW_UNLIMITED_RETENTION` | `true` (committed) | `false` |
 | `DEFAULT_TTL` / `MAX_TTL` | `never` / `never` | `7d` / `30d` |
-| `WRITE_POLICY` | `instance` (committed) | `owner` |
-| Skill | generated for this host | generic runtime identity only; no installable plugin |
+| `WRITE_POLICY` | `org` (committed) | `owner` |
+| Skill | generated for this Energon | generic skill coordinates only; no installable plugin |
 
 Code defaults are **strict** when vars are omitted: required TTL, 30-day cap, creator-only writes. The committed `wrangler.toml` opts into company mode. Replace the placeholder D1 id, `PUBLIC_ORIGIN`, and `CONTENT_ORIGIN` before you deploy. `CONTENT_ORIGIN` must be a separate custom hostname; without it, production content publication fails closed.
 
@@ -50,7 +50,7 @@ API tokens expire on their own clock, separate from content. A human picks a lif
 
 The installable skill is the **committed files** under `plugins/{name}/` plus the harness catalogs `skill:init` writes. That is what `/plugin install` reads. Source templates live in `templates/`.
 
-Upstream ships templates and default configuration, with no generated plugin or marketplace catalogs. After you fork, generate the package with a unique instance name and your real HTTPS hub origin:
+Upstream ships templates and default configuration, with no generated plugin or marketplace catalogs. After you fork, generate the package with a unique name and your real HTTPS hub origin:
 
 ```bash
 npm run skill:init -- --name yourco --origin https://energon.your.co
@@ -62,13 +62,13 @@ It writes `plugins/yourco-energon/`, `.claude-plugin/marketplace.json`, `.agents
 
 Do not put the skill in `.agents/skills` or `.claude/skills` — those autoload it in this Worker repo. Keep the plugin in `plugins/{name}/` so `claude plugin validate .` treats the fork as a marketplace, not the whole Worker as a plugin.
 
-Choose distinct names for each instance, including staging and production. Initialization rejects generic `energon` skill, plugin, and marketplace names, and placeholder origins. Matching the skill and marketplace names makes installation easier; uniqueness across instances prevents collisions.
+Choose distinct names for each Energon, including staging and production. Initialization rejects generic `energon` skill, plugin, and marketplace names, and placeholder origins. Matching the skill and marketplace names makes installation easier; uniqueness across Energons prevents collisions.
 
 Before initialization, `npm run skill:render` and its `--check` form validate templates without generating files. After initialization, render refreshes the plugin and catalogs, and `--check` fails if committed files drift from `instance-skill.json` + `templates/`.
 
 Do not ship `{{placeholders}}` in `SKILL.md`. Do not tell a private host to install from `tmchow/energon`. Existing forks using generic names must follow the rename instructions in [INSTALL.md](../INSTALL.md#3-render-this-hosts-skill) before rendering again.
 
-## Cloudflare resources (once per instance)
+## Cloudflare resources (once per Energon)
 
 Workers Paid is required (unzip + 25 MB uploads).
 
@@ -108,7 +108,7 @@ Strings only (Wrangler).
 | `FOOTER_TEXT` | omit, or one company line | empty (no footer) |
 | `MAX_FILE_BYTES` | omit (25 MB) | 25 MB |
 | `MAX_PLATFORM_BYTES` | omit (20 GB) | 20 GB |
-| `WRITE_POLICY` | `instance` | `owner` |
+| `WRITE_POLICY` | `org` | `owner` |
 | `DEV_ACCESS_EMAIL` | `.dev.vars` only | `dev@example.com` |
 
 The catalog in code is:
@@ -117,7 +117,7 @@ The catalog in code is:
 
 The hub shows those that fit under `MAX_TTL`, with human labels (**3 months**, not 90 days), plus **Never** only if unlimited is on. `TTL_PRESETS` is an optional hide-list, not how you invent new windows.
 
-`GET /v1/help` echoes origin, token env, skill, install line, retention, token lifetime policy (`tokens`), and the instance file / platform caps.
+`GET /v1/help` echoes origin, token env, skill, install line, retention, token lifetime policy (`tokens`), and this Energon's file / platform caps.
 
 ## Migrations after a deploy
 
@@ -140,7 +140,7 @@ The same query with `expires_at IS NULL` lists never-expiring tokens, which is w
 
 `FOOTER_TEXT` is one line on signed-in pages. It is escaped as text — not HTML. Leave it empty for no footer. Do not edit `src/hub.html` just to brand a fork.
 
-`WRITE_POLICY` is the default for **new** sites and loose files: `owner` (only `created_by` may PUT/PATCH/DELETE) or `instance` (any token on this host). Unset is `owner`. Each object stores its own `write_policy`. Existing rows with a NULL policy are treated as `instance`. The creator can `PATCH { "write_policy": "owner" | "instance" }`. Anyone with a token can still read via `/v1`.
+`WRITE_POLICY` is the default for **new** sites and loose files: `owner` (only `created_by` may PUT/PATCH/DELETE) or `org` (any token on this host). Unset is `owner`. Each object stores its own `write_policy`. Stored NULL is treated as `org`. The creator can `PATCH { "write_policy": "owner" | "org" }`. Anyone with a token can still read via `/v1`.
 
 ## Customize a fork
 
@@ -177,10 +177,10 @@ npm run dev
 
 ## What you should not do
 
-Do not reuse another instance’s D1 `database_id` or R2 bucket. Do not put Access on `/v1`. Do not install two marketplaces that share the same `name`. Do not leave `{{ORIGIN}}` in a skill you ship to agents.
+Do not reuse another Energon’s D1 `database_id` or R2 bucket. Do not put Access on `/v1`. Do not install two marketplaces that share the same `name`. Do not leave `{{ORIGIN}}` in a skill you ship to agents.
 
 ## Agent connections
 
 Keep `/connect` behind the same Access policy as `/tokens`; keep `/v1/connections` and its token polling endpoint under the existing `/v1*` bypass. Humans still authorize every credential. The new connection endpoints do not implement OAuth or public signup.
 
-Migration `0014_agent_connections.sql` adds short-lived connection records. Request creation is limited to 20 per IP and 1000 per instance per ten minutes; pending clients poll at most every five seconds. Cron removes records more than a day past expiry. No API token or poll secret is stored in plaintext. The delivered credential appears in the existing Tokens UI. If delivery is lost, revoke that token before approving a replacement.
+Migration `0014_agent_connections.sql` adds short-lived connection records. Request creation is limited to 20 per IP and 1000 on this Energon per ten minutes; pending clients poll at most every five seconds. Cron removes records more than a day past expiry. No API token or poll secret is stored in plaintext. The delivered credential appears in the existing Tokens UI. If delivery is lost, revoke that token before approving a replacement.

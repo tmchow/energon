@@ -80,7 +80,7 @@
       <Field label="Lifetime" htmlFor="mint-ttl"><Select id="mint-ttl" name="ttl" aria-label="Token lifetime" bind:value={ttl} {options} disabled={busy} /></Field>
       <Button type="submit" variant="primary" disabled={busy}>{busy ? 'Minting…' : 'Mint token'}</Button>
     </form>
-    <p class="en-note" id="mint-ttl-note" hidden={data.token_policy.allow_never}>This instance does not allow never-expiring tokens.</p>
+    <p class="en-note" id="mint-ttl-note" hidden={data.token_policy.allow_never}>This Energon does not allow never-expiring tokens.</p>
     <div id="new-token">{#if minted}<TokenReveal token={minted} tokenEnv={data.token_env} />{/if}</div>
   </Card>
 </main>
