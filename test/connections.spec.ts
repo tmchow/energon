@@ -83,6 +83,15 @@ describe("agent connections", () => {
     const denied = await start();
     expect((await decide(denied, "deny")).status).toBe(200);
     expect((await exchange(denied)).status).toBe(403);
+    const deniedBlank = await start("blank deny");
+    const blankDeny = await json(`/account/connections/${deniedBlank.id}/deny`, {
+      method: "POST",
+      headers: access("connect@esperlabs.app", { "content-type": "application/json" }),
+      body: JSON.stringify({}),
+    });
+    expect(blankDeny.status).toBe(200);
+    expect(blankDeny.body.status).toBe("denied");
+    expect((await exchange(deniedBlank)).status).toBe(403);
     const expired = await start();
     await env.DB.prepare("UPDATE agent_connections SET expires_at = ? WHERE id = ?").bind("2000-01-01T00:00:00.000Z", expired.id).run();
     expect((await decide(expired)).status).toBe(410);
@@ -107,9 +116,10 @@ describe("agent connections", () => {
     expect(html).not.toContain('aria-label="Pages"');
     expect(html).not.toContain('class="en-footer"');
     expect(html).not.toContain(connection.user_code);
-    const pattern = html.match(/pattern="([^"]+)"/)?.[1];
-    expect(pattern).toBe("[0-9]{8}");
-    expect(new RegExp(`^(?:${pattern})$`).test(connection.user_code)).toBe(true);
+    expect(html).toContain('id="connect-code"');
+    expect(html).toContain('maxlength="8"');
+    expect(html).toContain("formnovalidate");
+    expect(connection.user_code).toMatch(/^[0-9]{8}$/);
     expect(html).not.toContain(connection.poll_token);
     assertDomBindings(html);
     expect((await req(`https://energon.example.com/connect?request=${connection.id}`)).status).toBe(404);

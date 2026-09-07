@@ -201,7 +201,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
       ? await hubLists(env, actor.email, query, user?.id)
       : { sites: [], files: [], sites_total: 0, files_total: 0, sites_cursor: null, files_cursor: null };
     const tokens = user ? await listTokens(env, user.email, user.id) : [];
-    return json({ email: actor?.email ?? null, ...lists, tokens });
+    return secretJson({ email: actor?.email ?? null, ...lists, tokens });
   }
 
   if (path === "/account/tokens" && method === "POST") {
@@ -231,17 +231,17 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   const accountPatch = path.match(/^\/account\/sites\/([^/]+)$/);
   if (accountPatch && method === "GET") {
     const actor = await requireHuman(request, env, ctx);
-    return hubSiteLinkAccess(env, actor, decodeURIComponent(accountPatch[1]));
+    return hubSiteLinkAccess(env, actor, decodeURIComponent(accountPatch[1]), accountHandleHint(url));
   }
   if (accountPatch && method === "DELETE") {
     const actor = await requireHuman(request, env, ctx);
-    await deleteSite(env, ctx, actor, decodeURIComponent(accountPatch[1]));
+    await deleteSite(env, ctx, actor, decodeURIComponent(accountPatch[1]), accountHandleHint(url));
     return json({ ok: true, deleted: decodeURIComponent(accountPatch[1]) });
   }
   if (accountPatch && method === "PATCH") {
     const actor = await requireHuman(request, env, ctx);
     const body = await readJson(request);
-    return patchSite(env, actor, decodeURIComponent(accountPatch[1]), contentPatch(body), ctx);
+    return patchSite(env, actor, decodeURIComponent(accountPatch[1]), contentPatch(body), ctx, accountHandleHint(url));
   }
 
   const accountPut = path.match(/^\/account\/sites\/([^/]+)\/files\/(.+)$/);
@@ -271,7 +271,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   const accountExport = path.match(/^\/account\/sites\/([^/]+)\/export$/);
   if (accountExport && method === "GET") {
     const actor = await requireHuman(request, env, ctx);
-    return exportSiteZip(env, ctx, actor, decodeURIComponent(accountExport[1]));
+    return exportSiteZip(env, ctx, actor, decodeURIComponent(accountExport[1]), accountHandleHint(url));
   }
 
   if (path === "/account/files" && method === "POST") {
@@ -384,7 +384,7 @@ async function api(
 
   if (path === "/v1/whoami" && method === "GET") {
     const actor = await requireToken(request, env);
-    return json({ email: actor.email, label: actor.tokenLabel, expires_at: actor.tokenExpiresAt ?? null });
+    return secretJson({ email: actor.email, label: actor.tokenLabel, expires_at: actor.tokenExpiresAt ?? null });
   }
 
   if (path === "/v1/sites" && method === "GET") {
@@ -527,7 +527,7 @@ async function postSite(
 ): Promise<{ body: Record<string, unknown>; status: number }> {
   const from = typeof body.duplicate_from === "string" ? body.duplicate_from.trim() : "";
   if (from) {
-    if (body.overwrite) {
+    if (overwriteFlag(body.overwrite)) {
       throw new ApiError(
         400,
         "bad_duplicate",
@@ -550,13 +550,23 @@ async function postSite(
     env,
     actor,
     String(body.slug || ""),
-    Boolean(body.overwrite),
+    overwriteFlag(body.overwrite),
     passwordField(body),
     ctx,
     body.ttl,
     body.write_policy,
     writePasswordField(body),
   );
+}
+
+/** Only JSON `true` claims a slug. Strings like `"false"` must not. */
+function overwriteFlag(raw: unknown): boolean {
+  return raw === true;
+}
+
+function accountHandleHint(url: URL): string | null {
+  const handle = url.searchParams.get("handle");
+  return handle && handle.trim() ? handle.trim().toLowerCase() : null;
 }
 
 function contentPatch(body: Record<string, unknown>): {

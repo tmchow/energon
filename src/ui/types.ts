@@ -9,7 +9,7 @@ export type CatalogItem = {
   url: string; created_by: string; last_written_by: string | null;
   created_at: string; updated_at: string | null; expires_at: string | null; size: number;
   password_protected: boolean; write_password_protected?: boolean; written_via?: string | null; write_policy: string;
-} & ({ slug: string; file_count: number; id?: never; filename?: never } | { id: string; filename: string; slug?: never; file_count?: never });
+} & ({ slug: string; handle: string; file_count: number; id?: never; filename?: never } | { id: string; filename: string; handle?: string | null; slug?: never; file_count?: never });
 export type CatalogData = {
   email: string | null; sites: CatalogItem[]; files: CatalogItem[]; sites_total: number; files_total: number;
   sites_cursor: string | null; files_cursor: string | null; tokens?: Token[];

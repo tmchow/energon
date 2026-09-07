@@ -170,9 +170,17 @@ export async function sha256Hex(value: string): Promise<string> {
 
 export function nanoid(size: number): string {
   const alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-  const bytes = crypto.getRandomValues(new Uint8Array(size));
+  // Rejection sampling avoids modulo bias from `byte % 62` (256 is not divisible by 62).
+  const limit = 256 - (256 % alphabet.length);
   let id = "";
-  for (const b of bytes) id += alphabet[b % 62];
+  while (id.length < size) {
+    const bytes = crypto.getRandomValues(new Uint8Array(size - id.length));
+    for (const b of bytes) {
+      if (b >= limit) continue;
+      id += alphabet[b % alphabet.length]!;
+      if (id.length === size) break;
+    }
+  }
   return id;
 }
 
@@ -197,7 +205,8 @@ export function normalizeRelPath(input: string): string | null {
   if (replaced.startsWith("/") || /^[a-zA-Z]:/.test(replaced)) return null;
   const parts = replaced.split("/").filter((s) => s && s !== ".");
   if (parts.length === 0) return null;
-  if (parts.some((s) => s === ".." || s === "__MACOSX")) return null;
+  // Reject URL schemes (`javascript:…`, `data:…`) and empty / traversal segments.
+  if (parts.some((s) => s === ".." || s === "__MACOSX" || s.includes(":"))) return null;
   return parts.join("/");
 }
 

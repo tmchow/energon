@@ -612,7 +612,8 @@ export async function patchLoose(
   }
   const wantsWrite = Object.prototype.hasOwnProperty.call(patch, "write_policy");
   const wantsWritePassword = Object.prototype.hasOwnProperty.call(patch, "write_password");
-  const wantsOther = patch.password !== undefined || Boolean(patch.setTtl);
+  const wantsSharePassword = patch.password !== undefined;
+  const wantsOther = wantsSharePassword || Boolean(patch.setTtl);
   if (wantsOther) assertCanMutate(actor, existing);
   let nextWrite = resolveWritePolicy(existing.write_policy);
   if (wantsWrite) {
@@ -624,7 +625,7 @@ export async function patchLoose(
     nextWrite = parsed;
   }
   const writeHash = await writePasswordHashFromInput(patch.write_password);
-  if (wantsWritePassword) {
+  if (wantsWritePassword || wantsSharePassword) {
     assertCanSetWritePolicy(actor, existing.created_by, existing.owner_id);
   }
   const hash = await passwordHashFromInput(patch.password);
@@ -812,6 +813,7 @@ export async function getLooseFile(
   const headers = new Headers();
   headers.set("content-type", obj.httpMetadata?.contentType || row.content_type || "application/octet-stream");
   headers.set("x-content-type-options", "nosniff");
+  headers.set("cache-control", "private, no-store");
   headers.set("content-disposition", contentDisposition(opts?.attachment ? "attachment" : "inline", row.filename));
   headers.set("x-energon-write-policy", resolveWritePolicy(row.write_policy));
   if (obj.size != null) headers.set("content-length", String(obj.size));

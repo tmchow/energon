@@ -39,13 +39,16 @@ describe("path and download helpers", () => {
     expect(isPublicContentPath("/%61ccount/f/abc123/file.html")).toBe(false);
   });
 
-  it("rejects traversal and junk path segments", () => {
+  it("rejects traversal, schemes, and junk path segments", () => {
     expect(normalizeRelPath("css/app.css")).toBe("css/app.css");
     expect(normalizeRelPath("./css/./app.css")).toBe("css/app.css");
     expect(normalizeRelPath("../secret")).toBeNull();
     expect(normalizeRelPath("/etc/passwd")).toBeNull();
     expect(normalizeRelPath("ok/__MACOSX/x")).toBeNull();
     expect(normalizeRelPath("")).toBeNull();
+    expect(normalizeRelPath("javascript:alert(1)")).toBeNull();
+    expect(normalizeRelPath("data:text/html,hi")).toBeNull();
+    expect(normalizeRelPath("foo/bar:baz")).toBeNull();
   });
 
   it("treats download=1, true, or empty as an attachment", () => {
