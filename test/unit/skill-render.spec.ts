@@ -18,6 +18,7 @@ import {
   runRender,
   tokenEnvFromBrand,
 } from "../../scripts/render-skill.mjs";
+import { WRITE_PASSWORD_HEADER } from "../../src/config";
 
 const CATALOG_PATHS = [
   "marketplace.json",
@@ -80,6 +81,13 @@ describe("skill template", () => {
     expect(existsSync(join(".claude", "skills", "energon"))).toBe(false);
   });
 
+  it("skill templates name the write-password header from config", () => {
+    const skill = readFileSync(resolve("templates/skill/SKILL.md.tmpl"), "utf8");
+    const api = readFileSync(resolve("templates/skill/references/api.md.tmpl"), "utf8");
+    expect(skill).toContain(WRITE_PASSWORD_HEADER);
+    expect(api).toContain(WRITE_PASSWORD_HEADER);
+  });
+
   it("skill:init requires --name or --skill, and --origin", () => {
     expect(() => runRender(["--init"])).toThrow(/--name \(or --skill\) and --origin/);
   });
@@ -114,6 +122,7 @@ describe("skill:init", () => {
     expect(skillMd).toContain("https://energon.your.co");
     expect(skillMd).toContain("YOURCO_ENERGON_TOKEN");
     expect(skillMd).toContain("token_expired");
+    expect(skillMd).toContain(WRITE_PASSWORD_HEADER);
     const plugin = JSON.parse(readFileSync(join(pluginDir, "plugin.json"), "utf8"));
     expect(plugin.$schema).toContain("agent-plugins.org");
     expect(plugin.name).toBe("yourco-energon");

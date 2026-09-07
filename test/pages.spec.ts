@@ -22,8 +22,11 @@ describe("signed-in pages", () => {
     expect(res.headers.get("cache-control")).toMatch(/private/);
     const html = await res.text();
     for (const text of ["Publish a document, prototype, or file.", "Choose files", "Choose folder", "No sites yet", "No files yet", "Drop to stage"]) expect(html).toContain(text);
-    for (const id of ["app", "pick-files", "pick-folder", "filepick", "folderpick", "q", "scope", "sort", "sites", "files", "drop-overlay", "pw-dlg", "write-dlg", "scan-examples"]) expect(html).toContain(`id="${id}"`);
-    for (const label of ["View password", "Write password", "Org can write", "Org cannot write"]) expect(html).toContain(`aria-label="${label}"`);
+    for (const id of ["app", "pick-files", "pick-folder", "filepick", "folderpick", "q", "scope", "sort", "sites", "files", "drop-overlay", "pw-dlg", "write-dlg"]) expect(html).toContain(`id="${id}"`);
+    expect(html).not.toContain("scan-examples");
+    expect(html).not.toContain("Catalog marks");
+    expect(html).not.toContain("Set view password");
+    expect(html).toContain("Link access");
     expect(html).toContain('aria-label="Energon"');
     expect(html).toContain('aria-label="Pages"');
     expect(html).toMatch(/class="en-card[^"]*en-card--charged/);
@@ -64,7 +67,27 @@ describe("signed-in pages", () => {
     expect(html).toContain("Catalog marks");
     expect(html).toContain("svelte-one.md");
     expect(html).toContain("Load more");
-    for (const label of ["Copy URL", "Set view password", "Delete", "More actions", "Download"]) expect(html).toContain(`aria-label="${label}"`);
+    for (const label of ["Copy URL", "Delete", "More actions", "Download"]) expect(html).toContain(`aria-label="${label}"`);
+    expect(html).not.toContain("Set view password");
+    expect(html).not.toContain("Catalog marks");
+  });
+
+  it("catalog password marks appear only when a hash is set", async () => {
+    const email = "svelte-marks@esperlabs.app";
+    const token = await mint("svelte-marks", email);
+    await json("/v1/files", { method: "POST", headers: { authorization: `Bearer ${token}`, "X-Filename": "mark-open.md", "content-type": "text/markdown" }, body: "# open" });
+    await json("/v1/files", { method: "POST", headers: { authorization: `Bearer ${token}`, "X-Filename": "mark-view.md", "X-Energon-Set-Password": "view-secret", "content-type": "text/markdown" }, body: "# view" });
+    await json("/v1/files", { method: "POST", headers: { authorization: `Bearer ${token}`, "X-Filename": "mark-write.md", "X-Energon-Set-Write-Password": "write-secret", "content-type": "text/markdown" }, body: "# write" });
+    const html = await (await req("/?q=mark-&sort=name", { headers: access(email) })).text();
+    expect(html).toContain("mark-open.md");
+    expect(html).toContain("mark-view.md");
+    expect(html).toContain("mark-write.md");
+    expect(html).toContain('aria-label="View password"');
+    expect(html).toContain('aria-label="Write password"');
+    expect(html).not.toContain("Set view password");
+    expect(html).not.toContain("scan-examples");
+    expect(html).toContain("id=\"pw-dlg\"");
+    expect(html).toContain("Link access");
   });
 
   it("setup and tokens are signed-in pages with working element bindings", async () => {

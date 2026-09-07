@@ -575,7 +575,7 @@ describe("Energon", () => {
     await json("/v1/sites", {
       method: "POST",
       headers: auth(ada, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "source-draft", write_policy: "owner", password: "secret-pw" }),
+      body: JSON.stringify({ slug: "source-draft", write_policy: "owner", password: "secret-pw", write_password: "guest-write-ok" }),
     });
     await json("/v1/sites/source-draft/files/index.html", {
       method: "PUT",
@@ -598,6 +598,7 @@ describe("Energon", () => {
     expect(copied.body.duplicated_from).toBe("source-draft");
     expect(copied.body.file_count).toBe(1);
     expect(copied.body.password_protected).toBe(false);
+    expect(copied.body.write_password_protected).toBe(false);
     expect(copied.body.write_policy).toBe("instance");
     expect(copied.body.handle).not.toBe(copied.body.duplicated_from);
     const listing = await json("/v1/sites/source-draft-2", { headers: auth(bob) });
@@ -605,6 +606,7 @@ describe("Energon", () => {
     expect(listing.body.created_by).toBe("bob-dup@esperlabs.app");
     expect(listing.body.write_policy).toBe("instance");
     expect(listing.body.password_protected).toBe(false);
+    expect(listing.body.write_password_protected).toBe(false);
     expect(listing.body.files.map((f: { path: string }) => f.path)).toEqual(["index.html"]);
     const bytes = await req("/v1/sites/source-draft-2/files/index.html", { headers: auth(bob) });
     expect(bytes.status).toBe(200);
@@ -635,7 +637,7 @@ describe("Energon", () => {
     const bob = await mint("bob-file-dup", "bob-file-dup@esperlabs.app");
     const created = await json("/v1/files", {
       method: "POST",
-      headers: auth(ada, { "X-Filename": "notes.txt", "X-Energon-Write-Policy": "owner" }),
+      headers: auth(ada, { "X-Filename": "notes.txt", "X-Energon-Write-Policy": "owner", "X-Energon-Set-Write-Password": "guest-write-ok" }),
       body: "original-bytes",
     });
     expect(created.status).toBe(201);
@@ -650,11 +652,13 @@ describe("Energon", () => {
     expect(copied.body.id).not.toBe(created.body.id);
     expect(copied.body.filename).toBe("notes-copy.txt");
     expect(copied.body.write_policy).toBe("instance");
+    expect(copied.body.write_password_protected).toBe(false);
     expect(copied.body.created_by).toBe("bob-file-dup@esperlabs.app");
     const listed = await json("/v1/files", { headers: auth(bob) });
     const row = listed.body.files.find((f: { id: string }) => f.id === copied.body.id);
     expect(row.created_by).toBe("bob-file-dup@esperlabs.app");
     expect(row.write_policy).toBe("instance");
+    expect(row.write_password_protected).toBe(false);
     const got = await req(`/v1/files/${copied.body.id}`, { headers: auth(bob) });
     expect(got.status).toBe(200);
     expect(await got.text()).toBe("original-bytes");
