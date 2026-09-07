@@ -35,6 +35,7 @@ export type Actor = {
 };
 
 export type SiteRow = {
+  id: string;
   handle: string;
   owner_id?: string | null;
   slug: string;
@@ -54,8 +55,7 @@ export type SiteRow = {
 export type WriteAuthority = { kind: "writePassword"; hash: string };
 
 export type SiteFileRow = {
-  handle: string;
-  slug: string;
+  site_id: string;
   path: string;
   size: number;
   content_type: string;

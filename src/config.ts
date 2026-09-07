@@ -8,6 +8,9 @@ export const MAX_IMPORT_FILES = 200;
 export const TOKEN_SECRET_LEN = 32;
 export const FILE_ID_LEN = 6;
 export const FILE_ID_RE = /^[A-Za-z0-9]{6,12}$/;
+/** Sites use the same capability-id shape as loose files. */
+export const SITE_ID_LEN = FILE_ID_LEN;
+export const SITE_ID_RE = FILE_ID_RE;
 /** Shared cache keeps public bytes until we purge on write or delete. HTTP has no infinite TTL. */
 export const CACHE_UNTIL_PURGE_SECONDS = 31536000;
 export const PASSWORD_HEADER = "X-Energon-Password";
@@ -21,8 +24,8 @@ export const RESERVED_SLUGS = new Set<string>();
 
 export const SLUG_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 
-export function siteKey(handle: string, slug: string, path: string): string {
-  return `sites/${handle}/${slug}/${path}`;
+export function siteKey(handle: string, id: string, path: string): string {
+  return `sites/${handle}/${id}/${path}`;
 }
 
 export function fileKey(id: string, filename: string): string {

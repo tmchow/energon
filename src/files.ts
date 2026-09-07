@@ -8,7 +8,8 @@ import {
   type ListPage,
   type ListQuery,
 } from "./catalog";
-import { FILE_ID_LEN, fileKey } from "./config";
+import { fileKey } from "./config";
+import { mintObjectId } from "./ids";
 import {
   expiredError,
   expiredHtml,
@@ -41,7 +42,6 @@ import {
   copyR2Object,
   json,
   jsonMaybeSecret,
-  nanoid,
   publicOrigin,
   readBodyCapped,
   releaseStorage,
@@ -1082,12 +1082,7 @@ export async function serveLoose(
 }
 
 async function mintFileId(env: Env): Promise<string> {
-  for (let i = 0; i < 8; i++) {
-    const id = nanoid(FILE_ID_LEN);
-    const exists = await env.DB.prepare(`SELECT id FROM loose_files WHERE id = ?`).bind(id).first();
-    if (!exists) return id;
-  }
-  throw new ApiError(500, "id_failed", "Could not mint a file id.");
+  return mintObjectId(env, "loose_files");
 }
 
 export async function hubLists(

@@ -168,47 +168,47 @@ export async function purgeExpiredSite(
   env: Env,
   ctx: ExecutionContext | undefined,
   handle: string,
-  slug: string,
+  id: string,
 ): Promise<boolean> {
-  const key = `site:${handle}/${slug}`;
+  const key = `site:${handle}/${id}`;
   if (inFlight.has(key)) return false;
   inFlight.add(key);
   try {
-    const claim = await claimExpiredSite(env, handle, slug);
+    const claim = await claimExpiredSite(env, id);
     if (!claim) return false;
 
     try {
-      await deletePrefix(env.BUCKET, `sites/${handle}/${slug}/`);
+      await deletePrefix(env.BUCKET, `sites/${handle}/${id}/`);
     } catch (err) {
       await env.DB.prepare(
-        `UPDATE sites SET last_written_by = ? WHERE handle = ? AND slug = ? AND last_written_by = ?`,
+        `UPDATE sites SET last_written_by = ? WHERE id = ? AND last_written_by = ?`,
       )
-        .bind(claim.restoreWriter, handle, slug, claim.token)
+        .bind(claim.restoreWriter, id, claim.token)
         .run();
       throw err;
     }
 
     const usage = await env.DB.prepare(
-      `SELECT COALESCE(SUM(size), 0) AS total FROM site_files WHERE handle = ? AND slug = ?`,
+      `SELECT COALESCE(SUM(size), 0) AS total FROM site_files WHERE site_id = ?`,
     )
-      .bind(handle, slug)
+      .bind(id)
       .first<{ total: number }>();
     await env.DB.prepare(
-      `DELETE FROM site_files WHERE handle = ? AND slug = ?
+      `DELETE FROM site_files WHERE site_id = ?
        AND EXISTS (
-         SELECT 1 FROM sites WHERE handle = ? AND slug = ? AND last_written_by = ? AND expires_at = ?
+         SELECT 1 FROM sites WHERE id = ? AND last_written_by = ? AND expires_at = ?
        )`,
     )
-      .bind(handle, slug, handle, slug, claim.token, claim.expiresAt)
+      .bind(id, id, claim.token, claim.expiresAt)
       .run();
     const dropped = await env.DB.prepare(
-      `DELETE FROM sites WHERE handle = ? AND slug = ? AND last_written_by = ? AND expires_at IS NOT NULL AND expires_at = ?`,
+      `DELETE FROM sites WHERE id = ? AND last_written_by = ? AND expires_at IS NOT NULL AND expires_at = ?`,
     )
-      .bind(handle, slug, claim.token, claim.expiresAt)
+      .bind(id, claim.token, claim.expiresAt)
       .run();
     if (!d1Changed(dropped)) return false;
     try {
-      await purgeContent(ctx, [sitePrefix(handle, slug)]);
+      await purgeContent(ctx, [sitePrefix(handle, id)]);
     } finally {
       await releaseStorage(env.DB, Number(usage?.total ?? 0));
     }
@@ -258,13 +258,13 @@ export async function purgeExpiredFile(
   }
 }
 
-async function claimExpiredSite(env: Env, handle: string, slug: string): Promise<Claim | null> {
+async function claimExpiredSite(env: Env, id: string): Promise<Claim | null> {
   const now = new Date().toISOString();
   const row = await env.DB.prepare(
     `SELECT expires_at, last_written_by, created_by, updated_at FROM sites
-     WHERE handle = ? AND slug = ? AND expires_at IS NOT NULL AND expires_at <= ?`,
+     WHERE id = ? AND expires_at IS NOT NULL AND expires_at <= ?`,
   )
-    .bind(handle, slug, now)
+    .bind(id, now)
     .first<{ expires_at: string; last_written_by: string; created_by: string; updated_at: string }>();
   if (!row) return null;
   if (isPurgeClaimed(row.last_written_by) && !isStaleClaim(row.updated_at)) {
@@ -273,9 +273,9 @@ async function claimExpiredSite(env: Env, handle: string, slug: string): Promise
   const token = newPurgeToken();
   const claimed = await env.DB.prepare(
     `UPDATE sites SET last_written_by = ?, updated_at = ?
-     WHERE handle = ? AND slug = ? AND expires_at = ? AND expires_at <= ? AND last_written_by = ?`,
+     WHERE id = ? AND expires_at = ? AND expires_at <= ? AND last_written_by = ?`,
   )
-    .bind(token, now, handle, slug, row.expires_at, now, row.last_written_by)
+    .bind(token, now, id, row.expires_at, now, row.last_written_by)
     .run();
   if (!d1Changed(claimed)) return null;
   const restoreWriter = isPurgeClaimed(row.last_written_by) ? row.created_by : row.last_written_by;
@@ -319,10 +319,10 @@ export function schedulePurgeExpiredSite(
   env: Env,
   ctx: ExecutionContext | undefined,
   handle: string,
-  slug: string,
+  id: string,
 ): void {
   if (!ctx) return;
-  ctx.waitUntil(purgeExpiredSite(env, ctx, handle, slug).catch(() => undefined));
+  ctx.waitUntil(purgeExpiredSite(env, ctx, handle, id).catch(() => undefined));
 }
 
 export function schedulePurgeExpiredFile(
@@ -345,12 +345,12 @@ export async function sweepExpired(
   let files = 0;
 
   const siteRows = await env.DB.prepare(
-    `SELECT handle, slug FROM sites WHERE expires_at IS NOT NULL AND expires_at <= ? LIMIT ?`,
+    `SELECT handle, id FROM sites WHERE expires_at IS NOT NULL AND expires_at <= ? LIMIT ?`,
   )
     .bind(now, SWEEP_BATCH)
-    .all<{ handle: string; slug: string }>();
+    .all<{ handle: string; id: string }>();
   for (const row of siteRows.results || []) {
-    if (await purgeExpiredSite(env, ctx, row.handle, row.slug)) sites += 1;
+    if (await purgeExpiredSite(env, ctx, row.handle, row.id)) sites += 1;
   }
 
   const fileRows = await env.DB.prepare(
