@@ -23,6 +23,7 @@ This skill is bound to **{{ORIGIN}}**. Do not send traffic to another Energon. A
 6. If you are confused, `GET {{ORIGIN}}/v1/help` or `GET {{ORIGIN}}/llms.txt` (no auth). Trust that document for this Energon's retention presets and skill name. For exact request and response schemas, status codes, and error codes, `GET {{ORIGIN}}/v1/openapi.json` (OpenAPI 3.1, no auth).
 7. `GET /v1/sites` and `GET /v1/files` list only what **you** created or last wrote. To find something Bob created that you edited: `?created_by=bob@example.com&scope=edited`. Do not expect a company-wide catalog. You can still GET a known `/{handle}/s/{id}/{slug}` or `/{handle}/f/{id}` URL.
 8. Pass `ttl` on create unless the human wants this Energon's default. `GET /v1/help` → `retention` is the source of truth. `PUT` does not extend expiry. `PATCH { "ttl": "7d" }` resets from now. Expired URLs are `410`.
+9. Bulk cleanup (`POST /v1/cleanup`) is a **dry run** unless you send the `confirm` from its own preview. Always show the human the preview first (Scenario J). Delete has no recycle bin.
 
 Auth on every `/v1` call except `/v1/help`, `/v1/health`, `/v1/openapi.json`, and the connection request/poll endpoints documented in `/auth.md`:
 
@@ -263,6 +264,31 @@ curl -sS "$PUBLIC_URL" \
   -H "X-Energon-Write-Password: the-write-password" \
   --data-binary @notes.md
 ```
+
+## Scenario J — Clean up old work
+
+They want to delete or let expire a batch of their own sites and files (“get rid of everything that never expires”, “drop my drafts older than March”, “what is taking up space”).
+
+1. Find candidates with the list filters: `GET /v1/sites?expires=never&sort=size`, `GET /v1/files?updated_before=2026-03-01T00:00:00Z&sort=age`, `?min_size=50mb`, `?q=draft`. Both lists stay scoped to what you created or last wrote.
+2. `POST /v1/cleanup` **without** `confirm`. `target` is the same filters (plus optional `kind: sites|files`) or explicit `{"sites": [...], "files": [...]}`; `action` is `delete`, `set_ttl` (with `ttl`), or `expire` (30m grace). That call is a dry run: read back `matched`, `eligible`, `skipped.by_reason`, `bytes`, and the `sample` to the human.
+3. Only when they agree, resend the **same body** with the returned `confirm`. The response lists `applied`, `skipped`, and `failed` per object.
+4. `409 cleanup_drift` means the selection changed under you; the body is a fresh preview — show it and confirm again. `413 cleanup_too_many` means more than 100 eligible objects; narrow the target and repeat.
+
+```bash
+# dry run
+curl -sS {{ORIGIN}}/v1/cleanup \
+  -H "Authorization: Bearer ${{TOKEN_ENV}}" \
+  -H "content-type: application/json" \
+  -d '{"target":{"expires":"never","kind":"files"},"action":"expire"}'
+
+# execute with the confirm from that preview
+curl -sS {{ORIGIN}}/v1/cleanup \
+  -H "Authorization: Bearer ${{TOKEN_ENV}}" \
+  -H "content-type: application/json" \
+  -d '{"target":{"expires":"never","kind":"files"},"action":"expire","confirm":"<confirm from the preview>"}'
+```
+
+Objects you cannot write (someone else's `owner` policy) are skipped, not an error. `expire` never moves an expiry later. Prefer `expire` over `delete` when the human is unsure; there is no recycle bin.
 
 ## After you publish
 

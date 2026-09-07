@@ -341,6 +341,7 @@ export function helpBody(origin: string, env?: Env): unknown {
       `One file: POST /v1/files, then PUT /v1/files/{id} to replace it. Same url and api_url. Optional multipart field ttl or header X-Energon-TTL.`,
       `Make a copy: POST /v1/sites {"slug":"new-slug","duplicate_from":"existing-id"} or POST /v1/files {"duplicate_from":"id"} (optional filename). You become created_by. write_policy is this Energon's default. Fresh TTL. Password is not copied. Anyone who can read via /v1 can duplicate. If you already have replacement bytes this turn, POST/PUT those instead.`,
       `Give humans the /{handle}/s or /{handle}/f URL (and the password, if any). Agents can use that URL plus X-Energon-Password, or api_url with their token.`,
+      `Clean up in bulk with POST /v1/cleanup: target ids or the list filters (expires=never, updated_before, min_size, q, created_by), action delete, set_ttl (with ttl), or expire (30m grace). Without confirm it is a dry run. Show the human the preview (matched, eligible, skipped, bytes, sample), then resend the same body with its confirm to execute. GET /v1/sites and GET /v1/files take the same filters plus sort=size|age to find candidates first.`,
       ...helpGuestWriteSop(),
     ],
     routes: {
@@ -362,12 +363,14 @@ export function helpBody(origin: string, env?: Env): unknown {
       "DELETE /v1/sites/{id}": "delete site and objects",
       "DELETE /v1/sites/{id}/files/{path}": "delete one path",
       "POST /v1/files": "multipart field file, or raw body plus X-Filename; or JSON { duplicate_from, filename? }. Optional X-Energon-Set-Password, X-Energon-Set-Write-Password, X-Energon-TTL, X-Energon-Write-Policy, X-Energon-Duplicate-From",
-      "GET /v1/files": "loose files you created or last wrote. ?scope=created|edited|involved&q=&created_by=&sort=updated|name&limit=25&cursor=",
+      "GET /v1/files": "loose files you created or last wrote. ?scope=created|edited|involved&q=&created_by=&expires=never|expires_before=<iso>&updated_before=<iso>&min_size=<bytes|500mb>&sort=updated|name|size|age&limit=25&cursor=",
       "GET /v1/files/{id}": "raw loose file bytes (token). ?download=1 sets Content-Disposition: attachment",
       "PUT /v1/files/{id}": "replace loose file bytes; same id and URL; optional X-Energon-Set-Password",
       "PATCH /v1/files/{id}": '{ "password"?: string, "write_password"?: string, "ttl"?: string, "write_policy"?: "owner"|"org" } — empty password or write_password clears. ttl resets expiry from now. write_policy and write_password are creator-only.',
       "DELETE /v1/files/{id}": "delete the loose file and its object (no recycle bin)",
-      "GET /v1/sites": "sites you created or last wrote. ?scope=created|edited|involved&q=&created_by=&sort=updated|name&limit=25&cursor=",
+      "GET /v1/sites": "sites you created or last wrote. ?scope=created|edited|involved&q=&created_by=&expires=never|expires_before=<iso>&updated_before=<iso>&min_size=<bytes|500mb>&sort=updated|name|size|age&limit=25&cursor=",
+      "POST /v1/cleanup":
+        '{ "target": { "sites"?: [id], "files"?: [id] } or list filters { "scope"?, "q"?, "created_by"?, "expires"?: "never", "expires_before"?, "updated_before"?, "min_size"?, "kind"?: "sites"|"files" }, "action": "delete"|"set_ttl"|"expire", "ttl"?: string (set_ttl only), "confirm"?: string } — without confirm: dry run { matched, eligible, skipped: { total, by_reason, sample }, bytes, sample, confirm }. Resend with that confirm to execute { applied, skipped, failed }. Only what you created or last wrote and can write; the rest is skipped. At most 100 eligible per call (413 cleanup_too_many). 409 cleanup_drift carries a fresh preview. {} targets everything you are involved in. No recycle bin.',
     },
   };
 }

@@ -32,6 +32,10 @@
     {
       "name": "files",
       "description": "A loose file is one file at a short id."
+    },
+    {
+      "name": "cleanup",
+      "description": "Bulk delete or re-expire the sites and files you can write. Dry run by default; execute with the confirm string from the preview."
     }
   ],
   "paths": {
@@ -225,6 +229,18 @@
             "$ref": "#/components/parameters/CreatedBy"
           },
           {
+            "$ref": "#/components/parameters/Expires"
+          },
+          {
+            "$ref": "#/components/parameters/ExpiresBefore"
+          },
+          {
+            "$ref": "#/components/parameters/UpdatedBefore"
+          },
+          {
+            "$ref": "#/components/parameters/MinSize"
+          },
+          {
             "$ref": "#/components/parameters/Sort"
           },
           {
@@ -415,6 +431,18 @@
           },
           {
             "$ref": "#/components/parameters/CreatedBy"
+          },
+          {
+            "$ref": "#/components/parameters/Expires"
+          },
+          {
+            "$ref": "#/components/parameters/ExpiresBefore"
+          },
+          {
+            "$ref": "#/components/parameters/UpdatedBefore"
+          },
+          {
+            "$ref": "#/components/parameters/MinSize"
           },
           {
             "$ref": "#/components/parameters/Sort"
@@ -1006,6 +1034,113 @@
             "description": "Server error. A rollback failure means the bytes could not be restored; retry after storage recovers.",
             "x-error-codes": [
               "file_delete_rollback_failed",
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cleanup": {
+      "post": {
+        "operationId": "cleanup",
+        "tags": [
+          "cleanup"
+        ],
+        "summary": "Preview, then delete or re-expire many sites and files at once",
+        "description": "Selects by explicit ids or by the same filters as GET /v1/sites and GET /v1/files, always intersected with your involvement (created or last wrote) and with what you can write; everything else is skipped with a reason, never a batch 403. Without confirm the call is a dry run and returns a preview with a confirm string. Resend the identical body plus that confirm to execute. The confirm is a hash of the action, ttl, and the eligible objects: if the eligible set changed since the preview the call is 409 cleanup_drift with a fresh preview. At most 100 eligible objects per call; a wider selection is 413 cleanup_too_many. Execution is sequential and continues past per-object failures. delete has no recycle bin; a site that is already gone still counts as applied. set_ttl resets expiry from now like PATCH ttl. expire gives each object a 30m grace (clamped to retention.max_ttl) and skips objects already expiring sooner (already_expiring).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CleanupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Preview (executed: false, with confirm) when confirm was omitted; result (executed: true) when it matched.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/CleanupPreview"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CleanupResult"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad body, target, action, ttl, or confirm format. bad_query lists the malformed target filters in fields.",
+            "x-error-codes": [
+              "bad_json",
+              "bad_target",
+              "bad_query",
+              "bad_action",
+              "bad_confirm",
+              "ttl_required",
+              "bad_ttl",
+              "ttl_too_long"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenDomain"
+          },
+          "409": {
+            "description": "The eligible set differs from the preview that produced this confirm. Nothing was changed. The body is a fresh preview; show it and resend with its confirm.",
+            "x-error-codes": [
+              "cleanup_drift"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CleanupDriftError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "More than 100 eligible objects, more than 100 explicit ids, or a filter that matched more than the scan bound before eligibility was known. Nothing was changed. Narrow the target.",
+            "x-error-codes": [
+              "cleanup_too_many"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CleanupTooManyError"
+                }
+              }
+            }
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
               "internal"
             ],
             "content": {
@@ -2026,7 +2161,7 @@
     "schemas": {
       "Error": {
         "type": "object",
-        "description": "Every non-2xx JSON body. Some codes add fields: token_expired is typed below; too_large and storage_cap add limit_bytes plus actual_bytes or used_bytes; bad_ttl, ttl_required, and ttl_too_long add presets and default_ttl or max_ttl; forbidden_domain adds allowed_email_domains; site_not_found adds hint. password_required (401) and rate_limited (429) come from the public content gate, not /v1. bad_label, bad_origin, and token_not_found come from the hub /account API. not_found is any unknown route. bad_path is also returned for a URL that is not valid percent-encoding. connection_bad_code and connection_decided come from the human /account/connections API.",
+        "description": "Every non-2xx JSON body. Some codes add fields: token_expired, cleanup_drift, and cleanup_too_many are typed below; too_large and storage_cap add limit_bytes plus actual_bytes or used_bytes; bad_ttl, ttl_required, and ttl_too_long add presets and default_ttl or max_ttl; forbidden_domain adds allowed_email_domains; site_not_found adds hint; bad_query adds fields (the malformed cleanup target filters). bad_target, bad_action, and bad_confirm come only from POST /v1/cleanup. password_required (401) and rate_limited (429) come from the public content gate, not /v1. bad_label, bad_origin, and token_not_found come from the hub /account API. not_found is any unknown route. bad_path is also returned for a URL that is not valid percent-encoding. connection_bad_code and connection_decided come from the human /account/connections API.",
         "required": [
           "error",
           "message"
@@ -2035,6 +2170,8 @@
           "error": {
             "type": "string",
             "enum": [
+              "bad_action",
+              "bad_confirm",
               "bad_content_type",
               "bad_duplicate",
               "bad_filename",
@@ -2043,11 +2180,15 @@
               "bad_origin",
               "bad_password",
               "bad_path",
+              "bad_query",
               "bad_request",
               "bad_slug",
+              "bad_target",
               "bad_ttl",
               "bad_write_policy",
               "bad_zip_path",
+              "cleanup_drift",
+              "cleanup_too_many",
               "connection_bad_code",
               "connection_decided",
               "connection_denied",
@@ -2162,6 +2303,475 @@
           }
         ],
         "description": "Terminal. The token cannot be extended; a human mints a new one at tokens_url. Do not retry with it."
+      },
+      "CleanupRequest": {
+        "type": "object",
+        "required": [
+          "target",
+          "action"
+        ],
+        "properties": {
+          "target": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CleanupExplicitTarget"
+              },
+              {
+                "$ref": "#/components/schemas/CleanupFilterTarget"
+              }
+            ],
+            "description": "Explicit ids, or list filters. Mixing the two is 400 bad_target. {} selects everything you are involved in."
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "delete",
+              "set_ttl",
+              "expire"
+            ],
+            "description": "delete: remove the objects (no recycle bin). set_ttl: reset expiry from now to ttl. expire: set expiry to a 30m grace from now (clamped to retention.max_ttl); objects already expiring sooner are skipped as already_expiring."
+          },
+          "ttl": {
+            "$ref": "#/components/schemas/Ttl",
+            "description": "Required for set_ttl (400 ttl_required). Not accepted with delete or expire (400 bad_action)."
+          },
+          "confirm": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$",
+            "description": "Omit to preview. Send the confirm from the preview of this same body to execute. Any other shape is 400 bad_confirm; a stale value is 409 cleanup_drift."
+          }
+        },
+        "additionalProperties": false
+      },
+      "CleanupExplicitTarget": {
+        "type": "object",
+        "description": "At least one of sites or files. No filter keys.",
+        "anyOf": [
+          {
+            "required": [
+              "sites"
+            ]
+          },
+          {
+            "required": [
+              "files"
+            ]
+          }
+        ],
+        "properties": {
+          "sites": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Site ids. Unknown or invalid ids are skipped as not_found. More than 100 ids in total is 413."
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Loose file ids. Unknown or invalid ids are skipped as not_found."
+          }
+        },
+        "additionalProperties": false
+      },
+      "CleanupFilterTarget": {
+        "type": "object",
+        "description": "The GET /v1/sites and GET /v1/files filters as JSON fields. Unlike the URL form, a malformed value is 400 bad_query and an unknown key is 400 bad_target.",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": [
+              "involved",
+              "created",
+              "edited"
+            ],
+            "default": "involved"
+          },
+          "q": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "expires": {
+            "type": "string",
+            "enum": [
+              "never"
+            ]
+          },
+          "expires_before": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_before": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "min_size": {
+            "type": [
+              "string",
+              "integer"
+            ],
+            "description": "Bytes or a unit suffix (500kb, 5mb, 1gb)."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "sites",
+              "files"
+            ],
+            "description": "Restrict to one kind. Omitted means both."
+          }
+        },
+        "additionalProperties": false
+      },
+      "CleanupObjectKind": {
+        "type": "string",
+        "enum": [
+          "site",
+          "file"
+        ]
+      },
+      "CleanupRef": {
+        "type": "string",
+        "description": "The site or file id. For a not_found skip it is the string you sent."
+      },
+      "CleanupSkipReason": {
+        "type": "string",
+        "enum": [
+          "not_found",
+          "not_writable",
+          "purging",
+          "already_expiring",
+          "gone",
+          "busy"
+        ],
+        "description": "not_found: an explicit id did not resolve. not_writable: you cannot write it (owner policy). purging: expired and being swept. already_expiring: expire would have moved its expiry later. gone and busy appear only after execute: the object vanished, or another write held it; retry busy items."
+      },
+      "CleanupSkippedObject": {
+        "type": "object",
+        "required": [
+          "kind",
+          "ref",
+          "reason"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/CleanupObjectKind"
+          },
+          "ref": {
+            "$ref": "#/components/schemas/CleanupRef"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/CleanupSkipReason"
+          }
+        }
+      },
+      "CleanupSkipped": {
+        "type": "object",
+        "required": [
+          "total",
+          "by_reason",
+          "sample"
+        ],
+        "properties": {
+          "total": {
+            "type": "integer"
+          },
+          "by_reason": {
+            "type": "object",
+            "description": "Count per CleanupSkipReason; only reasons that occurred are present.",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "sample": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "$ref": "#/components/schemas/CleanupSkippedObject"
+            }
+          }
+        }
+      },
+      "CleanupObject": {
+        "type": "object",
+        "required": [
+          "kind",
+          "ref",
+          "name",
+          "bytes",
+          "expires_at",
+          "updated_at"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/CleanupObjectKind"
+          },
+          "ref": {
+            "$ref": "#/components/schemas/CleanupRef"
+          },
+          "name": {
+            "type": "string",
+            "description": "Slug or filename."
+          },
+          "bytes": {
+            "type": "integer",
+            "description": "File size, or the sum of a site's files."
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "CleanupPreview": {
+        "type": "object",
+        "description": "Dry run. Nothing was changed.",
+        "required": [
+          "action",
+          "executed",
+          "matched",
+          "eligible",
+          "bytes",
+          "skipped",
+          "sample",
+          "confirm"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "delete",
+              "set_ttl",
+              "expire"
+            ]
+          },
+          "ttl": {
+            "type": "string",
+            "description": "Normalized ttl label for set_ttl and expire. Absent for delete."
+          },
+          "executed": {
+            "const": false
+          },
+          "matched": {
+            "type": "integer",
+            "description": "Objects the target selected, including skipped ones."
+          },
+          "eligible": {
+            "type": "integer",
+            "description": "Objects the action would touch. At most 100."
+          },
+          "bytes": {
+            "type": "integer",
+            "description": "Sum of eligible object sizes."
+          },
+          "skipped": {
+            "$ref": "#/components/schemas/CleanupSkipped"
+          },
+          "sample": {
+            "type": "array",
+            "maxItems": 10,
+            "description": "The first eligible objects. Show them to the human.",
+            "items": {
+              "$ref": "#/components/schemas/CleanupObject"
+            }
+          },
+          "confirm": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$",
+            "description": "Resend the same body with this value to execute. Bound to the action, ttl, and eligible set."
+          }
+        }
+      },
+      "CleanupAppliedObject": {
+        "type": "object",
+        "required": [
+          "kind",
+          "ref",
+          "name",
+          "bytes"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/CleanupObjectKind"
+          },
+          "ref": {
+            "$ref": "#/components/schemas/CleanupRef"
+          },
+          "name": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "integer"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "New expiry after set_ttl or expire. Absent for delete."
+          }
+        }
+      },
+      "CleanupFailedObject": {
+        "type": "object",
+        "required": [
+          "kind",
+          "ref",
+          "error"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/CleanupObjectKind"
+          },
+          "ref": {
+            "$ref": "#/components/schemas/CleanupRef"
+          },
+          "error": {
+            "type": "string",
+            "description": "The error code that single-object call would have returned, or internal."
+          }
+        }
+      },
+      "CleanupResult": {
+        "type": "object",
+        "description": "Executed. Each eligible object landed in exactly one of applied, skipped, or failed; the batch never stops early.",
+        "required": [
+          "action",
+          "executed",
+          "applied",
+          "skipped",
+          "failed"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "delete",
+              "set_ttl",
+              "expire"
+            ]
+          },
+          "ttl": {
+            "type": "string",
+            "description": "Normalized ttl label for set_ttl and expire. Absent for delete."
+          },
+          "executed": {
+            "const": true
+          },
+          "applied": {
+            "type": "object",
+            "required": [
+              "total",
+              "bytes",
+              "objects"
+            ],
+            "properties": {
+              "total": {
+                "type": "integer"
+              },
+              "bytes": {
+                "type": "integer"
+              },
+              "objects": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CleanupAppliedObject"
+                }
+              }
+            }
+          },
+          "skipped": {
+            "$ref": "#/components/schemas/CleanupSkipped"
+          },
+          "failed": {
+            "type": "object",
+            "required": [
+              "total",
+              "objects"
+            ],
+            "properties": {
+              "total": {
+                "type": "integer"
+              },
+              "objects": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CleanupFailedObject"
+                }
+              }
+            }
+          }
+        }
+      },
+      "CleanupDriftError": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Error"
+          },
+          {
+            "$ref": "#/components/schemas/CleanupPreview"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "error": {
+                "const": "cleanup_drift"
+              }
+            }
+          }
+        ],
+        "description": "Nothing was changed. The body is a fresh preview of the same target; its confirm executes it."
+      },
+      "CleanupTooManyError": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Error"
+          },
+          {
+            "type": "object",
+            "required": [
+              "limit",
+              "matched"
+            ],
+            "properties": {
+              "error": {
+                "const": "cleanup_too_many"
+              },
+              "limit": {
+                "type": "integer",
+                "const": 100
+              },
+              "matched": {
+                "type": "integer",
+                "description": "Objects seen. For an oversized explicit list, the number of ids sent; nothing was queried."
+              },
+              "eligible": {
+                "type": "integer",
+                "description": "Absent when the explicit list was rejected before querying."
+              },
+              "skipped": {
+                "$ref": "#/components/schemas/CleanupSkipped"
+              },
+              "bytes": {
+                "type": "integer"
+              }
+            }
+          }
+        ],
+        "description": "Nothing was changed. Narrow the target (q, created_by, expires_before, updated_before, min_size, kind) or send explicit ids."
       },
       "WritePolicy": {
         "type": "string",
@@ -3417,6 +4027,43 @@
         },
         "description": "Only objects created by this email (lowercased). Still intersected with scope; you cannot list someone else's whole catalog."
       },
+      "Expires": {
+        "name": "expires",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "never"
+          ]
+        },
+        "description": "never: only objects with no expiry. Any other value is ignored. Ignored when expires_before is also present."
+      },
+      "ExpiresBefore": {
+        "name": "expires_before",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "description": "Only objects whose expires_at is before this ISO 8601 timestamp (objects that never expire are excluded). An unparseable value is ignored. Ignored when expires is also present."
+      },
+      "UpdatedBefore": {
+        "name": "updated_before",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "description": "Only objects last written before this ISO 8601 timestamp (files fall back to created_at when never rewritten). An unparseable value is ignored."
+      },
+      "MinSize": {
+        "name": "min_size",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        },
+        "description": "Only objects at least this large: bytes (1000000) or a unit suffix (500kb, 5mb, 1gb). Sites use the sum of their file sizes. An unparseable value is ignored."
+      },
       "Sort": {
         "name": "sort",
         "in": "query",
@@ -3424,11 +4071,13 @@
           "type": "string",
           "enum": [
             "updated",
-            "name"
+            "name",
+            "size",
+            "age"
           ],
           "default": "updated"
         },
-        "description": "updated: newest first. name: slug or filename ascending. Anything else means updated."
+        "description": "updated: newest first. name: slug or filename ascending. size: largest first (sites by the sum of their file sizes). age: least recently written first. Anything else means updated."
       },
       "Limit": {
         "name": "limit",

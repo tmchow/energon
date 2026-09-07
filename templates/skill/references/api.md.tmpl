@@ -20,6 +20,8 @@ This skill talks only to **{{ORIGIN}}**. Install a separately rendered skill for
 | 404 | `site_not_found` / `file_not_found` | Create the site first; never implicit-create. For files, check the path or id. |
 | 410 | `expired` | Content passed `expires_at`. It is gone or about to be purged. Do not retry the same URL. |
 | 413 | `too_large` / `storage_cap` | 25 MB file/zip, or 20 GB platform cap |
+| 409 | `cleanup_drift` | The cleanup selection changed since the preview. The body is a fresh preview; show it and resend with its `confirm`. |
+| 413 | `cleanup_too_many` | More than 100 eligible objects. Narrow the target (`q`, `created_by`, `expires_before`, `updated_before`, `min_size`, `kind`) or send explicit ids. |
 
 ## Sites
 
@@ -30,7 +32,7 @@ GET    /v1/sites/{id}/files/{path}       raw bytes (token)
 PUT    /v1/sites/{id}/files/{path}       raw body (path may contain slashes). Does not extend expiry.
 POST   /v1/sites/{id}/import             application/zip
 GET    /v1/sites/{id}/export             zip of the site (token; skips share password)
-GET    /v1/sites                         recent sites (`id`, `total`, `next_cursor`, `?limit=&cursor=`)
+GET    /v1/sites                         your sites (`id`, `total`, `next_cursor`; filters below)
 GET    /v1/sites/{id}                    file listing (`id`, `url` + `api_url` per file)
 DELETE /v1/sites/{id}                    site + all objects (no recycle bin)
 DELETE /v1/sites/{id}/files/{path}       one path
@@ -54,7 +56,7 @@ POST /v1/files           multipart field "file"  OR  raw body + header X-Filenam
 PUT  /v1/files/{id}      replace bytes; optional X-Filename; same id and URL
                          optional X-Energon-Set-Password. Does not extend expiry.
 PATCH /v1/files/{id}     { "password"?: string, "write_password"?: string, "ttl"?: string }  empty password or write_password clears; write_password is creator-only
-GET  /v1/files           recent loose files (`total`, `next_cursor`, `?limit=&cursor=`)
+GET  /v1/files           your loose files (`total`, `next_cursor`; filters below)
 GET  /v1/files/{id}      raw bytes (token). ?download=1 → attachment
 DELETE /v1/files/{id}    delete the file (no recycle bin)
 ```
@@ -62,6 +64,31 @@ DELETE /v1/files/{id}    delete the file (no recycle bin)
 `201` `{ url, api_url, id, handle, filename, size, password_protected, password, write_password_protected, write_password, ttl, expires_at }` on create. `password` / `write_password` are the phrases you just set, or `null`. `duplicate_from` copies an existing file to a new id (write password is not copied). `200` `{ ..., replaced: true }` on PUT. Human URL: `/{handle}/f/{id}/{filename}`. Agent URL: `/v1/files/{id}`. PUT 404s if the id does not exist — there is no implicit create. GET listings have `password_protected`, `write_password_protected`, and `expires_at`.
 
 Guest write on the public URL uses header `X-Energon-Write-Password` (not a `/v1` header). Read `GET {content_origin}/llms.txt`. A file write password only PUTs that file. A site write password can PUT or DELETE a path. Do not mint the outside agent a token.
+
+## Listing and cleanup
+
+`GET /v1/sites` and `GET /v1/files` only return what **you** created or last wrote. Same query on both:
+
+```
+?scope=created|edited|involved   default involved
+?q=                              substring of slug / filename
+?created_by=                     email; still intersected with scope
+?expires=never                   no expiry set        (or ?expires_before=<iso>)
+?updated_before=<iso>            last written before
+?min_size=<bytes|500kb|5mb|1gb>  sites use the sum of their files
+?sort=updated|name|size|age      default updated (newest); size largest first; age least recently written first
+?limit=25&cursor=                keyset pages; total counts every page
+```
+
+A malformed filter is ignored in the URL form, never a 400.
+
+```
+POST /v1/cleanup   { "target": …, "action": "delete"|"set_ttl"|"expire", "ttl"?: string, "confirm"?: string }
+```
+
+`target` is explicit ids `{ "sites": ["id"], "files": ["id"] }` **or** the filters above as JSON fields plus optional `"kind": "sites"|"files"` (`{}` = everything you are involved in). Mixing ids and filters is `400 bad_target`; a malformed filter value is `400 bad_query`.
+
+Without `confirm` the call is a **dry run**: `200 { action, executed: false, matched, eligible, bytes, skipped: { total, by_reason, sample }, sample, confirm }`. Nothing changes. Resend the identical body with that `confirm` to execute: `200 { action, executed: true, applied: { total, bytes, objects }, skipped, failed: { total, objects } }`. `set_ttl` needs `ttl` (same rules as PATCH). `expire` sets a 30m grace and skips objects already expiring sooner (`already_expiring`). Objects you cannot write are `skipped` with `not_writable`, never a batch 403. Cap is 100 eligible objects per call (`413 cleanup_too_many` with `matched`, `eligible`, `skipped`, `bytes`, `limit`). A stale `confirm` is `409 cleanup_drift` with a fresh preview in the body. No recycle bin.
 
 ## Retention
 

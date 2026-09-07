@@ -51,3 +51,4 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Share password](./share-password.md) covers setting a password, the public gate, header unlock, and clearing.
 - [Hub catalog](./hub-catalog.md) covers listing, search, scope, opening a public URL, and delete.
 - [Guest write password](./guest-write-password.md) covers setting a write password, guest PUT/DELETE on the public URL, Hub Link access, and catalog lockup.
+- [Cleanup](./cleanup.md) covers the list filters and sorts (`expires`, `expires_before`, `updated_before`, `min_size`, `sort=size|age`), the `POST /v1/cleanup` dry run, confirm-to-execute, drift, skip reasons, the 100-object cap, and body validation.

@@ -1,18 +1,32 @@
+import { parseByteSize } from "./policy";
+
 export type ListScope = "involved" | "created" | "edited";
+export type CatalogSort = "updated" | "name" | "size" | "age";
+export type CatalogKind = "sites" | "files";
 
 export const DEFAULT_LIST_LIMIT = 25;
 export const MAX_LIST_LIMIT = 50;
 
-export type ListQuery = {
+export type ExpiresFilter = { kind: "never" } | { kind: "before"; at: string };
+
+export type SelectionCriteria = {
   scope: ListScope;
   q: string;
   createdBy?: string;
-  sort: "updated" | "name";
+  expires?: ExpiresFilter;
+  updatedBefore?: string;
+  minSize?: number;
+};
+
+export type ListPresentation = {
+  sort: CatalogSort;
   limit: number;
   cursor: string | null;
   sitesCursor: string | null;
   filesCursor: string | null;
 };
+
+export type ListQuery = SelectionCriteria & ListPresentation;
 
 export type ListPage<T> = {
   items: T[];
@@ -20,22 +34,118 @@ export type ListPage<T> = {
   next_cursor: string | null;
 };
 
+export const CRITERIA_KEYS = ["scope", "q", "created_by", "expires", "expires_before", "updated_before", "min_size"] as const;
+export type CriteriaKey = (typeof CRITERIA_KEYS)[number];
+
+export type ParsedCriteria = { criteria: SelectionCriteria; malformed: CriteriaKey[] };
+
+export function assertNever(value: never): never {
+  throw new Error(`Unhandled variant ${String(value)}`);
+}
+
+/** undefined: absent or blank. null: present but not text. */
+function textValue(raw: unknown): string | undefined | null {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== "string") return null;
+  const value = raw.trim();
+  return value === "" ? undefined : value;
+}
+
+function isoTimestamp(raw: string): string | null {
+  const t = Date.parse(raw);
+  return Number.isFinite(t) ? new Date(t).toISOString() : null;
+}
+
+function scopeFrom(raw: string | undefined, malformed: CriteriaKey[]): ListScope {
+  const scope = raw?.toLowerCase();
+  if (scope === undefined) return "involved";
+  if (scope === "created" || scope === "edited" || scope === "involved") return scope;
+  malformed.push("scope");
+  return "involved";
+}
+
+function timestampFrom(raw: string | undefined, key: CriteriaKey, malformed: CriteriaKey[]): string | undefined {
+  if (raw === undefined) return undefined;
+  const iso = isoTimestamp(raw);
+  if (iso === null) malformed.push(key);
+  return iso ?? undefined;
+}
+
+function expiresFrom(neverRaw: string | undefined, beforeRaw: string | undefined, malformed: CriteriaKey[]): ExpiresFilter | undefined {
+  const never = neverRaw === undefined ? undefined : neverRaw.toLowerCase() === "never";
+  if (never === false) malformed.push("expires");
+  const before = timestampFrom(beforeRaw, "expires_before", malformed);
+  if (never && before) {
+    malformed.push("expires", "expires_before");
+    return undefined;
+  }
+  if (never) return { kind: "never" };
+  return before ? { kind: "before", at: before } : undefined;
+}
+
+function sizeFrom(raw: string | undefined, malformed: CriteriaKey[]): number | undefined {
+  if (raw === undefined) return undefined;
+  const size = parseByteSize(raw);
+  if (size === null) malformed.push("min_size");
+  return size ?? undefined;
+}
+
+/**
+ * One parser for the URL list query and the JSON cleanup target. It never throws;
+ * the caller decides whether `malformed` keys are dropped (hub URL) or a 400 (cleanup).
+ */
+export function criteriaFrom(input: Record<string, unknown>): ParsedCriteria {
+  const malformed: CriteriaKey[] = [];
+  const read = (key: CriteriaKey): string | undefined => {
+    const value = textValue(input[key]);
+    if (value === null) {
+      malformed.push(key);
+      return undefined;
+    }
+    return value;
+  };
+  const criteria: SelectionCriteria = { scope: scopeFrom(read("scope"), malformed), q: read("q")?.toLowerCase() ?? "" };
+  const createdBy = read("created_by")?.toLowerCase();
+  if (createdBy) criteria.createdBy = createdBy;
+  const expires = expiresFrom(read("expires"), read("expires_before"), malformed);
+  if (expires) criteria.expires = expires;
+  const updatedBefore = timestampFrom(read("updated_before"), "updated_before", malformed);
+  if (updatedBefore) criteria.updatedBefore = updatedBefore;
+  const minSize = sizeFrom(typeof input.min_size === "number" ? String(input.min_size) : read("min_size"), malformed);
+  if (minSize !== undefined) criteria.minSize = minSize;
+  return { criteria, malformed };
+}
+
+export function parseSort(raw: string | null | undefined): CatalogSort {
+  switch (raw) {
+    case "name":
+    case "size":
+    case "age":
+      return raw;
+    default:
+      return "updated";
+  }
+}
+
+function searchRecord(url: URL): Record<string, string> {
+  const record: Record<string, string> = {};
+  for (const key of CRITERIA_KEYS) {
+    const value = url.searchParams.get(key);
+    if (value !== null) record[key] = value;
+  }
+  return record;
+}
+
 export function parseListQuery(url: URL): ListQuery {
-  const scopeRaw = (url.searchParams.get("scope") || "involved").toLowerCase();
-  const scope: ListScope = scopeRaw === "created" || scopeRaw === "edited" ? scopeRaw : "involved";
-  const q = (url.searchParams.get("q") || "").trim().toLowerCase();
-  const createdBy = (url.searchParams.get("created_by") || "").trim().toLowerCase() || undefined;
-  const sort = url.searchParams.get("sort") === "name" ? "name" : "updated";
+  const { criteria } = criteriaFrom(searchRecord(url));
   const rawLimit = url.searchParams.get("limit");
   const parsedLimit = rawLimit == null || rawLimit === "" ? NaN : Number(rawLimit);
   const limit = Number.isFinite(parsedLimit)
     ? Math.min(MAX_LIST_LIMIT, Math.max(1, Math.round(parsedLimit)))
     : DEFAULT_LIST_LIMIT;
   return {
-    scope,
-    q,
-    createdBy,
-    sort,
+    ...criteria,
+    sort: parseSort(url.searchParams.get("sort")),
     limit,
     cursor: url.searchParams.get("cursor"),
     sitesCursor: url.searchParams.get("sites_cursor"),
@@ -47,7 +157,7 @@ export function involvementSql(
   createdCol: string,
   writtenCol: string,
   me: string,
-  query: ListQuery,
+  query: Pick<SelectionCriteria, "scope" | "createdBy">,
   owner?: { col: string; id: string },
 ): { sql: string; binds: string[] } {
   const written = `COALESCE(${writtenCol}, ${createdCol})`;
@@ -87,6 +197,87 @@ export function likeNeedle(q: string): string | null {
   return `%${cleaned}%`;
 }
 
+export const SITE_SIZE_SQL = "COALESCE(SUM(f.size), 0)";
+const FILE_UPDATED_SQL = "COALESCE(updated_at, created_at)";
+
+type Columns = {
+  created: string;
+  written: string;
+  owner: string;
+  name: string;
+  updated: string;
+  expires: string;
+  size: string;
+  sizeClause: "where" | "having";
+};
+
+/** Site size is an aggregate over site_files, so its predicates go in HAVING. */
+const COLUMNS: Record<CatalogKind, Columns> = {
+  sites: {
+    created: "s.created_by",
+    written: "s.last_written_by",
+    owner: "s.owner_id",
+    name: "s.slug",
+    updated: "s.updated_at",
+    expires: "s.expires_at",
+    size: SITE_SIZE_SQL,
+    sizeClause: "having",
+  },
+  files: {
+    created: "created_by",
+    written: "last_written_by",
+    owner: "owner_id",
+    name: "filename",
+    updated: FILE_UPDATED_SQL,
+    expires: "expires_at",
+    size: "size",
+    sizeClause: "where",
+  },
+};
+
+export type CriteriaSql = { where: string; whereBinds: unknown[]; having: string; havingBinds: unknown[] };
+
+function expiresPredicate(col: string, filter: ExpiresFilter): { sql: string; binds: unknown[] } {
+  switch (filter.kind) {
+    case "never":
+      return { sql: `${col} IS NULL`, binds: [] };
+    case "before":
+      return { sql: `${col} < ?`, binds: [filter.at] };
+    default:
+      return assertNever(filter);
+  }
+}
+
+export function criteriaSql(kind: CatalogKind, criteria: SelectionCriteria, me: string, ownerId?: string): CriteriaSql {
+  const cols = COLUMNS[kind];
+  const involvement = involvementSql(cols.created, cols.written, me, criteria, ownerId ? { col: cols.owner, id: ownerId } : undefined);
+  const where = [involvement.sql];
+  const whereBinds: unknown[] = [...involvement.binds];
+  const having: string[] = [];
+  const havingBinds: unknown[] = [];
+  const needle = likeNeedle(criteria.q);
+  if (needle) {
+    where.push(`${cols.name} LIKE ?`);
+    whereBinds.push(needle);
+  }
+  if (criteria.expires) {
+    const expires = expiresPredicate(cols.expires, criteria.expires);
+    where.push(expires.sql);
+    whereBinds.push(...expires.binds);
+  }
+  if (criteria.updatedBefore !== undefined) {
+    where.push(`${cols.updated} < ?`);
+    whereBinds.push(criteria.updatedBefore);
+  }
+  if (criteria.minSize !== undefined) {
+    const clause = cols.sizeClause === "having" ? having : where;
+    const binds = cols.sizeClause === "having" ? havingBinds : whereBinds;
+    clause.push(`${cols.size} >= ?`);
+    binds.push(criteria.minSize);
+  }
+  return { where: where.join(" AND "), whereBinds, having: having.join(" AND "), havingBinds };
+}
+
 export function encodeCursor(parts: string[]): string {
   return parts.map((p) => encodeURIComponent(p)).join("|");
 }
@@ -101,80 +292,107 @@ export function decodeCursor(raw: string | null | undefined): string[] | null {
   }
 }
 
-export function siteCursorSql(
-  query: ListQuery,
-): { sql: string; binds: string[]; order: string } {
-  const cursor = decodeCursor(query.cursor ?? query.sitesCursor);
-  if (query.sort === "name") {
-    if (cursor && cursor[0] === "name" && cursor.length >= 3) {
-      const slug = cursor[1]!;
-      const handle = cursor[2]!;
-      return {
-        sql: ` AND (s.slug > ? OR (s.slug = ? AND s.handle > ?))`,
-        binds: [slug, slug, handle],
-        order: "s.slug ASC, s.handle ASC",
-      };
-    }
-    return { sql: "", binds: [], order: "s.slug ASC, s.handle ASC" };
+type SortSpec<Row> = {
+  exprs: string[];
+  dir: "ASC" | "DESC";
+  clause: "where" | "having";
+  lead: "text" | "number";
+  values: (row: Row) => string[];
+};
+
+export type SiteCursorRow = { id: string; slug: string; handle: string; updated_at: string; size: number };
+export type FileCursorRow = { id: string; filename: string; updated_at: string | null; created_at: string; size: number };
+
+function siteSort(sort: CatalogSort): SortSpec<SiteCursorRow> {
+  switch (sort) {
+    case "updated":
+      return { exprs: ["s.updated_at", "s.id"], dir: "DESC", clause: "where", lead: "text", values: (r) => [r.updated_at, r.id] };
+    case "name":
+      return { exprs: ["s.slug", "s.id"], dir: "ASC", clause: "where", lead: "text", values: (r) => [r.slug, r.id] };
+    case "size":
+      return { exprs: [SITE_SIZE_SQL, "s.id"], dir: "DESC", clause: "having", lead: "number", values: (r) => [String(r.size), r.id] };
+    case "age":
+      return { exprs: ["s.updated_at", "s.id"], dir: "ASC", clause: "where", lead: "text", values: (r) => [r.updated_at, r.id] };
+    default:
+      return assertNever(sort);
   }
-  if (cursor && cursor[0] === "updated" && cursor.length >= 4) {
-    const ts = cursor[1]!;
-    const handle = cursor[2]!;
-    const slug = cursor[3]!;
-    return {
-      sql: ` AND (s.updated_at < ? OR (s.updated_at = ? AND (s.handle < ? OR (s.handle = ? AND s.slug < ?))))`,
-      binds: [ts, ts, handle, handle, slug],
-      order: "s.updated_at DESC, s.handle DESC, s.slug DESC",
-    };
-  }
-  return { sql: "", binds: [], order: "s.updated_at DESC, s.handle DESC, s.slug DESC" };
 }
 
-export function fileCursorSql(
-  query: ListQuery,
-): { sql: string; binds: string[]; order: string } {
-  const cursor = decodeCursor(query.cursor ?? query.filesCursor);
-  const updated = `COALESCE(updated_at, created_at)`;
-  if (query.sort === "name") {
-    if (cursor && cursor[0] === "name" && cursor.length >= 3) {
-      const name = cursor[1]!;
-      const id = cursor[2]!;
-      return {
-        sql: ` AND (filename > ? OR (filename = ? AND id > ?))`,
-        binds: [name, name, id],
-        order: "filename ASC, id ASC",
-      };
-    }
-    return { sql: "", binds: [], order: "filename ASC, id ASC" };
+function fileSort(sort: CatalogSort): SortSpec<FileCursorRow> {
+  switch (sort) {
+    case "updated":
+      return { exprs: [FILE_UPDATED_SQL, "id"], dir: "DESC", clause: "where", lead: "text", values: (r) => [r.updated_at || r.created_at, r.id] };
+    case "name":
+      return { exprs: ["filename", "id"], dir: "ASC", clause: "where", lead: "text", values: (r) => [r.filename, r.id] };
+    case "size":
+      return { exprs: ["size", "id"], dir: "DESC", clause: "where", lead: "number", values: (r) => [String(r.size), r.id] };
+    case "age":
+      return { exprs: [FILE_UPDATED_SQL, "id"], dir: "ASC", clause: "where", lead: "text", values: (r) => [r.updated_at || r.created_at, r.id] };
+    default:
+      return assertNever(sort);
   }
-  if (cursor && cursor[0] === "updated" && cursor.length >= 3) {
-    const ts = cursor[1]!;
-    const id = cursor[2]!;
-    return {
-      sql: ` AND (${updated} < ? OR (${updated} = ? AND id < ?))`,
-      binds: [ts, ts, id],
-      order: `${updated} DESC, id DESC`,
-    };
-  }
-  return { sql: "", binds: [], order: `${updated} DESC, id DESC` };
 }
 
-export function nextSiteCursor(
-  sort: ListQuery["sort"],
-  last: { slug: string; handle: string; updated_at: string },
-): string {
-  return sort === "name"
-    ? encodeCursor(["name", last.slug, last.handle])
-    : encodeCursor(["updated", last.updated_at, last.handle, last.slug]);
+/** `(a < ? OR (a = ? AND (b < ? OR (b = ? AND c < ?))))` over the sort keys in order. */
+function keysetSql(exprs: string[], op: "<" | ">", values: unknown[]): { sql: string; binds: unknown[] } {
+  const [expr, ...rest] = exprs;
+  const [value, ...restValues] = values;
+  if (rest.length === 0) return { sql: `${expr} ${op} ?`, binds: [value] };
+  const tail = keysetSql(rest, op, restValues);
+  return { sql: `(${expr} ${op} ? OR (${expr} = ? AND ${tail.sql}))`, binds: [value, value, ...tail.binds] };
 }
 
-export function nextFileCursor(
-  sort: ListQuery["sort"],
-  last: { id: string; filename: string; updated_at: string | null; created_at: string },
-): string {
-  return sort === "name"
-    ? encodeCursor(["name", last.filename, last.id])
-    : encodeCursor(["updated", last.updated_at || last.created_at, last.id]);
+export type CursorSql = { sql: string; binds: unknown[]; order: string; clause: "where" | "having" };
+
+function cursorSql<Row>(spec: SortSpec<Row>, sort: CatalogSort, raw: string | null): CursorSql {
+  const order = spec.exprs.map((expr) => `${expr} ${spec.dir}`).join(", ");
+  const firstPage: CursorSql = { sql: "", binds: [], order, clause: spec.clause };
+  const parts = decodeCursor(raw);
+  if (!parts || parts[0] !== sort || parts.length < spec.exprs.length + 1) return firstPage;
+  const values: unknown[] = parts.slice(1, spec.exprs.length + 1);
+  if (spec.lead === "number") {
+    const lead = Number(values[0]);
+    if (!Number.isFinite(lead)) return firstPage;
+    values[0] = lead;
+  }
+  const keyset = keysetSql(spec.exprs, spec.dir === "ASC" ? ">" : "<", values);
+  return { sql: keyset.sql, binds: keyset.binds, order, clause: spec.clause };
+}
+
+export function siteCursorSql(query: ListQuery): CursorSql {
+  return cursorSql(siteSort(query.sort), query.sort, query.cursor ?? query.sitesCursor);
+}
+
+export function fileCursorSql(query: ListQuery): CursorSql {
+  return cursorSql(fileSort(query.sort), query.sort, query.cursor ?? query.filesCursor);
+}
+
+export function nextSiteCursor(sort: CatalogSort, last: SiteCursorRow): string {
+  return encodeCursor([sort, ...siteSort(sort).values(last)]);
+}
+
+export function nextFileCursor(sort: CatalogSort, last: FileCursorRow): string {
+  return encodeCursor([sort, ...fileSort(sort).values(last)]);
+}
+
+/** WHERE binds precede HAVING binds because that is the order the statement reads them. */
+export function composeClauses(criteria: CriteriaSql, cursor: CursorSql): { where: string; having: string; binds: unknown[] } {
+  const where = [criteria.where];
+  const having = [criteria.having];
+  const whereBinds = [...criteria.whereBinds];
+  const havingBinds = [...criteria.havingBinds];
+  if (cursor.sql && cursor.clause === "where") {
+    where.push(cursor.sql);
+    whereBinds.push(...cursor.binds);
+  } else if (cursor.sql) {
+    having.push(cursor.sql);
+    havingBinds.push(...cursor.binds);
+  }
+  return {
+    where: where.filter(Boolean).join(" AND "),
+    having: having.filter(Boolean).join(" AND "),
+    binds: [...whereBinds, ...havingBinds],
+  };
 }
 
 export function takePage<T>(rows: T[], limit: number): { items: T[]; hasMore: boolean } {
