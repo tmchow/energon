@@ -382,12 +382,13 @@ export function assertCanMutate(
   throw new ApiError(403, "forbidden_write", "Only the creator can write this.");
 }
 
+export function canSetWritePolicy(actor: Actor, createdBy: string, ownerId?: string | null): boolean {
+  if (actor.userId) return Boolean(ownerId && actor.userId === ownerId);
+  return actor.email.toLowerCase() === String(createdBy || "").toLowerCase();
+}
+
 export function assertCanSetWritePolicy(actor: Actor, createdBy: string, ownerId?: string | null): void {
-  if (actor.userId) {
-    if (ownerId && actor.userId === ownerId) return;
-    throw new ApiError(403, "forbidden_write_policy", "Only the creator can change who can write this.");
-  }
-  if (actor.email.toLowerCase() === String(createdBy || "").toLowerCase()) return;
+  if (canSetWritePolicy(actor, createdBy, ownerId)) return;
   throw new ApiError(403, "forbidden_write_policy", "Only the creator can change who can write this.");
 }
 

@@ -54,11 +54,59 @@ export async function writePasswordHashFromInput(raw: string | undefined): Promi
   return hashWritePassword(trimmed);
 }
 
-/** Echo the phrase the caller just set. GET never returns this — we only store a hash. */
+/** Echo the phrase the caller just set. `/v1` GET never returns stored phrases. */
 export function passwordEcho(raw: string | undefined, hash: string | null | undefined): string | null | undefined {
   if (raw === undefined || hash === undefined) return undefined;
   if (!hash) return null;
   return raw.trim();
+}
+
+/** Recoverable phrase stored next to the hash. `null` hash clears the secret. */
+export function storedPasswordSecret(hash: string | null | undefined, raw: string | undefined): string | null {
+  if (!hash) return null;
+  const trimmed = raw?.trim() ?? "";
+  return trimmed || null;
+}
+
+export function assignPasswordStore(
+  assignments: string[],
+  values: unknown[],
+  hash: string | null | undefined,
+  raw: string | undefined,
+  hashColumn: "password_hash" | "write_password_hash",
+  secretColumn: "password_secret" | "write_password_secret",
+): void {
+  if (hash === undefined) return;
+  assignments.push(`${hashColumn} = ?`, `${secretColumn} = ?`);
+  values.push(hash, storedPasswordSecret(hash, raw));
+}
+
+export function hubLinkAccessFields(
+  canSeeWrite: boolean,
+  row: {
+    password_hash?: string | null;
+    password_secret?: string | null;
+    write_password_hash?: string | null;
+    write_password_secret?: string | null;
+  },
+): {
+  password_protected: boolean;
+  password: string | null;
+  write_password_protected: boolean;
+  write_password?: string | null;
+} {
+  const body: {
+    password_protected: boolean;
+    password: string | null;
+    write_password_protected: boolean;
+    write_password?: string | null;
+  } = {
+    password_protected: Boolean(row.password_hash),
+    password: row.password_secret ?? null,
+    write_password_protected: Boolean(row.write_password_hash),
+  };
+  if (canSeeWrite) body.write_password = row.write_password_secret ?? null;
+  return body;
 }
 
 export function hashesEqual(a: string, b: string): boolean {

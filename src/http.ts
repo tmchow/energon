@@ -98,8 +98,10 @@ export function secretJson(data: unknown, status = 200): Response {
   return json(data, status, { "cache-control": "no-store, private", pragma: "no-cache" });
 }
 
-export function jsonMaybeSecret(data: { write_password?: unknown }, status = 200): Response {
-  if (typeof data.write_password === "string" && data.write_password) return secretJson(data, status);
+export function jsonMaybeSecret(data: { password?: unknown; write_password?: unknown }, status = 200): Response {
+  const share = typeof data.password === "string" && data.password;
+  const write = typeof data.write_password === "string" && data.write_password;
+  if (share || write) return secretJson(data, status);
   return json(data, status);
 }
 

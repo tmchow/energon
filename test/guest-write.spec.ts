@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { MAX_IMPORT_FILES, WRITE_PASSWORD_HEADER } from "../src/config";
 import { GATE_MAX_FAILS } from "../src/gate";
 import { GUEST_WRITE_401_MESSAGE } from "../src/guest-write-protocol";
-import { auth, json, mint, req } from "./helpers";
+import { access, auth, json, mint, req } from "./helpers";
 
 const CONTENT = "https://energon.example.com";
 const HUB = "https://hub.energon.example.com";
@@ -33,6 +33,12 @@ describe("guest write password", () => {
     expect(listed.body).not.toHaveProperty("write_password");
     expect(listed.body).not.toHaveProperty("write_password_hash");
     expect(listed.body.last_written_by).toBe("guest-site@esperlabs.app");
+
+    const hub = await json("/account/sites/guest-site", { headers: access("guest-site@esperlabs.app") });
+    expect(hub.status).toBe(200);
+    expect(hub.body.write_password).toBe("guest-write-ok");
+    expect(hub.body.write_password_protected).toBe(true);
+    expect(secretLeak(hub.body)).toEqual([]);
 
     const added = await json(`${CONTENT}/guest-site/s/guest-site/note.txt`, {
       method: "PUT",

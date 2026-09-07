@@ -26,7 +26,7 @@ Preconditions:
 - Phrase to use: `guest-write-ok`. Do not reuse a production password.
 - Single-origin local: assert the guest-write section of hub `/llms.txt` rather than two Hosts.
 
-- **Create writable site.** `POST $ORIGIN/v1/sites` with `{"slug":"verify-guest","write_password":"guest-write-ok"}`. Status `201`. Body `write_password` is `guest-write-ok`. `write_password_protected` is true. GET of that JSON later must not be used as proof the phrase is stored.
+- **Create writable site.** `POST $ORIGIN/v1/sites` with `{"slug":"verify-guest","write_password":"guest-write-ok"}`. Status `201`. Body `write_password` is `guest-write-ok`. `write_password_protected` is true. `/v1` GET of that JSON later must not contain the phrase. Hub `GET /account/sites/verify-guest` returns `write_password` `guest-write-ok`.
 - **Put homepage with token.** `PUT /v1/sites/verify-guest/files/index.html` with body `<h1>guest-home</h1>`.
 - **Guest PUT new path.** `PUT $ORIGIN/$HANDLE/s/verify-guest/note.txt` with `-H "X-Energon-Write-Password: guest-write-ok"` and body `from-guest`, no `Authorization`. Status `201`. Body has no `hub`. Public GET of that path is `200` with `from-guest`.
 - **Guest DELETE path.** `DELETE $ORIGIN/$HANDLE/s/verify-guest/note.txt` with the write header. Status `200`. Body `{ "deleted": true, "path": "note.txt" }`.
@@ -39,7 +39,7 @@ Preconditions:
 - **Owner policy.** Create a site with `"write_policy":"owner","write_password":"guest-write-ok"`. Guest PUT of a path still succeeds.
 - **Unset is 405.** `PATCH` `{ "write_password": "" }` then guest PUT is `405` and the body does not name `X-Energon-Write-Password`.
 - **Creator-only.** A second-account token `PATCH` of `write_password` is `403`.
-- **Hub marks.** Write-only row lockup hover is `Write password` (no sibling padlock). View-only row padlock hover is `View password`. Unprotected row has no password mark. More menu still offers `Set password`. `#scan-examples` is gone. Last writer stays the account; via copy is `Updated via shared write` after a guest PUT.
+- **Hub marks.** Write-only row lockup hover is `Write password` (no sibling padlock). View-only row padlock hover is `View password`. Unprotected row has no password mark. No Password chip. More menu still offers `Set password`. `#scan-examples` is gone. Last writer stays the account; via copy is `Updated via shared write` after a guest PUT. Open Link access on the write-only row: `#pw-dlg-write-input` shows `guest-write-ok` and can be copied.
 - **Discovery.** `GET $ORIGIN/llms.txt` contains the guest-write section and `X-Energon-Write-Password`.
 - **Proof.** Save create echo, guest PUT `201`, path DELETE `200` JSON, last-path site GET `200`, empty-file GET length `0`, 405 bodies, catalog `/account/data` row (`write_password_protected`, `written_via`, `last_written_by`). Browser proof: Hub stage with `#stage-access` closed, then open showing both fields; catalog lockup on the write-password row with `#who` visible.
 
@@ -48,6 +48,7 @@ Preconditions:
 - Local verify uses one origin. Do not fail the recipe because content-origin `/v1/help` is not a 404.
 - Guest PUT is raw bytes on the public URL. Do not send `Authorization`. Do not send `overwrite: true`.
 - Empty string on PATCH clears. Omitting `write_password` leaves the existing hash.
+- Hub `GET /account/sites/{slug}` returns the stored write phrase to the creator. `/v1` GET does not.
 - Identical phrases still bind to the header that carried them.
 - The HTML gate accepts the write password for reading. The gate and `energon_gate` cookie never authorize PUT or DELETE.
 - Catalog Last writer stays the last account. `Updated via shared write` is the via copy, not a person named guest.

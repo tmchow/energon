@@ -45,4 +45,18 @@ describe("schema representations", () => {
       "ALTER TABLE loose_files ADD COLUMN written_via TEXT;",
     ]);
   });
+
+  it("ships recoverable password secrets as a single additive migration", () => {
+    const migration = readFileSync("migrations/0016_password_secret.sql", "utf8");
+    const statements = migration
+      .split("\n")
+      .filter((line: string) => line.trim() && !line.trim().startsWith("--"));
+
+    expect(statements).toEqual([
+      "ALTER TABLE sites ADD COLUMN password_secret TEXT;",
+      "ALTER TABLE sites ADD COLUMN write_password_secret TEXT;",
+      "ALTER TABLE loose_files ADD COLUMN password_secret TEXT;",
+      "ALTER TABLE loose_files ADD COLUMN write_password_secret TEXT;",
+    ]);
+  });
 });

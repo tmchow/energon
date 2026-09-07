@@ -131,8 +131,9 @@ Do not let visual simplification alter these contracts:
 - Publishing collisions require an explicit choice before replacing existing work.
 - Destructive dialogs retain exact-name confirmation and explain what is lost.
 - Minted token secrets are shown once; the token catalog remains redacted.
+- Share and write passwords stay visible on Hub Link access so they can be copied after creation. They are sharing secrets, not login passwords. `/v1` GET does not return them.
 - Connection approval remains a deliberate human action. Do not prefill or bypass the code step for convenience.
-- Read access, write policy, expiry, and share passwords remain distinct concepts. Catalog marks name those doors on hover: View password, Write password, Org can write, Org cannot write.
+- Read access, write policy, expiry, and share passwords remain distinct concepts. Catalog marks name those doors on hover: View password, Write password, Org can write, Org cannot write. Do not add a Password chip next to the lock. Show expiry in its own column only when a date is set; do not label unlimited work as Never.
 - Copy and success feedback describe an operation that actually completed.
 
 Reuse the existing formatting helpers for bytes, counts, and timestamps. Label the population and period behind a metric. Do not turn lifetime counts into an activity trend or infer readership from writes. Bars must encode actual values on a clear basis; preserve exact values alongside them. Tables should have enough width to scan labels and compare numbers without broken words.

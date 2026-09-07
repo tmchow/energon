@@ -29,7 +29,7 @@ import {
 } from "./expire";
 import { ensureHandle, ensureUser } from "./handles";
 import { listSitesFor } from "./sites";
-import { maybeUnlockWithWritePassword, passwordEcho, passwordField, passwordHashFromInput, protectContent, readSetPasswordHeader, readSetWritePasswordHeader, writePasswordField, writePasswordHashFromInput } from "./gate";
+import { maybeUnlockWithWritePassword, passwordEcho, passwordField, passwordHashFromInput, protectContent, readSetPasswordHeader, readSetWritePasswordHeader, assignPasswordStore, hubLinkAccessFields, storedPasswordSecret, writePasswordField, writePasswordHashFromInput } from "./gate";
 import { filePublicUrl, isFileId, urlFilename } from "./urls";
 import {
   ApiError,
@@ -45,6 +45,7 @@ import {
   publicOrigin,
   readBodyCapped,
   releaseStorage,
+  secretJson,
   tooLarge,
   wantsDownload,
 } from "./http";
@@ -53,6 +54,7 @@ import { contentTypeFor } from "./mime";
 import {
   assertCanMutate,
   assertCanSetWritePolicy,
+  canSetWritePolicy,
   instancePolicy,
   requestedWritePolicy,
   resolveCreateWritePolicy,
@@ -104,10 +106,10 @@ export async function createLooseFile(
   try {
     await env.BUCKET.put(key, bytes, { httpMetadata: { contentType } });
     await env.DB.prepare(
-      `INSERT INTO loose_files (id, handle, owner_id, filename, size, content_type, created_at, created_by, updated_at, last_written_by, password_hash, expires_at, write_policy, write_password_hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO loose_files (id, handle, owner_id, filename, size, content_type, created_at, created_by, updated_at, last_written_by, password_hash, password_secret, expires_at, write_policy, write_password_hash, write_password_secret)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-      .bind(id, handle, user.id, filename, bytes.byteLength, contentType, ts, actor.email, ts, actor.email, stored, resolved.expiresAt, storedWrite, storedWritePw)
+      .bind(id, handle, user.id, filename, bytes.byteLength, contentType, ts, actor.email, ts, actor.email, stored, storedPasswordSecret(stored, password), resolved.expiresAt, storedWrite, storedWritePw, storedPasswordSecret(storedWritePw, writePassword))
       .run();
   } catch (err) {
     await env.BUCKET.delete(key).catch(() => undefined);
@@ -196,10 +198,10 @@ export async function duplicateLooseFile(
   try {
     await copyR2Object(env.BUCKET, fileKey(source.id, source.filename), newKey);
     await env.DB.prepare(
-      `INSERT INTO loose_files (id, handle, owner_id, filename, size, content_type, created_at, created_by, updated_at, last_written_by, password_hash, expires_at, write_policy, write_password_hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO loose_files (id, handle, owner_id, filename, size, content_type, created_at, created_by, updated_at, last_written_by, password_hash, password_secret, expires_at, write_policy, write_password_hash, write_password_secret)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-      .bind(id, handle, user.id, filename, source.size, source.content_type, ts, actor.email, ts, actor.email, stored, resolved.expiresAt, storedWrite, storedWritePw)
+      .bind(id, handle, user.id, filename, source.size, source.content_type, ts, actor.email, ts, actor.email, stored, storedPasswordSecret(stored, password), resolved.expiresAt, storedWrite, storedWritePw, storedPasswordSecret(storedWritePw, writePassword))
       .run();
   } catch (err) {
     await env.BUCKET.delete(newKey).catch(() => undefined);
@@ -524,10 +526,10 @@ export async function putLooseFile(
     } else {
       const updated = await env.DB.prepare(
         `UPDATE loose_files
-         SET handle = COALESCE(handle, ?), filename = ?, size = ?, content_type = ?, updated_at = ?, last_written_by = ?, password_hash = ?
+         SET handle = COALESCE(handle, ?), filename = ?, size = ?, content_type = ?, updated_at = ?, last_written_by = ?, password_hash = ?, password_secret = ?
          WHERE id = ? AND last_written_by = ?`,
       )
-        .bind(handle, filename, bytes.byteLength, contentType, ts, claim.token, hash, id, claim.token)
+        .bind(handle, filename, bytes.byteLength, contentType, ts, claim.token, hash, storedPasswordSecret(hash, password), id, claim.token)
         .run();
       if (!Number(updated.meta?.changes ?? 0)) {
         throw new ApiError(409, "file_write_lost", "The file changed during replacement; retry.");
@@ -635,12 +637,10 @@ export async function patchLoose(
     const assignments = ["updated_at = ?", "last_written_by = ?", "written_via = NULL"];
     const values: unknown[] = [ts, actor.email];
     if (hash !== undefined) {
-      assignments.push("password_hash = ?");
-      values.push(hash);
+      assignPasswordStore(assignments, values, hash, patch.password, "password_hash", "password_secret");
     }
     if (writeHash !== undefined) {
-      assignments.push("write_password_hash = ?");
-      values.push(writeHash);
+      assignPasswordStore(assignments, values, writeHash, patch.write_password, "write_password_hash", "write_password_secret");
     }
     if (resolved) {
       assignments.push("expires_at = ?");
@@ -678,6 +678,51 @@ export async function patchLoose(
     write_policy: nextWrite,
   };
   return jsonMaybeSecret(body);
+}
+
+function involvedInLoose(
+  actor: Actor,
+  row: { created_by: string; last_written_by: string | null; owner_id?: string | null },
+): boolean {
+  const email = actor.email.toLowerCase();
+  if (row.created_by.toLowerCase() === email) return true;
+  if (row.last_written_by && row.last_written_by.toLowerCase() === email) return true;
+  return Boolean(actor.userId && row.owner_id === actor.userId);
+}
+
+export async function hubLooseLinkAccess(env: Env, actor: Actor, id: string): Promise<Response> {
+  if (!isFileId(id)) {
+    throw new ApiError(404, "file_not_found", "No loose file with that id.");
+  }
+  const row = await env.DB.prepare(
+    `SELECT id, handle, filename, created_by, last_written_by, owner_id, password_hash, password_secret, write_password_hash, write_password_secret, expires_at FROM loose_files WHERE id = ?`,
+  )
+    .bind(id)
+    .first<{
+      id: string;
+      handle: string | null;
+      filename: string;
+      created_by: string;
+      last_written_by: string | null;
+      owner_id: string | null;
+      password_hash: string | null;
+      password_secret: string | null;
+      write_password_hash: string | null;
+      write_password_secret: string | null;
+      expires_at: string | null;
+    }>();
+  if (!row || !involvedInLoose(actor, row)) {
+    throw new ApiError(404, "file_not_found", "No loose file with that id.");
+  }
+  if (isExpired(row.expires_at)) throw expiredError("file");
+  const handle = row.handle || (await ensureHandle(env, actor.email, actor.idpSub));
+  return secretJson({
+    id: row.id,
+    handle,
+    filename: row.filename,
+    url: filePublicUrl(env, handle, row.id, row.filename),
+    ...hubLinkAccessFields(canSetWritePolicy(actor, row.created_by, row.owner_id), row),
+  });
 }
 
 async function throwLooseFileMutationConflict(env: Env, id: string): Promise<never> {

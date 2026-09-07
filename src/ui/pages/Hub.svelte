@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy, tick, untrack } from 'svelte';
-  import type { CatalogData, CatalogItem, HubData } from '../types';
+  import type { CatalogData, CatalogItem, HubData, LinkAccess } from '../types';
   import { api, jsonBody, errorMessage } from '../api';
   import { stageFiles, publish, firstFreeSlug, slugify, isCollision, type StagedUpload, type PublishResult } from '../uploads';
   import { nextNumberedSlug } from "../../slugs";
@@ -49,8 +49,13 @@
   let passwordOpen = $state(false);
   let password = $state('');
   let writePassword = $state('');
-  let shareMode = $state('unchanged');
-  let writeMode = $state('unchanged');
+  let loadedShare = $state('');
+  let loadedWrite = $state('');
+  let shareUnrecovered = $state(false);
+  let writeUnrecovered = $state(false);
+  let shareRemove = $state(false);
+  let writeRemove = $state(false);
+  let passwordLoading = $state(false);
   let writeOpen = $state(false);
   let write = $state('owner');
   let mutationBusy = $state(false);
@@ -73,18 +78,9 @@
   const writePasswordNote = $derived(target?.kind === 'file'
     ? 'Replaces that file only. Someone not on this host can PUT the public URL.'
     : 'Full control of served bytes, including replacing index.html. Someone not on this host can PUT or DELETE paths.');
-  function passwordActionModes(isSet: boolean) {
-    return isSet
-      ? [{ value: 'unchanged', label: 'Keep' }, { value: 'replace', label: 'Replace' }, { value: 'remove', label: 'Remove' }]
-      : [{ value: 'unchanged', label: 'Keep unset' }, { value: 'replace', label: 'Set' }];
-  }
-  const shareModes = $derived(passwordActionModes(!!target?.item.password_protected));
-  const writeModes = $derived(passwordActionModes(!!target?.item.write_password_protected));
-  const linkAccessReady = $derived(
-    shareMode === 'remove' ||
-    (shareMode === 'replace' && !!password.trim()) ||
-    (isTargetCreator && (writeMode === 'remove' || (writeMode === 'replace' && !!writePassword.trim())))
-  );
+  const shareDirty = $derived(shareUnrecovered ? (shareRemove || !!password.trim()) : password.trim() !== loadedShare);
+  const writeDirty = $derived(!isTargetCreator ? false : writeUnrecovered ? (writeRemove || !!writePassword.trim()) : writePassword.trim() !== loadedWrite);
+  const linkAccessReady = $derived(!passwordLoading && (shareDirty || writeDirty));
 
   function message(text: string, tone: 'ok' | 'err' = 'ok', result?: PublishResult) {
     messages = [{ tone, text, url: result?.url, name: result?.slug || result?.filename, password: result?.password, writePassword: result?.write_password }, ...messages];
@@ -172,9 +168,34 @@
     selectTarget(kind, item);
     password = '';
     writePassword = '';
-    shareMode = 'unchanged';
-    writeMode = 'unchanged';
+    loadedShare = '';
+    loadedWrite = '';
+    shareUnrecovered = false;
+    writeUnrecovered = false;
+    shareRemove = false;
+    writeRemove = false;
     passwordOpen = true;
+    void loadLinkAccess();
+  }
+  async function loadLinkAccess() {
+    if (!target) return;
+    const path = `/account/${target.kind === 'site' ? 'sites' : 'files'}/${encodeURIComponent(target.item.slug ?? target.item.id)}`;
+    passwordLoading = true;
+    modalError = '';
+    try {
+      const detail = await api<LinkAccess>(path);
+      if (!passwordOpen) return;
+      loadedShare = detail.password || '';
+      password = loadedShare;
+      shareUnrecovered = detail.password_protected && !detail.password;
+      if (isTargetCreator) {
+        loadedWrite = detail.write_password || '';
+        writePassword = loadedWrite;
+        writeUnrecovered = !!detail.write_password_protected && !detail.write_password;
+      }
+    } catch (error) {
+      if (passwordOpen) modalError = errorMessage(error);
+    } finally { passwordLoading = false; }
   }
   function openMore(kind: 'site' | 'file', item: CatalogItem) { selectTarget(kind, item); moreOpen = true; }
   async function mutate(run: () => Promise<void>) {
@@ -206,12 +227,8 @@
   async function saveLinkAccess() {
     if (!target || !linkAccessReady) return;
     const body: Record<string, unknown> = {};
-    if (shareMode === 'remove') body.password = '';
-    else if (shareMode === 'replace' && password.trim()) body.password = password.trim();
-    if (isTargetCreator) {
-      if (writeMode === 'remove') body.write_password = '';
-      else if (writeMode === 'replace' && writePassword.trim()) body.write_password = writePassword.trim();
-    }
+    if (shareDirty) body.password = password.trim();
+    if (isTargetCreator && writeDirty) body.write_password = writePassword.trim();
     if (!Object.keys(body).length) return;
     await mutate(async () => {
       const result = await api<PublishResult>(targetPath, jsonBody('PATCH', body));
@@ -219,7 +236,7 @@
       if ('password' in body) bits.push(result.password_protected ? `Share password set for ${targetName}.` : `Share password removed from ${targetName}.`);
       if ('write_password' in body) bits.push(result.write_password_protected ? `Write password set for ${targetName}.` : `Write password removed from ${targetName}.`);
       message(bits.join(' ') || 'Link access updated.', 'ok', { url: '', password: result.password, write_password: result.write_password });
-      passwordOpen = false; password = ''; writePassword = ''; shareMode = 'unchanged'; writeMode = 'unchanged';
+      passwordOpen = false; password = ''; writePassword = ''; loadedShare = ''; loadedWrite = ''; shareUnrecovered = false; writeUnrecovered = false; shareRemove = false; writeRemove = false;
     });
   }
   async function saveWrite() {
@@ -228,7 +245,7 @@
   const moreItems = $derived(target ? [
     ...(target.kind === 'file' || (target.item.file_count ?? 0) > 0 ? [{ label: target.kind === 'site' ? 'Download zip' : 'Download', icon: 'download' as const, href: `${targetPath}/${target.kind === 'site' ? 'export' : 'download'}` }] : []),
     { label: 'Duplicate', icon: 'fork' as const, onClick: duplicate },
-    { label: target.item.password_protected || target.item.write_password_protected ? 'Change or remove password' : 'Set password', icon: 'lock' as const, onClick: () => { password = ''; writePassword = ''; shareMode = 'unchanged'; writeMode = 'unchanged'; passwordOpen = true; } },
+    { label: target.item.password_protected || target.item.write_password_protected ? 'Change or remove password' : 'Set password', icon: 'lock' as const, onClick: () => { moreOpen = false; editPassword(target!.kind, target!.item); } },
     ...(target.item.created_by === data.email ? [{ label: 'Who can write', icon: 'person' as const, onClick: () => { write = target!.item.write_policy; writeOpen = true; } }] : []),
     { label: 'Delete', icon: 'trash' as const, danger: true, onClick: () => { confirmAction = 'Delete'; confirmOpen = true; } },
   ] : []);
@@ -269,10 +286,10 @@
         <SegmentedControl id="scope" bind:value={scope} ariaLabel="Catalog scope" onChange={() => refresh()} options={[{ value: 'involved', label: 'Your work' }, { value: 'created', label: 'Created by you' }, { value: 'edited', label: 'Last edited by you' }]} />
         <Select id="sort" aria-label="Sort" bind:value={sort} onchange={() => refresh()} options={[{ value: 'updated', label: 'Updated' }, { value: 'name', label: 'Name' }]} />
       </div>
-      <div id="sites"><Catalog kind="site" items={lists.sites} cursor={lists.sites_cursor} busy={loading} allowUnlimited={data.policy.allow_unlimited} writePolicyDefault={data.policy.write_policy} onMore={item => openMore('site', item)} onPassword={item => editPassword('site', item)} onDelete={item => deleteItem('site', item)} onLoadMore={() => refresh('sites')} /></div>
+      <div id="sites"><Catalog kind="site" items={lists.sites} cursor={lists.sites_cursor} busy={loading} writePolicyDefault={data.policy.write_policy} onMore={item => openMore('site', item)} onPassword={item => editPassword('site', item)} onDelete={item => deleteItem('site', item)} onLoadMore={() => refresh('sites')} /></div>
     </Card>
     <Card title="Files" hint={`${lists.files.length < lists.files_total ? `${lists.files.length} of ` : ''}${lists.files_total} ${lists.files_total === 1 ? 'file' : 'files'}`} tight>
-      <div id="files"><Catalog kind="file" items={lists.files} cursor={lists.files_cursor} busy={loading} allowUnlimited={data.policy.allow_unlimited} writePolicyDefault={data.policy.write_policy} onMore={item => openMore('file', item)} onPassword={item => editPassword('file', item)} onDelete={item => deleteItem('file', item)} onLoadMore={() => refresh('files')} /></div>
+      <div id="files"><Catalog kind="file" items={lists.files} cursor={lists.files_cursor} busy={loading} writePolicyDefault={data.policy.write_policy} onMore={item => openMore('file', item)} onPassword={item => editPassword('file', item)} onDelete={item => deleteItem('file', item)} onLoadMore={() => refresh('files')} /></div>
     </Card>
   </div>
   <p class="en-lede">Your catalog includes work you created or last edited. To revise an existing file at the same link, ask your agent to update it; uploading it here creates a new file. Links show current contents until expiry or deletion.</p>
@@ -298,17 +315,17 @@
 <Sheet bind:open={moreOpen} title={targetName} meta={target ? `${target.kind === 'site' ? 'Site' : 'File'} · ${target.item.write_policy === 'instance' ? 'Anyone with a token on this host.' : 'Only the creator'}` : ''} items={moreItems} />
 <ConfirmDialog bind:open={confirmOpen} title={`${confirmAction} ${target?.kind || 'site'}`} message={confirmAction === 'Delete' ? `This removes the ${target?.kind} and its bytes. There is no recycle bin. Type the name to confirm.` : 'Creates a new site you own. Expiration starts now. The share password and write password are not copied.'}
   label={confirmAction === 'Delete' ? `Type “${targetName}” to delete` : 'New slug'} initial={confirmAction === 'Duplicate' ? duplicateSlug : ''} match={confirmAction === 'Delete' ? targetName : undefined} action={confirmAction} danger={confirmAction === 'Delete'} busy={mutationBusy} onConfirm={confirm} error={modalError} />
-<Dialog dismissible={!mutationBusy} id="pw-dlg" bind:open={passwordOpen} title="Link access" message="Each secret is independent. An empty box does not change the other. Energon only stores hashes; copy a new phrase now.">
+<Dialog dismissible={!mutationBusy} id="pw-dlg" bind:open={passwordOpen} title="Link access" message="Copy a phrase to share the link. Empty a box and save to remove that door.">
   {#if modalError}<Flash tone="err">{modalError}</Flash>{/if}
   <form onsubmit={e => { e.preventDefault(); void saveLinkAccess(); }}>
-    <Field label="Share password" htmlFor="pw-dlg-input" noteId="pw-dlg-note" note="Anyone with this password can open the link. Valid API tokens on this instance can still read the work.">
-      <SegmentedControl id="pw-dlg-share-mode" ariaLabel="Share password action" bind:value={shareMode} options={shareModes} />
-      {#if shareMode === 'replace'}<PasswordField id="pw-dlg-input" generateId="pw-dlg-gen" copyId="pw-dlg-copy" describedby="pw-dlg-note" words={data.words} bind:value={password} disabled={mutationBusy} />{/if}
+    <Field label="Share password" htmlFor="pw-dlg-input" noteId="pw-dlg-note" note={shareUnrecovered && !password.trim() && !shareRemove ? 'This password was set before Energon kept phrases for display. Generate a new one to copy it, or remove it.' : 'Anyone with this password can open the link. Valid API tokens on this instance can still read the work.'}>
+      <PasswordField id="pw-dlg-input" generateId="pw-dlg-gen" copyId="pw-dlg-copy" describedby="pw-dlg-note" words={data.words} bind:value={password} disabled={mutationBusy || passwordLoading} />
+      {#if shareUnrecovered && !password.trim() && !shareRemove}<Button id="pw-dlg-remove-share" variant="ghost" size="sm" disabled={mutationBusy || passwordLoading} onclick={() => { shareRemove = true; password = ''; }}>Remove share password</Button>{/if}
     </Field>
     {#if isTargetCreator}
-      <Field label="Write password" htmlFor="pw-dlg-write-input" noteId="pw-dlg-write-note" note={writePasswordNote}>
-        <SegmentedControl id="pw-dlg-write-mode" ariaLabel="Write password action" bind:value={writeMode} options={writeModes} />
-        {#if writeMode === 'replace'}<PasswordField id="pw-dlg-write-input" generateId="pw-dlg-write-gen" copyId="pw-dlg-write-copy" describedby="pw-dlg-write-note" words={data.words} bind:value={writePassword} disabled={mutationBusy} />{/if}
+      <Field label="Write password" htmlFor="pw-dlg-write-input" noteId="pw-dlg-write-note" note={writeUnrecovered && !writePassword.trim() && !writeRemove ? 'This password was set before Energon kept phrases for display. Generate a new one to copy it, or remove it.' : writePasswordNote}>
+        <PasswordField id="pw-dlg-write-input" generateId="pw-dlg-write-gen" copyId="pw-dlg-write-copy" describedby="pw-dlg-write-note" words={data.words} bind:value={writePassword} disabled={mutationBusy || passwordLoading} />
+        {#if writeUnrecovered && !writePassword.trim() && !writeRemove}<Button id="pw-dlg-remove-write" variant="ghost" size="sm" disabled={mutationBusy || passwordLoading} onclick={() => { writeRemove = true; writePassword = ''; }}>Remove write password</Button>{/if}
       </Field>
     {/if}
     <div class="en-dialog-actions"><Button disabled={mutationBusy} onclick={() => passwordOpen = false}>Cancel</Button><Button id="pw-dlg-ok" type="submit" variant="primary" disabled={mutationBusy || !linkAccessReady}>Save</Button></div>

@@ -8,7 +8,7 @@ This page is the short form. The full contract (every path, request and response
 
 Errors are JSON: `{ error, message, hub }` plus extra fields. `message` is written for agents to read aloud to humans.
 
-The hub (`/`, `/account`) is behind Cloudflare Access. Published `/sites` and `/files` URLs are not. Anyone with the link can GET them unless a share password is set. Browsers get a form; agents send `X-Energon-Password`. Token `GET /v1/...` skips the share password. Publish responses include `url` (human) and `api_url` (agent). Writes that set a password echo it once plus `password_protected`. GET never returns the password — only a hash is stored.
+The hub (`/`, `/account`) is behind Cloudflare Access. Published `/sites` and `/files` URLs are not. Anyone with the link can GET them unless a share password is set. Browsers get a form; agents send `X-Energon-Password`. Token `GET /v1/...` skips the share password. Publish responses include `url` (human) and `api_url` (agent). Writes that set a password echo it once plus `password_protected`. `/v1` GET never returns the password.
 
 This skill talks only to **{{ORIGIN}}**. Install a separately rendered skill for any other Energon host.
 

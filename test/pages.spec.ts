@@ -27,6 +27,10 @@ describe("signed-in pages", () => {
     expect(html).not.toContain("Catalog marks");
     expect(html).not.toContain("Set view password");
     expect(html).toContain("Link access");
+    expect(html).toContain("Copy a phrase to share the link");
+    expect(html).toContain('id="pw-dlg-input"');
+    expect(html).not.toContain("Energon only stores hashes");
+    expect(html).not.toContain('id="pw-dlg-share-mode"');
     expect(html).toContain('aria-label="Energon"');
     expect(html).toContain('aria-label="Pages"');
     expect(html).toMatch(/class="en-card[^"]*en-card--charged/);
@@ -66,6 +70,10 @@ describe("signed-in pages", () => {
     expect(boot.data.query).toMatchObject({ q: "svelte", sort: "name" });
     expect(html).toContain("svelte-one.md");
     expect(html).toContain("Load more");
+    expect(html).toContain(">Expires<");
+    expect(html).toContain(">Last writer<");
+    expect(html).not.toMatch(/<th[^>]*>Created by<\/th>/);
+    expect(html).not.toMatch(/<span class="en-badge[^"]*">password<\/span>/i);
     for (const label of ["Copy URL", "Delete", "More actions", "Download"]) expect(html).toContain(`aria-label="${label}"`);
     expect(html).not.toContain("Set view password");
     expect(html).not.toContain("Catalog marks");
@@ -87,6 +95,7 @@ describe("signed-in pages", () => {
     expect(html).not.toContain("scan-examples");
     expect(html).toContain("id=\"pw-dlg\"");
     expect(html).toContain("Link access");
+    expect(html).not.toMatch(/<span class="en-badge[^"]*">password<\/span>/i);
   });
 
   it("setup and tokens are signed-in pages with working element bindings", async () => {

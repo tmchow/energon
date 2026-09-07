@@ -22,14 +22,15 @@ import {
   schedulePurgeExpiredSite,
 } from "./expire";
 import { isMarkdownName, respondMarkdown } from "./markdown";
-import { maybeUnlockWithWritePassword, passwordEcho, passwordHashFromInput, protectContent, writePasswordHashFromInput } from "./gate";
+import { maybeUnlockWithWritePassword, passwordEcho, passwordHashFromInput, protectContent, assignPasswordStore, hubLinkAccessFields, storedPasswordSecret, writePasswordHashFromInput } from "./gate";
 import { ensureHandle, ensureUser } from "./handles";
-import { ApiError, applyIsolation, assertStorageRoom, basename, contentDisposition, copyR2Object, deletePrefix, htmlPage, json, jsonMaybeSecret, nanoid, normalizeRelPath, publicOrigin, releaseStorage, tooLarge, wantsDownload } from "./http";
+import { ApiError, applyIsolation, assertStorageRoom, basename, contentDisposition, copyR2Object, deletePrefix, htmlPage, json, jsonMaybeSecret, nanoid, normalizeRelPath, publicOrigin, releaseStorage, secretJson, tooLarge, wantsDownload } from "./http";
 import { contentTypeFor } from "./mime";
 import {
   OWNER_WRITE_SQL,
   assertCanMutate,
   assertCanSetWritePolicy,
+  canSetWritePolicy,
   instancePolicy,
   ownerWriteBinds,
   requestedWritePolicy,
@@ -42,7 +43,7 @@ import { sitePublicUrl } from "./urls";
 import { packZip, unpackZip } from "./zip";
 
 const SITE_SELECT =
-  `handle, slug, owner_id, created_at, updated_at, created_by, last_written_by, password_hash, expires_at, write_policy, write_password_hash, written_via`;
+  `handle, slug, owner_id, created_at, updated_at, created_by, last_written_by, password_hash, password_secret, expires_at, write_policy, write_password_hash, write_password_secret, written_via`;
 const D1_BATCH_MAX_STATEMENTS = 100;
 
 type R2Snapshot = {
@@ -312,10 +313,10 @@ export async function createSite(
     const stored = hash === undefined ? null : hash;
     const storedWritePw = writeHash === undefined ? null : writeHash;
     await env.DB.prepare(
-      `INSERT INTO sites (handle, slug, owner_id, created_at, updated_at, created_by, last_written_by, password_hash, expires_at, write_policy, write_password_hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO sites (handle, slug, owner_id, created_at, updated_at, created_by, last_written_by, password_hash, password_secret, expires_at, write_policy, write_password_hash, write_password_secret)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-      .bind(handle, slug, user.id, ts, ts, actor.email, actor.email, stored, resolved.expiresAt, storedWrite, storedWritePw)
+      .bind(handle, slug, user.id, ts, ts, actor.email, actor.email, stored, storedPasswordSecret(stored, password), resolved.expiresAt, storedWrite, storedWritePw, storedPasswordSecret(storedWritePw, writePassword))
       .run();
     return {
       status: 201,
@@ -363,12 +364,10 @@ export async function createSite(
   const assignments = ["updated_at = ?", "last_written_by = ?"];
   const values: unknown[] = [ts, actor.email];
   if (hash !== undefined) {
-    assignments.push("password_hash = ?");
-    values.push(hash);
+    assignPasswordStore(assignments, values, hash, password, "password_hash", "password_secret");
   }
   if (writeHash !== undefined) {
-    assignments.push("write_password_hash = ?");
-    values.push(writeHash);
+    assignPasswordStore(assignments, values, writeHash, writePassword, "write_password_hash", "write_password_secret");
   }
   if (resolved) {
     assignments.push("expires_at = ?");
@@ -515,12 +514,10 @@ export async function patchSite(
     const assignments = ["updated_at = ?", "last_written_by = ?", "written_via = NULL"];
     const values: unknown[] = [ts, actor.email];
     if (hash !== undefined) {
-      assignments.push("password_hash = ?");
-      values.push(hash);
+      assignPasswordStore(assignments, values, hash, patch.password, "password_hash", "password_secret");
     }
     if (writeHash !== undefined) {
-      assignments.push("write_password_hash = ?");
-      values.push(writeHash);
+      assignPasswordStore(assignments, values, writeHash, patch.write_password, "write_password_hash", "write_password_secret");
     }
     if (resolved) {
       assignments.push("expires_at = ?");
@@ -968,6 +965,17 @@ export async function listSiteJson(
       url: sitePublicUrl(env, site.handle, slug, f.path),
       api_url: `${origin}/v1/sites/${slug}/files/${f.path}`,
     })),
+  });
+}
+
+export async function hubSiteLinkAccess(env: Env, actor: Actor, slugRaw: string): Promise<Response> {
+  const slug = assertSlug(slugRaw);
+  const site = await requireSite(env, actor, slug);
+  return secretJson({
+    slug,
+    handle: site.handle,
+    url: sitePublicUrl(env, site.handle, slug),
+    ...hubLinkAccessFields(canSetWritePolicy(actor, site.created_by, site.owner_id), site),
   });
 }
 

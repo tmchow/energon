@@ -2396,14 +2396,14 @@
               "string",
               "null"
             ],
-            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. GET never returns it; only a hash is stored."
+            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. `/v1` GET never returns it."
           },
           "write_password": {
             "type": [
               "string",
               "null"
             ],
-            "description": "The write password you just set, trimmed, or null when none was set or it was cleared. GET never returns it; only a hash is stored."
+            "description": "The write password you just set, trimmed, or null when none was set or it was cleared. `/v1` GET never returns it."
           },
           "ttl": {
             "type": "string",
@@ -2494,14 +2494,14 @@
               "string",
               "null"
             ],
-            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. GET never returns it; only a hash is stored."
+            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. `/v1` GET never returns it."
           },
           "write_password": {
             "type": [
               "string",
               "null"
             ],
-            "description": "The write password you just set, trimmed, or null when none was set or it was cleared. GET never returns it; only a hash is stored."
+            "description": "The write password you just set, trimmed, or null when none was set or it was cleared. `/v1` GET never returns it."
           },
           "ttl": {
             "type": "string",
@@ -2557,14 +2557,14 @@
               "string",
               "null"
             ],
-            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. GET never returns it; only a hash is stored."
+            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. `/v1` GET never returns it."
           },
           "write_password": {
             "type": [
               "string",
               "null"
             ],
-            "description": "The write password you just set, trimmed, or null when none was set or it was cleared. GET never returns it; only a hash is stored."
+            "description": "The write password you just set, trimmed, or null when none was set or it was cleared. `/v1` GET never returns it."
           },
           "ttl": {
             "type": "string",
@@ -3029,14 +3029,14 @@
               "string",
               "null"
             ],
-            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. GET never returns it; only a hash is stored."
+            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. `/v1` GET never returns it."
           },
           "write_password": {
             "type": [
               "string",
               "null"
             ],
-            "description": "The write password you just set, trimmed, or null when none was set or it was cleared. GET never returns it; only a hash is stored."
+            "description": "The write password you just set, trimmed, or null when none was set or it was cleared. `/v1` GET never returns it."
           },
           "ttl": {
             "type": "string",
@@ -3137,7 +3137,7 @@
               "string",
               "null"
             ],
-            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. GET never returns it; only a hash is stored."
+            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. `/v1` GET never returns it."
           }
         }
       },
@@ -3187,14 +3187,14 @@
               "string",
               "null"
             ],
-            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. GET never returns it; only a hash is stored."
+            "description": "The share password you just set, trimmed, or null when none was set or it was cleared. `/v1` GET never returns it."
           },
           "write_password": {
             "type": [
               "string",
               "null"
             ],
-            "description": "The write password you just set, trimmed, or null when none was set or it was cleared. GET never returns it; only a hash is stored."
+            "description": "The write password you just set, trimmed, or null when none was set or it was cleared. `/v1` GET never returns it."
           },
           "expires_at": {
             "type": [

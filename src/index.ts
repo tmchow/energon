@@ -19,7 +19,7 @@ import { CONTENT_ONLY_404_MESSAGE } from "./guest-write-protocol";
 import { ensureUser } from "./handles";
 import { identityFromEnv } from "./instance";
 import { MEMORABLE_WORDS } from "./memorable";
-import { deleteLooseFile, getLooseFile, hubLists, listLooseJson, patchLoose, postLooseFromRequest, putLooseFromRequest, serveLoose } from "./files";
+import { deleteLooseFile, getLooseFile, hubLists, hubLooseLinkAccess, listLooseJson, patchLoose, postLooseFromRequest, putLooseFromRequest, serveLoose } from "./files";
 import { passwordField, writePasswordField } from "./gate";
 import { ApiError, accountOriginRequired, assertTrustedAccountOrigin, contentOrigin, dedicatedContentOrigin, isLocalHost, isMermaidAssetPath, isPublicContentPath, json, jsonMaybeSecret, publicOrigin, readBodyCapped, secretJson, serveMermaidAsset, wantsDownload } from "./http";
 import { instancePolicy, policyPublic, tokenPolicy, tokenPolicyPublic } from "./policy";
@@ -30,6 +30,7 @@ import {
   duplicateSite,
   exportSiteZip,
   getSiteFile,
+  hubSiteLinkAccess,
   importSiteZip,
   listSiteJson,
   listSitesJson,
@@ -228,6 +229,10 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   }
 
   const accountPatch = path.match(/^\/account\/sites\/([^/]+)$/);
+  if (accountPatch && method === "GET") {
+    const actor = await requireHuman(request, env, ctx);
+    return hubSiteLinkAccess(env, actor, decodeURIComponent(accountPatch[1]));
+  }
   if (accountPatch && method === "DELETE") {
     const actor = await requireHuman(request, env, ctx);
     await deleteSite(env, ctx, actor, decodeURIComponent(accountPatch[1]));
@@ -281,6 +286,10 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   }
 
   const accountLoosePut = path.match(/^\/account\/files\/([^/]+)$/);
+  if (accountLoosePut && method === "GET") {
+    const actor = await requireHuman(request, env, ctx);
+    return hubLooseLinkAccess(env, actor, decodeURIComponent(accountLoosePut[1]));
+  }
   if (accountLoosePut && method === "PUT") {
     const actor = await requireHuman(request, env, ctx);
     return putLooseFromRequest(env, ctx, actor, decodeURIComponent(accountLoosePut[1]), request);

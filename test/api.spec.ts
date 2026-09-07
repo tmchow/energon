@@ -922,6 +922,13 @@ describe("Energon", () => {
     expect(listed.body.password_protected).toBe(true);
     expect(listed.body).not.toHaveProperty("password");
 
+    const hub = await json("/account/sites/gated", { headers: access("ada@esperlabs.app") });
+    expect(hub.status).toBe(200);
+    expect(hub.body.password).toBe("hunter2");
+    expect(hub.body.password_protected).toBe(true);
+    expect(hub.body.write_password_protected).toBe(false);
+    expect(hub.body.write_password).toBeNull();
+
     await json("/v1/sites/gated/files/index.html", {
       method: "PUT",
       headers: auth(token, { "content-type": "text/html" }),
@@ -1045,6 +1052,10 @@ describe("Energon", () => {
     const row = (listed.body.files || []).find((f: { id: string }) => f.id === created.body.id);
     expect(row.password_protected).toBe(true);
     expect(row).not.toHaveProperty("password");
+    const hub = await json(`/account/files/${created.body.id}`, { headers: access("ada@esperlabs.app") });
+    expect(hub.status).toBe(200);
+    expect(hub.body.password).toBe("abc");
+    expect(hub.body.password_protected).toBe(true);
     const path = new URL(created.body.url).pathname;
 
     const viaApi = await req(`/v1/files/${created.body.id}`, { headers: auth(token) });
@@ -1077,6 +1088,9 @@ describe("Energon", () => {
     expect(listing.status).toBe(200);
     expect(listing.body.password_protected).toBe(true);
     expect(listing.body).not.toHaveProperty("password");
+    const hub = await json("/account/sites/patch-me", { headers: access("ada@esperlabs.app") });
+    expect(hub.status).toBe(200);
+    expect(hub.body.password).toBe("later");
     const cleared = await json("/v1/sites/patch-me", {
       method: "PATCH",
       headers: auth(token, { "content-type": "application/json" }),
