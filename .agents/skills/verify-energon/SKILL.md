@@ -5,7 +5,7 @@ description: Drive a local Energon hub and /v1 API the way a user does — publi
 
 # Verify Energon
 
-Energon is a company host for files and small sites. Humans open the hub. Agents publish through `/v1`. This skill drives a **local** `wrangler dev` you start, not production, and not a teammate's `npm run dev` on port 8787.
+Energon hosts company files and small sites. Humans open the hub. Agents publish through `/v1`. This skill drives a **local** `wrangler dev` you start, not production, and not a teammate's `npm run dev` on port 8787.
 
 Read `features/README.md` before driving. Use the matching feature file as the recipe. One convenient entry point is not a full proof when the map lists others.
 
@@ -127,7 +127,7 @@ All executable, all from repo root:
 | Command | What it does |
 |---|---|
 | `bin/launch` | Isolated wrangler + migrations. Prints origin, pid, persist, evidence. |
-| `bin/doctor` | Read-only health/identity/ownership check. Exit 1 → do not drive. |
+| `bin/doctor` | Read-only health/help/ownership check. Exit 1 → do not drive. |
 | `bin/mint-token [label] [ttl]` | `POST /account/tokens` with `Origin: $ORIGIN` (same path as the Tokens page). Optional `ttl` preset (`1d`…`365d`, `never`); omitted = this Energon's default (`90d`). Prints `ee_live_…`. Saves `$STATE_DIR/token` and `TOKEN_EXPIRES_AT` in `state.env`. |
 | `bin/cleanup` | Kill this run, remove persist, keep evidence. |
 

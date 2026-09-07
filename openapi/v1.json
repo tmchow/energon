@@ -3,7 +3,7 @@
   "info": {
     "title": "Energon",
     "version": "1.0.0",
-    "description": "The /v1 HTTP contract for an Energon host: paths, request and response schemas, status codes, and error codes. Live identity for this Energon is GET /v1/help: hub and content origins, token env var, retention presets, token policy, and limits. Read both. Published content lives on the content origin at /{handle}/s/{slug}/{path} and /{handle}/f/{id}/{filename}; those URLs are not part of /v1, need no token, and are gated only by an optional share password (X-Energon-Password) or, for guest writes, an optional write password (X-Energon-Write-Password). Never invent a token. Never default to overwrite: true.",
+    "description": "The /v1 HTTP contract for this Energon: paths, request and response schemas, status codes, and error codes. Live values for this Energon are GET /v1/help: hub and content origins, token env var, retention presets, token policy, and limits. Read both. Published content lives on the content origin at /{handle}/s/{slug}/{path} and /{handle}/f/{id}/{filename}; those URLs are not part of /v1, need no token, and are gated only by an optional share password (X-Energon-Password) or, for guest writes, an optional write password (X-Energon-Write-Password). Never invent a token. Never default to overwrite: true.",
     "license": {
       "name": "MIT",
       "identifier": "MIT"
@@ -93,12 +93,12 @@
         "tags": [
           "discovery"
         ],
-        "summary": "This Energon's identity, policy, and SOP",
+        "summary": "This Energon's origins, policy, and SOP",
         "description": "Live values for this deployment: hub and content origins, token env var and prefix, skill and marketplace names, limits, retention presets, token lifetimes, an agent SOP, and a routes map. This document is the HTTP schema; help is what varies per Energon. Fields are not schematized here on purpose; read them from the live response.",
         "security": [],
         "responses": {
           "200": {
-            "description": "Identity and policy. Top-level keys: product, hub, content_origin, account, openapi, auth_url, connection_url, env, skill, marketplace, install, auth, token_prefix, limits, retention, tokens, identity, sop, routes.",
+            "description": "Origins, policy, and SOP. Top-level keys: product, hub, content_origin, account, openapi, auth_url, connection_url, env, skill, marketplace, install, auth, token_prefix, limits, retention, tokens, identity, sop, routes.",
             "content": {
               "application/json": {
                 "schema": {

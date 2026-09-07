@@ -326,8 +326,8 @@ export function helpBody(origin: string, env?: Env): unknown {
     sop: [
       `Look for env ${id.tokenEnv}. If missing and a human can respond, follow ${origin}/auth.md to connect with a code and save the delivered token as ${id.tokenEnv} where this environment keeps secrets. If no human can respond, stop and ask for a token provisioned at ${origin}/tokens. The secret is delivered once. Do not invent a token.`,
       `Tokens expire after the lifetime the human picked at mint (default 90 days; see tokens.presets). A 401 with error token_expired is terminal: stop using it, connect again with a code or ask the human to provision a replacement at ${origin}/tokens, and do not retry the expired token. Tokens cannot be extended. GET /v1/whoami shows your token's expires_at.`,
-      `This Energon's skill is ${id.skill} (install ${installLine(id)}). The origin is ${origin}. Do not guess another host.`,
-      `The HTTP schema (paths, request and response bodies, status codes, error codes) is ${origin}/v1/openapi.json. This document is this Energon's identity and policy: origins, token env, retention presets, token lifetimes, limits.`,
+      `This Energon's skill is ${id.skill} (install ${installLine(id)}). The origin is ${origin}. Do not guess another Energon.`,
+      `The HTTP schema (paths, request and response bodies, status codes, error codes) is ${origin}/v1/openapi.json. This document describes this Energon: origins, token env, retention presets, token lifetimes, limits.`,
       `Decide: a site (named folder of files) vs a file (one file, short id). Public URLs are /{handle}/s/{slug}/ and /{handle}/f/{id}/{filename}. Both stay put when you PUT again.`,
       `New site: POST /v1/sites with the human's slug and optional ttl (${policy.presets.map((p) => p.id).join(", ")}). Omit ttl to use ${policy.defaultTtl}. On 409, show the existing URL and ask: new slug, or retry with overwrite: true.`,
       `Write files with PUT /v1/sites/{slug}/files/{path}. One call per file. Last write wins on that path only. PUT does not extend expiry.`,

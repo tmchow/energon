@@ -121,7 +121,7 @@ Write plain, declarative copy. Lead with the consequence, then explain the mecha
 | Stable link | Permanent link |
 | Independent copy | Version control, branch, or revision history |
 | Share password | Private workspace or per-person access promises |
-| This Energon; anyone in the org; on this host (the place) | Instance as the product unit; host identity; deploy your own host |
+| This Energon; Want to deploy your own Energon?; anyone in the org; on this host (the place) | Instance as the product unit; host identity; this Energon’s identity; deploy your own instance/host |
 | “Nothing is written until you Publish.” | A success state while files are only staged |
 | “There is no recycle bin. Type the name to confirm.” | A vague “Are you sure?” for irreversible deletion |
 

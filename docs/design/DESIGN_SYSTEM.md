@@ -32,7 +32,7 @@ Direction agreed with the owner: hybrid basis (faithful to `chrome.css`, light t
 
 **Person.** Second person ("you", "your numbers", "your agent"). The product names itself ("Energon only stores a hash"). Other parties are "agents", "the creator", "the person who sent you this link", or handles (Ada, Bob).
 
-**Word choices (STRATEGY.md).** Lead with *rendered documents, working prototypes, stable links*. Say **"publish"** for the operation and **"hand off"** for one outcome. Say **"read, reference, or update"** so agent use isn't reduced to editing. Say **"independent copy"**, never "version control". Avoid "shared workspace", "edit together", "permanent link".
+**Word choices (STRATEGY.md).** Lead with *rendered documents, working prototypes, stable links*. Say **"publish"** for the operation and **"hand off"** for one outcome. Say **"read, reference, or update"** so agent use isn't reduced to editing. Say **"independent copy"**, never "version control". Say **"this Energon"** and **"Want to deploy your own Energon?"** Avoid "instance", "host identity", "this Energon's identity", "shared workspace", "edit together", "permanent link". Use **"on this host"** only as a locative.
 
 **Casing.** Sentence case everywhere: titles, buttons, labels, nav, table headers (headers are uppercased by CSS). Product nouns are lowercase common words: site, file, slug, token, handle, link. Code is literal: `PUT`, `?raw=1`, `ENERGON_TOKEN`, `X-Energon-Password`, `ee_live_…`.
 

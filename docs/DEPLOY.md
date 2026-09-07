@@ -1,6 +1,6 @@
 # Deploy your own Energon
 
-One codebase. Each host is its own Cloudflare account, D1, R2, Access app, and **rendered skill**. Do not mix two companies’ uploads in one bucket.
+One codebase. Each Energon is its own Cloudflare account, D1, R2, Access app, and **rendered skill**. Do not mix two companies’ uploads in one bucket.
 
 Start with [INSTALL.md](../INSTALL.md). This page is the deeper reference for vars, expiry, Access, and fork hygiene.
 
@@ -8,7 +8,7 @@ Start with [INSTALL.md](../INSTALL.md). This page is the deeper reference for va
 
 This tree is meant to be forked and run inside a company. There is no hosted public service here.
 
-| | This host (company) | If you omit the vars |
+| | This Energon (company) | If you omit the vars |
 | --- | --- | --- |
 | Cloudflare account | Your org | — |
 | Access | Workspace / Okta, locked to your domain | any Access email |
@@ -16,7 +16,7 @@ This tree is meant to be forked and run inside a company. There is no hosted pub
 | `ALLOW_UNLIMITED_RETENTION` | `true` (committed) | `false` |
 | `DEFAULT_TTL` / `MAX_TTL` | `never` / `never` | `7d` / `30d` |
 | `WRITE_POLICY` | `org` (committed) | `owner` |
-| Skill | generated for this host | generic runtime identity only; no installable plugin |
+| Skill | generated for this Energon | generic skill coordinates only; no installable plugin |
 
 Code defaults are **strict** when vars are omitted: required TTL, 30-day cap, creator-only writes. The committed `wrangler.toml` opts into company mode. Replace the placeholder D1 id, `PUBLIC_ORIGIN`, and `CONTENT_ORIGIN` before you deploy. `CONTENT_ORIGIN` must be a separate custom hostname; without it, production content publication fails closed.
 

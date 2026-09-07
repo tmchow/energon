@@ -14,7 +14,7 @@ export function llmsTxt(origin: string, env?: Env): string {
 
 > ${PRODUCT} is agent-native publishing for documents, prototypes, and working files. Agents publish, read, reference, revise, and copy ordinary files over HTTP. People can upload directly and open the same work: Markdown renders as a document; prepared HTML renders as a working static site. Permitted updates keep the same URL until expiry or deletion. The hub is behind Cloudflare Access; published content links are not, unless a share password is set. Do not invent a token.
 
-Reading as reference does not authorize editing. Copies are independent objects, not revision history. Build any required site output before publishing; this host serves files, not server-side application code.
+Reading as reference does not authorize editing. Copies are independent objects, not revision history. Build any required site output before publishing; this Energon serves files, not server-side application code.
 
 The API and authenticated hub live on ${origin}. Published content is served from ${content}, which must be a separate hostname in production. There is no public signup. Use \`${id.tokenEnv}\` if set; otherwise follow ${origin}/auth.md to connect with a code a human approves, or, when no human can respond, stop and ask for a token provisioned at ${origin}/tokens. Tokens look like \`${id.tokenPrefix}…\`.
 
@@ -24,7 +24,7 @@ Do not put secrets, tokens, or share passwords in published files. Last write wi
 
 - [Authentication instructions](${origin}/auth.md): use an existing token, connect with a code, save the token, and recover from rejected credentials. No auth.
 - [OpenAPI 3.1 contract](${origin}/v1/openapi.json): every \`/v1\` path with request and response schemas, status codes, and error codes. No auth.
-- [Machine-readable API help](${origin}/v1/help): this Energon's identity and policy. SOP, routes, limits, retention, token policy. No auth.
+- [Machine-readable API help](${origin}/v1/help): this Energon's origins, policy, and SOP. Routes, limits, retention, token policy. No auth.
 - [Health](${origin}/v1/health): \`{"ok":true}\`. No auth.
 - [Hub](${origin}/): human UI. Cloudflare Access.
 - [About](${origin}/about) and [Stats](${origin}/stats): signed-in humans only.

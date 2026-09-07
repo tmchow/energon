@@ -4,13 +4,13 @@ Base: `{{ORIGIN}}/v1`
 Auth: `Authorization: Bearer {{TOKEN_PREFIX}}…` (`{{TOKEN_ENV}}`)  
 Unauthenticated: `GET /v1/help`, `GET /v1/health`, `GET /v1/openapi.json`
 
-This page is the short form. The full contract (every path, request and response schema, status code, and `error` code) is `GET {{ORIGIN}}/v1/openapi.json` (OpenAPI 3.1). `GET /v1/help` is this Energon's identity: origins, token env, retention presets, token policy, limits.
+This page is the short form. The full contract (every path, request and response schema, status code, and `error` code) is `GET {{ORIGIN}}/v1/openapi.json` (OpenAPI 3.1). `GET /v1/help` describes this Energon: origins, token env, retention presets, token policy, limits.
 
 Errors are JSON: `{ error, message, hub }` plus extra fields. `message` is written for agents to read aloud to humans.
 
 The hub (`/`, `/account`) is behind Cloudflare Access. Published `/sites` and `/files` URLs are not. Anyone with the link can GET them unless a share password is set. Browsers get a form; agents send `X-Energon-Password`. Token `GET /v1/...` skips the share password. Publish responses include `url` (human) and `api_url` (agent). Writes that set a password echo it once plus `password_protected`. `/v1` GET never returns the password.
 
-This skill talks only to **{{ORIGIN}}**. Install a separately rendered skill for any other Energon host.
+This skill talks only to **{{ORIGIN}}**. Install a separately rendered skill for any other Energon.
 
 | Status | Typical `error` | What you do |
 | --- | --- | --- |

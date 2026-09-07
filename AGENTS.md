@@ -1,6 +1,6 @@
 # Energon
 
-Cloudflare Worker: company file and small-site host. Hub + `/v1` on `PUBLIC_ORIGIN`. Published bytes on `CONTENT_ORIGIN` (a separate hostname in production). D1 catalog, R2 objects.
+Cloudflare Worker that hosts company files and small sites. Hub + `/v1` on `PUBLIC_ORIGIN`. Published bytes on `CONTENT_ORIGIN` (a separate hostname in production). D1 catalog, R2 objects.
 
 This file is how to **change this tree**. It is not a product README and not the publish SOP.
 
@@ -8,10 +8,10 @@ This file is how to **change this tree**. It is not a product README and not the
 | --- | --- |
 | Edit the Worker, hub, tests, or skill templates | rest of this file |
 | Add, change, or review UI layout, styling, copy, or interactions | Read and follow [DESIGN.md](./DESIGN.md). Use [docs/design/README.md](./docs/design/README.md) for implementation and verification. |
-| Publish or fetch against a live host | the installed plugin skill; `GET {origin}/v1/help` and `{origin}/llms.txt`. Never invent a token. |
-| Stand up or connect a host | [INSTALL.md](./INSTALL.md) |
+| Publish or fetch against a live Energon | the installed plugin skill; `GET {origin}/v1/help` and `{origin}/llms.txt`. Never invent a token. |
+| Deploy your own Energon or connect an agent | [INSTALL.md](./INSTALL.md) |
 | Deploy vars, Access, fork hygiene | [docs/DEPLOY.md](./docs/DEPLOY.md) |
-| Domain terms (purge claim, write claim, this Energon's identity) | [CONCEPTS.md](./CONCEPTS.md) |
+| Domain terms (purge claim, write claim, this Energon) | [CONCEPTS.md](./CONCEPTS.md) |
 
 ## Hard stops
 

@@ -175,6 +175,8 @@ describe("signed-in pages", () => {
     expect(aboutHtml).toContain("Why use Energon?");
     expect(aboutHtml).toContain("There is no editor");
     expect(aboutHtml).toContain("Agent-native publishing for documents, prototypes, and working files.");
+    expect(aboutHtml).toContain("Want to deploy your own Energon?");
+    expect(aboutHtml).toContain("https://github.com/tmchow/energon#deploy-your-own-energon");
     expect(aboutHtml).toContain("does not extend expiration");
     expect(aboutHtml).not.toContain("Anyone with the link can GET it");
     expect(aboutHtml).not.toContain("Why the links are open");

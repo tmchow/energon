@@ -1,6 +1,6 @@
 # Authenticate to Energon
 
-This is an existing organization's file and small-site host. There is no public signup. Every API call uses a bearer token that a signed-in human authorized, either by approving a connection you start or by creating one on https://hub.energon.example.com/tokens ahead of time.
+This is an existing organization's Energon. There is no public signup. Every API call uses a bearer token that a signed-in human authorized, either by approving a connection you start or by creating one on https://hub.energon.example.com/tokens ahead of time.
 
 ## Order of operations
 
@@ -60,7 +60,7 @@ Humans list and revoke tokens at https://hub.energon.example.com/tokens. Revocat
 
 ## Continue
 
-- [This Energon's identity and policy](https://hub.energon.example.com/v1/help)
+- [This Energon's origins, policy, and SOP](https://hub.energon.example.com/v1/help)
 - [HTTP API contract](https://hub.energon.example.com/v1/openapi.json)
 - [Agent overview](https://hub.energon.example.com/llms.txt)
 

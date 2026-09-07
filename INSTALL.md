@@ -4,14 +4,14 @@ This file is for **humans and agents**. Same steps. Do not invent a token.
 
 There are two jobs:
 
-1. **Stand up a company host** — fork this repo, create Cloudflare resources, render the skill, deploy.
+1. **Deploy your own Energon** — fork this repo, create Cloudflare resources, render the skill, deploy.
 2. **Connect an agent** — add the company marketplace, install the skill, export a token.
 
 If you only need (2), skip to [Connect an agent](#connect-an-agent).
 
 ---
 
-## Stand up a company host
+## Deploy your own Energon
 
 You need a Cloudflare account (Workers Paid — unzip + 25 MB uploads), a hostname, and a GitHub repo that will be the marketplace teammates install from.
 
@@ -46,7 +46,7 @@ Ask the human for:
 - Whether content may live forever (`ALLOW_UNLIMITED_RETENTION=true`) or must expire
 - Whether API tokens may be minted with no expiry (`ALLOW_UNLIMITED_TOKENS`, default allowed). Every token still gets a lifetime picked at mint (default 90 days); this only decides whether Never is on the menu for future mints. Tokens already minted keep working until revoked on `/tokens`.
 
-### 3. Render this host’s skill
+### 3. Render this Energon’s skill
 
 ```bash
 npm run skill:init -- --name yourco --origin https://energon.your.co
@@ -131,7 +131,7 @@ Open http://127.0.0.1:8787. Access is not required on localhost.
 
 ## Connect an agent
 
-Use this after a host exists. If you are standing the host up, finish the section above first.
+Use this after yours is running. If you are still deploying, finish the section above first.
 
 Ask the human for the **origin** (`https://energon.your.co`) and the **GitHub repo** that is the marketplace (usually the company fork). If they only have the origin, `GET {origin}/v1/help` (no auth) names `repo`, `install`, and `env`.
 
@@ -145,7 +145,7 @@ Install at **user (global) scope** so it is available in every project. Project 
 
 Each Energon ships its own skill in its own repo, with its own name and token env. `yourco-energon` and another company's `esper-energon` can both live on the same machine. Install the one you want everywhere at user scope. If you belong to more than one organization, install each skill, or pin the second in that company's project settings. Do not install two marketplaces that share the same `name`.
 
-Most hosts only need the company repo:
+Usually you only add the company repo:
 
 ```
 your-org/energon
@@ -167,7 +167,7 @@ Then read {origin}/auth.md. If {TOKEN_ENV} is already set, use it. Otherwise con
 
 Signed-in humans can copy a filled block from `{origin}/setup`.
 
-Harness-specific commands (replace repo / plugin with this host’s values):
+Harness-specific commands (replace repo / plugin with this Energon’s values):
 
 **Claude Code**
 

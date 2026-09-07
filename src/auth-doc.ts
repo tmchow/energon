@@ -11,7 +11,7 @@ export function authMarkdown(env: Env): string {
   const tokenEnv = identity.tokenEnv;
   return `# Authenticate to ${PRODUCT}
 
-This is an existing organization's file and small-site host. There is no public signup. Every API call uses a bearer token that a signed-in human authorized, either by approving a connection you start or by creating one on ${origin}/tokens ahead of time.
+This is an existing organization's Energon. There is no public signup. Every API call uses a bearer token that a signed-in human authorized, either by approving a connection you start or by creating one on ${origin}/tokens ahead of time.
 
 ## Order of operations
 
@@ -71,7 +71,7 @@ Humans list and revoke tokens at ${origin}/tokens. Revocation prevents further u
 
 ## Continue
 
-- [This Energon's identity and policy](${origin}/v1/help)
+- [This Energon's origins, policy, and SOP](${origin}/v1/help)
 - [HTTP API contract](${origin}/v1/openapi.json)
 - [Agent overview](${origin}/llms.txt)
 

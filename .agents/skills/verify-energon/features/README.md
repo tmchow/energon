@@ -1,6 +1,6 @@
 # Energon verification map
 
-This directory is the maintained source for verifying the user-facing behavior of a local Energon host. Read the index before driving the app, then use the matching feature file as the recipe.
+This directory is the maintained source for verifying the user-facing behavior of a local Energon. Read the index before driving the app, then use the matching feature file as the recipe.
 
 ## Baseline preconditions
 
