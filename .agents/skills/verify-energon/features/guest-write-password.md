@@ -35,7 +35,7 @@ Preconditions:
 - **Create writable file.** `POST /v1/files` with `X-Filename: guest.bin`, `X-Energon-Set-Write-Password: guest-write-ok`, body `abc`, `content-type: application/octet-stream`. Status `201`.
 - **Empty loose PUT then GET.** `PUT` the public file URL with the write header and empty body. Status `200`. Later GET is `200` with length `0` and the same `Content-Type`.
 - **Loose DELETE.** `DELETE` that public file URL with the write header. Status `405`.
-- **Header-bound.** Same phrase on `X-Energon-Password` cannot PUT or DELETE. Cookie from a share-password form POST cannot PUT or DELETE.
+- **Header-bound.** Same phrase on `X-Energon-Password` cannot PUT or DELETE. Cookie from a share-password form POST cannot PUT or DELETE. Distinct secrets: form POST of the write phrase is `303`; cookie GET is `200`; that cookie PUT/DELETE is `401`. Share header carrying the write phrase is `401` on GET.
 - **Owner policy.** Create a site with `"write_policy":"owner","write_password":"guest-write-ok"`. Guest PUT of a path still succeeds.
 - **Unset is 405.** `PATCH` `{ "write_password": "" }` then guest PUT is `405` and the body does not name `X-Energon-Write-Password`.
 - **Creator-only.** A second-account token `PATCH` of `write_password` is `403`.
@@ -49,5 +49,5 @@ Preconditions:
 - Guest PUT is raw bytes on the public URL. Do not send `Authorization`. Do not send `overwrite: true`.
 - Empty string on PATCH clears. Omitting `write_password` leaves the existing hash.
 - Identical phrases still bind to the header that carried them.
-- The HTML gate and `energon_gate` cookie never authorize PUT or DELETE.
+- The HTML gate accepts the write password for reading. The gate and `energon_gate` cookie never authorize PUT or DELETE.
 - Catalog Last writer stays the last account. `Updated via shared write` is the via copy, not a person named guest.

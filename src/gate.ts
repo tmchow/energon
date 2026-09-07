@@ -171,9 +171,19 @@ export async function parseFormPassword(request: Request): Promise<string | null
   const params = new URLSearchParams(new TextDecoder().decode(buf));
   const v = params.get("password");
   if (v !== null && v.length > 128) {
-    throw new ApiError(400, "bad_password", "Share password is too long (max 128 characters).");
+    throw new ApiError(400, "bad_password", "Password is too long (max 128 characters).");
   }
   return v;
+}
+
+async function formPhraseUnlocks(
+  candidate: string,
+  shareHash: string,
+  writeHash: string | null | undefined,
+): Promise<boolean> {
+  const shareOk = hashesEqual(await hashSharePassword(candidate), shareHash);
+  const writeOk = writeHash ? hashesEqual(await hashWritePassword(candidate), writeHash) : false;
+  return shareOk || writeOk;
 }
 
 export function gateCookieHeader(token: string, cookiePath: string, hostname: string): string {
@@ -267,6 +277,7 @@ export async function protectContent(
   cookiePath: string,
   title: string,
   env: Env,
+  writeHash?: string | null,
 ): Promise<Response | null> {
   if (!passwordHash) return null;
   const url = new URL(request.url);
@@ -279,7 +290,10 @@ export async function protectContent(
     const candidate = formPw ?? offered;
     if (candidate !== null) {
       if (await gateIsBlocked(env, scopes)) return gateLimited(request, title);
-      if (hashesEqual(await hashSharePassword(candidate), passwordHash)) {
+      const unlocked = formPw !== null
+        ? await formPhraseUnlocks(candidate, passwordHash, writeHash)
+        : hashesEqual(await hashSharePassword(candidate), passwordHash);
+      if (unlocked) {
         await clearGateAttempts(env, scopes);
         return new Response(null, {
           status: 303,

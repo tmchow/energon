@@ -21,7 +21,7 @@ A file write password only replaces that file. You cannot delete the file. The p
 
 A site write password can PUT or DELETE a path under that site. You cannot delete the site. The site address still opens after every path is gone.
 
-GET with that same write header reads the object even if a share password is set. HTML forms only accept the share password. A cookie never authorizes PUT or DELETE.
+GET with that same write header reads the object even if a share password is set. The HTML gate form also accepts the write password for reading. A cookie never authorizes PUT or DELETE.
 
 Wrong or missing write password on PUT or DELETE: 401 naming \`${WRITE_PASSWORD_HEADER}\`. Unset write password: 405. Directory URLs accept GET only.
 
@@ -40,7 +40,7 @@ The outside agent GETs \`${contentOrigin}/llms.txt\` and PUTs the public URL wit
 
 A file write password only replaces that file (including empty). A site write password can add, replace, or delete paths under that slug, including \`index.html\`. It cannot delete the site or the loose file.
 
-\`${WRITE_PASSWORD_HEADER}\` is not the share-password header. Identical phrases still bind to the header that carried them. The write header unlocks GET. The HTML gate and cookie never authorize PUT or DELETE.
+\`${WRITE_PASSWORD_HEADER}\` is not the share-password header. Identical phrases still bind to the header that carried them. The write header unlocks GET. The HTML gate accepts the write password for reading. The gate and cookie never authorize PUT or DELETE.
 `;
 }
 

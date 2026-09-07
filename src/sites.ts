@@ -1102,7 +1102,9 @@ export async function serveSite(
   const cookiePath = `/${handle}/s/${slug}/`;
   const unlocked = await maybeUnlockWithWritePassword(request, env, site.write_password_hash, cookiePath);
   if (unlocked instanceof Response) return unlocked;
-  const gated = unlocked === "unlocked" ? null : await protectContent(request, site.password_hash, cookiePath, slug, env);
+  const gated = unlocked === "unlocked"
+    ? null
+    : await protectContent(request, site.password_hash, cookiePath, slug, env, site.write_password_hash);
   if (gated) return gated;
   if (request.method === "POST") {
     return json({ error: "method_not_allowed", message: "Method not allowed." }, 405);

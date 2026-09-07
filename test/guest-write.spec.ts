@@ -2,6 +2,7 @@ import { env } from "cloudflare:test";
 import { zipSync, strToU8 } from "fflate";
 import { describe, expect, it } from "vitest";
 import { MAX_IMPORT_FILES, WRITE_PASSWORD_HEADER } from "../src/config";
+import { GATE_MAX_FAILS } from "../src/gate";
 import { GUEST_WRITE_401_MESSAGE } from "../src/guest-write-protocol";
 import { auth, json, mint, req } from "./helpers";
 
@@ -177,6 +178,141 @@ describe("guest write password", () => {
     const ok = await json(publicUrl, { method: "PUT", headers: { [WRITE_PASSWORD_HEADER]: "same-phrase" }, body: "guest" });
     expect(ok.status).toBe(200);
   });
+
+  it("accepts the write password on the HTML gate for reading and still ignores the cookie for write", async () => {
+    const token = await mint("guest-gate", "guest-gate@esperlabs.app");
+    await json("/v1/sites", {
+      method: "POST",
+      headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({
+        slug: "guest-gate",
+        password: "view-secret",
+        write_password: "guest-write-ok",
+      }),
+    });
+    await json("/v1/sites/guest-gate/files/index.html", {
+      method: "PUT",
+      headers: auth(token, { "content-type": "text/html" }),
+      body: "<h1>gated</h1>",
+    });
+    const publicUrl = `${CONTENT}/guest-gate/s/guest-gate/index.html`;
+    const rootUrl = `${CONTENT}/guest-gate/s/guest-gate/`;
+
+    const locked = await req(rootUrl);
+    expect(locked.status).toBe(401);
+    expect(await locked.text()).toContain("Ask the person who sent you this link for the password.");
+
+    const shareHeaderWrong = await json(publicUrl, {
+      headers: { "X-Energon-Password": "guest-write-ok", accept: "application/json" },
+    });
+    expect(shareHeaderWrong.status).toBe(401);
+
+    const writeGet = await req(publicUrl, { headers: WRITE });
+    expect(writeGet.status).toBe(200);
+    expect(await writeGet.text()).toContain("gated");
+
+    const formWrite = await req(rootUrl, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "password=guest-write-ok",
+      redirect: "manual",
+    });
+    expect(formWrite.status).toBe(303);
+    const cookie = (formWrite.headers.get("set-cookie") || "").split(";")[0]!;
+    expect(cookie).toContain("energon_gate=");
+
+    const cookieGet = await req(publicUrl, { headers: { cookie } });
+    expect(cookieGet.status).toBe(200);
+    expect(await cookieGet.text()).toContain("gated");
+
+    const cookiePut = await json(publicUrl, {
+      method: "PUT",
+      headers: { cookie },
+      body: "via-cookie",
+    });
+    expect(cookiePut.status).toBe(401);
+    const cookieDel = await json(publicUrl, { method: "DELETE", headers: { cookie } });
+    expect(cookieDel.status).toBe(401);
+
+    const formShare = await req(rootUrl, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "password=view-secret",
+      redirect: "manual",
+    });
+    expect(formShare.status).toBe(303);
+
+    const ok = await json(publicUrl, { method: "PUT", headers: WRITE, body: "guest" });
+    expect(ok.status).toBe(200);
+  });
+
+  it("keeps write-guess lockout off share-password GET and share-guess lockout off write PUT", async () => {
+    const token = await mint("guest-rl", "guest-rl@esperlabs.app");
+    await json("/v1/sites", {
+      method: "POST",
+      headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({
+        slug: "guest-rl-write",
+        password: "view-secret",
+        write_password: "guest-write-ok",
+      }),
+    });
+    await json("/v1/sites/guest-rl-write/files/index.html", {
+      method: "PUT",
+      headers: auth(token, { "content-type": "text/html" }),
+      body: "<h1>rl-write</h1>",
+    });
+    const writeUrl = `${CONTENT}/guest-rl/s/guest-rl-write/index.html`;
+    const writeIp = { "CF-Connecting-IP": "203.0.113.41" };
+    for (let i = 0; i < GATE_MAX_FAILS; i++) {
+      const wrong = await json(writeUrl, {
+        method: "PUT",
+        headers: { ...writeIp, [WRITE_PASSWORD_HEADER]: "nope" },
+        body: "x",
+      });
+      expect(wrong.status).toBe(401);
+    }
+    const writeBlocked = await json(writeUrl, {
+      method: "PUT",
+      headers: { ...writeIp, [WRITE_PASSWORD_HEADER]: "guest-write-ok" },
+      body: "x",
+    });
+    expect(writeBlocked.status).toBe(429);
+    const shareStill = await req(writeUrl, {
+      headers: { ...writeIp, "X-Energon-Password": "view-secret" },
+    });
+    expect(shareStill.status).toBe(200);
+    expect(await shareStill.text()).toContain("rl-write");
+
+    await json("/v1/sites", {
+      method: "POST",
+      headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({
+        slug: "guest-rl-read",
+        password: "view-secret",
+        write_password: "guest-write-ok",
+      }),
+    });
+    await json("/v1/sites/guest-rl-read/files/index.html", {
+      method: "PUT",
+      headers: auth(token, { "content-type": "text/html" }),
+      body: "<h1>rl-read</h1>",
+    });
+    const readUrl = `${CONTENT}/guest-rl/s/guest-rl-read/index.html`;
+    const readIp = { "CF-Connecting-IP": "203.0.113.42", accept: "application/json", "X-Energon-Password": "wrong" };
+    for (let i = 0; i < GATE_MAX_FAILS; i++) {
+      const wrong = await json(readUrl, { headers: readIp });
+      expect(wrong.status).toBe(401);
+    }
+    const readBlocked = await json(readUrl, { headers: readIp });
+    expect(readBlocked.status).toBe(429);
+    const writeStill = await json(readUrl, {
+      method: "PUT",
+      headers: { "CF-Connecting-IP": "203.0.113.42", [WRITE_PASSWORD_HEADER]: "guest-write-ok" },
+      body: "guest",
+    });
+    expect(writeStill.status).toBe(200);
+  }, 20_000);
 
   it("returns 405 when the write password is unset and 401 when it is wrong", async () => {
     const token = await mint("guest-unset", "guest-unset@esperlabs.app");

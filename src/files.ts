@@ -1002,7 +1002,9 @@ export async function serveLoose(
   const cookiePath = `/${handle}/f/${id}/`;
   const unlocked = await maybeUnlockWithWritePassword(request, env, row.write_password_hash, cookiePath);
   if (unlocked instanceof Response) return unlocked;
-  const gated = unlocked === "unlocked" ? null : await protectContent(request, row.password_hash, cookiePath, row.filename, env);
+  const gated = unlocked === "unlocked"
+    ? null
+    : await protectContent(request, row.password_hash, cookiePath, row.filename, env, row.write_password_hash);
   if (gated) return gated;
   if (request.method === "POST") {
     return json({ error: "method_not_allowed", message: "Method not allowed." }, 405);

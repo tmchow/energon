@@ -41,7 +41,7 @@ The outside agent GETs `https://energon.example.com/llms.txt` and PUTs the publi
 
 A file write password only replaces that file (including empty). A site write password can add, replace, or delete paths under that slug, including `index.html`. It cannot delete the site or the loose file.
 
-`X-Energon-Write-Password` is not the share-password header. Identical phrases still bind to the header that carried them. The write header unlocks GET. The HTML gate and cookie never authorize PUT or DELETE.
+`X-Energon-Write-Password` is not the share-password header. Identical phrases still bind to the header that carried them. The write header unlocks GET. The HTML gate accepts the write password for reading. The gate and cookie never authorize PUT or DELETE.
 
 ## Optional
 
