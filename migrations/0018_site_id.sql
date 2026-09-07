@@ -1,5 +1,7 @@
 -- Sites gain a stable capability id (same shape as loose file ids).
 -- site_files rekey from (handle, slug, path) to (site_id, path).
+-- R2 keys move from sites/{handle}/{slug}/ to sites/{handle}/{id}/ via
+-- remapLegacySiteR2 on Worker boot (D1 migrations cannot touch R2).
 -- CREATE / ADD COLUMN are not idempotent. Stamp 0018 after apply.
 -- A 0005-shaped DB that has not run this file still starts via ensureSchema
 -- (additive id / site_id columns). This rebuild is the clean pre-launch shape.

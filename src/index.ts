@@ -14,6 +14,7 @@ import { openapiResponse } from "./openapi";
 import { PRODUCT, RESERVED_HANDLES } from "./config";
 import { ensureSchema } from "./db";
 import { sweepExpired } from "./expire";
+import { remapLegacySiteR2 } from "./site-r2-migrate";
 import { guestWrite } from "./guest-write";
 import { CONTENT_ONLY_404_MESSAGE } from "./guest-write-protocol";
 import { ensureUser } from "./handles";
@@ -66,6 +67,7 @@ export default {
   },
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     await ensureSchema(env.DB);
+    await remapLegacySiteR2(env);
     await sweepExpired(env, ctx);
     await purgeConnections(env);
   },
@@ -148,6 +150,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   }
 
   await ensureSchema(env.DB);
+  await remapLegacySiteR2(env);
 
   if (path === "/v1" || path === "/v1/") {
     return unauthorized(publicOrigin(env), undefined, env).toResponse(publicOrigin(env));
