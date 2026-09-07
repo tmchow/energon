@@ -147,16 +147,25 @@ describe("hub account API", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toMatch(/no-store/);
     expect(res.headers.get("cache-control")).toMatch(/private/);
-    const data = { status: res.status, body: await res.json() };
-    expect(data.body.email).toBe(email);
-    expect(data.body.sites).toEqual(expect.any(Array));
-    expect(data.body.files).toEqual(expect.any(Array));
-    expect(data.body).toHaveProperty("sites_total");
-    expect(data.body).toHaveProperty("files_total");
-    expect(data.body).toHaveProperty("sites_cursor");
-    expect(data.body).toHaveProperty("files_cursor");
-    expect(data.body.tokens.some((t: { label: string }) => t.label === "listed")).toBe(true);
-    expect(JSON.stringify(data.body)).not.toContain(token);
+    const data = (await res.json()) as {
+      email: string;
+      sites: unknown[];
+      files: unknown[];
+      sites_total: number;
+      files_total: number;
+      sites_cursor: string | null;
+      files_cursor: string | null;
+      tokens: { label: string }[];
+    };
+    expect(data.email).toBe(email);
+    expect(data.sites).toEqual(expect.any(Array));
+    expect(data.files).toEqual(expect.any(Array));
+    expect(data).toHaveProperty("sites_total");
+    expect(data).toHaveProperty("files_total");
+    expect(data).toHaveProperty("sites_cursor");
+    expect(data).toHaveProperty("files_cursor");
+    expect(data.tokens.some((t) => t.label === "listed")).toBe(true);
+    expect(JSON.stringify(data)).not.toContain(token);
   });
 
   it("defaults list pages to 25 so a missing limit is not 1", async () => {
