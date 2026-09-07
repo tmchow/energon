@@ -8,9 +8,11 @@ let remapped = false;
 /**
  * After D1 gains site ids, objects may still live under sites/{handle}/{slug}/.
  * Copy each legacy prefix onto sites/{handle}/{id}/ once, then delete the legacy
- * keys. Also purge the old public path /{handle}/s/{slug}/ so shared cache cannot
- * keep serving guessable pre-id URLs. Idempotent across boots via the in-memory
- * latch; safe to re-run after resetLegacySiteR2RemapForTests in the test isolate.
+ * keys. Also best-effort purge the old public path /{handle}/s/{slug}/ so shared
+ * cache cannot keep serving guessable pre-id URLs. Purge failures are logged and
+ * must not leave remapped false (that would 500 every request / skip cron work).
+ * Idempotent across boots via the in-memory latch; safe to re-run after
+ * resetLegacySiteR2RemapForTests in the test isolate.
  */
 export async function remapLegacySiteR2(env: Env, ctx?: ExecutionContext): Promise<void> {
   if (remapped) return;
@@ -34,8 +36,13 @@ export async function remapLegacySiteR2(env: Env, ctx?: ExecutionContext): Promi
     }
     await deletePrefix(env.BUCKET, legacyPrefix);
   }
-  await purgeContent(ctx, stalePublicPrefixes);
   remapped = true;
+  if (!ctx || stalePublicPrefixes.length === 0) return;
+  ctx.waitUntil(
+    purgeContent(ctx, stalePublicPrefixes).catch((err) => {
+      console.error("legacy site cache purge failed", err);
+    }),
+  );
 }
 
 /** Test-only: allow a second remap pass in the same isolate. */

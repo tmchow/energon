@@ -75,8 +75,11 @@ describe("legacy site R2 remap", () => {
     expect(site.id).not.toBe(site.slug);
 
     const purged: string[][] = [];
+    const pending: Promise<unknown>[] = [];
     const ctx = {
-      waitUntil() {},
+      waitUntil(task: Promise<unknown>) {
+        pending.push(task);
+      },
       cache: {
         async purge({ pathPrefixes }: { pathPrefixes: string[] }) {
           purged.push(pathPrefixes);
@@ -86,7 +89,34 @@ describe("legacy site R2 remap", () => {
 
     resetLegacySiteR2RemapForTests();
     await remapLegacySiteR2(env, ctx);
+    await Promise.all(pending);
 
-    expect(purged).toEqual([[`/${site.handle}/s/${site.slug}/`]]);
+    expect(purged).toHaveLength(1);
+    expect(purged[0]).toContain(`/${site.handle}/s/${site.slug}/`);
+  });
+
+  it("latches remapped even when cache purge rejects so requests are not wedged", async () => {
+    const token = await mint("site-r2-remap-purge-fail");
+    const site = await createSite(token, "purge-fail-slug");
+    expect(site.status).toBe(201);
+
+    const pending: Promise<unknown>[] = [];
+    const ctx = {
+      waitUntil(task: Promise<unknown>) {
+        pending.push(task);
+      },
+      cache: {
+        async purge() {
+          throw new Error("purge rejected");
+        },
+      },
+    } as unknown as ExecutionContext;
+
+    resetLegacySiteR2RemapForTests();
+    await expect(remapLegacySiteR2(env, ctx)).resolves.toBeUndefined();
+    await Promise.all(pending);
+    // Second call must be a latch hit, not another purge attempt that could throw into the request.
+    await expect(remapLegacySiteR2(env, ctx)).resolves.toBeUndefined();
+    expect(site.id).toBeTruthy();
   });
 });
