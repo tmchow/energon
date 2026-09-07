@@ -46,11 +46,11 @@
     <h1 class="en-connect-title">Connect your agent to <span class="en-connect-host">{data.host}</span></h1>
     <p class="en-connect-agent">Enter the code shown by <strong>{data.connection.label}</strong>.</p>
     {#if !complete}<form id="connect-form" class="en-connect-form" data-request={data.connection.id} onsubmit={decide}>
-      <Field label="Code" htmlFor="connect-code"><input id="connect-code" class="en-input en-connect-code" name="user_code" bind:value={code} oninput={e => code = e.currentTarget.value.replace(/\D/g, '').slice(0, 8)} placeholder="00000000" inputmode="numeric" pattern={'[0-9]{8}'} maxlength="8" autocomplete="one-time-code" spellcheck="false" disabled={busy} /></Field>
+      <Field label="Code" htmlFor="connect-code"><input id="connect-code" class="en-input en-connect-code" name="user_code" bind:value={code} oninput={e => code = e.currentTarget.value.replace(/\D/g, '').slice(0, 8)} placeholder="00000000" inputmode="numeric" maxlength="8" autocomplete="one-time-code" spellcheck="false" disabled={busy} /></Field>
       <Field label="Access expires after" htmlFor="connect-ttl"><Select id="connect-ttl" name="ttl" bind:value={ttl} options={data.token_policy.presets.map(p => ({ value: p.id, label: p.label }))} disabled={busy} /></Field>
       <div class="en-connect-actions">
         <Button type="submit" value="approve" variant="primary" block disabled={busy || code.length !== 8}>{busy ? 'Approving…' : 'Approve connection'}</Button>
-        <Button type="submit" value="deny" variant="ghost" block disabled={busy}>Deny connection</Button>
+        <Button type="submit" value="deny" variant="ghost" block disabled={busy} formnovalidate>{busy ? 'Working…' : 'Deny connection'}</Button>
       </div>
     </form>{/if}
     <div id="connect-status" class="en-connect-status" aria-live="polite">{#if status}<Flash tone={failed ? 'err' : 'ok'}>{status}</Flash>{/if}</div>

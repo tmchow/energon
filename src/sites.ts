@@ -272,7 +272,17 @@ export async function getSite(env: Env, handle: string, slug: string): Promise<S
     .first<SiteRow>();
 }
 
-async function findSiteForActor(env: Env, actor: Actor, slug: string): Promise<SiteRow | null> {
+async function findSiteForActor(
+  env: Env,
+  actor: Actor,
+  slug: string,
+  handleHint?: string | null,
+): Promise<SiteRow | null> {
+  if (handleHint) {
+    const site = await getSite(env, handleHint.toLowerCase(), slug);
+    if (!site) return null;
+    return involvedInSite(actor, site) ? site : null;
+  }
   const handle = await ensureHandle(env, actor.email, actor.idpSub);
   const mine = await getSite(env, handle, slug);
   if (mine) return mine;
@@ -504,15 +514,18 @@ export async function patchSite(
   slugRaw: string,
   patch: { password?: string; write_password?: string; ttl?: unknown; setTtl?: boolean; write_policy?: unknown },
   ctx?: ExecutionContext,
+  handleHint?: string | null,
 ): Promise<Response> {
   const slug = assertSlug(slugRaw);
   const wantsWrite = Object.prototype.hasOwnProperty.call(patch, "write_policy");
   const wantsWritePassword = Object.prototype.hasOwnProperty.call(patch, "write_password");
-  const wantsOther = patch.password !== undefined || Boolean(patch.setTtl);
+  const wantsSharePassword = patch.password !== undefined;
+  const wantsOther = wantsSharePassword || Boolean(patch.setTtl);
   const site = await requireSite(env, actor, slug, {
     allowExpired: Boolean(patch.setTtl),
     ctx,
     mutate: wantsOther,
+    handle: handleHint,
   });
   let nextWrite = resolveWritePolicy(site.write_policy);
   if (wantsWrite) {
@@ -524,7 +537,7 @@ export async function patchSite(
     nextWrite = parsed;
   }
   const writeHash = await writePasswordHashFromInput(patch.write_password);
-  if (wantsWritePassword) {
+  if (wantsWritePassword || wantsSharePassword) {
     assertCanSetWritePolicy(actor, site.created_by, site.owner_id);
   }
   const hash = await passwordHashFromInput(patch.password);
@@ -588,10 +601,10 @@ export async function requireSite(
   env: Env,
   actor: Actor,
   slug: string,
-  opts?: { allowExpired?: boolean; ctx?: ExecutionContext; mutate?: boolean },
+  opts?: { allowExpired?: boolean; ctx?: ExecutionContext; mutate?: boolean; handle?: string | null },
 ): Promise<SiteRow> {
   const origin = publicOrigin(env);
-  const site = await findSiteForActor(env, actor, slug);
+  const site = await findSiteForActor(env, actor, slug, opts?.handle);
   if (!site) {
     throw new ApiError(
       404,
@@ -607,7 +620,7 @@ export async function requireSite(
       console.error("purgeExpiredSite failed", err);
     }
     if (!opts?.allowExpired) throw expiredError("site");
-    const still = await findSiteForActor(env, actor, slug);
+    const still = await findSiteForActor(env, actor, slug, opts?.handle);
     if (!still) throw expiredError("site");
     if (opts.mutate) assertCanMutate(actor, still);
     return still;
@@ -799,9 +812,10 @@ export async function exportSiteZip(
   ctx: ExecutionContext | undefined,
   actor: Actor,
   slugRaw: string,
+  handleHint?: string | null,
 ): Promise<Response> {
   const slug = assertSlug(slugRaw);
-  const site = await requireSite(env, actor, slug, { ctx });
+  const site = await requireSite(env, actor, slug, { ctx, handle: handleHint });
   const rows = await env.DB.prepare(
     `SELECT path, size FROM site_files WHERE handle = ? AND slug = ? ORDER BY path`,
   )
@@ -850,11 +864,17 @@ export async function exportSiteZip(
   return new Response(zip, { headers });
 }
 
-export async function deleteSite(env: Env, ctx: ExecutionContext | undefined, actor: Actor, slugRaw: string): Promise<void> {
+export async function deleteSite(
+  env: Env,
+  ctx: ExecutionContext | undefined,
+  actor: Actor,
+  slugRaw: string,
+  handleHint?: string | null,
+): Promise<void> {
   const slug = assertSlug(slugRaw);
   let site: SiteRow;
   try {
-    site = await requireSite(env, actor, slug, { allowExpired: true, mutate: true, ctx });
+    site = await requireSite(env, actor, slug, { allowExpired: true, mutate: true, ctx, handle: handleHint });
   } catch (err) {
     if (err instanceof ApiError && (err.status === 404 || err.status === 410)) return;
     throw err;
@@ -1004,9 +1024,14 @@ export async function listSiteJson(
   });
 }
 
-export async function hubSiteLinkAccess(env: Env, actor: Actor, slugRaw: string): Promise<Response> {
+export async function hubSiteLinkAccess(
+  env: Env,
+  actor: Actor,
+  slugRaw: string,
+  handleHint?: string | null,
+): Promise<Response> {
   const slug = assertSlug(slugRaw);
-  const site = await requireSite(env, actor, slug);
+  const site = await requireSite(env, actor, slug, { handle: handleHint });
   if (!involvedInSite(actor, site)) {
     throw new ApiError(
       404,

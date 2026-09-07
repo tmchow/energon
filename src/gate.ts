@@ -390,6 +390,8 @@ export async function protectContent(
 
   if (await cookieUnlocks(request, passwordHash)) return null;
 
+  if (await gateIsBlocked(env, scopes)) return gateLimited(request, title);
+
   if (wantsJsonGate(request)) {
     return gateJson();
   }

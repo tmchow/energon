@@ -1059,9 +1059,80 @@ describe("Energon", () => {
     expect(asEditor.body.password).toBeNull();
     expect(JSON.stringify(asEditor.body)).not.toContain("owner-only-phrase");
 
+    const clear = await json("/account/sites/phrase-writer", {
+      method: "PATCH",
+      headers: access(editorEmail, { "content-type": "application/json" }),
+      body: JSON.stringify({ password: "" }),
+    });
+    expect(clear.status).toBe(403);
+    expect(clear.body.error).toBe("forbidden_write_policy");
+
     const asOwner = await json("/account/sites/phrase-writer", { headers: access(ownerEmail) });
     expect(asOwner.status).toBe(200);
     expect(asOwner.body.password).toBe("owner-only-phrase");
+  });
+
+  it("Hub site actions honor handle when two involved sites share a slug", async () => {
+    const ada = "slug-ada@esperlabs.app";
+    const bob = "slug-bob@esperlabs.app";
+    const adaTok = await mint("slug-ada", ada);
+    const bobTok = await mint("slug-bob", bob);
+    expect(
+      (
+        await json("/v1/sites", {
+          method: "POST",
+          headers: auth(adaTok, { "content-type": "application/json" }),
+          body: JSON.stringify({ slug: "same-slug", write_policy: "org", password: "ada-secret" }),
+        })
+      ).status,
+    ).toBe(201);
+    await json("/v1/sites/same-slug/files/a.txt", {
+      method: "PUT",
+      headers: auth(bobTok, { "content-type": "text/plain" }),
+      body: "bob wrote ada",
+    });
+    expect(
+      (
+        await json("/v1/sites", {
+          method: "POST",
+          headers: auth(bobTok, { "content-type": "application/json" }),
+          body: JSON.stringify({ slug: "same-slug" }),
+        })
+      ).status,
+    ).toBe(201);
+
+    const catalog = await json("/account/data", { headers: access(bob) });
+    const rows = (catalog.body.sites as { slug: string; handle: string; created_by: string }[]).filter(
+      (s) => s.slug === "same-slug",
+    );
+    expect(rows.length).toBe(2);
+    const adaRow = rows.find((r) => r.created_by === ada)!;
+    const bobRow = rows.find((r) => r.created_by === bob)!;
+    expect(adaRow.handle).toBeTruthy();
+    expect(bobRow.handle).toBeTruthy();
+    expect(adaRow.handle).not.toBe(bobRow.handle);
+
+    const patchAda = await json(`/account/sites/same-slug?handle=${encodeURIComponent(adaRow.handle)}`, {
+      method: "PATCH",
+      headers: access(bob, { "content-type": "application/json" }),
+      body: JSON.stringify({ password: "should-fail" }),
+    });
+    expect(patchAda.status).toBe(403);
+    expect(patchAda.body.error).toBe("forbidden_write_policy");
+
+    const patchBob = await json(`/account/sites/same-slug?handle=${encodeURIComponent(bobRow.handle)}`, {
+      method: "PATCH",
+      headers: access(bob, { "content-type": "application/json" }),
+      body: JSON.stringify({ password: "bob-only" }),
+    });
+    expect(patchBob.status).toBe(200);
+    expect(patchBob.body.handle).toBe(bobRow.handle);
+    expect(patchBob.body.password).toBe("bob-only");
+
+    const adaStill = await json(`/account/sites/same-slug?handle=${encodeURIComponent(adaRow.handle)}`, {
+      headers: access(ada),
+    });
+    expect(adaStill.body.password).toBe("ada-secret");
   });
 
   it("share password guesses are rate limited per object and source", async () => {
@@ -1104,6 +1175,32 @@ describe("Energon", () => {
     });
     expect(otherIp.status).toBe(200);
     expect(await otherIp.text()).toContain("other");
+  }, 20_000);
+
+  it("HTML gate GET shows lockout after rate limit without requiring another POST", async () => {
+    const token = await mint("pw-get-limit", "getlimit@esperlabs.app");
+    await json("/v1/sites", {
+      method: "POST",
+      headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "gated-get", password: "correct-horse" }),
+    });
+    await json("/v1/sites/gated-get/files/index.html", {
+      method: "PUT",
+      headers: auth(token, { "content-type": "text/html" }),
+      body: "<h1>gated</h1>",
+    });
+    const ip = { "CF-Connecting-IP": "203.0.113.77" };
+    for (let i = 0; i < 20; i++) {
+      const wrong = await req("/getlimit/s/gated-get/", {
+        method: "POST",
+        headers: { ...ip, "content-type": "application/x-www-form-urlencoded" },
+        body: "password=wrong",
+      });
+      expect([401, 429]).toContain(wrong.status);
+    }
+    const blockedGet = await req("/getlimit/s/gated-get/", { headers: { ...ip, accept: "text/html" } });
+    expect(blockedGet.status).toBe(429);
+    expect(await blockedGet.text()).toContain("Too many password attempts");
   }, 20_000);
 
   it("optional share password on a loose file", async () => {

@@ -612,7 +612,8 @@ export async function patchLoose(
   }
   const wantsWrite = Object.prototype.hasOwnProperty.call(patch, "write_policy");
   const wantsWritePassword = Object.prototype.hasOwnProperty.call(patch, "write_password");
-  const wantsOther = patch.password !== undefined || Boolean(patch.setTtl);
+  const wantsSharePassword = patch.password !== undefined;
+  const wantsOther = wantsSharePassword || Boolean(patch.setTtl);
   if (wantsOther) assertCanMutate(actor, existing);
   let nextWrite = resolveWritePolicy(existing.write_policy);
   if (wantsWrite) {
@@ -624,7 +625,7 @@ export async function patchLoose(
     nextWrite = parsed;
   }
   const writeHash = await writePasswordHashFromInput(patch.write_password);
-  if (wantsWritePassword) {
+  if (wantsWritePassword || wantsSharePassword) {
     assertCanSetWritePolicy(actor, existing.created_by, existing.owner_id);
   }
   const hash = await passwordHashFromInput(patch.password);

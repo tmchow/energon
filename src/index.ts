@@ -231,17 +231,17 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   const accountPatch = path.match(/^\/account\/sites\/([^/]+)$/);
   if (accountPatch && method === "GET") {
     const actor = await requireHuman(request, env, ctx);
-    return hubSiteLinkAccess(env, actor, decodeURIComponent(accountPatch[1]));
+    return hubSiteLinkAccess(env, actor, decodeURIComponent(accountPatch[1]), accountHandleHint(url));
   }
   if (accountPatch && method === "DELETE") {
     const actor = await requireHuman(request, env, ctx);
-    await deleteSite(env, ctx, actor, decodeURIComponent(accountPatch[1]));
+    await deleteSite(env, ctx, actor, decodeURIComponent(accountPatch[1]), accountHandleHint(url));
     return json({ ok: true, deleted: decodeURIComponent(accountPatch[1]) });
   }
   if (accountPatch && method === "PATCH") {
     const actor = await requireHuman(request, env, ctx);
     const body = await readJson(request);
-    return patchSite(env, actor, decodeURIComponent(accountPatch[1]), contentPatch(body), ctx);
+    return patchSite(env, actor, decodeURIComponent(accountPatch[1]), contentPatch(body), ctx, accountHandleHint(url));
   }
 
   const accountPut = path.match(/^\/account\/sites\/([^/]+)\/files\/(.+)$/);
@@ -271,7 +271,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   const accountExport = path.match(/^\/account\/sites\/([^/]+)\/export$/);
   if (accountExport && method === "GET") {
     const actor = await requireHuman(request, env, ctx);
-    return exportSiteZip(env, ctx, actor, decodeURIComponent(accountExport[1]));
+    return exportSiteZip(env, ctx, actor, decodeURIComponent(accountExport[1]), accountHandleHint(url));
   }
 
   if (path === "/account/files" && method === "POST") {
@@ -562,6 +562,11 @@ async function postSite(
 /** Only JSON `true` claims a slug. Strings like `"false"` must not. */
 function overwriteFlag(raw: unknown): boolean {
   return raw === true;
+}
+
+function accountHandleHint(url: URL): string | null {
+  const handle = url.searchParams.get("handle");
+  return handle && handle.trim() ? handle.trim().toLowerCase() : null;
 }
 
 function contentPatch(body: Record<string, unknown>): {

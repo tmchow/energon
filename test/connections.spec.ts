@@ -116,9 +116,10 @@ describe("agent connections", () => {
     expect(html).not.toContain('aria-label="Pages"');
     expect(html).not.toContain('class="en-footer"');
     expect(html).not.toContain(connection.user_code);
-    const pattern = html.match(/pattern="([^"]+)"/)?.[1];
-    expect(pattern).toBe("[0-9]{8}");
-    expect(new RegExp(`^(?:${pattern})$`).test(connection.user_code)).toBe(true);
+    expect(html).toContain('id="connect-code"');
+    expect(html).toContain('maxlength="8"');
+    expect(html).toContain("formnovalidate");
+    expect(connection.user_code).toMatch(/^[0-9]{8}$/);
     expect(html).not.toContain(connection.poll_token);
     assertDomBindings(html);
     expect((await req(`https://energon.example.com/connect?request=${connection.id}`)).status).toBe(404);

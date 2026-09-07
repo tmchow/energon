@@ -73,13 +73,21 @@ export async function publish(upload: StagedUpload, options: { password: string;
   const slug = slugify(upload.slug);
   const settings = options.overwrite ? {} : { ttl: options.ttl, write_policy: options.write_policy };
   const siteBody: Record<string, unknown> = { slug, overwrite: options.overwrite, ...settings };
-  if (options.password) siteBody.password = options.password;
-  if (options.write_password) siteBody.write_password = options.write_password;
+  if (!options.overwrite) {
+    if (options.password) siteBody.password = options.password;
+    if (options.write_password) siteBody.write_password = options.write_password;
+  }
   const site = await api<PublishResult>('/account/sites', jsonBody('POST', siteBody));
   try {
     if (upload.kind === 'zip') {
       const imported = await api<PublishResult>(`/account/sites/${encodeURIComponent(slug)}/import`, { method: 'POST', headers: { 'content-type': 'application/zip' }, body: upload.file });
-      return { ...imported, password: site.password || options.password, file_count: imported.written?.length || 0 };
+      return {
+        ...site,
+        ...imported,
+        password: site.password || options.password,
+        write_password: site.write_password || options.write_password,
+        file_count: imported.written?.length || 0,
+      };
     }
     const files = stripWrapFiles(upload.files).filter(item => item.path && !item.path.endsWith('/'));
     for (const item of files) {

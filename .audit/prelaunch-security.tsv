@@ -11,3 +11,4 @@ ts	phase	decision	why	evidence	result
 2026-09-07T09:55:18Z	fix	gate form body stream-capped at GATE_BODY_MAX	issue #23 residual; match connection JSON TransformStream pattern	gate.ts parseFormPassword	pass
 2026-09-07T09:55:18Z	fix	Hub stage Link access stays closable; org scan marks are non-buttons	hub-ui F3/F4	Hub.svelte CatalogScan.svelte	pass
 2026-09-07T09:55:18Z	verify	vitest 112 worker specs green; check:ui 0	prove-it-works	prelaunch-security-tests3.log	pass
+2026-09-07T10:19:28Z	fix	share PATCH owner-only; handle query for hub sites; overwrite skips passwords; gate GET lockout; connect formnovalidate	functional-bugs H1-H3 M4 M6	sites/files/Hub/gate/Connect + tests	pass
