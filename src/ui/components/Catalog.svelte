@@ -8,7 +8,7 @@
   import CopyButton from './CopyButton.svelte';
   import Button from './Button.svelte';
   import CatalogScan from './CatalogScan.svelte';
-  import { CATALOG_SCAN_LABEL } from '../catalog-scan';
+  import { CATALOG_SCAN_LABEL, CATALOG_SCAN_SIZE } from '../catalog-scan';
   let { kind, items, cursor, busy, writePolicyDefault, onMore, onPassword, onDelete, onLoadMore }:
     { kind: 'site' | 'file'; items: CatalogItem[]; cursor: string | null; busy: boolean;
       writePolicyDefault: string;
@@ -36,10 +36,10 @@
         <CatalogScan mark={orgMark(item)!} label={orgLabel(item)} />
       {/if}
     </div>
-    {#if kind === 'file' || (item.file_count ?? 0) > 0}<IconButton icon="download" label={kind === 'site' ? 'Download zip' : 'Download'} extra href={kind === 'site' ? `/account/sites/${encodeURIComponent(item.slug ?? item.id)}/export` : `/account/files/${encodeURIComponent(item.id ?? item.slug)}/download`} />{/if}
-    <CopyButton text={item.url} label="Copy URL" iconOnly />
-    <IconButton icon="trash" label="Delete" tone="danger" extra onclick={() => onDelete(item)} />
-    <IconButton icon="more" label="More actions" more onclick={() => onMore(item)} />
+    {#if kind === 'file' || (item.file_count ?? 0) > 0}<IconButton icon="download" label={kind === 'site' ? 'Download zip' : 'Download'} extra iconSize={CATALOG_SCAN_SIZE} href={kind === 'site' ? `/account/sites/${encodeURIComponent(item.slug ?? item.id)}/export` : `/account/files/${encodeURIComponent(item.id ?? item.slug)}/download`} />{/if}
+    <CopyButton text={item.url} label="Copy URL" iconOnly iconSize={CATALOG_SCAN_SIZE} />
+    <IconButton icon="trash" label="Delete" tone="danger" extra iconSize={CATALOG_SCAN_SIZE} onclick={() => onDelete(item)} />
+    <IconButton icon="more" label="More actions" more iconSize={CATALOG_SCAN_SIZE} onclick={() => onMore(item)} />
   </div>
 {/snippet}
 {#snippet pager()}<Button variant="ghost" size="sm" disabled={busy} onclick={onLoadMore}>{busy ? 'Loading…' : 'Load more'}</Button>{/snippet}

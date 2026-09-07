@@ -59,6 +59,10 @@
 .en-gate-inner { width: auto; }
 .en-gate-instructions { margin: 0 0 18px; }
 .en-gate .en-gate-agent { margin-top: 16px; }
+.en-row-actions {
+  --scan-glyph: 28px;
+  --icon-size: var(--scan-glyph);
+}
 .en-row-actions .en-icon-btn--more { display: inline-flex; }
 .en-scan-pair { display: inline-flex; align-items: center; gap: var(--space-2); vertical-align: middle; }
 .en-scan {
