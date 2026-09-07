@@ -992,6 +992,25 @@ describe("Energon", () => {
     expect(huge.status).toBe(413);
   }, 15_000);
 
+  it("Hub site phrase GET requires catalog involvement", async () => {
+    const token = await mint("phrase-owner");
+    const created = await json("/v1/sites", {
+      method: "POST",
+      headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "phrase-leak", overwrite: false, password: "correct-horse" }),
+    });
+    expect(created.status).toBe(201);
+
+    const stranger = await json("/account/sites/phrase-leak", { headers: access("bob@esperlabs.app") });
+    expect(stranger.status).toBe(404);
+    expect(stranger.body.error).toBe("site_not_found");
+    expect(JSON.stringify(stranger.body)).not.toContain("correct-horse");
+
+    const owner = await json("/account/sites/phrase-leak", { headers: access("ada@esperlabs.app") });
+    expect(owner.status).toBe(200);
+    expect(owner.body.password).toBe("correct-horse");
+  });
+
   it("share password guesses are rate limited per object and source", async () => {
     const token = await mint("pw-limit", "limit@esperlabs.app");
     await json("/v1/sites", {

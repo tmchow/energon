@@ -273,6 +273,16 @@ async function findSiteForActor(env: Env, actor: Actor, slug: string): Promise<S
   return null;
 }
 
+function involvedInSite(
+  actor: Actor,
+  site: { created_by: string; last_written_by: string | null; owner_id?: string | null },
+): boolean {
+  const email = actor.email.toLowerCase();
+  if (site.created_by.toLowerCase() === email) return true;
+  if (site.last_written_by && site.last_written_by.toLowerCase() === email) return true;
+  return Boolean(actor.userId && site.owner_id === actor.userId);
+}
+
 async function fileCount(env: Env, handle: string, slug: string): Promise<number> {
   const row = await env.DB.prepare(`SELECT COUNT(*) AS n FROM site_files WHERE handle = ? AND slug = ?`)
     .bind(handle, slug)
@@ -971,6 +981,14 @@ export async function listSiteJson(
 export async function hubSiteLinkAccess(env: Env, actor: Actor, slugRaw: string): Promise<Response> {
   const slug = assertSlug(slugRaw);
   const site = await requireSite(env, actor, slug);
+  if (!involvedInSite(actor, site)) {
+    throw new ApiError(
+      404,
+      "site_not_found",
+      `Site '${slug}' does not exist. Create it first with POST /v1/sites {"slug":"${slug}"}, then PUT files. See ${publicOrigin(env)}/v1/help.`,
+      { hint: `POST ${publicOrigin(env)}/v1/sites with {"slug":"${slug}"}` },
+    );
+  }
   return secretJson({
     slug,
     handle: site.handle,
