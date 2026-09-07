@@ -98,12 +98,13 @@ Expired public and `/v1` reads are `410`. A cron sweep deletes the R2 objects an
 
 ## Token lifetime
 
-Humans pick a lifetime when minting on {{ORIGIN}}/tokens. `GET /v1/help` → `tokens` lists the presets (`1d`…`365d`, plus `never` only when this Energon allows it), the default (`90d`), `allow_never`, and `tokens_url`. This is separate from content `retention`. After expiry every `/v1` call is `401 token_expired`; there is no renew. `GET /v1/whoami` shows `expires_at` (`null` = never).
+Humans pick a lifetime when minting on {{ORIGIN}}/tokens. `GET /v1/help` → `tokens` lists the presets (`1d`…`365d`, plus `never` only when this Energon allows it), the default (`90d`), `allow_never`, and `tokens_url`. This is separate from content `retention`. After expiry every `/v1` call is `401 token_expired`; there is no renew. `GET /v1/whoami` shows `expires_at` (`null` = never). `DELETE /v1/whoami` revokes the calling token when a session-only token is done; `/v1` cannot list or revoke other tokens.
 
 ## Other
 
 ```
 GET /v1/whoami        { email, label, expires_at }
+DELETE /v1/whoami     revoke the calling token (self only) → { ok, revoked, label }; later calls are 401
 GET /v1/help          this Energon: SOP, limits, routes, retention, tokens, identity
 GET /v1/health        { ok: true }
 GET /v1/openapi.json  OpenAPI 3.1 contract for every route above

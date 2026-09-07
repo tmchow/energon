@@ -24,6 +24,7 @@ This skill is bound to **{{ORIGIN}}**. Do not send traffic to another Energon. A
 7. `GET /v1/sites` and `GET /v1/files` list only what **you** created or last wrote. To find something Bob created that you edited: `?created_by=bob@example.com&scope=edited`. Do not expect a company-wide catalog. You can still GET a known `/{handle}/s/{id}/{slug}` or `/{handle}/f/{id}` URL.
 8. Pass `ttl` on create unless the human wants this Energon's default. `GET /v1/help` → `retention` is the source of truth. `PUT` does not extend expiry. `PATCH { "ttl": "7d" }` resets from now. Expired URLs are `410`.
 9. Bulk cleanup (`POST /v1/cleanup`) is a **dry run** unless you send the `confirm` from its own preview. Always show the human the preview first (Scenario J). Delete has no recycle bin.
+10. When your task is done and the token was connected for this session only (Scenario F delivered it and nothing else stores it), `DELETE /v1/whoami` revokes it so it does not linger. Self only: `/v1` cannot list or revoke other tokens. Never revoke a token the human provisioned for reuse (CI, scheduled jobs, `{{TOKEN_ENV}}` in a secret store) unless they ask.
 
 Auth on every `/v1` call except `/v1/help`, `/v1/health`, `/v1/openapi.json`, and the connection request/poll endpoints documented in `/auth.md`:
 
@@ -289,6 +290,18 @@ curl -sS {{ORIGIN}}/v1/cleanup \
 ```
 
 Objects you cannot write (someone else's `owner` policy) are skipped, not an error. `expire` never moves an expiry later. Prefer `expire` over `delete` when the human is unsure; there is no recycle bin.
+
+## Scenario K — Done with this token
+
+The task is finished, the token came from this session's connection (Scenario F), and nothing else stores it. Revoke it yourself so the human does not have to find it later on {{ORIGIN}}/tokens:
+
+```bash
+curl -sS -X DELETE {{ORIGIN}}/v1/whoami \
+  -H "Authorization: Bearer ${{TOKEN_ENV}}"
+# { "ok": true, "revoked": true, "label": "…" }
+```
+
+Afterwards every call with that token is `401 unauthorized`, so run it last and unset `{{TOKEN_ENV}}` where you stored it. Tell the human the label you revoked. Skip this when the token is the human's stored `{{TOKEN_ENV}}` for CI or scheduled runs, or when they asked you to keep it. `/v1` cannot revoke any other token; that stays on {{ORIGIN}}/tokens.
 
 ## After you publish
 

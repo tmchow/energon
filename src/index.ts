@@ -397,6 +397,12 @@ async function api(
     return secretJson({ email: actor.email, label: actor.tokenLabel, expires_at: actor.tokenExpiresAt ?? null });
   }
 
+  if (path === "/v1/whoami" && method === "DELETE") {
+    const actor = await requireToken(request, env);
+    await revokeToken(env, actor.email, actor.tokenId ?? "", actor.userId);
+    return secretJson({ ok: true, revoked: true, label: actor.tokenLabel });
+  }
+
   if (path === "/v1/sites" && method === "GET") {
     const actor = await requireToken(request, env);
     return listSitesJson(env, actor.email, parseListQuery(new URL(request.url)), actor.userId);

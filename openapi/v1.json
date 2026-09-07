@@ -209,6 +209,58 @@
             }
           }
         }
+      },
+      "delete": {
+        "operationId": "revokeSelf",
+        "tags": [
+          "discovery"
+        ],
+        "summary": "Revoke the calling token",
+        "description": "Self only. Revokes the token in the Authorization header; later calls with it are 401 unauthorized. /v1 cannot list or revoke other tokens. Use it when your task is done and nothing else will reuse the token; leave tokens the human stored for CI or scheduled jobs alone.",
+        "responses": {
+          "200": {
+            "description": "Revoked. The same token now fails with 401.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhoamiRevoked"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenDomain"
+          },
+          "404": {
+            "description": "The token row is gone.",
+            "x-error-codes": [
+              "token_not_found"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/v1/sites": {
@@ -3836,6 +3888,26 @@
             ],
             "format": "date-time",
             "description": "When this token stops working; null means never. Warn the human before it passes."
+          }
+        }
+      },
+      "WhoamiRevoked": {
+        "type": "object",
+        "required": [
+          "ok",
+          "revoked",
+          "label"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "revoked": {
+            "const": true
+          },
+          "label": {
+            "type": "string",
+            "description": "The label of the token that was just revoked."
           }
         }
       },

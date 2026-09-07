@@ -248,6 +248,29 @@ describe("hub account API", () => {
     expect(minted.headers.get("cache-control")).toMatch(/no-store/);
   });
 
+  it("DELETE /v1/whoami revokes only the calling token", async () => {
+    const email = "self@esperlabs.app";
+    const mine = await mint("self-done", email);
+    const other = await mint("self-keep", email);
+    expect((await json("/v1/whoami", { method: "DELETE" })).status).toBe(401);
+
+    const revoked = await req("/v1/whoami", { method: "DELETE", headers: auth(mine) });
+    expect(revoked.status).toBe(200);
+    expect(revoked.headers.get("cache-control")).toMatch(/no-store/);
+    expect(await revoked.json()).toEqual({ ok: true, revoked: true, label: "self-done" });
+
+    const dead = await json("/v1/whoami", { headers: auth(mine) });
+    expect(dead.status).toBe(401);
+    expect(dead.body.error).toBe("unauthorized");
+    expect((await json("/v1/whoami", { method: "DELETE", headers: auth(mine) })).status).toBe(401);
+    expect((await json("/v1/whoami", { headers: auth(other) })).body.label).toBe("self-keep");
+
+    const listed = await json("/account/data", { headers: access(email) });
+    const byLabel = Object.fromEntries(listed.body.tokens.map((t: { label: string; status: string }) => [t.label, t.status]));
+    expect(byLabel).toMatchObject({ "self-done": "revoked", "self-keep": "live" });
+    expect((await json("/v1/help")).body.routes["DELETE /v1/whoami"]).toContain("self only");
+  });
+
   it("bulk revokes stale or all tokens only after a matching preview confirm", async () => {
     const email = "bulk@esperlabs.app";
     const headers = access(email, { "content-type": "application/json" });
