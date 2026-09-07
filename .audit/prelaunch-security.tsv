@@ -1,0 +1,13 @@
+ts	phase	decision	why	evidence	result
+2026-09-07T09:32:37Z	frame	overnight prelaunch security+bug hunt	user sleeps ~7h; figure-it-out with stacked fixes for morning review	AGENTS.md, poteto overnight guide	framed
+2026-09-07T09:32:37Z	frame	done predicate: med+ security findings fixed-or-accepted with tests; residual risks listed; trail+draft PR ready	falsifiable handoff for morning audit	figure-it-out Phase A	open
+2026-09-07T09:32:37Z	frame	rigor high on auth/gate/content isolation; medium on UI polish; no speculative rewrites	launch blast radius is authz and published bytes	boundary-discipline	set
+2026-09-07T09:33:13Z	design	workflow: audit fan-out then fix-verify-commit per finding riskiest-first	sequence verifiable units; stacked draft PRs for morning land	figure-it-out Phase B	designed
+2026-09-07T09:33:13Z	design	slices: auth/tokens, gate/passwords, guest-write, publish IDOR/path, content XSS/MIME/zip, hub UI	partition genuine seams; no shared mutable state during audit	swarm coverage	fan-out
+2026-09-07T09:44:28Z	audit	publish slice: F1 purge clobber medium; F2/F3 low; guest-write no auth bypass	swarm evidence in /tmp/swarm-prelaunch	publish-idor.md,guest-write.md	triaged
+2026-09-07T09:44:28Z	plan	fix order: F1 purge claim then overwrite coerce then file cap then timing/nanoid	riskiest integrity first; sequence verifiable units	figure-it-out Phase C	queued
+2026-09-07T09:50:01Z	fix	landed purge-claim guard, scheme path reject, overwrite===true, connect deny without code, frame deny, nanoid, timing-safe code	riskiest integrity and clear launch bugs first	sites.ts,http.ts,connections.ts,Connect.svelte,chrome.ts	tests green 111
+2026-09-07T09:55:18Z	fix	share phrase owner-only via hubLinkAccessFields(canSeeSecrets)	CONCEPTS owner copy; last writer must not recover plaintext	gate.ts + api.spec phrase-writer	pass
+2026-09-07T09:55:18Z	fix	gate form body stream-capped at GATE_BODY_MAX	issue #23 residual; match connection JSON TransformStream pattern	gate.ts parseFormPassword	pass
+2026-09-07T09:55:18Z	fix	Hub stage Link access stays closable; org scan marks are non-buttons	hub-ui F3/F4	Hub.svelte CatalogScan.svelte	pass
+2026-09-07T09:55:18Z	verify	vitest 112 worker specs green; check:ui 0	prove-it-works	prelaunch-security-tests3.log	pass
