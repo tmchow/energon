@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { access, auth, json, mint, req } from "./helpers";
+import { access, auth, createSite, json, mint, req } from "./helpers";
 
 describe("host and route contracts", () => {
   it("serves authentication instructions before login and links them from discovery and token errors", async () => {
@@ -68,28 +68,26 @@ describe("host and route contracts", () => {
 
   it("redirects a site URL without a trailing slash", async () => {
     const token = await mint("slash");
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "slash-me" }),
-    });
-    const res = await req("/ada/s/slash-me", { redirect: "manual" });
+    const site_slash_me = await createSite(token, "slash-me");
+    const res = await req(`/ada/s/${site_slash_me.id}/slash-me`, { redirect: "manual" });
     expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe("https://energon.example.com/ada/s/slash-me/");
+    expect(res.headers.get("location")).toBe(`https://energon.example.com/ada/s/${site_slash_me.id}/slash-me/`);
   });
 
   it("redirects hub content links and keeps account routes off the content origin", async () => {
-    const hub = await req("https://hub.energon.example.com/ada/s/content-origin/", { redirect: "manual" });
+    const token = await mint("content-origin");
+    const site_content_origin = await createSite(token, "content-origin");
+    const hub = await req(`https://hub.energon.example.com/ada/s/${site_content_origin.id}/content-origin/`, { redirect: "manual" });
     expect(hub.status).toBe(302);
-    expect(hub.headers.get("location")).toBe("https://energon.example.com/ada/s/content-origin/");
+    expect(hub.headers.get("location")).toBe(`https://energon.example.com/ada/s/${site_content_origin.id}/content-origin/`);
 
-    const content = await req("https://energon.example.com/ada/s/content-origin/");
+    const content = await req(`https://energon.example.com/ada/s/${site_content_origin.id}/content-origin/`);
     expect(content.headers.get("access-control-allow-origin")).toBe("https://hub.energon.example.com");
 
-    const token = await mint("cors-file");
+    const corsToken = await mint("cors-file");
     const created = await json("/v1/files", {
       method: "POST",
-      headers: auth(token, { "X-Filename": "space file.txt", "content-type": "text/plain" }),
+      headers: auth(corsToken, { "X-Filename": "space file.txt", "content-type": "text/plain" }),
       body: "content",
     });
     const file = await req(`https://energon.example.com/ada/f/${created.body.id}/space%20file.txt`, { redirect: "manual" });
@@ -132,7 +130,7 @@ describe("host and route contracts", () => {
   });
 
   it("rejects malformed URL encoding without turning it into a 500", async () => {
-    const malformed = await json("/%/s/demo/");
+    const malformed = await json("/ada/s/%ZZ/demo/");
 
     expect(malformed.status).toBe(400);
     expect(malformed.body.error).toBe("bad_path");
@@ -175,16 +173,12 @@ describe("hub account API", () => {
   it("deletes a site and a loose file from the hub account routes", async () => {
     const email = "hub-del@esperlabs.app";
     const token = await mint("hub-del", email);
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "hub-gone" }),
-    });
-    await json("/v1/sites/hub-gone/files/bye.txt", { method: "PUT", headers: auth(token), body: "bye" });
-    const siteDel = await json("/account/sites/hub-gone", { method: "DELETE", headers: access(email) });
+    const site_hub_gone = await createSite(token, "hub-gone");
+    await json(`/v1/sites/${site_hub_gone.id}/files/bye.txt`, { method: "PUT", headers: auth(token), body: "bye" });
+    const siteDel = await json(`/account/sites/${site_hub_gone.id}`, { method: "DELETE", headers: access(email) });
     expect(siteDel.status).toBe(200);
-    expect(siteDel.body.deleted).toBe("hub-gone");
-    expect((await req("/hub-del/s/hub-gone/bye.txt")).status).toBe(404);
+    expect(siteDel.body.deleted).toBe(site_hub_gone.id);
+    expect((await req(`/hub-del/s/${site_hub_gone.id}/hub-gone/bye.txt`)).status).toBe(404);
 
     const created = await json("/v1/files", {
       method: "POST",
@@ -200,13 +194,9 @@ describe("hub account API", () => {
   it("rejects account mutations from another origin and form bodies", async () => {
     const email = "csrf@esperlabs.app";
     const token = await mint("csrf-key", email);
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "csrf-site" }),
-    });
+    const site_csrf_site = await createSite(token, "csrf-site");
 
-    const missing = await json("/account/sites/csrf-site", {
+    const missing = await json(`/account/sites/${site_csrf_site.id}`, {
       method: "PATCH",
       headers: {
         "Cf-Access-Authenticated-User-Email": email,
@@ -217,7 +207,7 @@ describe("hub account API", () => {
     expect(missing.status).toBe(403);
     expect(missing.body.error).toBe("bad_origin");
 
-    const cross = await json("/account/sites/csrf-site", {
+    const cross = await json(`/account/sites/${site_csrf_site.id}`, {
       method: "PATCH",
       headers: access(email, {
         origin: "https://energon.example.com",
@@ -228,7 +218,7 @@ describe("hub account API", () => {
     expect(cross.status).toBe(403);
     expect(cross.body.error).toBe("bad_origin");
 
-    const form = await json("/account/sites/csrf-site", {
+    const form = await json(`/account/sites/${site_csrf_site.id}`, {
       method: "PATCH",
       headers: access(email, { "content-type": "application/x-www-form-urlencoded" }),
       body: "password=stolen",

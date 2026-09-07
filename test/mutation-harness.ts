@@ -77,19 +77,24 @@ export async function snapshotSiteMutation(
 ): Promise<SiteMutationSnapshot> {
   const [site, files, objects, backupObjects, accounting] = await Promise.all([
     env.DB.prepare(
-      `SELECT handle, owner_id, slug, created_at, updated_at, created_by, last_written_by,
+      `SELECT id, handle, owner_id, slug, created_at, updated_at, created_by, last_written_by,
               password_hash, expires_at, write_policy
        FROM sites WHERE handle = ? AND slug = ?`,
     )
       .bind(handle, slug)
       .first<SiteRow>(),
     env.DB.prepare(
-      `SELECT handle, slug, path, size, content_type, updated_at, last_written_by
-       FROM site_files WHERE handle = ? AND slug = ? ORDER BY path`,
+      `SELECT site_id, path, size, content_type, updated_at, last_written_by
+       FROM site_files WHERE site_id = (SELECT id FROM sites WHERE handle = ? AND slug = ?) ORDER BY path`,
     )
       .bind(handle, slug)
       .all<SiteFileRow>(),
-    snapshotR2Prefix(env.BUCKET, siteKey(handle, slug, "")),
+    (async () => {
+      const row = await env.DB.prepare(`SELECT id FROM sites WHERE handle = ? AND slug = ?`)
+        .bind(handle, slug)
+        .first<{ id: string }>();
+      return snapshotR2Prefix(env.BUCKET, row ? siteKey(handle, row.id, "") : `sites/${handle}/`);
+    })(),
     snapshotR2Prefix(env.BUCKET, "sites/.integrity-backup/"),
     snapshotAccounting(env.DB),
   ]);
@@ -179,16 +184,17 @@ export async function createSiteFixture(
   token: string,
   slug: string,
   files: Record<string, string> = {},
-): Promise<void> {
+): Promise<{ id: string; slug: string; handle: string; url: string }> {
   const created = await json("/v1/sites", {
     method: "POST",
     headers: auth(token, { "content-type": "application/json" }),
     body: JSON.stringify({ slug }),
   });
   if (created.status !== 201) throw new Error(`site fixture creation failed: ${created.status}`);
+  const id = String(created.body.id);
 
   for (const [path, body] of Object.entries(files)) {
-    const written = await json(`/v1/sites/${slug}/files/${path}`, {
+    const written = await json(`/v1/sites/${id}/files/${path}`, {
       method: "PUT",
       headers: auth(token),
       body,
@@ -197,6 +203,7 @@ export async function createSiteFixture(
       throw new Error(`site fixture write failed for ${path}: ${written.status}`);
     }
   }
+  return { id, slug: String(created.body.slug), handle: String(created.body.handle), url: String(created.body.url) };
 }
 
 export async function withD1Trigger<T>(
