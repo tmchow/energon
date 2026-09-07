@@ -5,6 +5,7 @@ import {
   TOKEN_SECRET_LEN,
   formatBytes,
 } from "./config";
+import { helpGuestWriteSop } from "./guest-write-protocol";
 import { ApiError, decodeJwtPayload, isLocalHost, isWorkersDev, nanoid, publicOrigin, sha256Hex } from "./http";
 import { identityFromEnv, installLine } from "./instance";
 import {
@@ -341,6 +342,7 @@ export function helpBody(origin: string, env?: Env): unknown {
       `Make a copy: POST /v1/sites {"slug":"new-slug","duplicate_from":"existing-slug"} or POST /v1/files {"duplicate_from":"id"} (optional filename). You become created_by. write_policy is the instance default. Fresh TTL. Password is not copied. Anyone who can read via /v1 can duplicate. If you already have replacement bytes this turn, POST/PUT those instead.`,
       `Give humans the /{handle}/s or /{handle}/f URL (and the password, if any). Agents can use that URL plus X-Energon-Password, or api_url with their token.`,
       `Never default to overwrite. Never use a guessed slug that already exists without the human confirming.`,
+      ...helpGuestWriteSop(),
     ],
     routes: {
       "GET /llms.txt": "agent-readable overview, no auth",
@@ -351,8 +353,8 @@ export function helpBody(origin: string, env?: Env): unknown {
       "GET /v1/health": "liveness, no auth",
       "GET /v1/openapi.json": "OpenAPI 3.1 HTTP contract, no auth",
       "GET /v1/whoami": "token label, owner email, and expires_at (null = never)",
-      "POST /v1/sites": '{ "slug", "overwrite": false, "password"?: string, "ttl"?: string, "write_policy"?: "owner"|"instance", "duplicate_from"?: slug }',
-      "PATCH /v1/sites/{slug}": '{ "password"?: string, "ttl"?: string, "write_policy"?: "owner"|"instance" } — empty password clears. ttl resets expiry from now. write_policy is creator-only.',
+      "POST /v1/sites": '{ "slug", "overwrite": false, "password"?: string, "write_password"?: string, "ttl"?: string, "write_policy"?: "owner"|"instance", "duplicate_from"?: slug }',
+      "PATCH /v1/sites/{slug}": '{ "password"?: string, "write_password"?: string, "ttl"?: string, "write_policy"?: "owner"|"instance" } — empty password or write_password clears. ttl resets expiry from now. write_policy and write_password are creator-only.',
       "GET /v1/sites/{slug}/files/{path}": "raw file bytes (token)",
       "PUT /v1/sites/{slug}/files/{path}": "raw file body",
       "POST /v1/sites/{slug}/import": "application/zip unpacks into the site",
@@ -360,11 +362,11 @@ export function helpBody(origin: string, env?: Env): unknown {
       "GET /v1/sites/{slug}": "JSON file listing",
       "DELETE /v1/sites/{slug}": "delete site and objects",
       "DELETE /v1/sites/{slug}/files/{path}": "delete one path",
-      "POST /v1/files": "multipart field file, or raw body plus X-Filename; or JSON { duplicate_from, filename? }. Optional X-Energon-Set-Password, X-Energon-TTL, X-Energon-Write-Policy, X-Energon-Duplicate-From",
+      "POST /v1/files": "multipart field file, or raw body plus X-Filename; or JSON { duplicate_from, filename? }. Optional X-Energon-Set-Password, X-Energon-Set-Write-Password, X-Energon-TTL, X-Energon-Write-Policy, X-Energon-Duplicate-From",
       "GET /v1/files": "loose files you created or last wrote. ?scope=created|edited|involved&q=&created_by=&sort=updated|name&limit=25&cursor=",
       "GET /v1/files/{id}": "raw loose file bytes (token). ?download=1 sets Content-Disposition: attachment",
       "PUT /v1/files/{id}": "replace loose file bytes; same id and URL; optional X-Energon-Set-Password",
-      "PATCH /v1/files/{id}": '{ "password"?: string, "ttl"?: string, "write_policy"?: "owner"|"instance" } — empty password clears. ttl resets expiry from now. write_policy is creator-only.',
+      "PATCH /v1/files/{id}": '{ "password"?: string, "write_password"?: string, "ttl"?: string, "write_policy"?: "owner"|"instance" } — empty password or write_password clears. ttl resets expiry from now. write_policy and write_password are creator-only.',
       "DELETE /v1/files/{id}": "delete the loose file and its object (no recycle bin)",
       "GET /v1/sites": "sites you created or last wrote. ?scope=created|edited|involved&q=&created_by=&sort=updated|name&limit=25&cursor=",
     },

@@ -14,11 +14,13 @@ import { openapiResponse } from "./openapi";
 import { PRODUCT, RESERVED_HANDLES } from "./config";
 import { ensureSchema } from "./db";
 import { sweepExpired } from "./expire";
+import { guestWrite } from "./guest-write";
+import { CONTENT_ONLY_404_MESSAGE } from "./guest-write-protocol";
 import { ensureUser } from "./handles";
 import { identityFromEnv } from "./instance";
 import { MEMORABLE_WORDS } from "./memorable";
 import { deleteLooseFile, getLooseFile, hubLists, listLooseJson, patchLoose, postLooseFromRequest, putLooseFromRequest, serveLoose } from "./files";
-import { passwordField } from "./gate";
+import { passwordField, writePasswordField } from "./gate";
 import { ApiError, accountOriginRequired, assertTrustedAccountOrigin, contentOrigin, dedicatedContentOrigin, isLocalHost, isMermaidAssetPath, isPublicContentPath, json, publicOrigin, readBodyCapped, secretJson, serveMermaidAsset, wantsDownload } from "./http";
 import { instancePolicy, policyPublic, tokenPolicy, tokenPolicyPublic } from "./policy";
 import {
@@ -73,9 +75,32 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   const path = url.pathname;
   const method = request.method;
 
-  if (path === "/health" || path === "/v1/health") {
+  if (path === "/health") {
     if (method === "GET" || method === "HEAD") return json({ ok: true });
     return methodNotAllowed();
+  }
+
+  if (isMermaidAssetPath(path) && (method === "GET" || method === "HEAD")) {
+    return serveMermaidAsset(env, request);
+  }
+
+  const configuredContentOrigin = dedicatedContentOrigin(env);
+  const contentHost = configuredContentOrigin !== null && url.origin === configuredContentOrigin;
+  if (isPublicContentPath(path)) {
+    if (!contentHost && !isLocalHost(url.hostname)) {
+      if (!configuredContentOrigin) {
+        return json(
+          { error: "content_origin_not_configured", message: "Set CONTENT_ORIGIN to a separate custom hostname before serving content." },
+          503,
+        );
+      }
+      const status = method === "PUT" || method === "DELETE" ? 307 : 302;
+      return Response.redirect(`${configuredContentOrigin}${path}${url.search}`, status);
+    }
+  } else if (contentHost) {
+    if (path === "/llms.txt" && (method === "GET" || method === "HEAD")) return llmsResponse(env, "content");
+    if (path === "/llms.txt") return methodNotAllowed();
+    return json({ error: "not_found", message: CONTENT_ONLY_404_MESSAGE }, 404);
   }
 
   if (path === "/llms.txt") {
@@ -98,24 +123,9 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     return methodNotAllowed();
   }
 
-  if (isMermaidAssetPath(path) && (method === "GET" || method === "HEAD")) {
-    return serveMermaidAsset(env, request);
-  }
-
-  const configuredContentOrigin = dedicatedContentOrigin(env);
-  const contentHost = configuredContentOrigin !== null && url.origin === configuredContentOrigin;
-  if (isPublicContentPath(path)) {
-    if (!contentHost && !isLocalHost(url.hostname)) {
-      if (!configuredContentOrigin) {
-        return json(
-          { error: "content_origin_not_configured", message: "Set CONTENT_ORIGIN to a separate custom hostname before serving content." },
-          503,
-        );
-      }
-      return Response.redirect(`${configuredContentOrigin}${path}${url.search}`, 302);
-    }
-  } else if (contentHost) {
-    return json({ error: "not_found", message: "This hostname serves published content only." }, 404);
+  if (path === "/v1/health") {
+    if (method === "GET" || method === "HEAD") return json({ ok: true });
+    return methodNotAllowed();
   }
 
   if (path.startsWith("/static/ui/")) {
@@ -214,7 +224,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     const actor = await requireHuman(request, env, ctx);
     const body = await readJson(request);
     const result = await postSite(env, actor, body, ctx);
-    return json(result.body, result.status);
+    return publishJson(result.body, result.status);
   }
 
   const accountPatch = path.match(/^\/account\/sites\/([^/]+)$/);
@@ -287,30 +297,45 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   }
 
   const pubFile = path.match(/^\/([^/]+)\/f\/([^/]+)\/(.+)$/);
-  if (pubFile && (method === "GET" || method === "POST")) {
+  if (pubFile) {
     const handle = decodeURIComponent(pubFile[1]).toLowerCase();
     if (!RESERVED_HANDLES.has(handle)) {
-      return contentResponse(
-        await serveLoose(env, ctx, handle, decodeURIComponent(pubFile[2]), pubFile[3], request),
-        env,
-        contentHost,
-      );
+      if (method === "PUT" || method === "DELETE") {
+        return guestWrite(env, ctx, request, {
+          kind: "loose",
+          handle,
+          id: decodeURIComponent(pubFile[2]),
+          filenameSeg: pubFile[3],
+        });
+      }
+      if (method === "GET" || method === "POST") {
+        return contentResponse(
+          await serveLoose(env, ctx, handle, decodeURIComponent(pubFile[2]), pubFile[3], request),
+          env,
+          contentHost,
+        );
+      }
     }
   }
 
   const pubSite = path.match(/^\/([^/]+)\/s\/([^/]+)\/?(.*)$/);
-  if (pubSite && (method === "GET" || method === "POST")) {
+  if (pubSite) {
     const handle = decodeURIComponent(pubSite[1]).toLowerCase();
     const slug = decodeURIComponent(pubSite[2]);
     if (!RESERVED_HANDLES.has(handle)) {
-      if (method === "GET" && !pubSite[3] && !path.endsWith("/")) {
-        return Response.redirect(sitePublicUrl(env, handle, slug), 302);
+      if (method === "PUT" || method === "DELETE") {
+        return guestWrite(env, ctx, request, { kind: "site", handle, slug, rawPath: pubSite[3] || "" });
       }
-      return contentResponse(
-        await serveSite(env, ctx, handle, slug, pubSite[3] || "", request),
-        env,
-        contentHost,
-      );
+      if (method === "GET" || method === "POST") {
+        if (method === "GET" && !pubSite[3] && !path.endsWith("/")) {
+          return Response.redirect(sitePublicUrl(env, handle, slug), 302);
+        }
+        return contentResponse(
+          await serveSite(env, ctx, handle, slug, pubSite[3] || "", request),
+          env,
+          contentHost,
+        );
+      }
     }
   }
 
@@ -362,7 +387,7 @@ async function api(
     const actor = await requireToken(request, env);
     const body = await readJson(request);
     const result = await postSite(env, actor, body, ctx);
-    return json(result.body, result.status);
+    return publishJson(result.body, result.status);
   }
 
   if (path === "/v1/files" && method === "GET") {
@@ -509,6 +534,7 @@ async function postSite(
       body.ttl,
       body.write_policy,
       passwordField(body),
+      writePasswordField(body),
     );
   }
   return createSite(
@@ -520,17 +546,20 @@ async function postSite(
     ctx,
     body.ttl,
     body.write_policy,
+    writePasswordField(body),
   );
 }
 
 function contentPatch(body: Record<string, unknown>): {
   password?: string;
+  write_password?: string;
   ttl?: unknown;
   setTtl?: boolean;
   write_policy?: unknown;
 } {
   const patch: {
     password?: string;
+    write_password?: string;
     ttl?: unknown;
     setTtl?: boolean;
     write_policy?: unknown;
@@ -539,10 +568,18 @@ function contentPatch(body: Record<string, unknown>): {
     ttl: body.ttl,
     setTtl: Object.prototype.hasOwnProperty.call(body, "ttl"),
   };
+  if (Object.prototype.hasOwnProperty.call(body, "write_password")) {
+    patch.write_password = writePasswordField(body);
+  }
   if (Object.prototype.hasOwnProperty.call(body, "write_policy")) {
     patch.write_policy = body.write_policy;
   }
   return patch;
+}
+
+function publishJson(body: Record<string, unknown>, status: number): Response {
+  if (typeof body.write_password === "string" && body.write_password) return secretJson(body, status);
+  return json(body, status);
 }
 
 async function readJson(request: Request, maxBytes?: number): Promise<Record<string, unknown>> {

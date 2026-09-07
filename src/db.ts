@@ -36,6 +36,8 @@ const TABLE_STATEMENTS = [
     password_hash TEXT,
     expires_at TEXT,
     write_policy TEXT NOT NULL DEFAULT 'instance',
+    write_password_hash TEXT,
+    written_via TEXT,
     PRIMARY KEY (handle, slug)
   )`,
   `CREATE TABLE IF NOT EXISTS site_files (
@@ -61,7 +63,9 @@ const TABLE_STATEMENTS = [
     handle TEXT,
     owner_id TEXT,
     expires_at TEXT,
-    write_policy TEXT NOT NULL DEFAULT 'instance'
+    write_policy TEXT NOT NULL DEFAULT 'instance',
+    write_password_hash TEXT,
+    written_via TEXT
   )`,
   `CREATE TABLE IF NOT EXISTS tokens (
     id TEXT PRIMARY KEY,
@@ -128,8 +132,8 @@ export async function ensureSchema(db: D1Database): Promise<void> {
     await db.prepare(sql).run();
   }
   if (existing) {
-    await ensureColumns(db, "loose_files", ["updated_at", "last_written_by", "password_hash", "handle", "owner_id", "expires_at", "write_policy"]);
-    await ensureColumns(db, "sites", ["password_hash", "handle", "owner_id", "expires_at", "write_policy"]);
+    await ensureColumns(db, "loose_files", ["updated_at", "last_written_by", "password_hash", "handle", "owner_id", "expires_at", "write_policy", "write_password_hash", "written_via"]);
+    await ensureColumns(db, "sites", ["password_hash", "handle", "owner_id", "expires_at", "write_policy", "write_password_hash", "written_via"]);
     await ensureColumns(db, "tokens", ["token_secret", "token_hint", "user_id", "expires_at"]);
     await ensureColumns(db, "users", ["idp_sub"]);
     await db.prepare(`UPDATE tokens SET token_secret = NULL WHERE token_secret IS NOT NULL`).run();

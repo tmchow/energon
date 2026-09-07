@@ -29,7 +29,7 @@ import {
 } from "./expire";
 import { ensureHandle, ensureUser } from "./handles";
 import { listSitesFor } from "./sites";
-import { passwordEcho, passwordField, passwordHashFromInput, protectContent, readSetPasswordHeader } from "./gate";
+import { maybeUnlockWithWritePassword, passwordEcho, passwordField, passwordHashFromInput, protectContent, readSetPasswordHeader, readSetWritePasswordHeader, writePasswordField, writePasswordHashFromInput } from "./gate";
 import { filePublicUrl, isFileId, urlFilename } from "./urls";
 import {
   ApiError,
@@ -44,6 +44,7 @@ import {
   publicOrigin,
   readBodyCapped,
   releaseStorage,
+  secretJson,
   tooLarge,
   wantsDownload,
 } from "./http";
@@ -78,6 +79,7 @@ export async function createLooseFile(
   password?: string,
   ttl?: unknown,
   writePolicy?: unknown,
+  writePassword?: string,
 ): Promise<Response> {
   const policy = instancePolicy(env);
   if (bytes.byteLength > policy.fileBytes) throw tooLarge(bytes.byteLength, "", policy.fileBytes);
@@ -92,7 +94,9 @@ export async function createLooseFile(
   const contentType = contentTypeFor(filename, bytes, hintType);
   const ts = new Date().toISOString();
   const hash = await passwordHashFromInput(password);
+  const writeHash = await writePasswordHashFromInput(writePassword);
   const stored = hash === undefined ? null : hash;
+  const storedWritePw = writeHash === undefined ? null : writeHash;
   const resolved = resolveExpiresAt(policy, ttl);
   const storedWrite = resolveCreateWritePolicy(env, writePolicy);
   const key = fileKey(id, filename);
@@ -100,10 +104,10 @@ export async function createLooseFile(
   try {
     await env.BUCKET.put(key, bytes, { httpMetadata: { contentType } });
     await env.DB.prepare(
-      `INSERT INTO loose_files (id, handle, owner_id, filename, size, content_type, created_at, created_by, updated_at, last_written_by, password_hash, expires_at, write_policy)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO loose_files (id, handle, owner_id, filename, size, content_type, created_at, created_by, updated_at, last_written_by, password_hash, expires_at, write_policy, write_password_hash)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-      .bind(id, handle, user.id, filename, bytes.byteLength, contentType, ts, actor.email, ts, actor.email, stored, resolved.expiresAt, storedWrite)
+      .bind(id, handle, user.id, filename, bytes.byteLength, contentType, ts, actor.email, ts, actor.email, stored, resolved.expiresAt, storedWrite, storedWritePw)
       .run();
   } catch (err) {
     await env.BUCKET.delete(key).catch(() => undefined);
@@ -114,23 +118,23 @@ export async function createLooseFile(
   const url = filePublicUrl(env, handle, id, filename);
   const api_url = `${origin}/v1/files/${id}`;
   await purgeContent(ctx, [filePrefix(handle, id)]);
-  return json(
-    {
-      url,
-      api_url,
-      id,
-      handle,
-      filename,
-      size: bytes.byteLength,
-      content_type: contentType,
-      password_protected: Boolean(stored),
-      password: passwordEcho(password, stored) ?? null,
-      ttl: resolved.ttl,
-      expires_at: resolved.expiresAt,
-      write_policy: storedWrite,
-    },
-    201,
-  );
+  const body = {
+    url,
+    api_url,
+    id,
+    handle,
+    filename,
+    size: bytes.byteLength,
+    content_type: contentType,
+    password_protected: Boolean(stored),
+    password: passwordEcho(password, stored) ?? null,
+    write_password_protected: Boolean(storedWritePw),
+    write_password: passwordEcho(writePassword, storedWritePw) ?? null,
+    ttl: resolved.ttl,
+    expires_at: resolved.expiresAt,
+    write_policy: storedWrite,
+  };
+  return storedWritePw ? secretJson(body, 201) : json(body, 201);
 }
 
 export async function duplicateLooseFile(
@@ -142,6 +146,7 @@ export async function duplicateLooseFile(
   password?: string,
   ttl?: unknown,
   writePolicy?: unknown,
+  writePassword?: string,
 ): Promise<Response> {
   const fromId = fromIdRaw.trim();
   if (!isFileId(fromId)) {
@@ -181,7 +186,9 @@ export async function duplicateLooseFile(
   const id = await mintFileId(env);
   const ts = new Date().toISOString();
   const hash = await passwordHashFromInput(password);
+  const writeHash = await writePasswordHashFromInput(writePassword);
   const stored = hash === undefined ? null : hash;
+  const storedWritePw = writeHash === undefined ? null : writeHash;
   const resolved = resolveExpiresAt(policy, ttl);
   const storedWrite = resolveCreateWritePolicy(env, writePolicy);
   const reserved = await assertStorageRoom(env.DB, source.size, 0, policy.platformBytes);
@@ -189,10 +196,10 @@ export async function duplicateLooseFile(
   try {
     await copyR2Object(env.BUCKET, fileKey(source.id, source.filename), newKey);
     await env.DB.prepare(
-      `INSERT INTO loose_files (id, handle, owner_id, filename, size, content_type, created_at, created_by, updated_at, last_written_by, password_hash, expires_at, write_policy)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO loose_files (id, handle, owner_id, filename, size, content_type, created_at, created_by, updated_at, last_written_by, password_hash, expires_at, write_policy, write_password_hash)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-      .bind(id, handle, user.id, filename, source.size, source.content_type, ts, actor.email, ts, actor.email, stored, resolved.expiresAt, storedWrite)
+      .bind(id, handle, user.id, filename, source.size, source.content_type, ts, actor.email, ts, actor.email, stored, resolved.expiresAt, storedWrite, storedWritePw)
       .run();
   } catch (err) {
     await env.BUCKET.delete(newKey).catch(() => undefined);
@@ -202,26 +209,26 @@ export async function duplicateLooseFile(
   const origin = publicOrigin(env);
   const url = filePublicUrl(env, handle, id, filename);
   await purgeContent(ctx, [filePrefix(handle, id)]);
-  return json(
-    {
-      url,
-      api_url: `${origin}/v1/files/${id}`,
-      id,
-      handle,
-      filename,
-      size: source.size,
-      content_type: source.content_type,
-      created_by: actor.email,
-      password_protected: Boolean(stored),
-      password: passwordEcho(password, stored) ?? null,
-      ttl: resolved.ttl,
-      expires_at: resolved.expiresAt,
-      write_policy: storedWrite,
-      duplicated: true,
-      duplicated_from: source.id,
-    },
-    201,
-  );
+  const body = {
+    url,
+    api_url: `${origin}/v1/files/${id}`,
+    id,
+    handle,
+    filename,
+    size: source.size,
+    content_type: source.content_type,
+    created_by: actor.email,
+    password_protected: Boolean(stored),
+    password: passwordEcho(password, stored) ?? null,
+    write_password_protected: Boolean(storedWritePw),
+    write_password: passwordEcho(writePassword, storedWritePw) ?? null,
+    ttl: resolved.ttl,
+    expires_at: resolved.expiresAt,
+    write_policy: storedWrite,
+    duplicated: true,
+    duplicated_from: source.id,
+  };
+  return storedWritePw ? secretJson(body, 201) : json(body, 201);
 }
 
 function duplicateFromHeader(request: Request): string {
@@ -235,6 +242,11 @@ function filenameHeader(request: Request): string | null {
 function formPassword(request: Request, form: FormData): string | undefined {
   const formPw = form.get("password");
   return readSetPasswordHeader(request) ?? (typeof formPw === "string" ? formPw : undefined);
+}
+
+function formWritePassword(request: Request, form: FormData): string | undefined {
+  const formPw = form.get("write_password");
+  return readSetWritePasswordHeader(request) ?? (typeof formPw === "string" ? formPw : undefined);
 }
 
 async function postLooseJson(
@@ -263,6 +275,7 @@ async function postLooseJson(
       readSetPasswordHeader(request),
       ttlFromRequest(request),
       writePolicyFromRequest(request),
+      readSetWritePasswordHeader(request),
     );
   }
   let body: Record<string, unknown> | null = null;
@@ -286,6 +299,7 @@ async function postLooseJson(
       body ? passwordField(body) : readSetPasswordHeader(request),
       body ? body.ttl : ttlFromRequest(request),
       body ? body.write_policy : writePolicyFromRequest(request),
+      body ? writePasswordField(body) : readSetWritePasswordHeader(request),
     );
   }
   throw new ApiError(
@@ -323,6 +337,7 @@ async function postLooseMultipart(
       formPassword(request, form),
       ttlFromRequest(request, form),
       writePolicyFromRequest(request, form),
+      formWritePassword(request, form),
     );
   }
   const file = form.get("file");
@@ -346,6 +361,7 @@ async function postLooseMultipart(
     formPassword(request, form),
     ttlFromRequest(request, form),
     writePolicyFromRequest(request, form),
+    formWritePassword(request, form),
   );
 }
 
@@ -374,6 +390,7 @@ export async function postLooseFromRequest(
       readSetPasswordHeader(request),
       ttlFromRequest(request),
       writePolicyFromRequest(request),
+      readSetWritePasswordHeader(request),
     );
   }
   const filename = filenameHeader(request);
@@ -395,6 +412,7 @@ export async function postLooseFromRequest(
     readSetPasswordHeader(request),
     ttlFromRequest(request),
     writePolicyFromRequest(request),
+    readSetWritePasswordHeader(request),
   );
 }
 
@@ -553,14 +571,14 @@ export async function patchLoose(
   env: Env,
   actor: Actor,
   id: string,
-  patch: { password?: string; ttl?: unknown; setTtl?: boolean; write_policy?: unknown },
+  patch: { password?: string; write_password?: string; ttl?: unknown; setTtl?: boolean; write_policy?: unknown },
   ctx?: ExecutionContext,
 ): Promise<Response> {
   if (!isFileId(id)) {
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
   const existing = await env.DB.prepare(
-    `SELECT id, handle, filename, password_hash, expires_at, created_by, last_written_by, updated_at, write_policy, owner_id FROM loose_files WHERE id = ?`,
+    `SELECT id, handle, filename, password_hash, write_password_hash, expires_at, created_by, last_written_by, updated_at, write_policy, owner_id FROM loose_files WHERE id = ?`,
   )
     .bind(id)
     .first<{
@@ -568,6 +586,7 @@ export async function patchLoose(
       handle: string | null;
       filename: string;
       password_hash: string | null;
+      write_password_hash: string | null;
       expires_at: string | null;
       created_by: string;
       last_written_by: string | null;
@@ -590,6 +609,7 @@ export async function patchLoose(
     throw expiredError("file");
   }
   const wantsWrite = Object.prototype.hasOwnProperty.call(patch, "write_policy");
+  const wantsWritePassword = Object.prototype.hasOwnProperty.call(patch, "write_password");
   const wantsOther = patch.password !== undefined || Boolean(patch.setTtl);
   if (wantsOther) assertCanMutate(actor, existing);
   let nextWrite = resolveWritePolicy(existing.write_policy);
@@ -601,18 +621,26 @@ export async function patchLoose(
     }
     nextWrite = parsed;
   }
+  const writeHash = await writePasswordHashFromInput(patch.write_password);
+  if (wantsWritePassword) {
+    assertCanSetWritePolicy(actor, existing.created_by, existing.owner_id);
+  }
   const hash = await passwordHashFromInput(patch.password);
   const ts = new Date().toISOString();
   const handle = existing.handle || (await ensureHandle(env, actor.email, actor.idpSub));
   const resolved = patch.setTtl ? resolveExpiresAt(instancePolicy(env), patch.ttl) : null;
   const notClaimed = `ifnull(last_written_by, '') NOT LIKE ? AND (ifnull(last_written_by, '') NOT LIKE ? OR updated_at IS NULL OR updated_at <= ?)`;
   const claimGuards = [PURGE_CLAIM_LIKE, WRITE_CLAIM_LIKE, staleClaimCutoff()] as const;
-  if (hash !== undefined || resolved || wantsWrite) {
-    const assignments = ["updated_at = ?", "last_written_by = ?"];
+  if (hash !== undefined || writeHash !== undefined || resolved || wantsWrite) {
+    const assignments = ["updated_at = ?", "last_written_by = ?", "written_via = NULL"];
     const values: unknown[] = [ts, actor.email];
     if (hash !== undefined) {
       assignments.push("password_hash = ?");
       values.push(hash);
+    }
+    if (writeHash !== undefined) {
+      assignments.push("write_password_hash = ?");
+      values.push(writeHash);
     }
     if (resolved) {
       assignments.push("expires_at = ?");
@@ -629,12 +657,13 @@ export async function patchLoose(
       .run();
     if (!Number(updated.meta?.changes ?? 0)) await throwLooseFileMutationConflict(env, id);
   }
-  if (hash !== undefined || resolved) {
+  if (hash !== undefined || writeHash !== undefined || resolved) {
     await purgeContent(ctx, [filePrefix(handle, id)]);
   }
   const origin = publicOrigin(env);
   const protectedNow = hash === undefined ? Boolean(existing.password_hash) : Boolean(hash);
-  return json({
+  const writeProtectedNow = writeHash === undefined ? Boolean(existing.write_password_hash) : Boolean(writeHash);
+  const body = {
     id,
     handle,
     filename: existing.filename,
@@ -642,10 +671,14 @@ export async function patchLoose(
     api_url: `${origin}/v1/files/${id}`,
     password_protected: protectedNow,
     password: passwordEcho(patch.password, hash) ?? null,
+    write_password_protected: writeProtectedNow,
+    write_password: passwordEcho(patch.write_password, writeHash) ?? null,
     expires_at: resolved ? resolved.expiresAt : existing.expires_at ?? null,
     ttl: resolved ? resolved.ttl : undefined,
     write_policy: nextWrite,
-  });
+  };
+  const echoed = typeof body.write_password === "string" && body.write_password;
+  return echoed ? secretJson(body) : json(body);
 }
 
 async function throwLooseFileMutationConflict(env: Env, id: string): Promise<never> {
@@ -868,6 +901,8 @@ export async function listLooseFor(
     updated_at: string | null;
     last_written_by: string | null;
     password_protected: boolean;
+    write_password_protected: boolean;
+    written_via: string | null;
     expires_at: string | null;
     write_policy: string;
   }>
@@ -895,7 +930,7 @@ export async function listLooseFor(
     .first<{ n: number }>();
   const total = Number(countRow?.n ?? 0);
   const rows = await env.DB.prepare(
-    `SELECT id, handle, filename, size, content_type, created_at, created_by, updated_at, last_written_by, password_hash, expires_at, write_policy
+    `SELECT id, handle, filename, size, content_type, created_at, created_by, updated_at, last_written_by, password_hash, write_password_hash, written_via, expires_at, write_policy
      FROM loose_files
      WHERE ${where.sql}${search}${cursor.sql}
      ORDER BY ${cursor.order}
@@ -905,12 +940,14 @@ export async function listLooseFor(
     .all<LooseFileRow>();
   const page = takePage(rows.results || [], query.limit);
   const items = page.items.map((f) => {
-    const { password_hash, write_policy, ...rest } = f;
+    const { password_hash, write_password_hash, write_policy, ...rest } = f;
     return {
       ...rest,
       url: f.handle ? filePublicUrl(env, f.handle, f.id, f.filename) : `${origin}/v1/files/${f.id}`,
       api_url: `${origin}/v1/files/${f.id}`,
       password_protected: Boolean(password_hash),
+      write_password_protected: Boolean(write_password_hash),
+      written_via: f.written_via ?? null,
       expires_at: f.expires_at ?? null,
       write_policy: resolveWritePolicy(write_policy),
     };
@@ -943,7 +980,7 @@ export async function serveLoose(
   }
   filename = basename(filename);
   const row = await env.DB.prepare(
-    `SELECT id, handle, filename, password_hash, expires_at FROM loose_files WHERE id = ?`,
+    `SELECT id, handle, filename, password_hash, write_password_hash, expires_at FROM loose_files WHERE id = ?`,
   )
     .bind(id)
     .first<{
@@ -951,6 +988,7 @@ export async function serveLoose(
       handle: string | null;
       filename: string;
       password_hash: string | null;
+      write_password_hash: string | null;
       expires_at: string | null;
     }>();
   if (!row || (row.handle && row.handle !== handle)) {
@@ -962,7 +1000,9 @@ export async function serveLoose(
   }
 
   const cookiePath = `/${handle}/f/${id}/`;
-  const gated = await protectContent(request, row.password_hash, cookiePath, row.filename, env);
+  const unlocked = await maybeUnlockWithWritePassword(request, env, row.write_password_hash, cookiePath);
+  if (unlocked instanceof Response) return unlocked;
+  const gated = unlocked === "unlocked" ? null : await protectContent(request, row.password_hash, cookiePath, row.filename, env);
   if (gated) return gated;
   if (request.method === "POST") {
     return json({ error: "method_not_allowed", message: "Method not allowed." }, 405);
@@ -978,7 +1018,7 @@ export async function serveLoose(
     return respondMarkdown(request, obj, row.filename);
   }
   const remaining = remainingCacheSeconds(row.expires_at);
-  const cacheable = !row.password_hash;
+  const cacheable = !row.password_hash && unlocked !== "unlocked";
   const headers = new Headers();
   const contentType = obj.httpMetadata?.contentType || "application/octet-stream";
   headers.set("content-type", contentType);

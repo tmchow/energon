@@ -1,4 +1,5 @@
 import { PRODUCT, formatBytes } from "./config";
+import { guestWriteLlmsBody, hubGuestWriteSection } from "./guest-write-protocol";
 import { publicOrigin } from "./http";
 import { identityFromEnv } from "./instance";
 import { instancePolicy } from "./policy";
@@ -44,6 +45,7 @@ Do not put secrets, tokens, or share passwords in published files. Last write wi
 - Site zip export: \`GET /v1/sites/{slug}/export\` (token). Same ${formatBytes(policy.fileBytes)} / file-count caps as import. A single file is never a zip; \`?download=1\` on a file URL sets \`Content-Disposition: attachment\`.
 - \`.md\` files: browsers (\`Accept: text/html\`) get a rendered page (GFM + mermaid). \`curl\` and \`?raw=1\` get the markdown source. \`index.md\` is the site homepage when \`index.html\` is missing.
 
+${hubGuestWriteSection(content)}
 ## Optional
 
 - Agent skill for this instance: add marketplace \`${id.repo}\` (\`https://github.com/${id.repo}\`) and install \`${id.plugin}\` at user (global) scope (\`${id.plugin}@${id.marketplace}\`). Do not install at project or workspace scope unless the human asked for that. The skill files name this origin (${id.origin}). A fork replaces the shipped skill with \`npm run skill:init\`. Claude Code and [Agent Plugins](https://agent-plugins.org/) hosts use the same repo.
@@ -51,9 +53,14 @@ Do not put secrets, tokens, or share passwords in published files. Last write wi
 `;
 }
 
-export function llmsResponse(env: Env): Response {
+export function contentLlmsTxt(): string {
+  return guestWriteLlmsBody();
+}
+
+export function llmsResponse(env: Env, kind: "hub" | "content" = "hub"): Response {
   const origin = publicOrigin(env);
-  return new Response(llmsTxt(origin, env), {
+  const body = kind === "content" ? contentLlmsTxt() : llmsTxt(origin, env);
+  return new Response(body, {
     headers: {
       "content-type": "text/markdown; charset=utf-8",
       "cache-control": "public, max-age=300",
