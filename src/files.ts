@@ -1,7 +1,7 @@
 import { fileCacheTag, filePrefix, privateCacheControl, publicCacheControl, purgeContent } from "./cache";
 import {
-  involvementSql,
-  likeNeedle,
+  composeClauses,
+  criteriaSql,
   nextFileCursor,
   fileCursorSql,
   takePage,
@@ -681,7 +681,7 @@ export async function patchLoose(
   return jsonMaybeSecret(body);
 }
 
-function involvedInLoose(
+export function involvedInLoose(
   actor: Actor,
   row: { created_by: string; last_written_by: string | null; owner_id?: string | null },
 ): boolean {
@@ -954,35 +954,23 @@ export async function listLooseFor(
   }>
 > {
   const origin = publicOrigin(env);
-  const where = involvementSql(
-    "created_by",
-    "last_written_by",
-    email,
-    query,
-    ownerId ? { col: "owner_id", id: ownerId } : undefined,
-  );
-  const binds: unknown[] = [...where.binds];
-  let search = "";
-  const needle = likeNeedle(query.q);
-  if (needle) {
-    search = ` AND filename LIKE ?`;
-    binds.push(needle);
-  }
+  const criteria = criteriaSql("files", query, email, ownerId);
   const cursor = fileCursorSql(query);
+  const clauses = composeClauses(criteria, cursor);
   const countRow = await env.DB.prepare(
-    `SELECT COUNT(*) AS n FROM loose_files WHERE ${where.sql}${search}`,
+    `SELECT COUNT(*) AS n FROM loose_files WHERE ${criteria.where}`,
   )
-    .bind(...binds)
+    .bind(...criteria.whereBinds)
     .first<{ n: number }>();
   const total = Number(countRow?.n ?? 0);
   const rows = await env.DB.prepare(
     `SELECT id, handle, filename, size, content_type, created_at, created_by, updated_at, last_written_by, password_hash, write_password_hash, written_via, expires_at, write_policy
      FROM loose_files
-     WHERE ${where.sql}${search}${cursor.sql}
+     WHERE ${clauses.where}
      ORDER BY ${cursor.order}
      LIMIT ?`,
   )
-    .bind(...binds, ...cursor.binds, query.limit + 1)
+    .bind(...clauses.binds, query.limit + 1)
     .all<LooseFileRow>();
   const page = takePage(rows.results || [], query.limit);
   const items = page.items.map((f) => {

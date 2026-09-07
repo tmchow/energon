@@ -1,7 +1,7 @@
 import { privateCacheControl, publicCacheControl, purgeContent, siteCacheTag, sitePrefix } from "./cache";
 import {
-  involvementSql,
-  likeNeedle,
+  composeClauses,
+  criteriaSql,
   nextSiteCursor,
   siteCursorSql,
   takePage,
@@ -272,7 +272,7 @@ export async function getSite(env: Env, handle: string, slug: string): Promise<S
     .first<SiteRow>();
 }
 
-async function findSiteForActor(
+export async function findSiteForActor(
   env: Env,
   actor: Actor,
   slug: string,
@@ -294,7 +294,7 @@ async function findSiteForActor(
   return null;
 }
 
-function involvedInSite(
+export function involvedInSite(
   actor: Actor,
   site: { created_by: string; last_written_by: string | null; owner_id?: string | null },
 ): boolean {
@@ -1076,25 +1076,20 @@ export async function listSitesFor(
     write_policy: string;
   }>
 > {
-  const where = involvementSql(
-    "s.created_by",
-    "s.last_written_by",
-    email,
-    query,
-    ownerId ? { col: "s.owner_id", id: ownerId } : undefined,
-  );
-  const binds: unknown[] = [...where.binds];
-  let search = "";
-  const needle = likeNeedle(query.q);
-  if (needle) {
-    search = ` AND s.slug LIKE ?`;
-    binds.push(needle);
-  }
+  const criteria = criteriaSql("sites", query, email, ownerId);
   const cursor = siteCursorSql(query);
-  const countRow = await env.DB.prepare(
-    `SELECT COUNT(*) AS n FROM sites s WHERE ${where.sql}${search}`,
-  )
-    .bind(...binds)
+  const clauses = composeClauses(criteria, cursor);
+  // A HAVING filter (min_size) only exists per group, so the total must count groups, not rows.
+  const countSql = criteria.having
+    ? `SELECT COUNT(*) AS n FROM (
+         SELECT 1 FROM sites s
+         LEFT JOIN site_files f ON s.handle = f.handle AND s.slug = f.slug
+         WHERE ${criteria.where}
+         GROUP BY s.handle, s.slug
+         HAVING ${criteria.having})`
+    : `SELECT COUNT(*) AS n FROM sites s WHERE ${criteria.where}`;
+  const countRow = await env.DB.prepare(countSql)
+    .bind(...criteria.whereBinds, ...criteria.havingBinds)
     .first<{ n: number }>();
   const total = Number(countRow?.n ?? 0);
   const rows = await env.DB.prepare(
@@ -1103,12 +1098,13 @@ export async function listSitesFor(
             COUNT(f.path) AS file_count, COALESCE(SUM(f.size), 0) AS size
      FROM sites s
      LEFT JOIN site_files f ON s.handle = f.handle AND s.slug = f.slug
-     WHERE ${where.sql}${search}${cursor.sql}
+     WHERE ${clauses.where}
      GROUP BY s.handle, s.slug
+     ${clauses.having ? `HAVING ${clauses.having}` : ""}
      ORDER BY ${cursor.order}
      LIMIT ?`,
   )
-    .bind(...binds, ...cursor.binds, query.limit + 1)
+    .bind(...clauses.binds, query.limit + 1)
     .all<{
       handle: string;
       slug: string;
