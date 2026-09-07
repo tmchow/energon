@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { MAX_IMPORT_FILES, WRITE_PASSWORD_HEADER } from "../src/config";
 import { GATE_MAX_FAILS } from "../src/gate";
 import { GUEST_WRITE_401_MESSAGE } from "../src/guest-write-protocol";
-import { access, auth, json, mint, req } from "./helpers";
+import { access, auth, createSite, json, mint, req } from "./helpers";
 
 const CONTENT = "https://energon.example.com";
 const HUB = "https://hub.energon.example.com";
@@ -18,29 +18,25 @@ function secretLeak(body: unknown): string[] {
 describe("guest write password", () => {
   it("lets a site guest add, replace, and delete paths without a token", async () => {
     const token = await mint("guest-site", "guest-site@esperlabs.app");
-    const created = await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "guest-site", write_password: "guest-write-ok", write_policy: "owner" }),
-    });
+    const created = await createSite(token, "guest-site", { write_password: "guest-write-ok", write_policy: "owner" });
     expect(created.status).toBe(201);
     expect(created.body.write_password).toBe("guest-write-ok");
     expect(created.body.write_password_protected).toBe(true);
     expect(secretLeak(created.body)).toEqual([]);
 
-    const listed = await json("/v1/sites/guest-site", { headers: auth(token) });
+    const listed = await json(`/v1/sites/${created.body.id}`, { headers: auth(token) });
     expect(listed.body.write_password_protected).toBe(true);
     expect(listed.body).not.toHaveProperty("write_password");
     expect(listed.body).not.toHaveProperty("write_password_hash");
     expect(listed.body.last_written_by).toBe("guest-site@esperlabs.app");
 
-    const hub = await json("/account/sites/guest-site", { headers: access("guest-site@esperlabs.app") });
+    const hub = await json(`/account/sites/${created.body.id}`, { headers: access("guest-site@esperlabs.app") });
     expect(hub.status).toBe(200);
     expect(hub.body.write_password).toBe("guest-write-ok");
     expect(hub.body.write_password_protected).toBe(true);
     expect(secretLeak(hub.body)).toEqual([]);
 
-    const added = await json(`${CONTENT}/guest-site/s/guest-site/note.txt`, {
+    const added = await json(`${CONTENT}/guest-site/s/${created.body.id}/guest-site/note.txt`, {
       method: "PUT",
       headers: { ...WRITE, "content-type": "text/plain" },
       body: "from-guest",
@@ -50,43 +46,43 @@ describe("guest write password", () => {
     expect(added.body.api_url).toBeUndefined();
     expect(added.body.path).toBe("note.txt");
 
-    const got = await req(`${CONTENT}/guest-site/s/guest-site/note.txt`);
+    const got = await req(`${CONTENT}/guest-site/s/${created.body.id}/guest-site/note.txt`);
     expect(got.status).toBe(200);
     expect(await got.text()).toBe("from-guest");
 
-    const replaced = await json(`${CONTENT}/guest-site/s/guest-site/note.txt`, {
+    const replaced = await json(`${CONTENT}/guest-site/s/${created.body.id}/guest-site/note.txt`, {
       method: "PUT",
       headers: WRITE,
       body: "replaced",
     });
     expect(replaced.status).toBe(200);
 
-    const removed = await json(`${CONTENT}/guest-site/s/guest-site/note.txt`, { method: "DELETE", headers: WRITE });
+    const removed = await json(`${CONTENT}/guest-site/s/${created.body.id}/guest-site/note.txt`, { method: "DELETE", headers: WRITE });
     expect(removed.status).toBe(200);
     expect(removed.body).toEqual({ deleted: true, path: "note.txt" });
     expect(removed.body.hub).toBeUndefined();
 
-    const missing = await json(`${CONTENT}/guest-site/s/guest-site/note.txt`, { method: "DELETE", headers: WRITE });
+    const missing = await json(`${CONTENT}/guest-site/s/${created.body.id}/guest-site/note.txt`, { method: "DELETE", headers: WRITE });
     expect(missing.status).toBe(404);
 
-    const home = await json(`${CONTENT}/guest-site/s/guest-site/index.html`, {
+    const home = await json(`${CONTENT}/guest-site/s/${created.body.id}/guest-site/index.html`, {
       method: "PUT",
       headers: WRITE,
       body: "<h1>home</h1>",
     });
     expect(home.status).toBe(201);
-    const last = await json(`${CONTENT}/guest-site/s/guest-site/index.html`, { method: "DELETE", headers: WRITE });
+    const last = await json(`${CONTENT}/guest-site/s/${created.body.id}/guest-site/index.html`, { method: "DELETE", headers: WRITE });
     expect(last.status).toBe(200);
-    const root = await req(`${CONTENT}/guest-site/s/guest-site/`);
+    const root = await req(`${CONTENT}/guest-site/s/${created.body.id}/guest-site/`);
     expect(root.status).toBe(200);
 
-    const directory = await req(`${CONTENT}/guest-site/s/guest-site/`, { method: "DELETE", headers: WRITE });
+    const directory = await req(`${CONTENT}/guest-site/s/${created.body.id}/guest-site/`, { method: "DELETE", headers: WRITE });
     expect(directory.status).toBe(405);
     expect(directory.headers.get("allow")).toBe("GET");
     const directoryBody = await directory.json() as { error?: string; message?: string; hub?: string };
     expect(JSON.stringify(directoryBody)).not.toContain(WRITE_PASSWORD_HEADER);
 
-    const shareHeader = await json(`${CONTENT}/guest-site/s/guest-site/x.txt`, {
+    const shareHeader = await json(`${CONTENT}/guest-site/s/${created.body.id}/guest-site/x.txt`, {
       method: "PUT",
       headers: { "X-Energon-Password": "guest-write-ok" },
       body: "nope",
@@ -94,7 +90,7 @@ describe("guest write password", () => {
     expect(shareHeader.status).toBe(401);
     expect(shareHeader.body.message).toBe(GUEST_WRITE_401_MESSAGE);
 
-    const after = await json("/v1/sites/guest-site", { headers: auth(token) });
+    const after = await json(`/v1/sites/${created.body.id}`, { headers: auth(token) });
     expect(after.body.last_written_by).toBe("guest-site@esperlabs.app");
     expect(after.body.written_via).toBe("write_password");
     expect(secretLeak(after.body)).toEqual([]);
@@ -136,22 +132,14 @@ describe("guest write password", () => {
 
   it("binds identical phrases to the header that carried them and ignores the gate cookie", async () => {
     const token = await mint("guest-bound", "guest-bound@esperlabs.app");
-    const created = await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({
-        slug: "guest-bound",
-        password: "same-phrase",
-        write_password: "same-phrase",
-      }),
-    });
+    const created = await createSite(token, "guest-bound", { password: "same-phrase", write_password: "same-phrase" });
     expect(created.status).toBe(201);
-    await json("/v1/sites/guest-bound/files/index.html", {
+    await json(`/v1/sites/${created.body.id}/files/index.html`, {
       method: "PUT",
       headers: auth(token, { "content-type": "text/html" }),
       body: "<h1>ok</h1>",
     });
-    const publicUrl = `${CONTENT}/guest-bound/s/guest-bound/index.html`;
+    const publicUrl = `${CONTENT}/guest-bound/s/${created.body.id}/guest-bound/index.html`;
 
     const readHeader = await json(publicUrl, {
       method: "PUT",
@@ -160,7 +148,7 @@ describe("guest write password", () => {
     });
     expect(readHeader.status).toBe(401);
 
-    const form = await req(`${CONTENT}/guest-bound/s/guest-bound/`, {
+    const form = await req(`${CONTENT}/guest-bound/s/${created.body.id}/guest-bound/`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: "password=same-phrase",
@@ -187,22 +175,14 @@ describe("guest write password", () => {
 
   it("accepts the write password on the HTML gate for reading and still ignores the cookie for write", async () => {
     const token = await mint("guest-gate", "guest-gate@esperlabs.app");
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({
-        slug: "guest-gate",
-        password: "view-secret",
-        write_password: "guest-write-ok",
-      }),
-    });
-    await json("/v1/sites/guest-gate/files/index.html", {
+    const site_guest_gate = await createSite(token, "guest-gate", { password: "view-secret", write_password: "guest-write-ok" });
+    await json(`/v1/sites/${site_guest_gate.id}/files/index.html`, {
       method: "PUT",
       headers: auth(token, { "content-type": "text/html" }),
       body: "<h1>gated</h1>",
     });
-    const publicUrl = `${CONTENT}/guest-gate/s/guest-gate/index.html`;
-    const rootUrl = `${CONTENT}/guest-gate/s/guest-gate/`;
+    const publicUrl = `${CONTENT}/guest-gate/s/${site_guest_gate.id}/guest-gate/index.html`;
+    const rootUrl = `${CONTENT}/guest-gate/s/${site_guest_gate.id}/guest-gate/`;
 
     const locked = await req(rootUrl);
     expect(locked.status).toBe(401);
@@ -254,21 +234,13 @@ describe("guest write password", () => {
 
   it("keeps write-guess lockout off share-password GET and share-guess lockout off write PUT", async () => {
     const token = await mint("guest-rl", "guest-rl@esperlabs.app");
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({
-        slug: "guest-rl-write",
-        password: "view-secret",
-        write_password: "guest-write-ok",
-      }),
-    });
-    await json("/v1/sites/guest-rl-write/files/index.html", {
+    const site_guest_rl_write = await createSite(token, "guest-rl-write", { password: "view-secret", write_password: "guest-write-ok" });
+    await json(`/v1/sites/${site_guest_rl_write.id}/files/index.html`, {
       method: "PUT",
       headers: auth(token, { "content-type": "text/html" }),
       body: "<h1>rl-write</h1>",
     });
-    const writeUrl = `${CONTENT}/guest-rl/s/guest-rl-write/index.html`;
+    const writeUrl = `${CONTENT}/guest-rl/s/${site_guest_rl_write.id}/guest-rl-write/index.html`;
     const writeIp = { "CF-Connecting-IP": "203.0.113.41" };
     for (let i = 0; i < GATE_MAX_FAILS; i++) {
       const wrong = await json(writeUrl, {
@@ -290,21 +262,13 @@ describe("guest write password", () => {
     expect(shareStill.status).toBe(200);
     expect(await shareStill.text()).toContain("rl-write");
 
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({
-        slug: "guest-rl-read",
-        password: "view-secret",
-        write_password: "guest-write-ok",
-      }),
-    });
-    await json("/v1/sites/guest-rl-read/files/index.html", {
+    const site_guest_rl_read = await createSite(token, "guest-rl-read", { password: "view-secret", write_password: "guest-write-ok" });
+    await json(`/v1/sites/${site_guest_rl_read.id}/files/index.html`, {
       method: "PUT",
       headers: auth(token, { "content-type": "text/html" }),
       body: "<h1>rl-read</h1>",
     });
-    const readUrl = `${CONTENT}/guest-rl/s/guest-rl-read/index.html`;
+    const readUrl = `${CONTENT}/guest-rl/s/${site_guest_rl_read.id}/guest-rl-read/index.html`;
     const readIp = { "CF-Connecting-IP": "203.0.113.42", accept: "application/json", "X-Energon-Password": "wrong" };
     for (let i = 0; i < GATE_MAX_FAILS; i++) {
       const wrong = await json(readUrl, { headers: readIp });
@@ -322,21 +286,17 @@ describe("guest write password", () => {
 
   it("returns 405 when the write password is unset and 401 when it is wrong", async () => {
     const token = await mint("guest-unset", "guest-unset@esperlabs.app");
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "guest-unset" }),
-    });
-    const unset = await json(`${CONTENT}/guest-unset/s/guest-unset/a.txt`, { method: "PUT", headers: WRITE, body: "x" });
+    const site_guest_unset = await createSite(token, "guest-unset");
+    const unset = await json(`${CONTENT}/guest-unset/s/${site_guest_unset.id}/guest-unset/a.txt`, { method: "PUT", headers: WRITE, body: "x" });
     expect(unset.status).toBe(405);
     expect(JSON.stringify(unset.body)).not.toContain(WRITE_PASSWORD_HEADER);
 
-    await json("/v1/sites/guest-unset", {
+    await json(`/v1/sites/${site_guest_unset.id}`, {
       method: "PATCH",
       headers: auth(token, { "content-type": "application/json" }),
       body: JSON.stringify({ write_password: "guest-write-ok" }),
     });
-    const wrong = await json(`${CONTENT}/guest-unset/s/guest-unset/a.txt`, {
+    const wrong = await json(`${CONTENT}/guest-unset/s/${site_guest_unset.id}/guest-unset/a.txt`, {
       method: "PUT",
       headers: { [WRITE_PASSWORD_HEADER]: "nope" },
       body: "x",
@@ -344,59 +304,48 @@ describe("guest write password", () => {
     expect(wrong.status).toBe(401);
     expect(wrong.body.message).toBe(GUEST_WRITE_401_MESSAGE);
 
-    await json("/v1/sites/guest-unset", {
+    await json(`/v1/sites/${site_guest_unset.id}`, {
       method: "PATCH",
       headers: auth(token, { "content-type": "application/json" }),
       body: JSON.stringify({ write_password: "" }),
     });
-    const cleared = await json(`${CONTENT}/guest-unset/s/guest-unset/a.txt`, { method: "PUT", headers: WRITE, body: "x" });
+    const cleared = await json(`${CONTENT}/guest-unset/s/${site_guest_unset.id}/guest-unset/a.txt`, { method: "PUT", headers: WRITE, body: "x" });
     expect(cleared.status).toBe(405);
   });
 
   it("rejects a coworker setting a write password and does not copy it on duplicate", async () => {
     const ada = await mint("guest-ada", "guest-ada@esperlabs.app");
     const bob = await mint("guest-bob", "guest-bob@esperlabs.app");
-    const created = await json("/v1/sites", {
-      method: "POST",
-      headers: auth(ada, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "guest-owned", write_policy: "owner", write_password: "guest-write-ok" }),
-    });
+    const created = await createSite(ada, "guest-owned", { write_policy: "owner", write_password: "guest-write-ok" });
     expect(created.status).toBe(201);
-    const bobPatch = await json("/v1/sites/guest-owned", {
+    const bobPatch = await json(`/v1/sites/${created.body.id}`, {
       method: "PATCH",
       headers: auth(bob, { "content-type": "application/json" }),
       body: JSON.stringify({ write_password: "stolen" }),
     });
     expect(bobPatch.status).toBe(403);
     expect(bobPatch.body.error).toBe("forbidden_write_policy");
-    const bobOverwrite = await json("/v1/sites", {
-      method: "POST",
-      headers: auth(bob, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "guest-owned", overwrite: true, write_password: "stolen" }),
-    });
+    const bobOverwrite = await createSite(bob, "guest-owned", { write_password: "stolen" });
     expect(bobOverwrite.status).toBe(201);
+    expect(bobOverwrite.body.id).not.toBe(created.body.id);
     expect(bobOverwrite.body.handle).toBe("guest-bob");
-    const adaGuest = await json(`${CONTENT}/guest-ada/s/guest-owned/kept.txt`, {
+    const adaGuest = await json(`${CONTENT}/guest-ada/s/${created.body.id}/guest-owned/kept.txt`, {
       method: "PUT",
       headers: WRITE,
       body: "still-ada",
     });
     expect(adaGuest.status).toBe(201);
-    const stolen = await json(`${CONTENT}/guest-ada/s/guest-owned/kept.txt`, {
+    const stolen = await json(`${CONTENT}/guest-ada/s/${created.body.id}/guest-owned/kept.txt`, {
       method: "PUT",
       headers: { [WRITE_PASSWORD_HEADER]: "stolen" },
       body: "nope",
     });
     expect(stolen.status).toBe(401);
 
-    const copied = await json("/v1/sites", {
-      method: "POST",
-      headers: auth(bob, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "guest-owned-2", duplicate_from: "guest-owned" }),
-    });
+    const copied = await createSite(bob, "guest-owned-2", { duplicate_from: created.body.id });
     expect(copied.status).toBe(201);
     expect(copied.body.write_password_protected).toBe(false);
-    const guestOnCopy = await json(`${CONTENT}/guest-bob/s/guest-owned-2/x.txt`, {
+    const guestOnCopy = await json(`${CONTENT}/guest-bob/s/${copied.body.id}/guest-owned-2/x.txt`, {
       method: "PUT",
       headers: WRITE,
       body: "x",
@@ -406,19 +355,15 @@ describe("guest write password", () => {
 
   it("redirects hub-origin PUT with 307 and keeps content-host /v1/help as a content-only 404", async () => {
     const token = await mint("guest-redir", "guest-redir@esperlabs.app");
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "guest-redir", write_password: "guest-write-ok" }),
-    });
-    const hubPut = await req(`${HUB}/guest-redir/s/guest-redir/n.txt`, {
+    const site_guest_redir = await createSite(token, "guest-redir", { write_password: "guest-write-ok" });
+    const hubPut = await req(`${HUB}/guest-redir/s/${site_guest_redir.id}/guest-redir/n.txt`, {
       method: "PUT",
       headers: WRITE,
       body: "x",
       redirect: "manual",
     });
     expect(hubPut.status).toBe(307);
-    expect(hubPut.headers.get("location")).toBe(`${CONTENT}/guest-redir/s/guest-redir/n.txt`);
+    expect(hubPut.headers.get("location")).toBe(`${CONTENT}/guest-redir/s/${site_guest_redir.id}/guest-redir/n.txt`);
 
     const help = await json(`${CONTENT}/v1/help`);
     expect(help.status).toBe(404);
@@ -439,42 +384,34 @@ describe("guest write password", () => {
 
   it("caps a new guest site path at MAX_IMPORT_FILES", async () => {
     const token = await mint("guest-cap", "guest-cap@esperlabs.app");
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "guest-cap", write_password: "guest-write-ok" }),
-    });
+    const site_guest_cap = await createSite(token, "guest-cap", { write_password: "guest-write-ok" });
     const files = Object.fromEntries(
       Array.from({ length: MAX_IMPORT_FILES }, (_, i) => [`f${i}.txt`, strToU8("x")]),
     );
-    const imported = await json("/v1/sites/guest-cap/import", {
+    const imported = await json(`/v1/sites/${site_guest_cap.id}/import`, {
       method: "POST",
       headers: auth(token, { "content-type": "application/zip" }),
       body: zipSync(files),
     });
     expect(imported.status).toBe(200);
-    const extra = await json(`${CONTENT}/guest-cap/s/guest-cap/overflow.txt`, { method: "PUT", headers: WRITE, body: "x" });
+    const extra = await json(`${CONTENT}/guest-cap/s/${site_guest_cap.id}/guest-cap/overflow.txt`, { method: "PUT", headers: WRITE, body: "x" });
     expect(extra.status).toBe(400);
     expect(extra.body.error).toBe("too_many_files");
-    const replace = await json(`${CONTENT}/guest-cap/s/guest-cap/f0.txt`, { method: "PUT", headers: WRITE, body: "y" });
+    const replace = await json(`${CONTENT}/guest-cap/s/${site_guest_cap.id}/guest-cap/f0.txt`, { method: "PUT", headers: WRITE, body: "y" });
     expect(replace.status).toBe(200);
-    const del = await json(`${CONTENT}/guest-cap/s/guest-cap/f0.txt`, { method: "DELETE", headers: WRITE });
+    const del = await json(`${CONTENT}/guest-cap/s/${site_guest_cap.id}/guest-cap/f0.txt`, { method: "DELETE", headers: WRITE });
     expect(del.status).toBe(200);
   }, 15_000);
 
   it("omits hub from a guest 500", async () => {
     const token = await mint("guest-500", "guest-500@esperlabs.app");
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "guest-500", write_password: "guest-write-ok" }),
-    });
+    const site_guest_500 = await createSite(token, "guest-500", { write_password: "guest-write-ok" });
     const originalPut = env.BUCKET.put.bind(env.BUCKET);
     env.BUCKET.put = async () => {
       throw new Error("r2 down");
     };
     try {
-      const failed = await json(`${CONTENT}/guest-500/s/guest-500/x.txt`, { method: "PUT", headers: WRITE, body: "x" });
+      const failed = await json(`${CONTENT}/guest-500/s/${site_guest_500.id}/guest-500/x.txt`, { method: "PUT", headers: WRITE, body: "x" });
       expect(failed.status).toBe(500);
       expect(failed.body.error).toBe("internal");
       expect(failed.body.hub).toBeUndefined();

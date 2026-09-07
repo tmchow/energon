@@ -185,20 +185,35 @@ async function applyOne(
 ): Promise<AppliedObject> {
   const ref = object.ref;
   const applied: AppliedObject = { kind: ref.kind, ref: refString(ref), name: object.name, bytes: object.bytes };
-  const hint = ref.kind === "site" && object.involved ? ref.handle : null;
   switch (action.kind) {
     case "delete":
-      if (ref.kind === "site") await deleteSite(env, ctx, actor, ref.slug, hint);
-      else await deleteLooseFile(env, ctx, actor, ref.id);
-      return applied;
+      switch (ref.kind) {
+        case "site":
+          await deleteSite(env, ctx, actor, ref.id);
+          return applied;
+        case "file":
+          await deleteLooseFile(env, ctx, actor, ref.id);
+          return applied;
+        default:
+          return assertNever(ref);
+      }
     case "set_ttl":
     case "expire": {
       const patch = { ttl: action.ttlInput, setTtl: true };
-      const response = ref.kind === "site"
-        ? await patchSite(env, actor, ref.slug, patch, ctx, hint)
-        : await patchLoose(env, actor, ref.id, patch, ctx);
-      applied.expires_at = await expiresFrom(response);
-      return applied;
+      switch (ref.kind) {
+        case "site": {
+          const response = await patchSite(env, actor, ref.id, patch, ctx);
+          applied.expires_at = await expiresFrom(response);
+          return applied;
+        }
+        case "file": {
+          const response = await patchLoose(env, actor, ref.id, patch, ctx);
+          applied.expires_at = await expiresFrom(response);
+          return applied;
+        }
+        default:
+          return assertNever(ref);
+      }
     }
     default:
       return assertNever(action);

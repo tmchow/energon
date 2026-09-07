@@ -27,7 +27,7 @@ export async function loadStats(env: Env, email: string): Promise<StatsPayload> 
     scalar(
       env,
       `SELECT COUNT(*) AS n FROM site_files f
-       JOIN sites s ON s.handle = f.handle AND s.slug = f.slug
+       JOIN sites s ON s.id = f.site_id
        WHERE s.created_by = ? OR s.last_written_by = ?`,
       email,
       email,
@@ -35,7 +35,7 @@ export async function loadStats(env: Env, email: string): Promise<StatsPayload> 
     scalar(
       env,
       `SELECT COALESCE(SUM(f.size), 0) AS n FROM site_files f
-       JOIN sites s ON s.handle = f.handle AND s.slug = f.slug
+       JOIN sites s ON s.id = f.site_id
        WHERE s.created_by = ? OR s.last_written_by = ?`,
       email,
       email,
@@ -71,12 +71,12 @@ async function listPeople(env: Env): Promise<PersonStats[]> {
   const rows = await env.DB.prepare(
     `WITH site_usage AS (
        SELECT COALESCE(u.email, s.created_by) AS email,
-              COUNT(DISTINCT s.handle || '/' || s.slug) AS sites,
+              COUNT(DISTINCT s.id) AS sites,
               COUNT(f.path) AS site_files,
               COALESCE(SUM(f.size), 0) AS site_bytes
        FROM sites s
        LEFT JOIN users u ON u.id = s.owner_id
-       LEFT JOIN site_files f ON f.handle = s.handle AND f.slug = s.slug
+       LEFT JOIN site_files f ON f.site_id = s.id
        GROUP BY 1
      ),
      file_usage AS (

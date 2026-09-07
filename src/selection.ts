@@ -12,7 +12,7 @@ import { isPurgeClaimed } from "./expire";
 import { involvedInLoose } from "./files";
 import { ApiError } from "./http";
 import { canMutate } from "./policy";
-import { assertSlug, findSiteForActor, involvedInSite } from "./sites";
+import { getSiteById, involvedInSite } from "./sites";
 import type { Actor, Env } from "./types";
 import { isFileId } from "./urls";
 
@@ -21,13 +21,12 @@ export const CLEANUP_SCAN_BOUND = 300;
 export const CLEANUP_SAMPLE = 10;
 
 export type SelectionObjects = "sites" | "files" | "both";
-export type ExplicitSite = { raw: string; slug: string; handle: string | null };
 
 export type Selection =
   | { kind: "criteria"; criteria: SelectionCriteria; objects: SelectionObjects }
-  | { kind: "explicit"; sites: ExplicitSite[]; files: string[] };
+  | { kind: "explicit"; sites: string[]; files: string[] };
 
-export type ObjectRef = { kind: "site"; handle: string; slug: string } | { kind: "file"; id: string };
+export type ObjectRef = { kind: "site"; id: string } | { kind: "file"; id: string };
 
 export type CleanupObject = {
   ref: ObjectRef;
@@ -57,7 +56,7 @@ export type SkippedSummary = { total: number; by_reason: Partial<Record<SkipReas
 const TARGET_KEYS = new Set<string>([...CRITERIA_KEYS, "kind", "sites", "files"]);
 
 export function refString(ref: ObjectRef): string {
-  return ref.kind === "site" ? `${ref.handle}/${ref.slug}` : ref.id;
+  return ref.id;
 }
 
 export function refKey(ref: ObjectRef): string {
@@ -86,13 +85,6 @@ function stringList(raw: unknown, field: string): string[] {
   return [...seen];
 }
 
-function explicitSite(raw: string): ExplicitSite {
-  const lowered = raw.toLowerCase();
-  const slash = lowered.indexOf("/");
-  if (slash === -1) return { raw: lowered, slug: lowered, handle: null };
-  return { raw: lowered, slug: lowered.slice(slash + 1), handle: lowered.slice(0, slash) };
-}
-
 function selectionObjects(raw: unknown): SelectionObjects {
   if (raw === undefined) return "both";
   if (raw === "sites" || raw === "files") return raw;
@@ -116,7 +108,7 @@ export function parseSelection(raw: unknown): Selection {
     if (mixed.length) throw badTarget(`Send either ids (sites, files) or filters (${mixed.join(", ")}), not both.`);
     return {
       kind: "explicit",
-      sites: "sites" in target ? stringList(target.sites, "sites").map(explicitSite) : [],
+      sites: "sites" in target ? stringList(target.sites, "sites") : [],
       files: "files" in target ? stringList(target.files, "files") : [],
     };
   }
@@ -130,6 +122,7 @@ export function parseSelection(raw: unknown): Selection {
 }
 
 type SiteScanRow = {
+  id: string;
   handle: string;
   slug: string;
   owner_id: string | null;
@@ -155,7 +148,7 @@ type FileScanRow = {
 };
 
 function siteObject(actor: Actor, row: SiteScanRow): CleanupObject {
-  const ref: ObjectRef = { kind: "site", handle: row.handle, slug: row.slug };
+  const ref: ObjectRef = { kind: "site", id: row.id };
   return {
     ref,
     key: refKey(ref),
@@ -185,7 +178,7 @@ function fileObject(actor: Actor, row: FileScanRow): CleanupObject {
 }
 
 const SITE_SCAN_SELECT =
-  `s.handle, s.slug, s.owner_id, s.created_by, s.last_written_by, s.write_policy, s.updated_at, s.expires_at, ${SITE_SIZE_SQL} AS size`;
+  `s.id, s.handle, s.slug, s.owner_id, s.created_by, s.last_written_by, s.write_policy, s.updated_at, s.expires_at, ${SITE_SIZE_SQL} AS size`;
 const FILE_SCAN_SELECT =
   `id, filename, owner_id, created_by, last_written_by, write_policy, created_at, updated_at, expires_at, size`;
 
@@ -196,11 +189,11 @@ async function scanSites(env: Env, actor: Actor, criteria: SelectionCriteria): P
   const rows = await env.DB.prepare(
     `SELECT ${SITE_SCAN_SELECT}
      FROM sites s
-     LEFT JOIN site_files f ON s.handle = f.handle AND s.slug = f.slug
+     LEFT JOIN site_files f ON s.id = f.site_id
      WHERE ${sql.where}
-     GROUP BY s.handle, s.slug
+     GROUP BY s.id
      ${sql.having ? `HAVING ${sql.having}` : ""}
-     ORDER BY s.updated_at ASC, s.handle ASC, s.slug ASC
+     ORDER BY s.updated_at ASC, s.id ASC
      LIMIT ?`,
   )
     .bind(...sql.whereBinds, ...sql.havingBinds, CLEANUP_SCAN_BOUND + 1)
@@ -249,19 +242,14 @@ async function criteriaCandidates(env: Env, actor: Actor, criteria: SelectionCri
   return result;
 }
 
-async function lookupSite(env: Env, actor: Actor, entry: ExplicitSite): Promise<CleanupObject | null> {
-  let slug: string;
-  try {
-    slug = assertSlug(entry.slug);
-  } catch {
-    return null;
-  }
-  const site = await findSiteForActor(env, actor, slug, entry.handle);
+async function lookupSite(env: Env, actor: Actor, id: string): Promise<CleanupObject | null> {
+  const site = await getSiteById(env, id);
   if (!site) return null;
-  const usage = await env.DB.prepare(`SELECT ${SITE_SIZE_SQL} AS size FROM site_files f WHERE f.handle = ? AND f.slug = ?`)
-    .bind(site.handle, site.slug)
+  const usage = await env.DB.prepare(`SELECT ${SITE_SIZE_SQL} AS size FROM site_files f WHERE f.site_id = ?`)
+    .bind(site.id)
     .first<{ size: number }>();
   return siteObject(actor, {
+    id: site.id,
     handle: site.handle,
     slug: site.slug,
     owner_id: site.owner_id ?? null,
@@ -280,7 +268,7 @@ async function lookupFile(env: Env, actor: Actor, id: string): Promise<CleanupOb
   return row ? fileObject(actor, row) : null;
 }
 
-async function explicitCandidates(env: Env, actor: Actor, sites: ExplicitSite[], files: string[]): Promise<Candidates> {
+async function explicitCandidates(env: Env, actor: Actor, sites: string[], files: string[]): Promise<Candidates> {
   const result: Candidates = { objects: [], unresolved: [], truncated: false };
   const seen = new Set<string>();
   const keep = (object: CleanupObject | null, skipped: SkippedObject): void => {
@@ -292,7 +280,7 @@ async function explicitCandidates(env: Env, actor: Actor, sites: ExplicitSite[],
     seen.add(object.key);
     result.objects.push(object);
   };
-  for (const entry of sites) keep(await lookupSite(env, actor, entry), { kind: "site", ref: entry.raw, reason: "not_found" });
+  for (const id of sites) keep(await lookupSite(env, actor, id), { kind: "site", ref: id, reason: "not_found" });
   for (const id of files) keep(await lookupFile(env, actor, id), { kind: "file", ref: id, reason: "not_found" });
   return result;
 }

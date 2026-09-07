@@ -8,7 +8,7 @@ Send header `X-Energon-Write-Password` on PUT, and on DELETE of a site path. The
 
 A file write password only replaces that file. You cannot delete the file. The public file address stays.
 
-A site write password can PUT or DELETE a path under that site. You cannot delete the site. The site address still opens after every path is gone.
+A site write password can PUT or DELETE a path under that site (the public `/{handle}/s/{id}/{slug}/…` URL). You cannot delete the site. The site address still opens after every path is gone.
 
 GET with that same write header reads the object even if a share password is set. The HTML gate form also accepts the write password for reading. A cookie never authorizes PUT or DELETE.
 

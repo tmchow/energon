@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS handle_reservations (
 );
 
 CREATE TABLE IF NOT EXISTS sites (
+  id TEXT PRIMARY KEY,
   handle TEXT NOT NULL,
   slug TEXT NOT NULL,
   owner_id TEXT,
@@ -26,19 +27,17 @@ CREATE TABLE IF NOT EXISTS sites (
   write_policy TEXT NOT NULL DEFAULT 'org',
   write_password_hash TEXT,
   write_password_secret TEXT,
-  written_via TEXT,
-  PRIMARY KEY (handle, slug)
+  written_via TEXT
 );
 
 CREATE TABLE IF NOT EXISTS site_files (
-  handle TEXT NOT NULL,
-  slug TEXT NOT NULL,
+  site_id TEXT NOT NULL,
   path TEXT NOT NULL,
   size INTEGER NOT NULL,
   content_type TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   last_written_by TEXT NOT NULL,
-  PRIMARY KEY (handle, slug, path)
+  PRIMARY KEY (site_id, path)
 );
 
 CREATE TABLE IF NOT EXISTS loose_files (
@@ -81,7 +80,8 @@ CREATE TABLE IF NOT EXISTS gate_attempts (
   window_start TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_site_files_site ON site_files(handle, slug);
+CREATE INDEX IF NOT EXISTS idx_site_files_site ON site_files(site_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_site_files_id_path ON site_files(site_id, path);
 CREATE INDEX IF NOT EXISTS idx_loose_files_created ON loose_files(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sites_updated ON sites(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tokens_hash ON tokens(token_hash);

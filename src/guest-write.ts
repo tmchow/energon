@@ -41,9 +41,9 @@ import {
 } from "./http";
 import { contentTypeFor } from "./mime";
 import { instancePolicy } from "./policy";
-import { assertFilePath, assertSlug, getSite } from "./sites";
-import type { Env, WriteAuthority } from "./types";
-import { filePublicUrl, isFileId, sitePublicUrl, urlFilename } from "./urls";
+import { assertFilePath, assertSlug, getSiteById } from "./sites";
+import type { Env, SiteRow, WriteAuthority } from "./types";
+import { filePublicUrl, isFileId, isSiteId, sitePublicUrl, urlFilename } from "./urls";
 
 const FORBIDDEN_PUT_HEADERS = [
   "x-filename",
@@ -70,6 +70,7 @@ export type LooseTarget = {
 export type SiteTarget = {
   kind: "site";
   handle: string;
+  id: string;
   slug: string;
   rawPath: string;
 };
@@ -232,14 +233,15 @@ async function guestSite(
   target: SiteTarget,
   method: string,
 ): Promise<Response> {
+  if (!isSiteId(target.id)) throw notFoundSite();
   let slug: string;
   try {
     slug = assertSlug(target.slug);
   } catch {
     throw notFoundSite();
   }
-  const site = await getSite(env, target.handle, slug);
-  if (!site) throw notFoundSite();
+  const site = await getSiteById(env, target.id);
+  if (!site || site.handle !== target.handle || site.slug !== slug) throw notFoundSite();
   if (isPurgeClaimed(site.last_written_by) || isExpired(site.expires_at)) throw expiredError("site");
 
   const rawPath = target.rawPath;
@@ -262,36 +264,35 @@ async function guestSite(
   }
   if (!site.write_password_hash) return methodNotAllowed("GET");
 
-  const objectPath = `/${site.handle}/s/${slug}/`;
+  const objectPath = `/${site.handle}/s/${site.id}/${slug}/`;
   const authority = await authorizeWrite(env, request, site.write_password_hash, objectPath);
   if (method === "PUT") rejectForbiddenPutHeaders(request);
 
   const writer = accountWriter(site.last_written_by, site.created_by);
   if (method === "DELETE") {
-    return guestDeleteSitePath(env, ctx, request, site.handle, slug, path, authority, objectPath);
+    return guestDeleteSitePath(env, ctx, request, site, path, authority, objectPath);
   }
-  return guestPutSitePath(env, ctx, request, site.handle, slug, path, authority, objectPath, writer);
+  return guestPutSitePath(env, ctx, request, site, path, authority, objectPath, writer);
 }
 
 async function guestPutSitePath(
   env: Env,
   ctx: ExecutionContext,
   request: Request,
-  handle: string,
-  slug: string,
+  site: SiteRow,
   path: string,
   authority: WriteAuthority,
   objectPath: string,
   writer: string,
 ): Promise<Response> {
   const existing = await env.DB.prepare(
-    `SELECT size, content_type, updated_at, last_written_by FROM site_files WHERE handle = ? AND slug = ? AND path = ?`,
+    `SELECT size, content_type, updated_at, last_written_by FROM site_files WHERE site_id = ? AND path = ?`,
   )
-    .bind(handle, slug, path)
+    .bind(site.id, path)
     .first<{ size: number; content_type: string; updated_at: string; last_written_by: string }>();
   if (!existing) {
-    const count = await env.DB.prepare(`SELECT COUNT(*) AS n FROM site_files WHERE handle = ? AND slug = ?`)
-      .bind(handle, slug)
+    const count = await env.DB.prepare(`SELECT COUNT(*) AS n FROM site_files WHERE site_id = ?`)
+      .bind(site.id)
       .first<{ n: number }>();
     if (Number(count?.n ?? 0) >= MAX_IMPORT_FILES) {
       throw new ApiError(
@@ -305,7 +306,7 @@ async function guestPutSitePath(
   const bytes = await readBodyCapped(request, policy.fileBytes, contentOrigin(env));
   if (bytes.byteLength > policy.fileBytes) throw tooLarge(bytes.byteLength, "", policy.fileBytes);
   const contentType = contentTypeFor(path, bytes, request.headers.get("content-type"));
-  const key = siteKey(handle, slug, path);
+  const key = siteKey(site.handle, site.id, path);
   const ts = new Date().toISOString();
   const previous = await snapshotR2Object(env.BUCKET, key);
   const reserved = await assertStorageRoom(env.DB, bytes.byteLength, existing?.size ?? 0, policy.platformBytes);
@@ -313,34 +314,34 @@ async function guestPutSitePath(
     await env.BUCKET.put(key, bytes, { httpMetadata: { contentType } });
     const wrote = await env.DB.batch([
       env.DB.prepare(
-        `INSERT INTO site_files (handle, slug, path, size, content_type, updated_at, last_written_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(handle, slug, path) DO UPDATE SET
+        `INSERT INTO site_files (site_id, path, size, content_type, updated_at, last_written_by)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(site_id, path) DO UPDATE SET
            size = excluded.size,
            content_type = excluded.content_type,
            updated_at = excluded.updated_at,
            last_written_by = excluded.last_written_by`,
-      ).bind(handle, slug, path, bytes.byteLength, contentType, ts, writer),
+      ).bind(site.id, path, bytes.byteLength, contentType, ts, writer),
       env.DB.prepare(
-        `UPDATE sites SET updated_at = ?, written_via = ? WHERE handle = ? AND slug = ? AND write_password_hash = ? AND last_written_by NOT LIKE ?`,
-      ).bind(ts, WRITTEN_VIA_WRITE_PASSWORD, handle, slug, authority.hash, PURGE_CLAIM_LIKE),
+        `UPDATE sites SET updated_at = ?, written_via = ? WHERE id = ? AND write_password_hash = ? AND last_written_by NOT LIKE ?`,
+      ).bind(ts, WRITTEN_VIA_WRITE_PASSWORD, site.id, authority.hash, PURGE_CLAIM_LIKE),
     ]);
     if (!d1Changed(wrote[1]!)) {
       if (existing) {
         await env.DB.prepare(
-          `INSERT INTO site_files (handle, slug, path, size, content_type, updated_at, last_written_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(handle, slug, path) DO UPDATE SET
+          `INSERT INTO site_files (site_id, path, size, content_type, updated_at, last_written_by)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(site_id, path) DO UPDATE SET
              size = excluded.size,
              content_type = excluded.content_type,
              updated_at = excluded.updated_at,
              last_written_by = excluded.last_written_by`,
         )
-          .bind(handle, slug, path, existing.size, existing.content_type, existing.updated_at, existing.last_written_by)
+          .bind(site.id, path, existing.size, existing.content_type, existing.updated_at, existing.last_written_by)
           .run();
       } else {
-        await env.DB.prepare(`DELETE FROM site_files WHERE handle = ? AND slug = ? AND path = ?`)
-          .bind(handle, slug, path)
+        await env.DB.prepare(`DELETE FROM site_files WHERE site_id = ? AND path = ?`)
+          .bind(site.id, path)
           .run();
       }
       throw new ApiError(409, "site_write_lost", "The site changed during replacement; retry.");
@@ -360,10 +361,10 @@ async function guestPutSitePath(
   }
   await releaseStorage(env.DB, (existing?.size ?? 0) - bytes.byteLength);
   await clearGateAttempts(env, writeGateScopes(request, objectPath));
-  await purgeContent(ctx, [sitePrefix(handle, slug)]);
+  await purgeContent(ctx, [sitePrefix(site.handle, site.id)]);
   return guestJson(
     {
-      url: sitePublicUrl(env, handle, slug, path),
+      url: sitePublicUrl(env, site.handle, site.id, site.slug, path),
       path,
       size: bytes.byteLength,
       content_type: contentType,
@@ -376,56 +377,55 @@ async function guestDeleteSitePath(
   env: Env,
   ctx: ExecutionContext,
   request: Request,
-  handle: string,
-  slug: string,
+  site: SiteRow,
   path: string,
   authority: WriteAuthority,
   objectPath: string,
 ): Promise<Response> {
   const existing = await env.DB.prepare(
-    `SELECT path, size, content_type, updated_at, last_written_by FROM site_files WHERE handle = ? AND slug = ? AND path = ?`,
+    `SELECT path, size, content_type, updated_at, last_written_by FROM site_files WHERE site_id = ? AND path = ?`,
   )
-    .bind(handle, slug, path)
+    .bind(site.id, path)
     .first<{ path: string; size: number; content_type: string; updated_at: string; last_written_by: string }>();
   if (!existing) {
-    throw new ApiError(404, "file_not_found", `No file at /${handle}/s/${slug}/${path}.`);
+    throw new ApiError(404, "file_not_found", `No file at /${site.handle}/s/${site.id}/${site.slug}/${path}.`);
   }
   const ts = new Date().toISOString();
   const deleted = await env.DB.prepare(
-    `DELETE FROM site_files WHERE handle = ? AND slug = ? AND path = ?
-     AND EXISTS (SELECT 1 FROM sites WHERE handle = ? AND slug = ? AND write_password_hash = ? AND last_written_by NOT LIKE ?)`,
+    `DELETE FROM site_files WHERE site_id = ? AND path = ?
+     AND EXISTS (SELECT 1 FROM sites WHERE id = ? AND write_password_hash = ? AND last_written_by NOT LIKE ?)`,
   )
-    .bind(handle, slug, path, handle, slug, authority.hash, PURGE_CLAIM_LIKE)
+    .bind(site.id, path, site.id, authority.hash, PURGE_CLAIM_LIKE)
     .run();
   if (!d1Changed(deleted)) {
-    const still = await getSite(env, handle, slug);
+    const still = await getSiteById(env, site.id);
     if (!still || isPurgeClaimed(still.last_written_by) || isExpired(still.expires_at)) throw expiredError("site");
     if (!still.write_password_hash || !hashesEqual(still.write_password_hash, authority.hash)) {
       return writePasswordRequired();
     }
     throw new ApiError(409, "site_write_lost", "The site changed during replacement; retry.");
   }
-  const key = siteKey(handle, slug, path);
+  const key = siteKey(site.handle, site.id, path);
   try {
     await env.BUCKET.delete(key);
   } catch (err) {
     await env.DB.prepare(
-      `INSERT INTO site_files (handle, slug, path, size, content_type, updated_at, last_written_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO site_files (site_id, path, size, content_type, updated_at, last_written_by)
+       VALUES (?, ?, ?, ?, ?, ?)`,
     )
-      .bind(handle, slug, path, existing.size, existing.content_type, existing.updated_at, existing.last_written_by)
+      .bind(site.id, path, existing.size, existing.content_type, existing.updated_at, existing.last_written_by)
       .run()
       .catch(() => undefined);
     throw err;
   }
   await env.DB.prepare(
-    `UPDATE sites SET updated_at = ?, written_via = ? WHERE handle = ? AND slug = ? AND write_password_hash = ? AND last_written_by NOT LIKE ?`,
+    `UPDATE sites SET updated_at = ?, written_via = ? WHERE id = ? AND write_password_hash = ? AND last_written_by NOT LIKE ?`,
   )
-    .bind(ts, WRITTEN_VIA_WRITE_PASSWORD, handle, slug, authority.hash, PURGE_CLAIM_LIKE)
+    .bind(ts, WRITTEN_VIA_WRITE_PASSWORD, site.id, authority.hash, PURGE_CLAIM_LIKE)
     .run();
   await clearGateAttempts(env, writeGateScopes(request, objectPath));
   try {
-    await purgeContent(ctx, [sitePrefix(handle, slug)]);
+    await purgeContent(ctx, [sitePrefix(site.handle, site.id)]);
   } finally {
     await releaseStorage(env.DB, existing.size);
   }

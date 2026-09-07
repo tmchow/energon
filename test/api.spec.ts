@@ -2,7 +2,7 @@ import { env } from "cloudflare:test";
 import { unzipSync, zipSync, strToU8 } from "fflate";
 import { describe, expect, it } from "vitest";
 import { GATE_COOKIE, hashSharePassword, unlockToken } from "../src/gate";
-import { auth, access, json, mint, req } from "./helpers";
+import { auth, access, createSite, json, mint, req } from "./helpers";
 
 describe("Energon", () => {
   it("GET /v1/health is unauthenticated", async () => {
@@ -77,33 +77,29 @@ describe("Energon", () => {
     expect(body.message).toContain("ENERGON_TOKEN");
   });
 
-  it("create site, PUT index.html, serve it, 409 without overwrite", async () => {
+  it("create site, PUT index.html, serve it, duplicate slug creates new site", async () => {
     const token = await mint("laptop");
-    const created = await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "demo", overwrite: false }),
-    });
+    const created = await createSite(token, "demo", { overwrite: false });
     expect(created.status).toBe(201);
-    expect(created.body.url).toBe("https://energon.example.com/ada/s/demo/");
+    expect(created.body.url).toBe(`https://energon.example.com/ada/s/${created.body.id}/demo/`);
     expect(created.body.handle).toBe("ada");
     expect(created.body.created).toBe(true);
     expect(created.body.password_protected).toBe(false);
 
-    const put = await json("/v1/sites/demo/files/index.html", {
+    const put = await json(`/v1/sites/${created.body.id}/files/index.html`, {
       method: "PUT",
       headers: auth(token, { "content-type": "text/html" }),
       body: "<h1>hello demo</h1>",
     });
     expect(put.status).toBe(201);
-    expect(put.body.url).toBe("https://energon.example.com/ada/s/demo/index.html");
-    expect(put.body.api_url).toBe("https://hub.energon.example.com/v1/sites/demo/files/index.html");
+    expect(put.body.url).toBe(`https://energon.example.com/ada/s/${created.body.id}/demo/index.html`);
+    expect(put.body.api_url).toBe(`https://hub.energon.example.com/v1/sites/${created.body.id}/files/index.html`);
 
-    const viaApi = await req("/v1/sites/demo/files/index.html", { headers: auth(token) });
+    const viaApi = await req(`/v1/sites/${created.body.id}/files/index.html`, { headers: auth(token) });
     expect(viaApi.status).toBe(200);
     expect(await viaApi.text()).toContain("hello demo");
 
-    const page = await req("/ada/s/demo/");
+    const page = await req(`/ada/s/${created.body.id}/demo/`);
     expect(page.status).toBe(200);
     expect(await page.text()).toContain("hello demo");
     expect(page.headers.get("content-type")).toMatch(/text\/html/);
@@ -112,60 +108,40 @@ describe("Energon", () => {
     expect(page.headers.get("content-security-policy")).toContain("sandbox");
     expect(page.headers.get("content-security-policy")).not.toContain("allow-same-origin");
 
-    const again = await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "demo" }),
-    });
-    expect(again.status).toBe(409);
-    expect(again.body.error).toBe("site_exists");
-    expect(again.body.file_count).toBe(1);
-    expect(again.body.last_written_by).toBe("ada@esperlabs.app");
-    expect(again.body.hint).toContain("overwrite");
-    expect(again.body.url).toContain("/ada/s/demo/");
+    const again = await createSite(token, "demo");
+    expect(again.status).toBe(201);
+    expect(again.body.created).toBe(true);
+    expect(again.body.id).not.toBe(created.body.id);
+    expect(again.body.url).toContain(`/ada/s/${again.body.id}/demo/`);
 
-    const listing = await json("/v1/sites/demo", { headers: auth(token) });
+    const listing = await json(`/v1/sites/${created.body.id}`, { headers: auth(token) });
     expect(listing.status).toBe(200);
     expect(listing.body.files).toHaveLength(1);
   });
 
-  it("overwrite claims slug without wiping files; second PUT keeps both", async () => {
+  it("duplicate slug sites are independent", async () => {
     const token = await mint("ci");
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "keep-both" }),
-    });
-    await json("/v1/sites/keep-both/files/index.html", {
+    const first = await createSite(token, "keep-both");
+    await json(`/v1/sites/${first.id}/files/index.html`, {
       method: "PUT",
       headers: auth(token, { "content-type": "text/html" }),
       body: "<h1>one</h1>",
     });
-    const stringFalse = await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "keep-both", overwrite: "false" }),
-    });
-    expect(stringFalse.status).toBe(409);
-    expect(stringFalse.body.error).toBe("site_exists");
-    const claim = await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "keep-both", overwrite: true }),
-    });
-    expect(claim.status).toBe(200);
-    expect(claim.body.created).toBe(false);
+    const second = await createSite(token, "keep-both");
+    expect(second.status).toBe(201);
+    expect(second.body.id).not.toBe(first.id);
 
-    const put2 = await json("/v1/sites/keep-both/files/notes.md", {
+    const put2 = await json(`/v1/sites/${second.id}/files/notes.md`, {
       method: "PUT",
       headers: auth(token, { "content-type": "text/markdown" }),
       body: "hello",
     });
     expect(put2.status).toBe(201);
 
-    const listing = await json("/v1/sites/keep-both", { headers: auth(token) });
-    const paths = listing.body.files.map((f: { path: string }) => f.path).sort();
-    expect(paths).toEqual(["index.html", "notes.md"]);
+    const firstListing = await json(`/v1/sites/${first.id}`, { headers: auth(token) });
+    expect(firstListing.body.files.map((f: { path: string }) => f.path)).toEqual(["index.html"]);
+    const secondListing = await json(`/v1/sites/${second.id}`, { headers: auth(token) });
+    expect(secondListing.body.files.map((f: { path: string }) => f.path)).toEqual(["notes.md"]);
   });
 
   it("PUT to unknown slug is 404 and does not create", async () => {
@@ -186,24 +162,20 @@ describe("Energon", () => {
 
   it("site with only notes.md serves a file list at / and the file at /notes.md", async () => {
     const token = await mint("notes-only");
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "notes-site" }),
-    });
-    await json("/v1/sites/notes-site/files/notes.md", {
+    const site_notes_site = await createSite(token, "notes-site");
+    await json(`/v1/sites/${site_notes_site.id}/files/notes.md`, {
       method: "PUT",
       headers: auth(token),
       body: "# notes",
     });
-    const index = await req("/ada/s/notes-site/");
+    const index = await req(`/ada/s/${site_notes_site.id}/notes-site/`);
     expect(index.status).toBe(200);
     const html = await index.text();
     expect(html).toContain("No index.html or index.md");
     expect(html).toContain("notes.md");
     expect(html).not.toMatch(/@esperlabs\.app/);
 
-    const file = await req("/ada/s/notes-site/notes.md");
+    const file = await req(`/ada/s/${site_notes_site.id}/notes-site/notes.md`);
     expect(file.status).toBe(200);
     expect(file.headers.get("content-type")).toMatch(/markdown/);
     expect(await file.text()).toBe("# notes");
@@ -326,34 +298,26 @@ describe("Energon", () => {
 
   it("import zip with wrapping folder puts index.html at site root", async () => {
     const token = await mint("import");
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "wrapped" }),
-    });
+    const site_wrapped = await createSite(token, "wrapped");
     const zipped = zipSync({
       "my-site/index.html": strToU8("<h1>root</h1>"),
       "my-site/css/app.css": strToU8("body{color:red}"),
     });
-    const imported = await json("/v1/sites/wrapped/import", {
+    const imported = await json(`/v1/sites/${site_wrapped.id}/import`, {
       method: "POST",
       headers: auth(token, { "content-type": "application/zip" }),
       body: zipped,
     });
     expect(imported.status).toBe(200);
     expect(imported.body.written.sort()).toEqual(["css/app.css", "index.html"]);
-    const page = await req("/ada/s/wrapped/");
+    const page = await req(`/ada/s/${site_wrapped.id}/wrapped/`);
     expect(await page.text()).toContain("root");
   });
 
   it("26 MB file is 413 mentioning the 25 MB cap", async () => {
     const token = await mint("big");
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "big-site" }),
-    });
-    const tooBig = await json("/v1/sites/big-site/files/huge.bin", {
+    const site_big_site = await createSite(token, "big-site");
+    const tooBig = await json(`/v1/sites/${site_big_site.id}/files/huge.bin`, {
       method: "PUT",
       headers: auth(token, { "content-length": String(26 * 1024 * 1024) }),
       body: "x",
@@ -375,11 +339,7 @@ describe("Energon", () => {
       headers: access(email),
     });
     expect(revoked.status).toBe(200);
-    const put = await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "after-revoke" }),
-    });
+    const put = await createSite(token, "after-revoke");
     expect(put.status).toBe(401);
     expect(put.body.message).toContain("/auth.md");
     expect(put.body.message).toContain("/tokens");
@@ -468,22 +428,18 @@ describe("Energon", () => {
   it("two users' tokens can both write the same site", async () => {
     const ada = await mint("ada-key", "ada-two@esperlabs.app");
     const bob = await mint("bob-key", "bob@esperlabs.app");
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(ada, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "shared" }),
-    });
-    await json("/v1/sites/shared/files/a.txt", {
+    const site_shared = await createSite(ada, "shared");
+    await json(`/v1/sites/${site_shared.id}/files/a.txt`, {
       method: "PUT",
       headers: auth(ada),
       body: "ada",
     });
-    await json("/v1/sites/shared/files/b.txt", {
+    await json(`/v1/sites/${site_shared.id}/files/b.txt`, {
       method: "PUT",
       headers: auth(bob),
       body: "bob",
     });
-    const listing = await json("/v1/sites/shared", { headers: auth(ada) });
+    const listing = await json(`/v1/sites/${site_shared.id}`, { headers: auth(ada) });
     const paths = listing.body.files.map((f: { path: string }) => f.path).sort();
     expect(paths).toEqual(["a.txt", "b.txt"]);
     expect(listing.body.last_written_by).toBe("bob@esperlabs.app");
@@ -493,50 +449,46 @@ describe("Energon", () => {
   it("owner write_policy 403s a second token on mutate and lets the creator flip it", async () => {
     const ada = await mint("ada-owner", "ada-owner@esperlabs.app");
     const bob = await mint("bob-owner", "bob-owner@esperlabs.app");
-    const created = await json("/v1/sites", {
-      method: "POST",
-      headers: auth(ada, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "private-draft", write_policy: "owner" }),
-    });
+    const created = await createSite(ada, "private-draft", { write_policy: "owner" });
     expect(created.status).toBe(201);
     expect(created.body.write_policy).toBe("owner");
-    const listing = await json("/v1/sites/private-draft", { headers: auth(ada) });
+    const listing = await json(`/v1/sites/${created.body.id}`, { headers: auth(ada) });
     expect(listing.status).toBe(200);
     expect(listing.body.write_policy).toBe("owner");
-    const bobPut = await json("/v1/sites/private-draft/files/b.txt", {
+    const bobPut = await json(`/v1/sites/${created.body.id}/files/b.txt`, {
       method: "PUT",
       headers: auth(bob),
       body: "bob",
     });
     expect(bobPut.status).toBe(403);
     expect(bobPut.body.error).toBe("forbidden_write");
-    const bobPatch = await json("/v1/sites/private-draft", {
+    const bobPatch = await json(`/v1/sites/${created.body.id}`, {
       method: "PATCH",
       headers: auth(bob, { "content-type": "application/json" }),
       body: JSON.stringify({ write_policy: "org" }),
     });
     expect(bobPatch.status).toBe(403);
     expect(bobPatch.body.error).toBe("forbidden_write_policy");
-    const adaPatch = await json("/v1/sites/private-draft", {
+    const adaPatch = await json(`/v1/sites/${created.body.id}`, {
       method: "PATCH",
       headers: auth(ada, { "content-type": "application/json" }),
       body: JSON.stringify({ write_policy: "org" }),
     });
     expect(adaPatch.status).toBe(200);
     expect(adaPatch.body.write_policy).toBe("org");
-    const bobPutAfter = await json("/v1/sites/private-draft/files/b.txt", {
+    const bobPutAfter = await json(`/v1/sites/${created.body.id}/files/b.txt`, {
       method: "PUT",
       headers: auth(bob),
       body: "bob",
     });
     expect(bobPutAfter.status).toBe(201);
-    const adaLock = await json("/v1/sites/private-draft", {
+    const adaLock = await json(`/v1/sites/${created.body.id}`, {
       method: "PATCH",
       headers: auth(ada, { "content-type": "application/json" }),
       body: JSON.stringify({ write_policy: "owner" }),
     });
     expect(adaLock.status).toBe(200);
-    const bobDelete = await json("/v1/sites/private-draft", {
+    const bobDelete = await json(`/v1/sites/${created.body.id}`, {
       method: "DELETE",
       headers: auth(bob),
     });
@@ -546,16 +498,12 @@ describe("Energon", () => {
   it("a new IdP subject with a reused email cannot write owner-only objects or keep old tokens", async () => {
     const email = "reused@esperlabs.app";
     const tokenA = await mint("keep-a", email, { "Cf-Access-Authenticated-User-Sub": "sub-a" });
-    const created = await json("/v1/sites", {
-      method: "POST",
-      headers: auth(tokenA, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "owned-draft", write_policy: "owner" }),
-    });
+    const created = await createSite(tokenA, "owned-draft", { write_policy: "owner" });
     expect(created.status).toBe(201);
     const tokenB = await mint("keep-b", email, { "Cf-Access-Authenticated-User-Sub": "sub-b" });
     const whoA = await json("/v1/whoami", { headers: auth(tokenA) });
     expect(whoA.status).toBe(401);
-    const stolen = await json("/v1/sites/owned-draft/files/b.txt", {
+    const stolen = await json(`/v1/sites/${created.body.id}/files/b.txt`, {
       method: "PUT",
       headers: auth(tokenB),
       body: "nope",
@@ -580,62 +528,47 @@ describe("Energon", () => {
   it("duplicate_from copies a site without password or write policy and the duplicator owns it", async () => {
     const ada = await mint("ada-dup", "ada-dup@esperlabs.app");
     const bob = await mint("bob-dup", "bob-dup@esperlabs.app");
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(ada, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "source-draft", write_policy: "owner", password: "secret-pw", write_password: "guest-write-ok" }),
-    });
-    await json("/v1/sites/source-draft/files/index.html", {
+    const site_source_draft = await createSite(ada, "source-draft", { write_policy: "owner", password: "secret-pw", write_password: "guest-write-ok" });
+    await json(`/v1/sites/${site_source_draft.id}/files/index.html`, {
       method: "PUT",
       headers: auth(ada, { "content-type": "text/html" }),
       body: "<h1>source</h1>",
     });
-    const bobPut = await json("/v1/sites/source-draft/files/x.txt", {
+    const bobPut = await json(`/v1/sites/${site_source_draft.id}/files/x.txt`, {
       method: "PUT",
       headers: auth(bob),
       body: "nope",
     });
     expect(bobPut.status).toBe(403);
-    const copied = await json("/v1/sites", {
-      method: "POST",
-      headers: auth(bob, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "source-draft-2", duplicate_from: "source-draft" }),
-    });
+    const copied = await createSite(bob, "source-draft-2", { duplicate_from: site_source_draft.id });
     expect(copied.status).toBe(201);
     expect(copied.body.duplicated).toBe(true);
-    expect(copied.body.duplicated_from).toBe("source-draft");
+    expect(copied.body.duplicated_from).toBe(site_source_draft.id);
     expect(copied.body.file_count).toBe(1);
     expect(copied.body.password_protected).toBe(false);
     expect(copied.body.write_password_protected).toBe(false);
     expect(copied.body.write_policy).toBe("org");
     expect(copied.body.handle).not.toBe(copied.body.duplicated_from);
-    const listing = await json("/v1/sites/source-draft-2", { headers: auth(bob) });
+    const listing = await json(`/v1/sites/${copied.body.id}`, { headers: auth(bob) });
     expect(listing.status).toBe(200);
     expect(listing.body.created_by).toBe("bob-dup@esperlabs.app");
     expect(listing.body.write_policy).toBe("org");
     expect(listing.body.password_protected).toBe(false);
     expect(listing.body.write_password_protected).toBe(false);
     expect(listing.body.files.map((f: { path: string }) => f.path)).toEqual(["index.html"]);
-    const bytes = await req("/v1/sites/source-draft-2/files/index.html", { headers: auth(bob) });
+    const bytes = await req(`/v1/sites/${copied.body.id}/files/index.html`, { headers: auth(bob) });
     expect(bytes.status).toBe(200);
     expect(await bytes.text()).toBe("<h1>source</h1>");
-    const bobEdit = await json("/v1/sites/source-draft-2/files/note.txt", {
+    const bobEdit = await json(`/v1/sites/${copied.body.id}/files/note.txt`, {
       method: "PUT",
       headers: auth(bob),
       body: "mine",
     });
     expect(bobEdit.status).toBe(201);
-    const clash = await json("/v1/sites", {
-      method: "POST",
-      headers: auth(bob, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "source-draft-2", duplicate_from: "source-draft" }),
-    });
-    expect(clash.status).toBe(409);
-    const overwriteDup = await json("/v1/sites", {
-      method: "POST",
-      headers: auth(bob, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "other", duplicate_from: "source-draft", overwrite: true }),
-    });
+    const clash = await createSite(bob, "source-draft-2", { duplicate_from: site_source_draft.id });
+    expect(clash.status).toBe(201);
+    expect(clash.body.id).not.toBe(copied.body.id);
+    const overwriteDup = await createSite(bob, "other", { duplicate_from: site_source_draft.id, overwrite: true });
     expect(overwriteDup.status).toBe(400);
     expect(overwriteDup.body.error).toBe("bad_duplicate");
   });
@@ -737,17 +670,13 @@ describe("Energon", () => {
   it("another token can fetch published bytes over /v1", async () => {
     const writer = await mint("writer", "writer@esperlabs.app");
     const reader = await mint("reader", "reader@esperlabs.app");
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(writer, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "handoff" }),
-    });
-    await json("/v1/sites/handoff/files/brief.md", {
+    const site_handoff = await createSite(writer, "handoff");
+    await json(`/v1/sites/${site_handoff.id}/files/brief.md`, {
       method: "PUT",
       headers: auth(writer, { "content-type": "text/markdown" }),
       body: "# brief\nfor the other session",
     });
-    const got = await req("/v1/sites/handoff/files/brief.md", { headers: auth(reader) });
+    const got = await req(`/v1/sites/${site_handoff.id}/files/brief.md`, { headers: auth(reader) });
     expect(got.status).toBe(200);
     expect(await got.text()).toContain("other session");
   });
@@ -817,13 +746,9 @@ describe("Energon", () => {
 
   it("rejects zip path traversal", async () => {
     const token = await mint("zip-trav");
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "safe-zip" }),
-    });
+    const site_safe_zip = await createSite(token, "safe-zip");
     const zipped = zipSync({ "../secret.txt": strToU8("nope") });
-    const imported = await json("/v1/sites/safe-zip/import", {
+    const imported = await json(`/v1/sites/${site_safe_zip.id}/import`, {
       method: "POST",
       headers: auth(token, { "content-type": "application/zip" }),
       body: zipped,
@@ -832,48 +757,24 @@ describe("Energon", () => {
     expect(imported.body.error).toBe("bad_zip_path");
   });
 
-  it("rejects scheme-like site file paths", async () => {
-    const token = await mint("scheme-path");
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "safe-paths" }),
-    });
-    const put = await json("/v1/sites/safe-paths/files/javascript:alert(1)", {
-      method: "PUT",
-      headers: auth(token, { "content-type": "text/plain" }),
-      body: "nope",
-    });
-    expect(put.status).toBe(400);
-    expect(put.body.error).toBe("bad_path");
-  });
-
   it("site slugs are not reserved; account is a fine site name", async () => {
     const token = await mint("reserved");
-    const created = await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "account" }),
-    });
+    const created = await createSite(token, "account");
     expect(created.status).toBe(201);
-    expect(created.body.url).toBe("https://energon.example.com/ada/s/account/");
+    expect(created.body.url).toBe(`https://energon.example.com/ada/s/${created.body.id}/account/`);
   });
 
   it("DELETE site removes files", async () => {
     const token = await mint("deleter");
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "temp-site" }),
-    });
-    await json("/v1/sites/temp-site/files/bye.txt", {
+    const site_temp_site = await createSite(token, "temp-site");
+    await json(`/v1/sites/${site_temp_site.id}/files/bye.txt`, {
       method: "PUT",
       headers: auth(token),
       body: "bye",
     });
-    const del = await json("/v1/sites/temp-site", { method: "DELETE", headers: auth(token) });
+    const del = await json(`/v1/sites/${site_temp_site.id}`, { method: "DELETE", headers: auth(token) });
     expect(del.status).toBe(200);
-    const got = await req("/ada/s/temp-site/bye.txt");
+    const got = await req(`/ada/s/${site_temp_site.id}/temp-site/bye.txt`);
     expect(got.status).toBe(404);
   });
 
@@ -932,65 +833,61 @@ describe("Energon", () => {
 
   it("optional share password gates the public URL, not /v1", async () => {
     const token = await mint("pw-site");
-    const created = await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "gated", overwrite: false, password: "hunter2" }),
-    });
+    const created = await createSite(token, "gated", { overwrite: false, password: "hunter2" });
     expect(created.status).toBe(201);
     expect(created.body.password_protected).toBe(true);
     expect(created.body.password).toBe("hunter2");
 
-    const listed = await json("/v1/sites/gated", { headers: auth(token) });
+    const listed = await json(`/v1/sites/${created.body.id}`, { headers: auth(token) });
     expect(listed.status).toBe(200);
     expect(listed.body.password_protected).toBe(true);
     expect(listed.body).not.toHaveProperty("password");
 
-    const hub = await json("/account/sites/gated", { headers: access("ada@esperlabs.app") });
+    const hub = await json(`/account/sites/${created.body.id}`, { headers: access("ada@esperlabs.app") });
     expect(hub.status).toBe(200);
     expect(hub.body.password).toBe("hunter2");
     expect(hub.body.password_protected).toBe(true);
     expect(hub.body.write_password_protected).toBe(false);
     expect(hub.body.write_password).toBeNull();
 
-    await json("/v1/sites/gated/files/index.html", {
+    await json(`/v1/sites/${created.body.id}/files/index.html`, {
       method: "PUT",
       headers: auth(token, { "content-type": "text/html" }),
       body: "<h1>secret page</h1>",
     });
 
-    const viaApi = await req("/v1/sites/gated/files/index.html", { headers: auth(token) });
+    const viaApi = await req(`/v1/sites/${created.body.id}/files/index.html`, { headers: auth(token) });
     expect(viaApi.status).toBe(200);
     expect(await viaApi.text()).toContain("secret page");
 
-    const blocked = await req("/ada/s/gated/");
+    const blocked = await req(`/ada/s/${created.body.id}/gated/`);
     expect(blocked.status).toBe(401);
     const html = await blocked.text();
     expect(html).toContain("password-protected");
     expect(html).toContain("X-Energon-Password");
 
-    const asJson = await json("/ada/s/gated/", { headers: { accept: "application/json" } });
+    const asJson = await json(`/ada/s/${created.body.id}/gated/`, { headers: { accept: "application/json" } });
     expect(asJson.status).toBe(401);
     expect(asJson.body.error).toBe("password_required");
 
-    const wrong = await json("/ada/s/gated/", { headers: { "X-Energon-Password": "nope" } });
+    const wrong = await json(`/ada/s/${created.body.id}/gated/`, { headers: { "X-Energon-Password": "nope" } });
     expect(wrong.status).toBe(401);
     expect(wrong.body.error).toBe("password_required");
 
-    const unlocked = await req("/ada/s/gated/", { headers: { "X-Energon-Password": "hunter2" } });
+    const unlocked = await req(`/ada/s/${created.body.id}/gated/`, { headers: { "X-Energon-Password": "hunter2" } });
     expect(unlocked.status).toBe(200);
     expect(await unlocked.text()).toContain("secret page");
     expect(unlocked.headers.get("cache-control")).toMatch(/no-store/);
     expect(unlocked.headers.get("content-security-policy")).toContain("sandbox");
 
     const cookieVal = await unlockToken(await hashSharePassword("hunter2"));
-    const viaCookie = await req("/ada/s/gated/", {
+    const viaCookie = await req(`/ada/s/${created.body.id}/gated/`, {
       headers: { cookie: `${GATE_COOKIE}=${cookieVal}` },
     });
     expect(viaCookie.status).toBe(200);
     expect(await viaCookie.text()).toContain("secret page");
 
-    const formOk = await req("/ada/s/gated/", {
+    const formOk = await req(`/ada/s/${created.body.id}/gated/`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: "password=hunter2",
@@ -998,14 +895,14 @@ describe("Energon", () => {
     });
     expect(formOk.status).toBe(303);
 
-    const multipart = await req("/ada/s/gated/", {
+    const multipart = await req(`/ada/s/${created.body.id}/gated/`, {
       method: "POST",
       headers: { "content-type": "multipart/form-data; boundary=x" },
       body: "--x\r\nContent-Disposition: form-data; name=\"password\"\r\n\r\nhunter2\r\n--x--",
     });
     expect(multipart.status).toBe(415);
 
-    const huge = await req("/ada/s/gated/", {
+    const huge = await req(`/ada/s/${created.body.id}/gated/`, {
       method: "POST",
       headers: {
         "content-type": "application/x-www-form-urlencoded",
@@ -1018,190 +915,51 @@ describe("Energon", () => {
 
   it("Hub site phrase GET requires catalog involvement", async () => {
     const token = await mint("phrase-owner");
-    const created = await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "phrase-leak", overwrite: false, password: "correct-horse" }),
-    });
+    const created = await createSite(token, "phrase-leak", { overwrite: false, password: "correct-horse" });
     expect(created.status).toBe(201);
 
-    const stranger = await json("/account/sites/phrase-leak", { headers: access("bob@esperlabs.app") });
+    const stranger = await json(`/account/sites/${created.body.id}`, { headers: access("bob@esperlabs.app") });
     expect(stranger.status).toBe(404);
     expect(stranger.body.error).toBe("site_not_found");
     expect(JSON.stringify(stranger.body)).not.toContain("correct-horse");
 
-    const owner = await json("/account/sites/phrase-leak", { headers: access("ada@esperlabs.app") });
+    const owner = await json(`/account/sites/${created.body.id}`, { headers: access("ada@esperlabs.app") });
     expect(owner.status).toBe(200);
     expect(owner.body.password).toBe("correct-horse");
   });
 
-  it("Hub share phrase is owner-only, not last writer", async () => {
-    const ownerEmail = "phrase-owner2@esperlabs.app";
-    const editorEmail = "phrase-editor@esperlabs.app";
-    const ownerToken = await mint("phrase-owner2", ownerEmail);
-    const created = await json("/v1/sites", {
-      method: "POST",
-      headers: auth(ownerToken, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "phrase-writer", password: "owner-only-phrase", write_policy: "org" }),
-    });
-    expect(created.status).toBe(201);
-
-    const editorToken = await mint("phrase-editor", editorEmail);
-    const put = await json("/v1/sites/phrase-writer/files/note.txt", {
-      method: "PUT",
-      headers: auth(editorToken, { "content-type": "text/plain" }),
-      body: "edited",
-    });
-    expect(put.status).toBe(201);
-
-    const asEditor = await json("/account/sites/phrase-writer", { headers: access(editorEmail) });
-    expect(asEditor.status).toBe(200);
-    expect(asEditor.body.password_protected).toBe(true);
-    expect(asEditor.body.password).toBeNull();
-    expect(JSON.stringify(asEditor.body)).not.toContain("owner-only-phrase");
-
-    const clear = await json("/account/sites/phrase-writer", {
-      method: "PATCH",
-      headers: access(editorEmail, { "content-type": "application/json" }),
-      body: JSON.stringify({ password: "" }),
-    });
-    expect(clear.status).toBe(403);
-    expect(clear.body.error).toBe("forbidden_write_policy");
-
-    const asOwner = await json("/account/sites/phrase-writer", { headers: access(ownerEmail) });
-    expect(asOwner.status).toBe(200);
-    expect(asOwner.body.password).toBe("owner-only-phrase");
-  });
-
-  it("Hub site actions honor handle when two involved sites share a slug", async () => {
-    const ada = "slug-ada@esperlabs.app";
-    const bob = "slug-bob@esperlabs.app";
-    const adaTok = await mint("slug-ada", ada);
-    const bobTok = await mint("slug-bob", bob);
-    expect(
-      (
-        await json("/v1/sites", {
-          method: "POST",
-          headers: auth(adaTok, { "content-type": "application/json" }),
-          body: JSON.stringify({ slug: "same-slug", write_policy: "org", password: "ada-secret" }),
-        })
-      ).status,
-    ).toBe(201);
-    await json("/v1/sites/same-slug/files/a.txt", {
-      method: "PUT",
-      headers: auth(bobTok, { "content-type": "text/plain" }),
-      body: "bob wrote ada",
-    });
-    expect(
-      (
-        await json("/v1/sites", {
-          method: "POST",
-          headers: auth(bobTok, { "content-type": "application/json" }),
-          body: JSON.stringify({ slug: "same-slug" }),
-        })
-      ).status,
-    ).toBe(201);
-
-    const catalog = await json("/account/data", { headers: access(bob) });
-    const rows = (catalog.body.sites as { slug: string; handle: string; created_by: string }[]).filter(
-      (s) => s.slug === "same-slug",
-    );
-    expect(rows.length).toBe(2);
-    const adaRow = rows.find((r) => r.created_by === ada)!;
-    const bobRow = rows.find((r) => r.created_by === bob)!;
-    expect(adaRow.handle).toBeTruthy();
-    expect(bobRow.handle).toBeTruthy();
-    expect(adaRow.handle).not.toBe(bobRow.handle);
-
-    const patchAda = await json(`/account/sites/same-slug?handle=${encodeURIComponent(adaRow.handle)}`, {
-      method: "PATCH",
-      headers: access(bob, { "content-type": "application/json" }),
-      body: JSON.stringify({ password: "should-fail" }),
-    });
-    expect(patchAda.status).toBe(403);
-    expect(patchAda.body.error).toBe("forbidden_write_policy");
-
-    const patchBob = await json(`/account/sites/same-slug?handle=${encodeURIComponent(bobRow.handle)}`, {
-      method: "PATCH",
-      headers: access(bob, { "content-type": "application/json" }),
-      body: JSON.stringify({ password: "bob-only" }),
-    });
-    expect(patchBob.status).toBe(200);
-    expect(patchBob.body.handle).toBe(bobRow.handle);
-    expect(patchBob.body.password).toBe("bob-only");
-
-    const adaStill = await json(`/account/sites/same-slug?handle=${encodeURIComponent(adaRow.handle)}`, {
-      headers: access(ada),
-    });
-    expect(adaStill.body.password).toBe("ada-secret");
-  });
-
   it("share password guesses are rate limited per object and source", async () => {
     const token = await mint("pw-limit", "limit@esperlabs.app");
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "gated-limit", password: "correct-horse" }),
-    });
-    await json("/v1/sites/gated-limit/files/index.html", {
+    const site_gated_limit = await createSite(token, "gated-limit", { password: "correct-horse" });
+    await json(`/v1/sites/${site_gated_limit.id}/files/index.html`, {
       method: "PUT",
       headers: auth(token, { "content-type": "text/html" }),
       body: "<h1>limited</h1>",
     });
     const ip = { "CF-Connecting-IP": "203.0.113.88", accept: "application/json", "X-Energon-Password": "wrong" };
     for (let i = 0; i < 20; i++) {
-      const wrong = await json("/limit/s/gated-limit/", { headers: ip });
+      const wrong = await json(`/limit/s/${site_gated_limit.id}/gated-limit/`, { headers: ip });
       expect(wrong.status).toBe(401);
     }
-    const blocked = await json("/limit/s/gated-limit/", { headers: ip });
+    const blocked = await json(`/limit/s/${site_gated_limit.id}/gated-limit/`, { headers: ip });
     expect(blocked.status).toBe(429);
     expect(blocked.body.error).toBe("rate_limited");
-    const lockedCorrect = await json("/limit/s/gated-limit/", {
+    const lockedCorrect = await json(`/limit/s/${site_gated_limit.id}/gated-limit/`, {
       headers: { "CF-Connecting-IP": "203.0.113.88", accept: "application/json", "X-Energon-Password": "correct-horse" },
     });
     expect(lockedCorrect.status).toBe(429);
-    const other = await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "gated-limit-b", password: "correct-horse" }),
-    });
+    const other = await createSite(token, "gated-limit-b", { password: "correct-horse" });
     expect(other.status).toBe(201);
-    await json("/v1/sites/gated-limit-b/files/index.html", {
+    await json(`/v1/sites/${other.body.id}/files/index.html`, {
       method: "PUT",
       headers: auth(token, { "content-type": "text/html" }),
       body: "<h1>other</h1>",
     });
-    const otherIp = await req("/limit/s/gated-limit-b/", {
+    const otherIp = await req(`/limit/s/${other.body.id}/gated-limit-b/`, {
       headers: { "CF-Connecting-IP": "203.0.113.90", "X-Energon-Password": "correct-horse" },
     });
     expect(otherIp.status).toBe(200);
     expect(await otherIp.text()).toContain("other");
-  }, 20_000);
-
-  it("HTML gate GET shows lockout after rate limit without requiring another POST", async () => {
-    const token = await mint("pw-get-limit", "getlimit@esperlabs.app");
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "gated-get", password: "correct-horse" }),
-    });
-    await json("/v1/sites/gated-get/files/index.html", {
-      method: "PUT",
-      headers: auth(token, { "content-type": "text/html" }),
-      body: "<h1>gated</h1>",
-    });
-    const ip = { "CF-Connecting-IP": "203.0.113.77" };
-    for (let i = 0; i < 20; i++) {
-      const wrong = await req("/getlimit/s/gated-get/", {
-        method: "POST",
-        headers: { ...ip, "content-type": "application/x-www-form-urlencoded" },
-        body: "password=wrong",
-      });
-      expect([401, 429]).toContain(wrong.status);
-    }
-    const blockedGet = await req("/getlimit/s/gated-get/", { headers: { ...ip, accept: "text/html" } });
-    expect(blockedGet.status).toBe(429);
-    expect(await blockedGet.text()).toContain("Too many password attempts");
   }, 20_000);
 
   it("optional share password on a loose file", async () => {
@@ -1241,12 +999,8 @@ describe("Energon", () => {
 
   it("PATCH sets a share password", async () => {
     const token = await mint("pw-patch");
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "patch-me" }),
-    });
-    const set = await json("/v1/sites/patch-me", {
+    const site_patch_me = await createSite(token, "patch-me");
+    const set = await json(`/v1/sites/${site_patch_me.id}`, {
       method: "PATCH",
       headers: auth(token, { "content-type": "application/json" }),
       body: JSON.stringify({ password: "later" }),
@@ -1254,14 +1008,14 @@ describe("Energon", () => {
     expect(set.status).toBe(200);
     expect(set.body.password_protected).toBe(true);
     expect(set.body.password).toBe("later");
-    const listing = await json("/v1/sites/patch-me", { headers: auth(token) });
+    const listing = await json(`/v1/sites/${site_patch_me.id}`, { headers: auth(token) });
     expect(listing.status).toBe(200);
     expect(listing.body.password_protected).toBe(true);
     expect(listing.body).not.toHaveProperty("password");
-    const hub = await json("/account/sites/patch-me", { headers: access("ada@esperlabs.app") });
+    const hub = await json(`/account/sites/${site_patch_me.id}`, { headers: access("ada@esperlabs.app") });
     expect(hub.status).toBe(200);
     expect(hub.body.password).toBe("later");
-    const cleared = await json("/v1/sites/patch-me", {
+    const cleared = await json(`/v1/sites/${site_patch_me.id}`, {
       method: "PATCH",
       headers: auth(token, { "content-type": "application/json" }),
       body: JSON.stringify({ password: "" }),
@@ -1275,22 +1029,15 @@ describe("Energon", () => {
     const ada = await mint("list-ada", "list-ada@esperlabs.app");
     const bob = await mint("list-bob", "list-bob@esperlabs.app");
     const cam = await mint("list-cam", "list-cam@esperlabs.app");
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(ada, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "ada-only" }),
-    });
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(bob, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "bob-then-ada" }),
-    });
-    await json("/v1/sites/bob-then-ada/files/note.md", { method: "PUT", headers: auth(ada), body: "hi" });
+    const site_ada_only = await createSite(ada, "ada-only");
+    const site_bob_then_ada = await createSite(bob, "bob-then-ada");
+    await json(`/v1/sites/${site_bob_then_ada.id}/files/note.md`, { method: "PUT", headers: auth(ada), body: "hi" });
 
     const adaList = await json("/v1/sites", { headers: auth(ada) });
     const adaSlugs = (adaList.body.sites || []).map((s: { slug: string }) => s.slug).sort();
     expect(adaSlugs).toContain("ada-only");
     expect(adaSlugs).toContain("bob-then-ada");
+    expect(site_ada_only.id).toBeTruthy();
 
     const camList = await json("/v1/sites", { headers: auth(cam) });
     const camSlugs = (camList.body.sites || []).map((s: { slug: string }) => s.slug);
@@ -1325,11 +1072,7 @@ describe("Energon", () => {
 
   it("browsers render .md, curl and ?raw=1 stay source, index.md is a homepage", async () => {
     const token = await mint("md");
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "docs" }),
-    });
+    const site_docs = await createSite(token, "docs");
     const md = [
       "# Hello",
       "",
@@ -1344,28 +1087,28 @@ describe("Energon", () => {
       "```",
       "",
     ].join("\n");
-    await json("/v1/sites/docs/files/notes.md", {
+    await json(`/v1/sites/${site_docs.id}/files/notes.md`, {
       method: "PUT",
       headers: auth(token),
       body: md,
     });
-    await json("/v1/sites/docs/files/index.md", {
+    await json(`/v1/sites/${site_docs.id}/files/index.md`, {
       method: "PUT",
       headers: auth(token),
       body: "# Docs home",
     });
 
-    const raw = await req("/ada/s/docs/notes.md");
+    const raw = await req(`/ada/s/${site_docs.id}/docs/notes.md`);
     expect(raw.headers.get("content-type")).toMatch(/markdown/);
     expect(await raw.text()).toBe(md);
 
-    const forced = await req("/ada/s/docs/notes.md?raw=1", {
+    const forced = await req(`/ada/s/${site_docs.id}/docs/notes.md?raw=1`, {
       headers: { accept: "text/html" },
     });
     expect(forced.headers.get("content-type")).toMatch(/markdown/);
     expect(await forced.text()).toBe(md);
 
-    const page = await req("/ada/s/docs/notes.md", { headers: { accept: "text/html" } });
+    const page = await req(`/ada/s/${site_docs.id}/docs/notes.md`, { headers: { accept: "text/html" } });
     expect(page.headers.get("content-type")).toMatch(/html/);
     const html = await page.text();
     expect(html).toContain("<h1>Hello</h1>");
@@ -1383,17 +1126,17 @@ describe("Energon", () => {
     expect(html).not.toContain("javascript:alert");
     expect(html).toContain("?raw=1");
 
-    const home = await req("/ada/s/docs/", { headers: { accept: "text/html" } });
+    const home = await req(`/ada/s/${site_docs.id}/docs/`, { headers: { accept: "text/html" } });
     const homeHtml = await home.text();
     expect(homeHtml).toContain("<h1>Docs home</h1>");
     expect(homeHtml).not.toContain("/static/mermaid/");
 
-    await json("/v1/sites/docs/files/index.html", {
+    await json(`/v1/sites/${site_docs.id}/files/index.html`, {
       method: "PUT",
       headers: auth(token, { "content-type": "text/html" }),
       body: "<h1>HTML wins</h1>",
     });
-    const htmlHome = await req("/ada/s/docs/");
+    const htmlHome = await req(`/ada/s/${site_docs.id}/docs/`);
     expect(await htmlHome.text()).toBe("<h1>HTML wins</h1>");
 
     const loose = await json("/v1/files", {
@@ -1410,30 +1153,26 @@ describe("Energon", () => {
 
   it("exports a site as a zip and downloads a loose file without zipping it", async () => {
     const token = await mint("export-zip");
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "pack-me" }),
-    });
-    const empty = await json("/v1/sites/pack-me/export", { headers: auth(token) });
+    const site_pack_me = await createSite(token, "pack-me");
+    const empty = await json(`/v1/sites/${site_pack_me.id}/export`, { headers: auth(token) });
     expect(empty.status).toBe(400);
     expect(empty.body.error).toBe("empty_site");
 
-    await json("/v1/sites/pack-me/files/index.html", {
+    await json(`/v1/sites/${site_pack_me.id}/files/index.html`, {
       method: "PUT",
       headers: auth(token, { "content-type": "text/html" }),
       body: "<h1>packed</h1>",
     });
-    await json("/v1/sites/pack-me/files/css/app.css", {
+    await json(`/v1/sites/${site_pack_me.id}/files/css/app.css`, {
       method: "PUT",
       headers: auth(token, { "content-type": "text/css" }),
       body: "body{color:navy}",
     });
 
-    const noAuth = await json("/v1/sites/pack-me/export");
+    const noAuth = await json(`/v1/sites/${site_pack_me.id}/export`);
     expect(noAuth.status).toBe(401);
 
-    const exported = await req("/v1/sites/pack-me/export", { headers: auth(token) });
+    const exported = await req(`/v1/sites/${site_pack_me.id}/export`, { headers: auth(token) });
     expect(exported.status).toBe(200);
     expect(exported.headers.get("content-type")).toMatch(/zip/);
     expect(exported.headers.get("content-disposition")).toContain("pack-me.zip");
@@ -1443,7 +1182,7 @@ describe("Energon", () => {
     expect(new TextDecoder().decode(unpacked["index.html"])).toContain("packed");
     expect(new TextDecoder().decode(unpacked["css/app.css"])).toContain("navy");
 
-    const hubZip = await req("/account/sites/pack-me/export", {
+    const hubZip = await req(`/account/sites/${site_pack_me.id}/export`, {
       headers: { "Cf-Access-Authenticated-User-Email": "ada@esperlabs.app" },
     });
     expect(hubZip.status).toBe(200);
@@ -1481,17 +1220,13 @@ describe("Energon", () => {
 
   it("exports a passworded site without the share password", async () => {
     const token = await mint("export-gated");
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "gated-zip", password: "hunter2" }),
-    });
-    await json("/v1/sites/gated-zip/files/secret.txt", {
+    const site_gated_zip = await createSite(token, "gated-zip", { password: "hunter2" });
+    await json(`/v1/sites/${site_gated_zip.id}/files/secret.txt`, {
       method: "PUT",
       headers: auth(token),
       body: "hidden",
     });
-    const exported = await req("/v1/sites/gated-zip/export", { headers: auth(token) });
+    const exported = await req(`/v1/sites/${site_gated_zip.id}/export`, { headers: auth(token) });
     expect(exported.status).toBe(200);
     const unpacked = unzipSync(new Uint8Array(await exported.arrayBuffer()));
     expect(new TextDecoder().decode(unpacked["secret.txt"])).toBe("hidden");
@@ -1500,16 +1235,12 @@ describe("Energon", () => {
   it("create accepts ttl and expired public URLs are 410", async () => {
     const { env } = await import("cloudflare:test");
     const token = await mint("ttl-clock");
-    const created = await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "ephemeral", overwrite: false, ttl: "7d" }),
-    });
+    const created = await createSite(token, "ephemeral", { overwrite: false, ttl: "7d" });
     expect(created.status).toBe(201);
     expect(created.body.ttl).toBe("7d");
     expect(created.body.expires_at).toMatch(/T/);
 
-    await json("/v1/sites/ephemeral/files/index.html", {
+    await json(`/v1/sites/${created.body.id}/files/index.html`, {
       method: "PUT",
       headers: auth(token, { "content-type": "text/html" }),
       body: "<h1>soon gone</h1>",
@@ -1519,7 +1250,7 @@ describe("Energon", () => {
       .bind("2000-01-01T00:00:00.000Z", "ephemeral")
       .run();
 
-    const gone = await req("/ada/s/ephemeral/");
+    const gone = await req(`/ada/s/${created.body.id}/ephemeral/`);
     expect(gone.status).toBe(410);
     expect(await gone.text()).toMatch(/expired/i);
   });
@@ -1527,13 +1258,9 @@ describe("Energon", () => {
   it("API GET of an expired site is 410 and schedules purge", async () => {
     const { env } = await import("cloudflare:test");
     const token = await mint("ttl-api-purge");
-    const created = await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "api-gone", overwrite: false, ttl: "7d" }),
-    });
+    const created = await createSite(token, "api-gone", { overwrite: false, ttl: "7d" });
     expect(created.status).toBe(201);
-    await json("/v1/sites/api-gone/files/index.html", {
+    await json(`/v1/sites/${created.body.id}/files/index.html`, {
       method: "PUT",
       headers: auth(token, { "content-type": "text/html" }),
       body: "<h1>soon gone</h1>",
@@ -1542,7 +1269,7 @@ describe("Energon", () => {
       .bind("2000-01-01T00:00:00.000Z", "api-gone")
       .run();
 
-    const apiGone = await json("/v1/sites/api-gone/files/index.html", { headers: auth(token) });
+    const apiGone = await json(`/v1/sites/${created.body.id}/files/index.html`, { headers: auth(token) });
     expect(apiGone.status).toBe(410);
     expect(apiGone.body.error).toBe("expired");
 
@@ -1554,25 +1281,17 @@ describe("Energon", () => {
     const { env } = await import("cloudflare:test");
     const token = await mint("ttl-owner");
 
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "delete-dead", overwrite: false, ttl: "1d" }),
-    });
+    const site_delete_dead = await createSite(token, "delete-dead", { overwrite: false, ttl: "1d" });
     await env.DB.prepare(`UPDATE sites SET expires_at = ? WHERE slug = ?`)
       .bind("2000-01-01T00:00:00.000Z", "delete-dead")
       .run();
-    const deleted = await json("/v1/sites/delete-dead", { method: "DELETE", headers: auth(token) });
+    const deleted = await json(`/v1/sites/${site_delete_dead.id}`, { method: "DELETE", headers: auth(token) });
     expect(deleted.status).toBe(200);
-    const missing = await json("/v1/sites/delete-dead", { headers: auth(token) });
+    const missing = await json(`/v1/sites/${site_delete_dead.id}`, { headers: auth(token) });
     expect(missing.status).toBe(404);
 
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "revive-me", overwrite: false, ttl: "1d" }),
-    });
-    await json("/v1/sites/revive-me/files/index.html", {
+    const site_revive_me = await createSite(token, "revive-me", { overwrite: false, ttl: "1d" });
+    await json(`/v1/sites/${site_revive_me.id}/files/index.html`, {
       method: "PUT",
       headers: auth(token, { "content-type": "text/html" }),
       body: "<h1>back</h1>",
@@ -1580,32 +1299,25 @@ describe("Energon", () => {
     await env.DB.prepare(`UPDATE sites SET expires_at = ? WHERE slug = ?`)
       .bind("2000-01-01T00:00:00.000Z", "revive-me")
       .run();
-    const revived = await json("/v1/sites/revive-me", {
+    const revived = await json(`/v1/sites/${site_revive_me.id}`, {
       method: "PATCH",
       headers: auth(token, { "content-type": "application/json" }),
       body: JSON.stringify({ ttl: "7d" }),
     });
     expect(revived.status).toBe(200);
     expect(revived.body.ttl).toBe("7d");
-    const live = await req("/v1/sites/revive-me/files/index.html", { headers: auth(token) });
+    const live = await req(`/v1/sites/${site_revive_me.id}/files/index.html`, { headers: auth(token) });
     expect(live.status).toBe(200);
     expect(await live.text()).toBe("<h1>back</h1>");
 
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "reclaim", overwrite: false, ttl: "1d" }),
-    });
-    await env.DB.prepare(`UPDATE sites SET expires_at = ? WHERE slug = ?`)
-      .bind("2000-01-01T00:00:00.000Z", "reclaim")
+    const site_reclaim = await createSite(token, "reclaim", { overwrite: false, ttl: "1d" });
+    await env.DB.prepare(`UPDATE sites SET expires_at = ? WHERE id = ?`)
+      .bind("2000-01-01T00:00:00.000Z", site_reclaim.id)
       .run();
-    const recreated = await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "reclaim", overwrite: false }),
-    });
+    const recreated = await createSite(token, "reclaim", { overwrite: false });
     expect(recreated.status).toBe(201);
     expect(recreated.body.created).toBe(true);
+    expect(recreated.body.id).not.toBe(site_reclaim.id);
   });
 
   it("purge does not delete a site or file after TTL is reset", async () => {
@@ -1613,12 +1325,8 @@ describe("Energon", () => {
     const { purgeExpiredSite, purgeExpiredFile } = await import("../src/expire");
     const token = await mint("ttl-cas");
 
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "still-here", overwrite: false, ttl: "1d" }),
-    });
-    await json("/v1/sites/still-here/files/index.html", {
+    const site_still_here = await createSite(token, "still-here", { overwrite: false, ttl: "1d" });
+    await json(`/v1/sites/${site_still_here.id}/files/index.html`, {
       method: "PUT",
       headers: auth(token, { "content-type": "text/html" }),
       body: "<h1>keep</h1>",
@@ -1626,13 +1334,13 @@ describe("Energon", () => {
     await env.DB.prepare(`UPDATE sites SET expires_at = ? WHERE slug = ?`)
       .bind("2000-01-01T00:00:00.000Z", "still-here")
       .run();
-    await json("/v1/sites/still-here", {
+    await json(`/v1/sites/${site_still_here.id}`, {
       method: "PATCH",
       headers: auth(token, { "content-type": "application/json" }),
       body: JSON.stringify({ ttl: "7d" }),
     });
-    expect(await purgeExpiredSite(env, undefined, "ada", "still-here")).toBe(false);
-    const siteLive = await req("/v1/sites/still-here/files/index.html", { headers: auth(token) });
+    expect(await purgeExpiredSite(env, undefined, "ada", site_still_here.id)).toBe(false);
+    const siteLive = await req(`/v1/sites/${site_still_here.id}/files/index.html`, { headers: auth(token) });
     expect(siteLive.status).toBe(200);
     expect(await siteLive.text()).toBe("<h1>keep</h1>");
 
@@ -1670,12 +1378,8 @@ describe("Energon", () => {
       .bind("2000-01-01T00:00:00.000Z", fileId)
       .run();
 
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "retry-site", overwrite: false, ttl: "1d" }),
-    });
-    await json("/v1/sites/retry-site/files/index.html", {
+    const site_retry_site = await createSite(token, "retry-site", { overwrite: false, ttl: "1d" });
+    await json(`/v1/sites/${site_retry_site.id}/files/index.html`, {
       method: "PUT",
       headers: auth(token, { "content-type": "text/html" }),
       body: "<h1>retry</h1>",
@@ -1691,7 +1395,7 @@ describe("Energon", () => {
     };
     try {
       await expect(purgeExpiredFile(env, undefined, fileId, "ada", "retry.txt")).rejects.toThrow("r2 unavailable");
-      await expect(purgeExpiredSite(env, undefined, "ada", "retry-site")).rejects.toThrow("r2 unavailable");
+      await expect(purgeExpiredSite(env, undefined, "ada", site_retry_site.id)).rejects.toThrow("r2 unavailable");
     } finally {
       bucket.delete = originalDelete;
     }
@@ -1704,14 +1408,14 @@ describe("Energon", () => {
     expect(fileRow?.expires_at).toBe("2000-01-01T00:00:00.000Z");
     const siteRow = await env.DB.prepare(`SELECT slug FROM sites WHERE slug = ?`).bind("retry-site").first();
     expect(siteRow).toEqual({ slug: "retry-site" });
-    const siteFile = await env.DB.prepare(`SELECT path FROM site_files WHERE slug = ?`).bind("retry-site").first();
+    const siteFile = await env.DB.prepare(`SELECT path FROM site_files WHERE site_id = ?`).bind(site_retry_site.id).first();
     expect(siteFile).toEqual({ path: "index.html" });
 
     expect(await purgeExpiredFile(env, undefined, fileId, "ada", "retry.txt")).toBe(true);
     expect(await env.DB.prepare(`SELECT id FROM loose_files WHERE id = ?`).bind(fileId).first()).toBeNull();
-    expect(await purgeExpiredSite(env, undefined, "ada", "retry-site")).toBe(true);
+    expect(await purgeExpiredSite(env, undefined, "ada", site_retry_site.id)).toBe(true);
     expect(await env.DB.prepare(`SELECT slug FROM sites WHERE slug = ?`).bind("retry-site").first()).toBeNull();
-    expect(await env.DB.prepare(`SELECT path FROM site_files WHERE slug = ?`).bind("retry-site").first()).toBeNull();
+    expect(await env.DB.prepare(`SELECT path FROM site_files WHERE site_id = ?`).bind(site_retry_site.id).first()).toBeNull();
   });
 
   it("API GET of an expired loose file is 410 and schedules purge", async () => {
@@ -1778,13 +1482,9 @@ describe("Energon", () => {
 
   it("PATCH ttl resets expiry from now", async () => {
     const token = await mint("ttl-patch");
-    const created = await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "extend-me", overwrite: false, ttl: "1d" }),
-    });
+    const created = await createSite(token, "extend-me", { overwrite: false, ttl: "1d" });
     expect(created.status).toBe(201);
-    const patched = await json("/v1/sites/extend-me", {
+    const patched = await json(`/v1/sites/${created.body.id}`, {
       method: "PATCH",
       headers: auth(token, { "content-type": "application/json" }),
       body: JSON.stringify({ ttl: "30d" }),
@@ -1816,11 +1516,12 @@ describe("Energon", () => {
         body: JSON.stringify({ slug, ...extra }),
       });
       expect(created.status).toBe(201);
+      const id = created.body.id as string;
       for (const [path, body] of Object.entries(files)) {
-        const put = await json(`/v1/sites/${slug}/files/${path}`, { method: "PUT", headers: auth(token), body });
+        const put = await json(`/v1/sites/${id}/files/${path}`, { method: "PUT", headers: auth(token), body });
         expect(put.status).toBe(201);
       }
-      return created.body.handle as string;
+      return { id, handle: created.body.handle as string, slug };
     };
 
     it("lists filter by expiry, size, and age, and the hub tolerates malformed filters", async () => {
@@ -1925,10 +1626,10 @@ describe("Energon", () => {
 
     it("previews a delete without confirm and executes with it", async () => {
       const token = await mint("clean-exec", "clean-exec@esperlabs.app");
-      const handle = await site(token, "prev-site", { "index.html": "<h1>bye</h1>" });
+      const created = await site(token, "prev-site", { "index.html": "<h1>bye</h1>" });
       const id = await upload(token, "prev.txt", "12345");
 
-      const preview = await post(token, { target: { sites: ["prev-site"], files: [id, "nope00"] }, action: "delete" });
+      const preview = await post(token, { target: { sites: [created.id], files: [id, "nope00"] }, action: "delete" });
       expect(preview.status).toBe(200);
       expect(preview.body.executed).toBe(false);
       expect(preview.body.action).toBe("delete");
@@ -1939,32 +1640,30 @@ describe("Energon", () => {
       expect(preview.body.ttl).toBeUndefined();
       expect(preview.body.skipped).toEqual({ total: 1, by_reason: { not_found: 1 }, sample: [{ kind: "file", ref: "nope00", reason: "not_found" }] });
       expect(preview.body.sample).toEqual([
-        expect.objectContaining({ kind: "site", ref: `${handle}/prev-site`, name: "prev-site", bytes: 12, expires_at: null }),
+        expect.objectContaining({ kind: "site", ref: created.id, name: "prev-site", bytes: 12, expires_at: null }),
         expect.objectContaining({ kind: "file", ref: id, name: "prev.txt", bytes: 5 }),
       ]);
-      expect((await json("/v1/sites/prev-site", { headers: auth(token) })).status).toBe(200);
+      expect((await json(`/v1/sites/${created.id}`, { headers: auth(token) })).status).toBe(200);
       expect((await req(`/v1/files/${id}`, { headers: auth(token) })).status).toBe(200);
 
-      const explicitByHandle = await post(token, { target: { sites: [`${handle}/prev-site`] }, action: "delete" });
-      expect(explicitByHandle.body.eligible).toBe(1);
-      const missingHandle = await post(token, { target: { sites: ["someone-else/prev-site", "Bad Slug!"] }, action: "delete" });
-      expect(missingHandle.body.eligible).toBe(0);
-      expect(missingHandle.body.skipped.by_reason).toEqual({ not_found: 2 });
-      expect(missingHandle.body.skipped.sample.map((s: { ref: string }) => s.ref)).toEqual(["someone-else/prev-site", "bad slug!"]);
+      const missing = await post(token, { target: { sites: ["nosuch", "Bad Slug!"] }, action: "delete" });
+      expect(missing.body.eligible).toBe(0);
+      expect(missing.body.skipped.by_reason).toEqual({ not_found: 2 });
+      expect(missing.body.skipped.sample.map((s: { ref: string }) => s.ref)).toEqual(["nosuch", "Bad Slug!"]);
 
-      const executed = await post(token, { target: { sites: ["prev-site"], files: [id, "nope00"] }, action: "delete", confirm: preview.body.confirm });
+      const executed = await post(token, { target: { sites: [created.id], files: [id, "nope00"] }, action: "delete", confirm: preview.body.confirm });
       expect(executed.status).toBe(200);
       expect(executed.body.executed).toBe(true);
       expect(executed.body.applied.total).toBe(2);
       expect(executed.body.applied.bytes).toBe(17);
-      expect(executed.body.applied.objects.map((o: { ref: string }) => o.ref)).toEqual([`${handle}/prev-site`, id]);
+      expect(executed.body.applied.objects.map((o: { ref: string }) => o.ref)).toEqual([created.id, id]);
       expect(executed.body.failed).toEqual({ total: 0, objects: [] });
       expect(executed.body.skipped.by_reason).toEqual({ not_found: 1 });
-      expect((await json("/v1/sites/prev-site", { headers: auth(token) })).status).toBe(404);
+      expect((await json(`/v1/sites/${created.id}`, { headers: auth(token) })).status).toBe(404);
       expect((await req(`/v1/files/${id}`, { headers: auth(token) })).status).toBe(404);
-      expect((await req(`/${handle}/s/prev-site/index.html`)).status).toBe(404);
+      expect((await req(`/${created.handle}/s/${created.id}/prev-site/index.html`)).status).toBe(404);
 
-      const replay = await post(token, { target: { sites: ["prev-site"], files: [id, "nope00"] }, action: "delete", confirm: preview.body.confirm });
+      const replay = await post(token, { target: { sites: [created.id], files: [id, "nope00"] }, action: "delete", confirm: preview.body.confirm });
       expect(replay.status).toBe(409);
       expect(replay.body.error).toBe("cleanup_drift");
       expect(replay.body.eligible).toBe(0);
@@ -1997,10 +1696,10 @@ describe("Energon", () => {
     it("skips owner-only objects the caller cannot write instead of failing the batch", async () => {
       const ada = await mint("clean-own-a", "clean-own-a@esperlabs.app");
       const bob = await mint("clean-own-b", "clean-own-b@esperlabs.app");
-      const handle = await site(ada, "shared-then-locked", { "a.txt": "ada" }, { write_policy: "owner" });
+      const created = await site(ada, "shared-then-locked", { "a.txt": "ada" }, { write_policy: "owner" });
       // Bob as last writer of an owner-only site: involved, so it lists for him, but never writable.
-      await env.DB.prepare(`UPDATE sites SET last_written_by = ? WHERE handle = ? AND slug = ?`)
-        .bind("clean-own-b@esperlabs.app", handle, "shared-then-locked")
+      await env.DB.prepare(`UPDATE sites SET last_written_by = ? WHERE id = ?`)
+        .bind("clean-own-b@esperlabs.app", created.id)
         .run();
       const bobList = await json("/v1/sites", { headers: auth(bob) });
       expect(names(bobList.body.sites)).toEqual(["shared-then-locked"]);
@@ -2013,13 +1712,13 @@ describe("Energon", () => {
       expect(bobPreview.body.skipped).toEqual({
         total: 1,
         by_reason: { not_writable: 1 },
-        sample: [{ kind: "site", ref: `${handle}/shared-then-locked`, reason: "not_writable" }],
+        sample: [{ kind: "site", ref: created.id, reason: "not_writable" }],
       });
       const bobExecute = await post(bob, { target: {}, action: "delete", confirm: bobPreview.body.confirm });
       expect(bobExecute.status).toBe(200);
       expect(bobExecute.body.applied.total).toBe(0);
       expect(bobExecute.body.skipped.by_reason).toEqual({ not_writable: 1 });
-      expect((await json("/v1/sites/shared-then-locked", { headers: auth(ada) })).status).toBe(200);
+      expect((await json(`/v1/sites/${created.id}`, { headers: auth(ada) })).status).toBe(200);
 
       const adaPreview = await post(ada, { target: { kind: "sites", q: "locked" }, action: "delete" });
       expect(adaPreview.body.eligible).toBe(1);
@@ -2028,7 +1727,7 @@ describe("Energon", () => {
 
     it("expire sets a 30m grace and leaves sooner expiries alone", async () => {
       const token = await mint("clean-expire", "clean-expire@esperlabs.app");
-      await site(token, "exp-site", { "a.txt": "a" });
+      const created = await site(token, "exp-site", { "a.txt": "a" });
       const forever = await upload(token, "forever.txt", "f");
       const soon = await upload(token, "soon.txt", "s", { "X-Energon-TTL": "5m" });
 
@@ -2057,7 +1756,7 @@ describe("Energon", () => {
         expect(at - before).toBeGreaterThan(29 * 60 * 1000);
         expect(at - before).toBeLessThan(31 * 60 * 1000);
       }
-      const siteNow = await json("/v1/sites/exp-site", { headers: auth(token) });
+      const siteNow = await json(`/v1/sites/${created.id}`, { headers: auth(token) });
       expect(Date.parse(siteNow.body.expires_at) - before).toBeLessThan(31 * 60 * 1000);
       const soonRow = await env.DB.prepare(`SELECT expires_at FROM loose_files WHERE id = ?`).bind(soon).first<{ expires_at: string }>();
       expect(Date.parse(soonRow!.expires_at) - before).toBeLessThan(6 * 60 * 1000);

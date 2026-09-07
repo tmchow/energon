@@ -25,7 +25,7 @@ This directory is the maintained source for verifying the user-facing behavior o
 - Capture the user action and the resulting state, not only the final screen or write JSON.
 - Browser proof includes a screenshot with the Energon name and `#who` email visible.
 - HTTP proof includes method, path, status, and body (or content-type + excerpt for file bytes).
-- Mutation proof includes a read-only second view: public URL, hub catalog, or `GET /v1/sites/{slug}`.
+- Mutation proof includes a read-only second view: public URL, hub catalog, or `GET /v1/sites/{id}`.
 - Record the feature ID and entry point used with every artifact.
 - Report an unreachable path with the attempted command and the unmet precondition.
 - Do not report a skipped entry point as verified through a different path.
@@ -44,7 +44,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 ## Features
 
 - [Discovery documents](./discovery.md) covers unauthenticated `GET /v1/help`, `GET /v1/openapi.json`, `GET /v1/health`, `GET /llms.txt`, and `GET /auth.md`.
-- [Publish a site](./publish-site.md) covers creating a named folder, writing files, serving the public URL, overwrite, duplicate, and mermaid on HTML markdown.
+- [Publish a site](./publish-site.md) covers creating a named folder, writing files, serving the public URL, duplicate slug behavior, duplicate, and mermaid on HTML markdown.
 - [Publish a file](./publish-file.md) covers minting a loose file with a stable id, replacing bytes, and downloading.
 - [Connect an agent](./connect-agent.md) covers request, human code approval/denial, one-time delivery, and revocation.
 - [Mint a token](./mint-token.md) covers mint with a lifetime, whoami with `expires_at`, the expired-token `401 token_expired`, and revoke on the Tokens page and hub API.

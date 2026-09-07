@@ -20,7 +20,7 @@ The skill lives in `.agents/skills/verify-energon/`; `.claude/skills/verify-ener
 
 ## Launch
 
-Localhost skips Cloudflare Access. Identity is `DEV_ACCESS_EMAIL` from `.dev.vars`, else `dev@example.com`. The handle is the email local-part (`dev` for the default). Published URLs are `/{handle}/s/{slug}/` and `/{handle}/f/{id}/{filename}`.
+Localhost skips Cloudflare Access. Identity is `DEV_ACCESS_EMAIL` from `.dev.vars`, else `dev@example.com`. The handle is the email local-part (`dev` for the default). Published URLs are `/{handle}/s/{id}/{slug}/` and `/{handle}/f/{id}/{filename}`. Site API keys by id: `/v1/sites/{id}`.
 
 Never use the default `.wrangler/state` directory. Never attach to an already-running server unless `bin/doctor` says that process is this run's pid.
 
@@ -59,7 +59,7 @@ If doctor fails, stop. Do not drive a foreign run.
 Two surfaces, same data:
 
 1. **HTTP** — the agent path. `curl` against `$ORIGIN`. Mint with `bin/mint-token`; then `Authorization: Bearer $TOKEN` on `/v1`. Public content URLs need no token unless a share password is set (`X-Energon-Password`). Guest writes use `X-Energon-Write-Password` on the public URL with no token.
-2. **Browser** — the human path. Open `$ORIGIN/`. Stable handles: `#pick-files` (Choose files), `#pick-folder` (Choose folder), `#filepick` / `#folderpick` (hidden file inputs), `#stage-go` (Publish), `#stage-cancel` (Cancel), `#stage-slug` (`aria-label="Site slug"`), `#stage-filename` (`aria-label="Filename"`), `#stage-access` (Link access disclosure), `#stage-password`, `#stage-write-password`, `#q` (placeholder `Search slugs and filenames`), nav `aria-label="Pages"` with Hub / Tokens / Setup / About / Stats. Catalog marks (hover / `aria-label`): `View password`, `Write password`, `Org can write`, `Org cannot write`. Catalog row actions: `Copy URL`, `Set password` / `Change or remove password` (More menu), `Delete`, `More actions`, `Download zip` / `Download`. Unprotected rows have no password mark. Link access `#pw-dlg-share-door` / `#pw-dlg-write-door` Off/On per door; `#pw-dlg-input` / `#pw-dlg-write-input` show stored phrases when that door is On. Off and Save removes it. No Password chip. Catalog Expires is blank when the work does not expire.
+2. **Browser** — the human path. Open `$ORIGIN/`. Stable handles: `#pick-files` (Choose files), `#pick-folder` (Choose folder), `#filepick` / `#folderpick` (hidden file inputs), `#stage-go` (Publish), `#stage-cancel` (Cancel), `#stage-slug` (`aria-label="Site slug"`), `#stage-filename` (`aria-label="Filename"`), `#stage-access` (Link access disclosure), `#stage-password`, `#stage-write-password`, `#q` (placeholder `Search slugs and filenames`), nav `aria-label="Pages"` with Hub / Tokens / Setup / About / Stats. Catalog marks (hover / `aria-label`): `View password`, `Write password`, `Org can write`, `Org cannot write`. Catalog row actions: `Copy URL`, `Set password` / `Change or remove password` (More menu), `Change expiration` (`#ttl-dlg` / `#ttl-dlg-select` / `#ttl-dlg-ok`), `Delete`, `More actions`, `Download zip` / `Download`. Unprotected rows have no password mark. Link access `#pw-dlg-share-door` / `#pw-dlg-write-door` Off/On per door; `#pw-dlg-input` / `#pw-dlg-write-input` show stored phrases when that door is On. Off and Save removes it. No Password chip. Catalog Expires is blank when the work does not expire.
 
 Prefer HTTP for publish/read proofs; it is the documented agent user path, not a test-only API. Use the browser when the feature is hub-only (Tokens mint/revoke, drop/stage, catalog buttons, password dialogs).
 
@@ -84,7 +84,7 @@ curl -sS -D /tmp/h -o /tmp/b -X POST "$ORIGIN/v1/sites" \
 # expect 201, body.url = $ORIGIN/$HANDLE/s/verify-site/
 ```
 
-Save request method+path, response status, and body into `$EVIDENCE/<feature>/`. Then GET the public URL (and a second view: hub catalog or `/v1/sites/{slug}`) so persistence is not proven by the write response alone.
+Save request method+path, response status, and body into `$EVIDENCE/<feature>/`. Then GET the public URL (and a second view: hub catalog or `/v1/sites/{id}`) so persistence is not proven by the write response alone.
 
 ### Browser recipe shape
 

@@ -8,8 +8,8 @@ describe("public URL shape", () => {
   });
 
   it("site paths keep a trailing slash on the homepage", () => {
-    expect(sitePublicPath("ada", "demo")).toBe("/ada/s/demo/");
-    expect(sitePublicPath("ada", "demo", "notes.md")).toBe("/ada/s/demo/notes.md");
+    expect(sitePublicPath("ada", "Ab12Cd", "demo")).toBe("/ada/s/Ab12Cd/demo/");
+    expect(sitePublicPath("ada", "Ab12Cd", "demo", "notes.md")).toBe("/ada/s/Ab12Cd/demo/notes.md");
   });
 
   it("file ids are short and url-safe", () => {
