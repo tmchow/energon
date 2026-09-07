@@ -204,7 +204,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
       ? await hubLists(env, actor.email, query, user?.id)
       : { sites: [], files: [], sites_total: 0, files_total: 0, sites_cursor: null, files_cursor: null };
     const tokens = user ? await listTokens(env, user.email, user.id) : [];
-    return json({ email: actor?.email ?? null, ...lists, tokens });
+    return secretJson({ email: actor?.email ?? null, ...lists, tokens });
   }
 
   if (path === "/account/tokens" && method === "POST") {
@@ -388,7 +388,7 @@ async function api(
 
   if (path === "/v1/whoami" && method === "GET") {
     const actor = await requireToken(request, env);
-    return json({ email: actor.email, label: actor.tokenLabel, expires_at: actor.tokenExpiresAt ?? null });
+    return secretJson({ email: actor.email, label: actor.tokenLabel, expires_at: actor.tokenExpiresAt ?? null });
   }
 
   if (path === "/v1/sites" && method === "GET") {
@@ -531,7 +531,7 @@ async function postSite(
 ): Promise<{ body: Record<string, unknown>; status: number }> {
   const from = typeof body.duplicate_from === "string" ? body.duplicate_from.trim() : "";
   if (from) {
-    if (body.overwrite) {
+    if (overwriteFlag(body.overwrite)) {
       throw new ApiError(
         400,
         "bad_duplicate",
@@ -560,6 +560,11 @@ async function postSite(
     body.write_policy,
     writePasswordField(body),
   );
+}
+
+/** Only JSON `true` counts. Strings like `"false"` must not. */
+function overwriteFlag(raw: unknown): boolean {
+  return raw === true;
 }
 
 function contentPatch(body: Record<string, unknown>): {

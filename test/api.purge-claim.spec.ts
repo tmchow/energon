@@ -625,4 +625,45 @@ describe("TTL purge claims", () => {
     expect(recreated.body.created).toBe(true);
     expect(recreated.body.id).not.toBe(site_stale_recreate.id);
   });
+
+  it("site PUT cannot clobber an in-flight purge claim", async () => {
+    const { env } = await import("cloudflare:test");
+    const { purgeExpiredSite } = await import("../src/expire");
+    const token = await mint("ttl-put-race");
+
+    const site = await createSite(token, "put-race", { overwrite: false, ttl: "1d" });
+    await json(`/v1/sites/${site.id}/files/index.html`, {
+      method: "PUT",
+      headers: auth(token, { "content-type": "text/html" }),
+      body: "<h1>before</h1>",
+    });
+    await env.DB.prepare(`UPDATE sites SET expires_at = ? WHERE id = ?`)
+      .bind("2000-01-01T00:00:00.000Z", site.id)
+      .run();
+
+    const bucket = env.BUCKET as R2Bucket & { delete: R2Bucket["delete"] };
+    const originalDelete = bucket.delete.bind(bucket);
+    let putDuringPurge: { status: number; body: { error?: string } } | undefined;
+    const idMarker = `/${site.id}/`;
+    bucket.delete = async (key) => {
+      if (putDuringPurge === undefined && String(key).includes(idMarker)) {
+        putDuringPurge = await json(`/v1/sites/${site.id}/files/index.html`, {
+          method: "PUT",
+          headers: auth(token, { "content-type": "text/html" }),
+          body: "<h1>revive</h1>",
+        });
+      }
+      return originalDelete(key);
+    };
+    try {
+      expect(await purgeExpiredSite(env, undefined, "ada", site.id)).toBe(true);
+    } finally {
+      bucket.delete = originalDelete;
+    }
+
+    expect(putDuringPurge?.status).toBe(410);
+    expect(putDuringPurge?.body.error).toBe("expired");
+    expect(await env.DB.prepare(`SELECT slug FROM sites WHERE id = ?`).bind(site.id).first()).toBeNull();
+    expect(await env.BUCKET.get(`sites/ada/${site.id}/index.html`)).toBeNull();
+  });
 });

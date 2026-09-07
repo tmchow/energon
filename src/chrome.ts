@@ -14,6 +14,8 @@ export const PRIVATE_HTML_HEADERS = {
   "content-type": "text/html; charset=utf-8",
   "x-content-type-options": "nosniff",
   "cache-control": "private, no-cache",
+  "x-frame-options": "DENY",
+  "content-security-policy": "frame-ancestors 'none'",
 };
 
 export function chromeHead(): string {

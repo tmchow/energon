@@ -242,13 +242,24 @@ async function writeSite(
   values: unknown[],
 ): Promise<void> {
   const updated = await env.DB.prepare(
-    `UPDATE sites SET ${assignments}, written_via = NULL WHERE id = ? AND ${OWNER_WRITE_SQL}`,
+    `UPDATE sites SET ${assignments}, written_via = NULL WHERE id = ? AND last_written_by NOT LIKE ? AND ${OWNER_WRITE_SQL}`,
   )
-    .bind(...values, id, ...ownerWriteBinds(actor))
+    .bind(...values, id, PURGE_CLAIM_LIKE, ...ownerWriteBinds(actor))
     .run();
   if (!Number(updated.meta?.changes ?? 0)) {
-    throw new ApiError(403, "forbidden_write", "Only the creator can write this.");
+    await throwSiteMutationConflict(env, id);
   }
+}
+
+async function throwSiteMutationConflict(env: Env, id: string): Promise<never> {
+  const still = await getSiteById(env, id);
+  if (!still || isPurgeClaimed(still.last_written_by) || isExpired(still.expires_at)) {
+    throw expiredError("site");
+  }
+  if (isWriteClaimed(still.last_written_by)) {
+    throw new ApiError(409, "site_busy", "Another write is in progress; retry this update.");
+  }
+  throw new ApiError(403, "forbidden_write", "Only the creator can write this.");
 }
 
 export async function getSiteById(env: Env, id: string): Promise<SiteRow | null> {
@@ -258,6 +269,13 @@ export async function getSiteById(env: Env, id: string): Promise<SiteRow | null>
 
 async function findSiteForActor(env: Env, id: string): Promise<SiteRow | null> {
   return getSiteById(env, id);
+}
+
+async function fileCount(env: Env, siteId: string): Promise<number> {
+  const row = await env.DB.prepare(`SELECT COUNT(*) AS n FROM site_files WHERE site_id = ?`)
+    .bind(siteId)
+    .first<{ n: number }>();
+  return Number(row?.n ?? 0);
 }
 
 function involvedInSite(
@@ -406,7 +424,8 @@ export async function patchSite(
 ): Promise<Response> {
   const wantsWrite = Object.prototype.hasOwnProperty.call(patch, "write_policy");
   const wantsWritePassword = Object.prototype.hasOwnProperty.call(patch, "write_password");
-  const wantsOther = patch.password !== undefined || Boolean(patch.setTtl);
+  const wantsSharePassword = patch.password !== undefined;
+  const wantsOther = wantsSharePassword || Boolean(patch.setTtl);
   const site = await requireSite(env, actor, idRaw, {
     allowExpired: Boolean(patch.setTtl),
     ctx,
@@ -422,7 +441,7 @@ export async function patchSite(
     nextWrite = parsed;
   }
   const writeHash = await writePasswordHashFromInput(patch.write_password);
-  if (wantsWritePassword) {
+  if (wantsWritePassword || wantsSharePassword) {
     assertCanSetWritePolicy(actor, site.created_by, site.owner_id);
   }
   const hash = await passwordHashFromInput(patch.password);
@@ -541,6 +560,16 @@ export async function putSiteFile(
   )
     .bind(site.id, path)
     .first<{ size: number; content_type: string; updated_at: string; last_written_by: string }>();
+  if (!existing) {
+    const count = await fileCount(env, site.id);
+    if (count >= MAX_IMPORT_FILES) {
+      throw new ApiError(
+        400,
+        "too_many_files",
+        `That site already has ${MAX_IMPORT_FILES} files. ${PRODUCT} caps a site at ${MAX_IMPORT_FILES} files. Delete some paths, then retry.`,
+      );
+    }
+  }
   const contentType = contentTypeFor(path, bytes, hintType);
   const key = siteKey(site.handle, site.id, path);
   const ts = new Date().toISOString();
@@ -551,8 +580,8 @@ export async function putSiteFile(
     const wrote = await env.DB.batch([
       siteFileUpsert(env, site.id, path, bytes.byteLength, contentType, ts, actor.email),
       env.DB.prepare(
-        `UPDATE sites SET updated_at = ?, last_written_by = ?, written_via = NULL WHERE id = ? AND ${OWNER_WRITE_SQL}`,
-      ).bind(ts, actor.email, site.id, ...ownerWriteBinds(actor)),
+        `UPDATE sites SET updated_at = ?, last_written_by = ?, written_via = NULL WHERE id = ? AND last_written_by NOT LIKE ? AND ${OWNER_WRITE_SQL}`,
+      ).bind(ts, actor.email, site.id, PURGE_CLAIM_LIKE, ...ownerWriteBinds(actor)),
     ]);
     if (!Number(wrote[1]?.meta?.changes ?? 0)) {
       if (existing) {
@@ -568,7 +597,7 @@ export async function putSiteFile(
       } else {
         await env.DB.prepare(`DELETE FROM site_files WHERE site_id = ? AND path = ?`).bind(site.id, path).run();
       }
-      throw new ApiError(403, "forbidden_write", "Only the creator can write this.");
+      await throwSiteMutationConflict(env, site.id);
     }
   } catch (err) {
     try {
@@ -613,6 +642,7 @@ export async function getSiteFile(
   const headers = new Headers();
   headers.set("content-type", obj.httpMetadata?.contentType || "application/octet-stream");
   headers.set("x-content-type-options", "nosniff");
+  headers.set("cache-control", "private, no-store");
   if (obj.size != null) headers.set("content-length", String(obj.size));
   return new Response(obj.body, { headers });
 }
@@ -768,16 +798,18 @@ export async function deleteSite(env: Env, ctx: ExecutionContext | undefined, ac
     await deletePrefix(env.BUCKET, `sites/${site.handle}/${site.id}/`);
     const wrote = await env.DB.batch([
       env.DB.prepare(
-        `DELETE FROM site_files WHERE site_id = ? AND EXISTS (SELECT 1 FROM sites WHERE id = ? AND ${OWNER_WRITE_SQL})`,
-      ).bind(site.id, site.id, ...ownerWriteBinds(actor)),
-      env.DB.prepare(`DELETE FROM sites WHERE id = ? AND ${OWNER_WRITE_SQL}`).bind(
-        site.id,
-        ...ownerWriteBinds(actor),
-      ),
+        `DELETE FROM site_files WHERE site_id = ? AND EXISTS (SELECT 1 FROM sites WHERE id = ? AND last_written_by NOT LIKE ? AND ${OWNER_WRITE_SQL})`,
+      ).bind(site.id, site.id, PURGE_CLAIM_LIKE, ...ownerWriteBinds(actor)),
+      env.DB.prepare(
+        `DELETE FROM sites WHERE id = ? AND last_written_by NOT LIKE ? AND ${OWNER_WRITE_SQL}`,
+      ).bind(site.id, PURGE_CLAIM_LIKE, ...ownerWriteBinds(actor)),
     ]);
     siteDeleted = Number(wrote[1]?.meta?.changes ?? 0) > 0;
     const still = await getSiteById(env, site.id);
     if (still) {
+      if (isPurgeClaimed(still.last_written_by) || isExpired(still.expires_at)) {
+        throw expiredError("site");
+      }
       throw new ApiError(403, "forbidden_write", "Only the creator can write this.");
     }
   } catch (err) {
@@ -824,14 +856,14 @@ export async function deleteSiteFile(
   try {
     const wrote = await env.DB.batch([
       env.DB.prepare(
-        `DELETE FROM site_files WHERE site_id = ? AND path = ? AND EXISTS (SELECT 1 FROM sites WHERE id = ? AND ${OWNER_WRITE_SQL})`,
-      ).bind(site.id, path, site.id, ...ownerWriteBinds(actor)),
+        `DELETE FROM site_files WHERE site_id = ? AND path = ? AND EXISTS (SELECT 1 FROM sites WHERE id = ? AND last_written_by NOT LIKE ? AND ${OWNER_WRITE_SQL})`,
+      ).bind(site.id, path, site.id, PURGE_CLAIM_LIKE, ...ownerWriteBinds(actor)),
       env.DB.prepare(
-        `UPDATE sites SET updated_at = ?, last_written_by = ?, written_via = NULL WHERE id = ? AND ${OWNER_WRITE_SQL}`,
-      ).bind(ts, actor.email, site.id, ...ownerWriteBinds(actor)),
+        `UPDATE sites SET updated_at = ?, last_written_by = ?, written_via = NULL WHERE id = ? AND last_written_by NOT LIKE ? AND ${OWNER_WRITE_SQL}`,
+      ).bind(ts, actor.email, site.id, PURGE_CLAIM_LIKE, ...ownerWriteBinds(actor)),
     ]);
     if (!Number(wrote[1]?.meta?.changes ?? 0)) {
-      throw new ApiError(403, "forbidden_write", "Only the creator can write this.");
+      await throwSiteMutationConflict(env, site.id);
     }
     if (!Number(wrote[0]?.meta?.changes ?? 0)) return;
   } catch (err) {

@@ -20,6 +20,8 @@ describe("signed-in pages", () => {
     const res = await req("/");
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toMatch(/private/);
+    expect(res.headers.get("x-frame-options")).toBe("DENY");
+    expect(res.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
     const html = await res.text();
     for (const text of ["Publish a document, prototype, or file.", "Choose files", "Choose folder", "No sites yet", "No files yet", "Drop to stage"]) expect(html).toContain(text);
     for (const id of ["app", "pick-files", "pick-folder", "filepick", "folderpick", "q", "scope", "sort", "sites", "files", "drop-overlay", "pw-dlg", "write-dlg"]) expect(html).toContain(`id="${id}"`);

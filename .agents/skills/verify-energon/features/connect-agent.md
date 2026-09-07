@@ -26,7 +26,7 @@ Preconditions:
 - **Approval.** Open the returned verification URL. The page has no app header or footer. The h1 reads `Connect your agent to` followed by this run's hub host (`127.0.0.1:18787`); confirm it matches `$ORIGIN`. Confirm the agent label, the signed-in account, the access disclosure, and the lifetime control. Fill `#connect-code` with the returned code, choose `1d` in `#connect-ttl`, and click `Approve connection`. Expect `#connect-status` to say `Connection approved` and the form to be hidden. Save a screenshot.
 - **Delivery.** Poll again. Expect 200 with the token, label, token id, and non-null `expires_at`. GET `/v1/whoami` using the token must return the approving account and label. Save only status, account, label, and expiry. A second exchange must be 410 `connection_expired`.
 - **Revocation.** Open `/tokens`, find `verification agent`, revoke it, and verify GET `/v1/whoami` rejects it with 401.
-- **Denial.** Start a separate request, open its URL, enter its code and click `Deny connection`. Polling must return 403 `connection_denied` and no token.
+- **Denial.** Start a separate request, open its URL, and click `Deny connection` without entering a code. Polling must return 403 `connection_denied` and no token. Approve still requires the eight-digit code.
 - **Proof.** Save redacted status/body records and approval/revocation screenshots. Never save a raw credential response as evidence.
 
 ## Gotchas

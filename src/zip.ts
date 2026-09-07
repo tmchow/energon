@@ -54,7 +54,7 @@ function skipZipJunk(path: string): boolean {
 
 function hasUnsafeSegments(path: string): boolean {
   const parts = path.replace(/\\/g, "/").split("/");
-  return parts.some((s) => s === ".." || s === "");
+  return parts.some((s) => s === ".." || s === "" || s.includes(":"));
 }
 
 export function unpackZip(buf: Uint8Array, maxBytes = MAX_FILE_BYTES): UnpackedFile[] {

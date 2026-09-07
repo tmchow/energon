@@ -20,6 +20,7 @@
   let ttl = $state(untrack(() => data.token_policy.default));
   let minted = $state('');
   let error = $state('');
+  let mintError = $state('');
   let busy = $state(false);
   let target = $state<Token | null>(null);
   let confirmOpen = $state(false);
@@ -34,12 +35,12 @@
   async function mint(event: SubmitEvent) {
     event.preventDefault();
     if (busy) return;
-    busy = true; error = ''; minted = '';
+    busy = true; mintError = ''; minted = '';
     try {
       const result = await api<{ token: string }>('/account/tokens', jsonBody('POST', { label, ttl }));
       minted = result.token; label = ''; ttl = data.token_policy.default;
       await refresh();
-    } catch (err) { error = errorMessage(err); }
+    } catch (err) { mintError = errorMessage(err); }
     finally { busy = false; }
   }
   async function revoke() {
@@ -59,13 +60,13 @@
 {#snippet lastUsed(token: Token)}<Timestamp value={token.last_used_at} empty="never" />{/snippet}
 {#snippet expires(token: Token)}{#if token.expired}Expired{:else}<Timestamp value={token.expires_at} dateOnly empty="Never" />{#if token.expires_at}{' '}({expiry(token)}){/if}{/if}{/snippet}
 {#snippet meta(token: Token)}{token.hint || '—'} · {@render expires(token)}{/snippet}
-{#snippet actions(token: Token)}<Button size="sm" variant="danger" onclick={() => { target = token; confirmOpen = true; }}>Revoke</Button>{/snippet}
+{#snippet actions(token: Token)}<Button size="sm" variant="danger" onclick={() => { target = token; error = ''; confirmOpen = true; }}>Revoke</Button>{/snippet}
 <main class="en-wrap">
   <PageTitle title="Agent tokens" wide>
     <p class="en-lede">Each token is an agent acting as you: it can publish, read, reference, or update work, including password-protected links, subject to each file or site's write policy. Revoke one here to cut that agent off. Expiry stops the agent, not the links it published.</p>
     <p class="en-lede">You usually do not mint tokens here. <a href="/setup">Set up your agent</a> and it provisions its own token when you approve its code. Mint one by hand only for CI, scheduled jobs, or a hosted sandbox with a secret store.</p>
   </PageTitle>
-  <div id="messages">{#if error}<Flash tone="err">{error}</Flash>{/if}</div>
+  <div id="messages">{#if mintError}<Flash tone="err">{mintError}</Flash>{/if}</div>
   <Card title="Active tokens" hint="Last four characters shown" tight className="en-tokens-card">
     <div id="tokens">
       {#if active.length}<Table rows={active} rowKey={t => t.id} rowClassName={t => t.expired ? 'expired row-expired' : ''}
