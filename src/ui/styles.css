@@ -61,12 +61,12 @@
 .en-gate .en-gate-agent { margin-top: 16px; }
 .en-row-actions {
   --scan-glyph: 28px;
-  --icon-size: 28px;
+  --icon-size: 32px;
 }
 .en-row-actions .en-icon-btn--more { display: inline-flex; }
 .en-row-actions .en-icon-btn svg {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
 }
 .en-scan-pair { display: inline-flex; align-items: center; gap: var(--space-2); vertical-align: middle; }
 .en-scan {

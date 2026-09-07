@@ -105,7 +105,7 @@ Retain the existing 120ms hover, 200ms state, and 350ms layout timings. Cube bre
 | Main or supporting action | `Button`, `IconButton` | Use primary sparingly; label the operation; keep Cancel distinct |
 | An editable value | `Field`, `Input`, `Select`, `SegmentedControl` | Visible label, meaningful state, consequence beside the input |
 | Copyable or sensitive output | `UrlField`, `CopyRow`, `CopyBlock`, `TokenReveal` | Make copy and reveal behavior real; preserve exact values |
-| Catalog and usage | `Table`, `Badge`, `CatalogScan`, `Metric`, `ProgressBar` | Unboxed 28px access marks; row action glyphs match that size. Hover names the mark. Preserve scanning, units, and the meaning of state |
+| Catalog and usage | `Table`, `Badge`, `CatalogScan`, `Metric`, `ProgressBar` | Unboxed 28px access marks; row action glyphs are 32px so their ink matches those marks. Hover names the mark. Preserve scanning, units, and the meaning of state |
 | Feedback and confirmation | `Flash`, `Dialog`, `ConfirmDialog`, `Sheet` | Keep results near the task; explain destructive consequences |
 | Upload staging | `DropZone` and the Hub flow | Distinguish selected work from published work |
 

@@ -8,3 +8,4 @@ export const CATALOG_SCAN_LABEL: Record<CatalogScanMark, string> = {
 };
 
 export const CATALOG_SCAN_SIZE = 28;
+export const CATALOG_ACTION_SIZE = 32;
