@@ -8,6 +8,7 @@ import { actorFromAccess, assertEmailAllowed, helpBody, listTokens, mintToken, r
 import { setupResponse } from "./setup";
 import { statsResponse } from "./stats";
 import { parseListQuery } from "./catalog";
+import { cleanupResponse } from "./cleanup";
 import { llmsResponse } from "./llms";
 import { authMarkdownResponse } from "./auth-doc";
 import { openapiResponse } from "./openapi";
@@ -407,6 +408,11 @@ async function api(
   if (path === "/v1/files" && method === "POST") {
     const actor = await requireToken(request, env);
     return postLooseFromRequest(env, ctx, actor, request);
+  }
+
+  if (path === "/v1/cleanup" && method === "POST") {
+    const actor = await requireToken(request, env);
+    return cleanupResponse(env, ctx, actor, await readJson(request));
   }
 
   const looseOne = path.match(/^\/v1\/files\/([^/]+)(?:\/[^/]+)?$/);

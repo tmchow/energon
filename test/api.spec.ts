@@ -1,3 +1,4 @@
+import { env } from "cloudflare:test";
 import { unzipSync, zipSync, strToU8 } from "fflate";
 import { describe, expect, it } from "vitest";
 import { GATE_COOKIE, hashSharePassword, unlockToken } from "../src/gate";
@@ -1792,5 +1793,354 @@ describe("Energon", () => {
     expect(patched.body.ttl).toBe("30d");
     const exp = Date.parse(patched.body.expires_at);
     expect(exp - Date.now()).toBeGreaterThan(20 * 86400 * 1000);
+  });
+
+  describe("cleanup", () => {
+    type Named = { filename?: string; slug?: string };
+    const names = (items: Named[]): string[] => items.map((item) => item.filename ?? item.slug ?? "");
+    const post = (token: string, body: unknown) =>
+      json("/v1/cleanup", { method: "POST", headers: auth(token, { "content-type": "application/json" }), body: JSON.stringify(body) });
+    const upload = async (token: string, name: string, bytes: string, extra?: Record<string, string>) => {
+      const created = await json("/v1/files", {
+        method: "POST",
+        headers: auth(token, { "X-Filename": name, "content-type": "text/plain", ...extra }),
+        body: bytes,
+      });
+      expect(created.status).toBe(201);
+      return created.body.id as string;
+    };
+    const site = async (token: string, slug: string, files: Record<string, string>, extra?: Record<string, unknown>) => {
+      const created = await json("/v1/sites", {
+        method: "POST",
+        headers: auth(token, { "content-type": "application/json" }),
+        body: JSON.stringify({ slug, ...extra }),
+      });
+      expect(created.status).toBe(201);
+      for (const [path, body] of Object.entries(files)) {
+        const put = await json(`/v1/sites/${slug}/files/${path}`, { method: "PUT", headers: auth(token), body });
+        expect(put.status).toBe(201);
+      }
+      return created.body.handle as string;
+    };
+
+    it("lists filter by expiry, size, and age, and the hub tolerates malformed filters", async () => {
+      const email = "clean-list@esperlabs.app";
+      const token = await mint("clean-list", email);
+      await upload(token, "tiny.txt", "a");
+      await upload(token, "mid.txt", "m".repeat(1500), { "X-Energon-TTL": "1d" });
+      await upload(token, "huge.txt", "h".repeat(4000));
+
+      const never = await json("/v1/files?expires=never", { headers: auth(token) });
+      expect(never.status).toBe(200);
+      expect(names(never.body.files).sort()).toEqual(["huge.txt", "tiny.txt"]);
+      expect(never.body.total).toBe(2);
+
+      const soon = await json(`/v1/files?expires_before=${encodeURIComponent(new Date(Date.now() + 2 * 86400 * 1000).toISOString())}`, {
+        headers: auth(token),
+      });
+      expect(names(soon.body.files)).toEqual(["mid.txt"]);
+      const notYet = await json(`/v1/files?expires_before=${encodeURIComponent(new Date(Date.now() + 3600 * 1000).toISOString())}`, {
+        headers: auth(token),
+      });
+      expect(notYet.body.files).toEqual([]);
+      expect(notYet.body.total).toBe(0);
+
+      const big = await json("/v1/files?min_size=1kb", { headers: auth(token) });
+      expect(names(big.body.files).sort()).toEqual(["huge.txt", "mid.txt"]);
+      expect(big.body.total).toBe(2);
+
+      const bySize = await json("/v1/files?sort=size", { headers: auth(token) });
+      expect(names(bySize.body.files)).toEqual(["huge.txt", "mid.txt", "tiny.txt"]);
+      const sizePage = await json("/v1/files?sort=size&limit=2", { headers: auth(token) });
+      expect(names(sizePage.body.files)).toEqual(["huge.txt", "mid.txt"]);
+      expect(sizePage.body.next_cursor).toBeTruthy();
+      const sizeRest = await json(`/v1/files?sort=size&limit=2&cursor=${encodeURIComponent(sizePage.body.next_cursor)}`, {
+        headers: auth(token),
+      });
+      expect(names(sizeRest.body.files)).toEqual(["tiny.txt"]);
+      expect(sizeRest.body.next_cursor).toBeNull();
+
+      const newest = await json("/v1/files", { headers: auth(token) });
+      const oldest = await json("/v1/files?sort=age", { headers: auth(token) });
+      expect(names(oldest.body.files)).toEqual(names(newest.body.files).reverse());
+
+      const stale = await json(`/v1/files?updated_before=${encodeURIComponent(new Date(Date.now() + 60_000).toISOString())}`, {
+        headers: auth(token),
+      });
+      expect(stale.body.total).toBe(3);
+      const ancient = await json("/v1/files?updated_before=2000-01-01", { headers: auth(token) });
+      expect(ancient.body.total).toBe(0);
+      expect(ancient.body.files).toEqual([]);
+
+      await site(token, "cl-empty", {});
+      await site(token, "cl-small", { "a.txt": "0123456789" });
+      await site(token, "cl-big", { "a.txt": "x".repeat(3000), "b.txt": "y".repeat(100) });
+      const bigSites = await json("/v1/sites?min_size=1kb", { headers: auth(token) });
+      expect(names(bigSites.body.sites)).toEqual(["cl-big"]);
+      expect(bigSites.body.total).toBe(1);
+      const sitesBySize = await json("/v1/sites?sort=size", { headers: auth(token) });
+      expect(names(sitesBySize.body.sites)).toEqual(["cl-big", "cl-small", "cl-empty"]);
+      expect(sitesBySize.body.sites[0].size).toBe(3100);
+      const sitePage = await json("/v1/sites?sort=size&limit=1", { headers: auth(token) });
+      expect(names(sitePage.body.sites)).toEqual(["cl-big"]);
+      expect(sitePage.body.total).toBe(3);
+      const siteRest = await json(`/v1/sites?sort=size&limit=1&cursor=${encodeURIComponent(sitePage.body.next_cursor)}`, {
+        headers: auth(token),
+      });
+      expect(names(siteRest.body.sites)).toEqual(["cl-small"]);
+      const bigOnly = await json("/v1/sites?min_size=1kb&sort=size&limit=1", { headers: auth(token) });
+      expect(bigOnly.body.total).toBe(1);
+      expect(bigOnly.body.next_cursor).toBeNull();
+      expect(Object.keys(bigSites.body.sites[0])).not.toContain("owner_id");
+      expect(Object.keys(never.body.files[0])).not.toContain("owner_id");
+
+      const hub = await req("/?min_size=lots&expires=soon&expires_before=never&updated_before=x&sort=size", {
+        headers: { "Cf-Access-Authenticated-User-Email": email },
+      });
+      expect(hub.status).toBe(200);
+      const data = await json("/account/data?min_size=1kb&sort=size", { headers: { "Cf-Access-Authenticated-User-Email": email } });
+      expect(data.status).toBe(200);
+      expect(names(data.body.files)).toEqual(["huge.txt", "mid.txt"]);
+      expect(names(data.body.sites)).toEqual(["cl-big"]);
+    });
+
+    it("lists and cleanup stay involvement-scoped", async () => {
+      const owner = await mint("clean-scope-a", "clean-scope-a@esperlabs.app");
+      const other = await mint("clean-scope-b", "clean-scope-b@esperlabs.app");
+      await upload(owner, "mine.txt", "mine");
+      await site(owner, "scope-mine", { "a.txt": "a" });
+      const theirs = await json("/v1/files?expires=never&created_by=clean-scope-a@esperlabs.app", { headers: auth(other) });
+      expect(theirs.body.files).toEqual([]);
+      expect(theirs.body.total).toBe(0);
+      const preview = await post(other, { target: {}, action: "delete" });
+      expect(preview.status).toBe(200);
+      expect(preview.body.matched).toBe(0);
+      expect(preview.body.eligible).toBe(0);
+      const narrowed = await post(other, { target: { created_by: "clean-scope-a@esperlabs.app" }, action: "delete" });
+      expect(narrowed.body.matched).toBe(0);
+      const mine = await post(owner, { target: {}, action: "delete" });
+      expect(mine.body.matched).toBe(2);
+      expect(mine.body.eligible).toBe(2);
+    });
+
+    it("previews a delete without confirm and executes with it", async () => {
+      const token = await mint("clean-exec", "clean-exec@esperlabs.app");
+      const handle = await site(token, "prev-site", { "index.html": "<h1>bye</h1>" });
+      const id = await upload(token, "prev.txt", "12345");
+
+      const preview = await post(token, { target: { sites: ["prev-site"], files: [id, "nope00"] }, action: "delete" });
+      expect(preview.status).toBe(200);
+      expect(preview.body.executed).toBe(false);
+      expect(preview.body.action).toBe("delete");
+      expect(preview.body.matched).toBe(3);
+      expect(preview.body.eligible).toBe(2);
+      expect(preview.body.bytes).toBe("<h1>bye</h1>".length + 5);
+      expect(preview.body.confirm).toMatch(/^[0-9a-f]{32}$/);
+      expect(preview.body.ttl).toBeUndefined();
+      expect(preview.body.skipped).toEqual({ total: 1, by_reason: { not_found: 1 }, sample: [{ kind: "file", ref: "nope00", reason: "not_found" }] });
+      expect(preview.body.sample).toEqual([
+        expect.objectContaining({ kind: "site", ref: `${handle}/prev-site`, name: "prev-site", bytes: 12, expires_at: null }),
+        expect.objectContaining({ kind: "file", ref: id, name: "prev.txt", bytes: 5 }),
+      ]);
+      expect((await json("/v1/sites/prev-site", { headers: auth(token) })).status).toBe(200);
+      expect((await req(`/v1/files/${id}`, { headers: auth(token) })).status).toBe(200);
+
+      const explicitByHandle = await post(token, { target: { sites: [`${handle}/prev-site`] }, action: "delete" });
+      expect(explicitByHandle.body.eligible).toBe(1);
+      const missingHandle = await post(token, { target: { sites: ["someone-else/prev-site", "Bad Slug!"] }, action: "delete" });
+      expect(missingHandle.body.eligible).toBe(0);
+      expect(missingHandle.body.skipped.by_reason).toEqual({ not_found: 2 });
+      expect(missingHandle.body.skipped.sample.map((s: { ref: string }) => s.ref)).toEqual(["someone-else/prev-site", "bad slug!"]);
+
+      const executed = await post(token, { target: { sites: ["prev-site"], files: [id, "nope00"] }, action: "delete", confirm: preview.body.confirm });
+      expect(executed.status).toBe(200);
+      expect(executed.body.executed).toBe(true);
+      expect(executed.body.applied.total).toBe(2);
+      expect(executed.body.applied.bytes).toBe(17);
+      expect(executed.body.applied.objects.map((o: { ref: string }) => o.ref)).toEqual([`${handle}/prev-site`, id]);
+      expect(executed.body.failed).toEqual({ total: 0, objects: [] });
+      expect(executed.body.skipped.by_reason).toEqual({ not_found: 1 });
+      expect((await json("/v1/sites/prev-site", { headers: auth(token) })).status).toBe(404);
+      expect((await req(`/v1/files/${id}`, { headers: auth(token) })).status).toBe(404);
+      expect((await req(`/${handle}/s/prev-site/index.html`)).status).toBe(404);
+
+      const replay = await post(token, { target: { sites: ["prev-site"], files: [id, "nope00"] }, action: "delete", confirm: preview.body.confirm });
+      expect(replay.status).toBe(409);
+      expect(replay.body.error).toBe("cleanup_drift");
+      expect(replay.body.eligible).toBe(0);
+      expect(replay.body.skipped.by_reason).toEqual({ not_found: 3 });
+      expect(replay.body.confirm).toMatch(/^[0-9a-f]{32}$/);
+      expect(replay.body.confirm).not.toBe(preview.body.confirm);
+    });
+
+    it("rejects a mismatched confirm with a fresh preview and deletes nothing", async () => {
+      const token = await mint("clean-drift", "clean-drift@esperlabs.app");
+      const id = await upload(token, "keep.txt", "keep");
+      const drift = await post(token, { target: { files: [id] }, action: "delete", confirm: "0".repeat(32) });
+      expect(drift.status).toBe(409);
+      expect(drift.body.error).toBe("cleanup_drift");
+      expect(drift.body.executed).toBe(false);
+      expect(drift.body.eligible).toBe(1);
+      expect(drift.body.confirm).toMatch(/^[0-9a-f]{32}$/);
+      expect((await req(`/v1/files/${id}`, { headers: auth(token) })).status).toBe(200);
+
+      const otherAction = await post(token, { target: { files: [id] }, action: "expire", confirm: drift.body.confirm });
+      expect(otherAction.status).toBe(409);
+      expect(otherAction.body.error).toBe("cleanup_drift");
+
+      const junk = await post(token, { target: { files: [id] }, action: "delete", confirm: "yes" });
+      expect(junk.status).toBe(400);
+      expect(junk.body.error).toBe("bad_confirm");
+      expect((await req(`/v1/files/${id}`, { headers: auth(token) })).status).toBe(200);
+    });
+
+    it("skips owner-only objects the caller cannot write instead of failing the batch", async () => {
+      const ada = await mint("clean-own-a", "clean-own-a@esperlabs.app");
+      const bob = await mint("clean-own-b", "clean-own-b@esperlabs.app");
+      const handle = await site(ada, "shared-then-locked", { "a.txt": "ada" }, { write_policy: "owner" });
+      // Bob as last writer of an owner-only site: involved, so it lists for him, but never writable.
+      await env.DB.prepare(`UPDATE sites SET last_written_by = ? WHERE handle = ? AND slug = ?`)
+        .bind("clean-own-b@esperlabs.app", handle, "shared-then-locked")
+        .run();
+      const bobList = await json("/v1/sites", { headers: auth(bob) });
+      expect(names(bobList.body.sites)).toEqual(["shared-then-locked"]);
+
+      const bobPreview = await post(bob, { target: {}, action: "delete" });
+      expect(bobPreview.status).toBe(200);
+      expect(bobPreview.body.matched).toBe(1);
+      expect(bobPreview.body.eligible).toBe(0);
+      expect(bobPreview.body.bytes).toBe(0);
+      expect(bobPreview.body.skipped).toEqual({
+        total: 1,
+        by_reason: { not_writable: 1 },
+        sample: [{ kind: "site", ref: `${handle}/shared-then-locked`, reason: "not_writable" }],
+      });
+      const bobExecute = await post(bob, { target: {}, action: "delete", confirm: bobPreview.body.confirm });
+      expect(bobExecute.status).toBe(200);
+      expect(bobExecute.body.applied.total).toBe(0);
+      expect(bobExecute.body.skipped.by_reason).toEqual({ not_writable: 1 });
+      expect((await json("/v1/sites/shared-then-locked", { headers: auth(ada) })).status).toBe(200);
+
+      const adaPreview = await post(ada, { target: { kind: "sites", q: "locked" }, action: "delete" });
+      expect(adaPreview.body.eligible).toBe(1);
+      expect(adaPreview.body.bytes).toBe(3);
+    });
+
+    it("expire sets a 30m grace and leaves sooner expiries alone", async () => {
+      const token = await mint("clean-expire", "clean-expire@esperlabs.app");
+      await site(token, "exp-site", { "a.txt": "a" });
+      const forever = await upload(token, "forever.txt", "f");
+      const soon = await upload(token, "soon.txt", "s", { "X-Energon-TTL": "5m" });
+
+      expect((await post(token, { target: {}, action: "expire", ttl: "1h" })).body.error).toBe("bad_action");
+      expect((await post(token, { target: {}, action: "set_ttl" })).body.error).toBe("ttl_required");
+      expect((await post(token, { target: {}, action: "nuke" })).body.error).toBe("bad_action");
+      const setTtl = await post(token, { target: { files: [forever] }, action: "set_ttl", ttl: "2d" });
+      expect(setTtl.status).toBe(200);
+      expect(setTtl.body.ttl).toBe("2d");
+
+      const preview = await post(token, { target: {}, action: "expire" });
+      expect(preview.status).toBe(200);
+      expect(preview.body.ttl).toBe("30m");
+      expect(preview.body.matched).toBe(3);
+      expect(preview.body.eligible).toBe(2);
+      expect(preview.body.skipped).toEqual({ total: 1, by_reason: { already_expiring: 1 }, sample: [{ kind: "file", ref: soon, reason: "already_expiring" }] });
+      expect(preview.body.confirm).not.toBe(setTtl.body.confirm);
+
+      const before = Date.now();
+      const executed = await post(token, { target: {}, action: "expire", confirm: preview.body.confirm });
+      expect(executed.status).toBe(200);
+      expect(executed.body.ttl).toBe("30m");
+      expect(executed.body.applied.total).toBe(2);
+      for (const applied of executed.body.applied.objects) {
+        const at = Date.parse(applied.expires_at);
+        expect(at - before).toBeGreaterThan(29 * 60 * 1000);
+        expect(at - before).toBeLessThan(31 * 60 * 1000);
+      }
+      const siteNow = await json("/v1/sites/exp-site", { headers: auth(token) });
+      expect(Date.parse(siteNow.body.expires_at) - before).toBeLessThan(31 * 60 * 1000);
+      const soonRow = await env.DB.prepare(`SELECT expires_at FROM loose_files WHERE id = ?`).bind(soon).first<{ expires_at: string }>();
+      expect(Date.parse(soonRow!.expires_at) - before).toBeLessThan(6 * 60 * 1000);
+
+      const again = await post(token, { target: {}, action: "expire" });
+      expect(again.body.eligible).toBe(0);
+      expect(again.body.skipped.by_reason).toEqual({ already_expiring: 3 });
+    });
+
+    it("refuses more than 100 eligible objects or an unbounded scan with 413", async () => {
+      const email = "clean-many@esperlabs.app";
+      const token = await mint("clean-many", email);
+      const ts = new Date().toISOString();
+      const insert = (id: string, writePolicy: string, ownerId: string | null) =>
+        env.DB.prepare(
+          `INSERT INTO loose_files (id, handle, owner_id, filename, size, content_type, created_at, created_by, updated_at, last_written_by, write_policy)
+           VALUES (?, 'clean-many', ?, ?, 10, 'text/plain', ?, ?, ?, ?, ?)`,
+        ).bind(id, ownerId, `${id}.txt`, ts, email, ts, email, writePolicy);
+      const ids = Array.from({ length: 101 }, (_, i) => `mny${String(i).padStart(3, "0")}`);
+      for (let i = 0; i < ids.length; i += 100) {
+        await env.DB.batch(ids.slice(i, i + 100).map((id) => insert(id, "org", null)));
+      }
+
+      const tooMany = await post(token, { target: { kind: "files" }, action: "delete" });
+      expect(tooMany.status).toBe(413);
+      expect(tooMany.body.error).toBe("cleanup_too_many");
+      expect(tooMany.body).toMatchObject({ limit: 100, matched: 101, eligible: 101, bytes: 1010 });
+      expect(tooMany.body.skipped.total).toBe(0);
+      expect(tooMany.body.confirm).toBeUndefined();
+
+      const explicit = await post(token, { target: { files: ids }, action: "delete" });
+      expect(explicit.status).toBe(413);
+      expect(explicit.body).toMatchObject({ error: "cleanup_too_many", limit: 100, matched: 101 });
+      expect(explicit.body.eligible).toBeUndefined();
+
+      const hundred = await post(token, { target: { files: ids.slice(0, 100) }, action: "delete" });
+      expect(hundred.status).toBe(200);
+      expect(hundred.body.eligible).toBe(100);
+      expect(hundred.body.sample).toHaveLength(10);
+
+      const lockedIds = Array.from({ length: 300 }, (_, i) => `lck${String(i).padStart(3, "0")}`);
+      for (let i = 0; i < lockedIds.length; i += 100) {
+        await env.DB.batch(lockedIds.slice(i, i + 100).map((id) => insert(id, "owner", "u-someone-else")));
+      }
+      const truncated = await post(token, { target: { kind: "files", q: "lck" }, action: "delete" });
+      expect(truncated.status).toBe(200);
+      expect(truncated.body.eligible).toBe(0);
+      expect(truncated.body.skipped.by_reason).toEqual({ not_writable: 300 });
+      const overflow = await post(token, { target: { kind: "files" }, action: "delete" });
+      expect(overflow.status).toBe(413);
+      expect(overflow.body.error).toBe("cleanup_too_many");
+      expect(overflow.body.matched).toBe(300);
+      expect(overflow.body.message).toContain("Narrow the target");
+    });
+
+    it("rejects malformed targets with bad_target or bad_query", async () => {
+      const token = await mint("clean-bad", "clean-bad@esperlabs.app");
+      const cases: [unknown, string][] = [
+        [{ action: "delete" }, "bad_target"],
+        [{ target: "everything", action: "delete" }, "bad_target"],
+        [{ target: { files: ["abc123"], q: "x" }, action: "delete" }, "bad_target"],
+        [{ target: { files: "abc123" }, action: "delete" }, "bad_target"],
+        [{ target: { files: [""] }, action: "delete" }, "bad_target"],
+        [{ target: { folders: ["x"] }, action: "delete" }, "bad_target"],
+        [{ target: { kind: "folders" }, action: "delete" }, "bad_target"],
+        [{ target: { min_size: "lots" }, action: "delete" }, "bad_query"],
+        [{ target: { expires: "soon", updated_before: 12 }, action: "delete" }, "bad_query"],
+        [{ target: { expires: "never", expires_before: "2026-01-01" }, action: "delete" }, "bad_query"],
+        [{ target: {}, action: "delete", ttl: "1d" }, "bad_action"],
+        [{ target: {}, action: "set_ttl", ttl: "forever-ish" }, "bad_ttl"],
+        [{ target: {} }, "bad_action"],
+      ];
+      for (const [body, code] of cases) {
+        const res = await post(token, body);
+        expect(res.status, JSON.stringify(body)).toBe(400);
+        expect(res.body.error, JSON.stringify(body)).toBe(code);
+      }
+      const badQuery = await post(token, { target: { expires: "soon", updated_before: 12 }, action: "delete" });
+      expect(badQuery.body.fields.sort()).toEqual(["expires", "updated_before"]);
+      const noAuth = await json("/v1/cleanup", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      expect(noAuth.status).toBe(401);
+      const wrongMethod = await json("/v1/cleanup", { headers: auth(token) });
+      expect(wrongMethod.status).toBe(404);
+    });
   });
 });
