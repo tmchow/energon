@@ -192,16 +192,19 @@ describe("list helpers", () => {
     expect(next.binds).toEqual(["t1", "t1", "Ab12Cd"]);
   });
 
-  it("keeps the site size keyset in HAVING because size is an aggregate", () => {
+  it("keeps the site size keyset in HAVING and ties on id so duplicate slugs do not collapse", () => {
     const first = siteCursorSql(q("?sort=size"));
-    expect(first.order).toBe("COALESCE(SUM(f.size), 0) DESC, s.handle DESC, s.slug DESC");
+    expect(first.order).toBe("COALESCE(SUM(f.size), 0) DESC, s.id DESC");
     expect(first.clause).toBe("having");
-    const cursor = nextSiteCursor("size", { slug: "notes", handle: "ada", updated_at: "t0", size: 10 });
+    const cursor = nextSiteCursor("size", { id: "Ab12Cd", slug: "notes", handle: "ada", updated_at: "t0", size: 10 });
     const next = siteCursorSql({ ...q("?sort=size"), cursor });
     expect(next.clause).toBe("having");
-    expect(next.binds).toEqual([10, 10, "ada", "ada", "notes"]);
-    expect(siteCursorSql(q("?sort=age")).order).toBe("s.updated_at ASC, s.handle ASC, s.slug ASC");
-    expect(siteCursorSql(q("")).order).toBe("s.updated_at DESC, s.handle DESC, s.slug DESC");
+    expect(next.sql).toBe("(COALESCE(SUM(f.size), 0) < ? OR (COALESCE(SUM(f.size), 0) = ? AND s.id < ?))");
+    expect(next.binds).toEqual([10, 10, "Ab12Cd"]);
+    const twin = nextSiteCursor("size", { id: "Ef34Gh", slug: "notes", handle: "ada", updated_at: "t0", size: 10 });
+    expect(twin).not.toBe(cursor);
+    expect(siteCursorSql(q("?sort=age")).order).toBe("s.updated_at ASC, s.id ASC");
+    expect(siteCursorSql(q("")).order).toBe("s.updated_at DESC, s.id DESC");
   });
 
   it("rejects a size cursor whose lead is not a number", () => {
@@ -211,11 +214,14 @@ describe("list helpers", () => {
 
   it("composes WHERE before HAVING and binds in statement order", () => {
     const criteria = criteriaSql("sites", q("?min_size=1kb"), ME);
-    const cursor = siteCursorSql({ ...q("?sort=size"), cursor: nextSiteCursor("size", { slug: "b", handle: "ada", updated_at: "t0", size: 5 }) });
+    const cursor = siteCursorSql({
+      ...q("?sort=size"),
+      cursor: nextSiteCursor("size", { id: "Ab12Cd", slug: "b", handle: "ada", updated_at: "t0", size: 5 }),
+    });
     const composed = composeClauses(criteria, cursor);
     expect(composed.where).toBe(criteria.where);
     expect(composed.having).toBe(`COALESCE(SUM(f.size), 0) >= ? AND ${cursor.sql}`);
-    expect(composed.binds).toEqual([ME, ME, 1024, 5, 5, "ada", "ada", "b"]);
+    expect(composed.binds).toEqual([ME, ME, 1024, 5, 5, "Ab12Cd"]);
     const plain = composeClauses(criteriaSql("files", q(""), ME), fileCursorSql(q("")));
     expect(plain.having).toBe("");
     expect(plain.binds).toEqual([ME, ME]);

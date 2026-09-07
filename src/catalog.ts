@@ -300,19 +300,19 @@ type SortSpec<Row> = {
   values: (row: Row) => string[];
 };
 
-export type SiteCursorRow = { slug: string; handle: string; updated_at: string; size: number };
+export type SiteCursorRow = { id: string; slug: string; handle: string; updated_at: string; size: number };
 export type FileCursorRow = { id: string; filename: string; updated_at: string | null; created_at: string; size: number };
 
 function siteSort(sort: CatalogSort): SortSpec<SiteCursorRow> {
   switch (sort) {
     case "updated":
-      return { exprs: ["s.updated_at", "s.handle", "s.slug"], dir: "DESC", clause: "where", lead: "text", values: (r) => [r.updated_at, r.handle, r.slug] };
+      return { exprs: ["s.updated_at", "s.id"], dir: "DESC", clause: "where", lead: "text", values: (r) => [r.updated_at, r.id] };
     case "name":
-      return { exprs: ["s.slug", "s.handle"], dir: "ASC", clause: "where", lead: "text", values: (r) => [r.slug, r.handle] };
+      return { exprs: ["s.slug", "s.id"], dir: "ASC", clause: "where", lead: "text", values: (r) => [r.slug, r.id] };
     case "size":
-      return { exprs: [SITE_SIZE_SQL, "s.handle", "s.slug"], dir: "DESC", clause: "having", lead: "number", values: (r) => [String(r.size), r.handle, r.slug] };
+      return { exprs: [SITE_SIZE_SQL, "s.id"], dir: "DESC", clause: "having", lead: "number", values: (r) => [String(r.size), r.id] };
     case "age":
-      return { exprs: ["s.updated_at", "s.handle", "s.slug"], dir: "ASC", clause: "where", lead: "text", values: (r) => [r.updated_at, r.handle, r.slug] };
+      return { exprs: ["s.updated_at", "s.id"], dir: "ASC", clause: "where", lead: "text", values: (r) => [r.updated_at, r.id] };
     default:
       return assertNever(sort);
   }

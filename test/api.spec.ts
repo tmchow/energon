@@ -1592,6 +1592,20 @@ describe("Energon", () => {
       const bigOnly = await json("/v1/sites?min_size=1kb&sort=size&limit=1", { headers: auth(token) });
       expect(bigOnly.body.total).toBe(1);
       expect(bigOnly.body.next_cursor).toBeNull();
+
+      const emptyA = await site(token, "cl-dup", {});
+      const emptyB = await site(token, "cl-dup", {});
+      const emptyFirst = await json("/v1/sites?q=cl-dup&sort=size&limit=1", { headers: auth(token) });
+      expect(emptyFirst.body.total).toBe(2);
+      expect(emptyFirst.body.sites).toHaveLength(1);
+      expect(emptyFirst.body.next_cursor).toBeTruthy();
+      const emptyRest = await json(
+        `/v1/sites?q=cl-dup&sort=size&limit=1&cursor=${encodeURIComponent(emptyFirst.body.next_cursor)}`,
+        { headers: auth(token) },
+      );
+      expect(emptyRest.body.sites).toHaveLength(1);
+      expect(emptyRest.body.next_cursor).toBeNull();
+      expect([emptyFirst.body.sites[0].id, emptyRest.body.sites[0].id].sort()).toEqual([emptyA.id, emptyB.id].sort());
       expect(Object.keys(bigSites.body.sites[0])).not.toContain("owner_id");
       expect(Object.keys(never.body.files[0])).not.toContain("owner_id");
 
