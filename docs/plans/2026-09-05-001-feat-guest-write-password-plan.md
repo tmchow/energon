@@ -3,9 +3,10 @@ title: Guest write password - Plan
 type: feat
 date: 2026-09-05
 artifact_contract: ce-unified-plan/v1
-artifact_readiness: requirements-only
+artifact_readiness: implementation-ready
+execution: code
 product_contract_source: conversation
-review: poteto-mode interrogate 2026-09-05 (four models on v1). Scope-delta interrogate 2026-09-05 (four models on file-vs-site add/delete).
+review: poteto-mode interrogate 2026-09-05 (product). Architect A vs B 2026-09-06 (how). Implementation interrogate 2026-09-06 folded into KTDs.
 ---
 
 # Guest write password - Plan
@@ -99,7 +100,7 @@ Session-settled from this conversation, then amended by adversarial review.
 
 - R25. Instance skill: scenario "outside agent updates this URL." Creator sets write password, human sends public URL plus write password, outside agent `GET {content_origin}/llms.txt` (or reads the guest section of hub `/llms.txt` on single-origin) and PUT with `X-Energon-Write-Password`. Do not mint them a token.
 - R26. `helpBody` and hub `llms.txt` describe both doors. `auth.md` (hub only): a write password is an object-scoped shared secret for public-URL PUT, not an account token, not Access.
-- R27. verify-energon: new recipe plus updates to `share-password.md` and hub-catalog handles this change moves (`#stage-password` disclosure, dialog title, both fields, padlock only on view-password-only rows, diagonal lockup on any write-password row including write-only, never padlock beside pencil, unboxed 28px marks, hover names `View password` / `Write password` / `Org can write` / `Org cannot write` / `Set view password` on the unset lock, org-write exception is overlapping people or people+X). Do not require two Hosts unless `bin/launch` / `bin/doctor` change. Proofs: guest PUT without `Authorization`; guest PUT of a new site path (`201`); guest DELETE of a site path (`200` JSON); last-path DELETE leaves `GET /{handle}/s/{slug}/` at `200`; directory URL DELETE is `405`; guest DELETE of a loose file is `405`; empty loose PUT then GET is `200` length 0 at the same public URL and the same `Content-Type`; read header cannot PUT or DELETE; cookie cannot PUT or DELETE; identical phrases still header-bound; `write_policy=owner` guest PUT succeeds; creator-only set; clear write password then PUT 405; 405 when unset (no write header named); content vs hub `/llms.txt` when origins differ, guest section present when they do not; content-host `/v1/help` is 404 naming `/llms.txt` when origins differ; catalog still shows the object after guest PUT; Last writer is still the account; via copy is "Updated via shared write"; write-only row shows the lockup and no sibling padlock.
+- R27. verify-energon: new recipe plus updates to `share-password.md` and hub-catalog handles this change moves (`#stage-access` disclosure, `#stage-password` share input, dialog title Link access, both fields, padlock only on view-password-only rows, diagonal lockup on any write-password row including write-only, neither hash then no password mark, More menu still `Set password`, never padlock beside pencil, unboxed 28px marks, hover names `View password` / `Write password` / `Org can write` / `Org cannot write`, org-write exception is overlapping people or people+X). Do not require two Hosts unless `bin/launch` / `bin/doctor` change. Proofs: guest PUT without `Authorization`; guest PUT of a new site path (`201`); guest DELETE of a site path (`200` JSON); last-path DELETE leaves `GET /{handle}/s/{slug}/` at `200`; directory URL DELETE is `405`; guest DELETE of a loose file is `405`; empty loose PUT then GET is `200` length 0 at the same public URL and the same `Content-Type`; read header cannot PUT or DELETE; cookie cannot PUT or DELETE; identical phrases still header-bound; `write_policy=owner` guest PUT succeeds; creator-only set; clear write password then PUT 405; 405 when unset (no write header named); content vs hub `/llms.txt` when origins differ, guest section present when they do not; content-host `/v1/help` is 404 naming `/llms.txt` when origins differ; catalog still shows the object after guest PUT; Last writer is still the account; via copy is "Updated via shared write"; write-only row shows the lockup and no sibling padlock.
 
 ### Success Criteria
 
@@ -138,9 +139,131 @@ Flash must echo two secrets independently when both were just set.
 | Goldens + skill-render + fragment test | CI | freeze |
 | verify-energon feature map | same PR | handles this change moves |
 
-## Schema (planning note)
+## Planning Contract
 
-Additive `write_password_hash` on `sites` and `loose_files`. Additive `written_via` rather than stuffing a sentinel into `last_written_by`. New migration, `ensureColumns`, `src/schema.sql`. Distinct hash prefix from share passwords. Clearing the write password is revocation and must be visible to in-flight guest claims.
+### Approach
+
+Guest write is a third door beside share password and `Actor`/`write_policy`. It does not parameterize `putLooseFile` / `putSiteFile` with a fake account.
+
+Shape A (chosen): `src/guest-write.ts` owns `WriteAuthority`, the `energon-wpw:` hash, public-URL target parse, method table, write rate-limit scopes, and parallel mutators. Account helpers stay actor-only. Shape B (extract shared `commitLooseFileBytes` / `commitSitePathBytes` behind a `WriteSession` union) lost because it rewrites the token write path in the same change as a new auth door. Duplicate R2/D1 risk is accepted; drift is cheaper than a guest bug in `OWNER_WRITE_SQL`.
+
+`src/guest-write-protocol.ts` is the one authored SOP fragment. It imports only `config.ts`. `helpBody`, hub and content `llmsTxt`, and skill-render tests consume it. Templates keep literals.
+
+### Key technical decisions
+
+- KTD1. Parallel mutators in `src/guest-write.ts`. Do not call `putLooseFromRequest`, `putLooseFile`, `putSiteFile`, `deleteSiteFile`, `deleteSite`, `deleteLooseFile`, or claim helpers as-is. Tiny extracts only: `hashesEqual`, `clientIp` if they would otherwise copy-paste.
+- KTD2. `WriteAuthority` is `{ kind: "writePassword", hash }` constructed only by `requireWriteAuthority`. Not an `Actor`. Not a `WriteSession` that reaches `ownerWriteBinds`.
+- KTD3. Guest write methods: loose file `PUT`; site path `PUT,DELETE`. Site directory (raw path `""` or `"/"`) never accepts PUT/DELETE (`405`, `Allow: GET`). `POST` stays the share-password gate form on every kind and is not in this table. `HEAD`/`OPTIONS` stay today's 404. Separate router arms for `PUT`/`DELETE` call only `guest-write.ts`. Never `serveLoose` / `serveSite` / `protectContent` on those methods.
+- KTD4. Classify `contentHost` first. Then serve `/llms.txt` (hub vs guest body) **before** the content-host catch-all 404. Content-host `/auth.md` and all `/v1/*` including `/v1/health` are 404 JSON naming `GET /llms.txt`. Hub-origin `PUT`/`DELETE` of a content path: change the **early** method-blind 302 to `307` (not a later arm).
+- KTD5. GET with a valid write header skips `protectContent` (U3 must edit `serveLoose` / `serveSite` and select `write_password_hash`). GET with write hash set and a wrong (non-empty) write header is 401 naming `X-Energon-Write-Password`, records `wobj:`/`wip:`, `Cache-Control: no-store`, no fall-through to the share gate. GET with write hash set and no write header uses the share gate. Write hash unset plus a write header present: share gate (JSON if `wantsJsonGate`). Empty write header is absent, not wrong.
+- KTD10. Guest arm is one try/catch that never lets `ApiError.toResponse` emit `hub` or `/v1/help`. Success bodies have content-origin `url`, no `api_url`. `wobj:` is `wobj:/{handle}/s/{slug}/` or `wobj:/{handle}/f/{id}/`, never the request path. `wip:` is client IP. Record only when a non-empty write header is wrong. Clear write scopes on success. Authorize and rate-limit before `readBodyCapped`. No CORS `*` on PUT.
+- KTD6. Set/clear `write_password` uses `assertCanSetWritePolicy`, including `overwrite: true`. Duplicate never copies the write hash. Catalog JSON exposes `write_password_protected` boolean only.
+- KTD7. Loose guest PUT keeps stored `content_type` and R2 `httpMetadata.contentType`. Filename mismatch is 404, no 302. Empty body is allowed. Guest loose claim predicate is write hash plus not purge-claimed, not `OWNER_WRITE_SQL`. Finalize restores the previous account writer and sets `written_via`.
+- KTD8. Site guest PUT/DELETE lookup is `getSite(handle, slug)`, never `findSiteForActor`. D1 predicate includes `write_password_hash = ?`. New `site_files.last_written_by` is the site's current account writer (email-like `sites.last_written_by`, else `created_by`). Last-path DELETE keeps the `sites` row. New path at 200 files is `400 too_many_files`. Guest path DELETE is D1 first, then R2; if R2 delete fails, re-insert the `site_files` row. Do not copy actor `deleteSiteFile` (R2 then D1).
+- KTD9. Hub stage: URL, expiration, Who can write, Publish stay visible. Closed `<details id="stage-access">` Link access holds share password and write password; open when either is non-empty. One `#pw-dlg` retitled Link access; each secret `unchanged | replace | remove`. Catalog: view-only hash → lock; write hash set → lockup; neither → no password mark. More menu still offers Set password. Drop the Hub Catalog marks legend card once live rows can show lockup. Org people marks stay as today.
+- KTD11. Guest loose PUT never writes `handle` on legacy null-handle rows. Guest PUT/DELETE responses are not wrapped with `contentResponse` CORS. Empty write header is absent, not wrong.
+
+### Assumptions
+
+- Share-password echo stays `json()`. Write-password echo uses `secretJson`.
+- `HEAD` and `OPTIONS` on public content stay today's 404. Do not add them to advertise write.
+- Single-origin local: hub `/llms.txt` is hub SOP plus the guest section. Distinct-origin fixture goldens freeze the content-only body.
+- `written_via` stored value is `write_password`. Hub copy is "Updated via shared write".
+
+### Sequencing
+
+U1 schema and types first (every later unit reads the columns). U2 protocol and host-branched docs can run beside U3 guest mutation once U1 lands, but they share `src/index.ts` route order so serialize U2 then U3 on the router. U4 `/v1` set/clear after U1. U5 Hub UI after U4 (needs `write_password_protected` in catalog JSON). U6 skill + verify map with U2 and U5. U7 user-path verify last.
+
+### Shared mutable state
+
+`src/index.ts` router, `src/sites.ts` / `src/files.ts` SELECT/INSERT lists, `src/schema.sql` + `src/db.ts` + `migrations/0015_*.sql`, `CatalogItem`, `helpBody` / `llmsTxt` / `openapi/v1.json`. One owner. Do not fan out writers onto those files.
+
+## Implementation Units
+
+### U1. Schema, types, headers, hash
+
+Files: `migrations/0015_write_password.sql`, `src/db.ts`, `src/schema.sql`, `src/types.ts`, `src/config.ts`, `src/gate.ts` (hash helper + `wantsJsonGate` either header), `test/unit/schema-drift.spec.ts`.
+
+Add `write_password_hash TEXT` and `written_via TEXT` on `sites` and `loose_files`. Mirror `TABLE_STATEMENTS`, both `ensureColumns` lists, `SiteRow` / `LooseFileRow`, `SITE_SELECT`, loose INSERT column lists. `WRITE_PASSWORD_HEADER` / `SET_WRITE_PASSWORD_HEADER`. `hashWritePassword` with prefix `energon-wpw:`.
+
+Tests: schema-drift column names; unit test that write and share hashes of the same phrase differ.
+
+Depends on: nothing.
+
+### U2. Protocol fragment and host-branched discovery
+
+Files: `src/guest-write-protocol.ts`, `src/llms.ts`, `src/auth.ts` `helpBody`, `src/auth-doc.ts`, `src/index.ts` (move `/llms.txt` `/auth.md` `/v1/help` `/v1/openapi.json` below `contentHost`), `src/openapi.ts` / `openapi/v1.json` (`write_password` on create/PATCH, `X-Energon-Set-Write-Password`, reuse `password_required` / `method_not_allowed`), `CONCEPTS.md`, `DESIGN.md` (write-password lockup), `STRATEGY.md` clause, `test/golden/*`, `test/unit/golden.spec.ts`, `test/unit/openapi-drift.spec.ts`, `test/routes.spec.ts`.
+
+Content `/llms.txt` is guest-only and must not mention `/v1`, `/auth.md`, `/tokens`, `/connect`. Hub `/llms.txt` is instance SOP plus guest section. Content-host `/v1/help` 404 names `GET /llms.txt`.
+
+Tests: goldens; fragment appears in hub llms, content llms, help; openapi-drift; routes host branch.
+
+Depends on: U1 (header constants).
+
+### U3. Guest PUT and site-path DELETE
+
+Files: `src/guest-write.ts`, `src/index.ts` public method arms and hub-origin 307, `src/sites.ts` / `src/files.ts` only as needed for SELECT strips and `written_via` on account mutations, `src/expire.ts` (`newWriteToken` export), `test/api.spec.ts`, `test/files.spec.ts`, `test/site-integrity.spec.ts`, `test/api.purge-claim.spec.ts`, `test/routes.spec.ts`.
+
+Implement R6–R13, R28. Guest JSON has no `hub`. Rate-limit write scopes. Hash in the D1 predicate.
+
+Tests: status matrix in R8; new site path 201; path DELETE 200 JSON; last-path DELETE leaves site GET 200; directory DELETE 405; loose DELETE 405; empty loose PUT then GET 200 length 0 same Content-Type; header-bound identical phrases; cookie cannot PUT/DELETE; owner-policy guest PUT; method-first 405; too_many_files; hash rotate mid-flight 401; expired/purge-claimed 410; hub-origin PUT 307.
+
+Depends on: U1. Router order coordinates with U2.
+
+### U4. Creator set/clear on /v1 and Hub account PATCH
+
+Files: `src/index.ts` `contentPatch` / `postSite`, `src/sites.ts` `createSite` overwrite + `patchSite` + list maps, `src/files.ts` create/put/patch/list + `X-Energon-Set-Write-Password` / multipart `write_password`, `src/ui/types.ts` `CatalogItem`, `test/api.spec.ts`.
+
+`write_password_protected` on create/PATCH/list. Echo once via `secretJson`. Duplicate drops write hash. Overwrite with `write_password` requires `assertCanSetWritePolicy`. Account mutations clear `written_via`.
+
+Tests: creator-only set including overwrite; coworker 403; duplicate omits write hash; GET list has boolean not phrase; empty string clears then guest PUT is 405.
+
+Depends on: U1.
+
+### U5. Hub Link access UI and catalog marks
+
+Files: `src/ui/pages/Hub.svelte`, `src/ui/uploads.ts`, `src/ui/components/Catalog.svelte`, `src/ui/components/Flash.svelte`, `src/ui/components/ScanExamples.svelte` (remove from Hub), `src/ui/styles.css` if needed, `test/pages.spec.ts`, `src/ui/uploads.spec.ts`.
+
+Stage: `#stage-access` closed disclosure. Dialog: two fields, unchanged/replace/remove. Catalog: lock / lockup / none per KTD9. Via copy under last writer. Flash two secrets. Site write-password note names homepage control. File note: replaces that file only.
+
+Tests: `check:ui`; pages.spec disclosure, dialog, marks, hover names, no `#scan-examples` once removed, `Set view password` gone from live rows without a view hash.
+
+Depends on: U4.
+
+### U6. Skill templates and verify-energon map
+
+Files: `templates/skill/`, `test/unit/skill-render.spec.ts`, `.agents/skills/verify-energon/SKILL.md`, `.agents/skills/verify-energon/features/share-password.md`, new `.agents/skills/verify-energon/features/guest-write-password.md`, `features/README.md`.
+
+Depends on: U2, U5.
+
+### U7. Verify like a user
+
+Drive `guest-write-password.md` against a fresh `bin/launch` instance. Proofs in R27. Do not invent a token. Do not attach to port 8787.
+
+Depends on: U3–U6.
+
+## Verification Contract
+
+Repo commands (do not run the full suite after every unit; run the row that matches the change):
+
+- U1: `npx wrangler types && npm run test:unit -- test/unit/schema-drift.spec.ts`
+- U2: `npm run test:unit -- test/unit/golden.spec.ts test/unit/openapi-drift.spec.ts` and `npx vitest run test/routes.spec.ts`
+- U3: `npx vitest run test/api.spec.ts test/files.spec.ts test/site-integrity.spec.ts test/api.purge-claim.spec.ts test/routes.spec.ts`
+- U4: `npx vitest run test/api.spec.ts`
+- U5: `npm run check:ui` and `npx vitest run test/pages.spec.ts`
+- U6: `npm run test:unit -- test/unit/skill-render.spec.ts`
+- Before calling the feature done: U7 verify-energon recipe plus `npx wrangler types && npm run typecheck && npm run lint` on the touched tree
+- User-facing Hub, `/v1` body, gate, token, public URL: also drive like a user (AGENTS.md)
+
+## Definition of Done
+
+- An outside agent with a site write password can add, replace, or delete paths under that slug without a token, and cannot delete the site.
+- An outside agent with a file write password can replace that file (including empty) and cannot delete it. The public URL still resolves.
+- A viewer with only the share password cannot PUT or DELETE. A gate cookie cannot PUT or DELETE.
+- Hub stage keeps write password behind closed Link access. Catalog shows lock, lockup, or neither per KTD9 at 28px with hover names.
+- Changing guest-write copy in `src/guest-write-protocol.ts` fails CI if hub llms, content llms, help, or the rendered skill disagree.
+- A coworker token cannot mint a write password on someone else's `owner` object.
+- verify-energon guest-write recipe is green on an isolated local instance.
 
 ## Out of scope
 
@@ -159,19 +282,13 @@ Additive `write_password_hash` on `sites` and `loose_files`. Additive `written_v
 - Public `Allow: PUT` on cacheable GET
 - `skill:render` importing Worker TypeScript
 
-## Verification (when implementing)
+## Appendix
 
-- `test:unit` goldens, fragment drift, skill-render, gate/password, openapi-drift
-- `test/api.spec.ts` status matrix, new site path `201`, site path DELETE `200` JSON, last-path DELETE keeps site `200`, directory DELETE `405`, loose-file DELETE is `405`, empty loose PUT then GET `200` length 0, file-count ceiling `400 too_many_files`, header-bound identical phrases, cookie refused for PUT and DELETE, owner-policy guest PUT, creator-only set including overwrite, duplicate drops write hash, method-first `405` before secret check
-- `test/files.spec.ts` guest PUT rejects rename and set-password headers; guest loose-file PUT keeps stored `Content-Type`
-- `test/site-integrity.spec.ts` hash-in-predicate vs clear mid-flight
-- `test/api.purge-claim.spec.ts` expired/purge-claimed guest PUT and path DELETE
-- `test/routes.spec.ts` Host-branched `/llms.txt`, content-host `/auth.md` and `/v1/help` 404 naming `/llms.txt`, hub-origin PUT/DELETE is `307`/`308` or JSON (not 302→GET)
-- `test/pages.spec.ts` disclosure, dialog unchanged/replace/remove, padlock only when view password is set and write password is not, lockup whenever write password is set, never padlock beside pencil, unboxed 28px marks with hover names, Last writer stays the account, via copy, site write-password copy names homepage control
-- `check:ui`
-- verify-energon recipe updates listed in R27
+### Architect synthesis (2026-09-06)
 
-## Adversarial review (2026-09-05)
+Base: Shape A (`src/guest-write.ts` parallel mutators). Rejected Shape B (shared `commit*Bytes` behind `WriteSession`) because it rewrites token PUT/DELETE in the same PR. Grafted from B: authorize and rate-limit before reading the body; inspect public target (404/410/405) before the secret; guest JSON builder that cannot emit `hub`.
+
+### Adversarial review (2026-09-05)
 
 Two four-model interrogates. Consensus that would have shipped bugs is folded above. A third pass is not required unless the contract changes again.
 
@@ -195,6 +312,6 @@ Run after the product override. Scope delta only. Not a re-review of pass-1 prot
 
 **Session-settled after pass 2.** Last writer stays the last account; never `guest`. Via copy is "Updated via shared write". Column name is `written_via`. Catalog password slot is one unboxed 28px mark: padlock for view-password-only; diagonal lockup (lock NW, filled pencil SE) whenever a write password is set (write-only or both). Never lock beside pencil. Never a pencil fused onto the lock body. No `shared write` chip. No hairline tile. Hover names the mark (`View password`, `Write password`, `Org can write`, `Org cannot write`). Org-write exception, if shown, is overlapping people (front + peeking): on = people (org can write), off = people + X badge. Badge circle stroke is thinner than the people (~1.15 vs 1.75). Two equal rings over a connected double-hump are out (reads as a face). Instance default picks which of those two is the exception. Do not use a lone person silhouette. Do not put a pencil on the people mark. Thin slash through the group is out. Content-host `/v1/help` is 404 JSON that names `GET /llms.txt` on this host. Guest loose-file PUT reuses the stored `Content-Type`.
 
-## Open questions
+### Open questions
 
-None on catalog mark size. Unboxed 28px is locked. Hover names the mark.
+None blocking. Catalog mark size is 28px unboxed. Hover names the mark. Neither hash: no password mark (R23); More menu still Set password. Deferred: whether to later extract Shape B shared commits once guest and actor paths have both been green in production.
