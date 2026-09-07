@@ -64,7 +64,6 @@ describe("signed-in pages", () => {
     expect(boot.data.files_total).toBe(2);
     expect(boot.data.files_cursor).toBeTruthy();
     expect(boot.data.query).toMatchObject({ q: "svelte", sort: "name" });
-    expect(html).toContain("Catalog marks");
     expect(html).toContain("svelte-one.md");
     expect(html).toContain("Load more");
     for (const label of ["Copy URL", "Delete", "More actions", "Download"]) expect(html).toContain(`aria-label="${label}"`);

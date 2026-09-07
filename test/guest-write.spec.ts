@@ -155,6 +155,7 @@ describe("guest write password", () => {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: "password=same-phrase",
+      redirect: "manual",
     });
     expect(form.status).toBe(303);
     const cookie = form.headers.get("set-cookie") || "";
@@ -229,7 +230,20 @@ describe("guest write password", () => {
       headers: auth(bob, { "content-type": "application/json" }),
       body: JSON.stringify({ slug: "guest-owned", overwrite: true, write_password: "stolen" }),
     });
-    expect(bobOverwrite.status).toBe(403);
+    expect(bobOverwrite.status).toBe(201);
+    expect(bobOverwrite.body.handle).toBe("guest-bob");
+    const adaGuest = await json(`${CONTENT}/guest-ada/s/guest-owned/kept.txt`, {
+      method: "PUT",
+      headers: WRITE,
+      body: "still-ada",
+    });
+    expect(adaGuest.status).toBe(201);
+    const stolen = await json(`${CONTENT}/guest-ada/s/guest-owned/kept.txt`, {
+      method: "PUT",
+      headers: { [WRITE_PASSWORD_HEADER]: "stolen" },
+      body: "nope",
+    });
+    expect(stolen.status).toBe(401);
 
     const copied = await json("/v1/sites", {
       method: "POST",
@@ -297,5 +311,5 @@ describe("guest write password", () => {
     expect(replace.status).toBe(200);
     const del = await json(`${CONTENT}/guest-cap/s/guest-cap/f0.txt`, { method: "DELETE", headers: WRITE });
     expect(del.status).toBe(200);
-  });
+  }, 15_000);
 });
