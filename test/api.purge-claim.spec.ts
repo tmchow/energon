@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { auth, json, mint, req } from "./helpers";
+import { auth, createSite, json, mint, req } from "./helpers";
 
 describe("TTL purge claims", () => {
   it("blocks replacement while a loose-file deletion owns the write claim", async () => {
@@ -405,11 +405,7 @@ describe("TTL purge claims", () => {
     const { env } = await import("cloudflare:test");
     const { PURGE_CLAIM } = await import("../src/expire");
     const token = await mint("ttl-site-patch-atomicity");
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "atomic-site" }),
-    });
+    const site_atomic_site = await createSite(token, "atomic-site");
     const db = env.DB;
     const originalPrepare = db.prepare.bind(db);
     let injected = false;
@@ -436,7 +432,7 @@ describe("TTL purge claims", () => {
     }) as typeof db.prepare;
 
     try {
-      const patched = await json("/v1/sites/atomic-site", {
+      const patched = await json(`/v1/sites/${site_atomic_site.id}`, {
         method: "PATCH",
         headers: auth(token, { "content-type": "application/json" }),
         body: JSON.stringify({ password: "secret", write_policy: "owner" }),
@@ -460,12 +456,8 @@ describe("TTL purge claims", () => {
     const { purgeExpiredSite, purgeExpiredFile } = await import("../src/expire");
     const token = await mint("ttl-race");
 
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "race-site", overwrite: false, ttl: "1d" }),
-    });
-    await json("/v1/sites/race-site/files/index.html", {
+    const site_race_site = await createSite(token, "race-site", { overwrite: false, ttl: "1d" });
+    await json(`/v1/sites/${site_race_site.id}/files/index.html`, {
       method: "PUT",
       headers: auth(token, { "content-type": "text/html" }),
       body: "<h1>race</h1>",
@@ -490,7 +482,7 @@ describe("TTL purge claims", () => {
     let fileRevive: { status: number; body: { error?: string } } | undefined;
     bucket.delete = async (key) => {
       if (siteRevive === undefined) {
-        siteRevive = await json("/v1/sites/race-site", {
+        siteRevive = await json(`/v1/sites/${site_race_site.id}`, {
           method: "PATCH",
           headers: auth(token, { "content-type": "application/json" }),
           body: JSON.stringify({ ttl: "7d" }),
@@ -505,7 +497,7 @@ describe("TTL purge claims", () => {
       return originalDelete(key);
     };
     try {
-      expect(await purgeExpiredSite(env, undefined, "ada", "race-site")).toBe(true);
+      expect(await purgeExpiredSite(env, undefined, "ada", site_race_site.id)).toBe(true);
       expect(await purgeExpiredFile(env, undefined, fileId, "ada", "race.txt")).toBe(true);
     } finally {
       bucket.delete = originalDelete;
@@ -516,9 +508,9 @@ describe("TTL purge claims", () => {
     expect(fileRevive?.status).toBe(410);
     expect(fileRevive?.body.error).toBe("expired");
     expect(await env.DB.prepare(`SELECT slug FROM sites WHERE slug = ?`).bind("race-site").first()).toBeNull();
-    expect(await env.DB.prepare(`SELECT path FROM site_files WHERE slug = ?`).bind("race-site").first()).toBeNull();
+    expect(await env.DB.prepare(`SELECT path FROM site_files WHERE site_id = ?`).bind(site_race_site.id).first()).toBeNull();
     expect(await env.DB.prepare(`SELECT id FROM loose_files WHERE id = ?`).bind(fileId).first()).toBeNull();
-    const siteBytes = await req("/v1/sites/race-site/files/index.html", { headers: auth(token) });
+    const siteBytes = await req(`/v1/sites/${site_race_site.id}/files/index.html`, { headers: auth(token) });
     expect(siteBytes.status).toBe(404);
     const fileBytes = await req(`/v1/files/${fileId}`, { headers: auth(token) });
     expect(fileBytes.status).toBe(404);
@@ -529,12 +521,8 @@ describe("TTL purge claims", () => {
     const { PURGE_CLAIM, purgeExpiredSite, purgeExpiredFile } = await import("../src/expire");
     const token = await mint("ttl-held-claim");
 
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "held-site", overwrite: false, ttl: "1d" }),
-    });
-    await json("/v1/sites/held-site/files/index.html", {
+    const site_held_site = await createSite(token, "held-site", { overwrite: false, ttl: "1d" });
+    await json(`/v1/sites/${site_held_site.id}/files/index.html`, {
       method: "PUT",
       headers: auth(token, { "content-type": "text/html" }),
       body: "<h1>held</h1>",
@@ -553,7 +541,7 @@ describe("TTL purge claims", () => {
       .bind("2000-01-01T00:00:00.000Z", `${PURGE_CLAIM}:held`, fileId)
       .run();
 
-    expect(await purgeExpiredSite(env, undefined, "ada", "held-site")).toBe(false);
+    expect(await purgeExpiredSite(env, undefined, "ada", site_held_site.id)).toBe(false);
     expect(await purgeExpiredFile(env, undefined, fileId, "ada", "held.txt")).toBe(false);
     expect(await env.DB.prepare(`SELECT slug FROM sites WHERE slug = ?`).bind("held-site").first()).toEqual({
       slug: "held-site",
@@ -561,7 +549,7 @@ describe("TTL purge claims", () => {
     expect(await env.DB.prepare(`SELECT id FROM loose_files WHERE id = ?`).bind(fileId).first()).toEqual({
       id: fileId,
     });
-    const siteObj = await env.BUCKET.get("sites/ada/held-site/index.html");
+    const siteObj = await env.BUCKET.get(`sites/ada/${site_held_site.id}/index.html`);
     expect(siteObj).not.toBeNull();
     expect(await siteObj!.text()).toBe("<h1>held</h1>");
     const fileObj = await env.BUCKET.get(`files/${fileId}/held.txt`);
@@ -574,12 +562,8 @@ describe("TTL purge claims", () => {
     const { purgeExpiredSite } = await import("../src/expire");
     const token = await mint("ttl-pk-order");
 
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "pk-order", overwrite: false, ttl: "1d" }),
-    });
-    await json("/v1/sites/pk-order/files/index.html", {
+    const site_pk_order = await createSite(token, "pk-order", { overwrite: false, ttl: "1d" });
+    await json(`/v1/sites/${site_pk_order.id}/files/index.html`, {
       method: "PUT",
       headers: auth(token, { "content-type": "text/html" }),
       body: "<h1>order</h1>",
@@ -602,8 +586,8 @@ describe("TTL purge claims", () => {
           const origRun = bound.run.bind(bound);
           return Object.assign(bound, {
             run: async () => {
-              filesWhenSitesDeleted = await originalPrepare(`SELECT path FROM site_files WHERE slug = ?`)
-                .bind("pk-order")
+              filesWhenSitesDeleted = await originalPrepare(`SELECT path FROM site_files WHERE site_id = ?`)
+                .bind(site_pk_order.id)
                 .first<{ path: string }>();
               return origRun();
             },
@@ -612,7 +596,7 @@ describe("TTL purge claims", () => {
       };
     }) as typeof db.prepare;
     try {
-      expect(await purgeExpiredSite(env, undefined, "ada", "pk-order")).toBe(true);
+      expect(await purgeExpiredSite(env, undefined, "ada", site_pk_order.id)).toBe(true);
     } finally {
       db.prepare = originalPrepare;
     }
@@ -625,32 +609,21 @@ describe("TTL purge claims", () => {
     const { PURGE_CLAIM } = await import("../src/expire");
     const token = await mint("ttl-claimed-write");
 
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "claimed-del", overwrite: false, ttl: "1d" }),
-    });
+    const site_claimed_del = await createSite(token, "claimed-del", { overwrite: false, ttl: "1d" });
     await env.DB.prepare(`UPDATE sites SET expires_at = ?, last_written_by = ? WHERE slug = ?`)
       .bind("2000-01-01T00:00:00.000Z", `${PURGE_CLAIM}:fresh`, "claimed-del")
       .run();
-    const deleted = await json("/v1/sites/claimed-del", { method: "DELETE", headers: auth(token) });
+    const deleted = await json(`/v1/sites/${site_claimed_del.id}`, { method: "DELETE", headers: auth(token) });
     expect(deleted.status).toBe(200);
 
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "stale-recreate", overwrite: false, ttl: "1d" }),
-    });
-    await env.DB.prepare(`UPDATE sites SET expires_at = ?, last_written_by = ?, updated_at = ? WHERE slug = ?`)
-      .bind("2000-01-01T00:00:00.000Z", `${PURGE_CLAIM}:stale`, "2000-01-01T00:00:00.000Z", "stale-recreate")
+    const site_stale_recreate = await createSite(token, "stale-recreate", { overwrite: false, ttl: "1d" });
+    await env.DB.prepare(`UPDATE sites SET expires_at = ?, last_written_by = ?, updated_at = ? WHERE id = ?`)
+      .bind("2000-01-01T00:00:00.000Z", `${PURGE_CLAIM}:stale`, "2000-01-01T00:00:00.000Z", site_stale_recreate.id)
       .run();
-    const recreated = await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "stale-recreate", overwrite: false }),
-    });
+    const recreated = await createSite(token, "stale-recreate", { overwrite: false });
     expect(recreated.status).toBe(201);
     expect(recreated.body.created).toBe(true);
+    expect(recreated.body.id).not.toBe(site_stale_recreate.id);
   });
 
   it("site PUT cannot clobber an in-flight purge claim", async () => {
@@ -658,26 +631,23 @@ describe("TTL purge claims", () => {
     const { purgeExpiredSite } = await import("../src/expire");
     const token = await mint("ttl-put-race");
 
-    await json("/v1/sites", {
-      method: "POST",
-      headers: auth(token, { "content-type": "application/json" }),
-      body: JSON.stringify({ slug: "put-race", overwrite: false, ttl: "1d" }),
-    });
-    await json("/v1/sites/put-race/files/index.html", {
+    const site = await createSite(token, "put-race", { overwrite: false, ttl: "1d" });
+    await json(`/v1/sites/${site.id}/files/index.html`, {
       method: "PUT",
       headers: auth(token, { "content-type": "text/html" }),
       body: "<h1>before</h1>",
     });
-    await env.DB.prepare(`UPDATE sites SET expires_at = ? WHERE slug = ?`)
-      .bind("2000-01-01T00:00:00.000Z", "put-race")
+    await env.DB.prepare(`UPDATE sites SET expires_at = ? WHERE id = ?`)
+      .bind("2000-01-01T00:00:00.000Z", site.id)
       .run();
 
     const bucket = env.BUCKET as R2Bucket & { delete: R2Bucket["delete"] };
     const originalDelete = bucket.delete.bind(bucket);
     let putDuringPurge: { status: number; body: { error?: string } } | undefined;
+    const idMarker = `/${site.id}/`;
     bucket.delete = async (key) => {
-      if (putDuringPurge === undefined && String(key).includes("/put-race/")) {
-        putDuringPurge = await json("/v1/sites/put-race/files/index.html", {
+      if (putDuringPurge === undefined && String(key).includes(idMarker)) {
+        putDuringPurge = await json(`/v1/sites/${site.id}/files/index.html`, {
           method: "PUT",
           headers: auth(token, { "content-type": "text/html" }),
           body: "<h1>revive</h1>",
@@ -686,14 +656,14 @@ describe("TTL purge claims", () => {
       return originalDelete(key);
     };
     try {
-      expect(await purgeExpiredSite(env, undefined, "ada", "put-race")).toBe(true);
+      expect(await purgeExpiredSite(env, undefined, "ada", site.id)).toBe(true);
     } finally {
       bucket.delete = originalDelete;
     }
 
     expect(putDuringPurge?.status).toBe(410);
     expect(putDuringPurge?.body.error).toBe("expired");
-    expect(await env.DB.prepare(`SELECT slug FROM sites WHERE slug = ?`).bind("put-race").first()).toBeNull();
-    expect(await env.BUCKET.get("sites/ada/put-race/index.html")).toBeNull();
+    expect(await env.DB.prepare(`SELECT slug FROM sites WHERE id = ?`).bind(site.id).first()).toBeNull();
+    expect(await env.BUCKET.get(`sites/ada/${site.id}/index.html`)).toBeNull();
   });
 });

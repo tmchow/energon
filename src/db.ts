@@ -26,6 +26,7 @@ const TABLE_STATEMENTS = [
     created_at TEXT NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS sites (
+    id TEXT PRIMARY KEY,
     handle TEXT NOT NULL,
     slug TEXT NOT NULL,
     owner_id TEXT,
@@ -39,18 +40,16 @@ const TABLE_STATEMENTS = [
     write_policy TEXT NOT NULL DEFAULT 'org',
     write_password_hash TEXT,
     write_password_secret TEXT,
-    written_via TEXT,
-    PRIMARY KEY (handle, slug)
+    written_via TEXT
   )`,
   `CREATE TABLE IF NOT EXISTS site_files (
-    handle TEXT NOT NULL,
-    slug TEXT NOT NULL,
+    site_id TEXT NOT NULL,
     path TEXT NOT NULL,
     size INTEGER NOT NULL,
     content_type TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     last_written_by TEXT NOT NULL,
-    PRIMARY KEY (handle, slug, path)
+    PRIMARY KEY (site_id, path)
   )`,
   `CREATE TABLE IF NOT EXISTS loose_files (
     id TEXT PRIMARY KEY,
@@ -99,7 +98,8 @@ const INDEX_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_connections_ip_created ON agent_connections(ip_hash, created_at)`,
   `CREATE INDEX IF NOT EXISTS idx_connections_created ON agent_connections(created_at)`,
   `CREATE INDEX IF NOT EXISTS idx_connections_expires ON agent_connections(expires_at)`,
-  `CREATE INDEX IF NOT EXISTS idx_site_files_site ON site_files(handle, slug)`,
+  `CREATE INDEX IF NOT EXISTS idx_site_files_site ON site_files(site_id)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_site_files_id_path ON site_files(site_id, path)`,
   `CREATE INDEX IF NOT EXISTS idx_loose_files_created ON loose_files(created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_sites_updated ON sites(updated_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_tokens_hash ON tokens(token_hash)`,
@@ -137,7 +137,9 @@ export async function ensureSchema(db: D1Database): Promise<void> {
   }
   if (existing) {
     await ensureColumns(db, "loose_files", ["updated_at", "last_written_by", "password_hash", "password_secret", "handle", "owner_id", "expires_at", "write_policy", "write_password_hash", "write_password_secret", "written_via"]);
-    await ensureColumns(db, "sites", ["password_hash", "password_secret", "handle", "owner_id", "expires_at", "write_policy", "write_password_hash", "write_password_secret", "written_via"]);
+    await ensureColumns(db, "sites", ["id", "password_hash", "password_secret", "handle", "owner_id", "expires_at", "write_policy", "write_password_hash", "write_password_secret", "written_via"]);
+    await ensureColumns(db, "site_files", ["site_id"]);
+    await backfillSiteIds(db);
     await ensureColumns(db, "tokens", ["token_secret", "token_hint", "user_id", "expires_at"]);
     await ensureColumns(db, "users", ["idp_sub"]);
     await db.prepare(`UPDATE tokens SET token_secret = NULL WHERE token_secret IS NOT NULL`).run();
@@ -164,6 +166,21 @@ export async function ensureSchema(db: D1Database): Promise<void> {
     ) WHERE id = 1 AND used = 0`,
   ).run();
   columnsReady = true;
+}
+
+async function backfillSiteIds(db: D1Database): Promise<void> {
+  await db.prepare(`UPDATE sites SET id = lower(hex(randomblob(3))) WHERE id IS NULL OR id = ''`).run();
+  const cols = await db.prepare(`PRAGMA table_info(site_files)`).all<{ name: string }>();
+  const names = new Set((cols.results || []).map((c) => c.name));
+  if (names.has("handle") && names.has("slug")) {
+    await db
+      .prepare(
+        `UPDATE site_files SET site_id = (
+           SELECT s.id FROM sites s WHERE s.handle = site_files.handle AND s.slug = site_files.slug
+         ) WHERE site_id IS NULL OR site_id = ''`,
+      )
+      .run();
+  }
 }
 
 async function ensureColumns(db: D1Database, table: string, needed: string[]): Promise<void> {

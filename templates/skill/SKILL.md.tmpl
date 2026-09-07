@@ -1,13 +1,13 @@
 ---
 name: {{SKILL_NAME}}
-description: Publish, read, reference, revise, or copy documents, prototypes, and working files on {{PRODUCT}} ({{ORIGIN}}). Use when the user wants to publish a prototype, share a markdown/image/PDF with a person or agent, update a doc at its existing URL, read published work as reference, mint or use {{TOKEN_ENV}}, or mentions {{PRODUCT}} / {{ORIGIN_HOST}}. Never invent a token. Never overwrite an existing slug without the human confirming.
+description: Publish, read, reference, revise, or copy documents, prototypes, and working files on {{PRODUCT}} ({{ORIGIN}}). Use when the user wants to publish a prototype, share a markdown/image/PDF with a person or agent, update a doc at its existing URL, read published work as reference, mint or use {{TOKEN_ENV}}, or mentions {{PRODUCT}} / {{ORIGIN_HOST}}. Never invent a token.
 ---
 
 # {{PRODUCT}}
 
 {{PRODUCT}} is agent-native publishing at {{ORG}}. Agents publish, read, reference, revise, and copy ordinary files over HTTP with a token. People can upload directly through the hub and open the same work: Markdown renders as a document, and prepared HTML renders as a working static site. The hub is behind Cloudflare Access. Published content links are not — anyone with the URL can open them unless you set an optional share password.
 
-Publish for viewing now, revision, or reference in a later session — a handoff to someone else is only one use. Reading as reference does not authorize editing. Permitted updates keep the same address until expiry or deletion; copies have independent identities, not revision history. Ask when a slug collides. After publishing, give the human `url` and, when useful for later agent access, `api_url`.
+Publish for viewing now, revision, or reference in a later session — a handoff to someone else is only one use. Reading as reference does not authorize editing. Permitted updates keep the same address until expiry or deletion; copies have independent identities, not revision history. After publishing, give the human `url` and, when useful for later agent access, `api_url`.
 
 Load [references/api.md](references/api.md) only if you need exact routes or error shapes.
 
@@ -15,16 +15,14 @@ This skill is bound to **{{ORIGIN}}**. Do not send traffic to another Energon. A
 
 ## Hard rules
 
-1. Look for env `{{TOKEN_ENV}}`. If it is missing and a human can respond, read {{ORIGIN}}/auth.md and connect with a code: show the link and code, wait for approval, save the delivered token as `{{TOKEN_ENV}}` (see Scenario G). If no human can respond (CI, unattended runs), stop and report that `{{TOKEN_ENV}}` must be provisioned from {{ORIGIN}}/tokens. Do not automate the human approval. Do **not** invent a token. Do **not** reuse a token you saw in chat history unless they just pasted it. A token that has expired (`401` with `error: token_expired`) is the same stop: it cannot be renewed; connect again or have the human provision a replacement.
-2. Never default to `overwrite: true`.
-3. Never pick a slug that already exists without the human confirming.
-4. Last write wins **on that path only**. Putting a file does not delete other files. There is no merge, no comments, no presence.
-5. Published `/sites` and `/files` URLs are **not** behind Access. Anyone with the link can open them unless you set a share password. Agents can GET the human URL (send `X-Energon-Password` if set) or use `api_url` (`GET /v1/...`) with their token — token reads skip the share password.
-6. Default is **no password**. Set a share password only if they ask. Set a write password only if they want someone outside this host to update the public URL without a token. Write responses echo the secret you just set so you can tell them. `/v1` GET never returns the phrase. Do **not** write secrets into the published file. Change with `PATCH` `{ "password": "new" }` or `{ "write_password": "new" }`; clear with an empty string. Only the creator can set or clear `write_password`.
-7. Always return the URL(s). Do not keep the token or the share password in a file you publish. Do not keep the token in your reply.
-8. If you are confused, `GET {{ORIGIN}}/v1/help` or `GET {{ORIGIN}}/llms.txt` (no auth). Trust that document for this Energon's retention presets and skill name. For exact request and response schemas, status codes, and error codes, `GET {{ORIGIN}}/v1/openapi.json` (OpenAPI 3.1, no auth).
-9. `GET /v1/sites` and `GET /v1/files` list only what **you** created or last wrote. To find something Bob created that you edited: `?created_by=bob@example.com&scope=edited`. Do not expect a company-wide catalog. You can still GET a known `/{handle}/s/{slug}` or `/{handle}/f/{id}` URL.
-10. Pass `ttl` on create unless the human wants this Energon's default. `GET /v1/help` → `retention` is the source of truth. `PUT` does not extend expiry. `PATCH { "ttl": "7d" }` resets from now. Expired URLs are `410`.
+1. Look for env `{{TOKEN_ENV}}`. If it is missing and a human can respond, read {{ORIGIN}}/auth.md and connect with a code: show the link and code, wait for approval, save the delivered token as `{{TOKEN_ENV}}` (see Scenario F). If no human can respond (CI, unattended runs), stop and report that `{{TOKEN_ENV}}` must be provisioned from {{ORIGIN}}/tokens. Do not automate the human approval. Do **not** invent a token. Do **not** reuse a token you saw in chat history unless they just pasted it. A token that has expired (`401` with `error: token_expired`) is the same stop: it cannot be renewed; connect again or have the human provision a replacement.
+2. Last write wins **on that path only**. Putting a file does not delete other files. There is no merge, no comments, no presence.
+3. Published `/sites` and `/files` URLs are **not** behind Access. Anyone with the link can open them unless you set a share password. Agents can GET the human URL (send `X-Energon-Password` if set) or use `api_url` (`GET /v1/...`) with their token — token reads skip the share password.
+4. Default is **no password**. Set a share password only if they ask. Set a write password only if they want someone outside this host to update the public URL without a token. Write responses echo the secret you just set so you can tell them. `/v1` GET never returns the phrase. Do **not** write secrets into the published file. Change with `PATCH` `{ "password": "new" }` or `{ "write_password": "new" }`; clear with an empty string. Only the creator can set or clear `write_password`.
+5. Always return the URL(s). Do not keep the token or the share password in a file you publish. Do not keep the token in your reply.
+6. If you are confused, `GET {{ORIGIN}}/v1/help` or `GET {{ORIGIN}}/llms.txt` (no auth). Trust that document for this Energon's retention presets and skill name. For exact request and response schemas, status codes, and error codes, `GET {{ORIGIN}}/v1/openapi.json` (OpenAPI 3.1, no auth).
+7. `GET /v1/sites` and `GET /v1/files` list only what **you** created or last wrote. To find something Bob created that you edited: `?created_by=bob@example.com&scope=edited`. Do not expect a company-wide catalog. You can still GET a known `/{handle}/s/{id}/{slug}` or `/{handle}/f/{id}` URL.
+8. Pass `ttl` on create unless the human wants this Energon's default. `GET /v1/help` → `retention` is the source of truth. `PUT` does not extend expiry. `PATCH { "ttl": "7d" }` resets from now. Expired URLs are `410`.
 
 Auth on every `/v1` call except `/v1/help`, `/v1/health`, `/v1/openapi.json`, and the connection request/poll endpoints documented in `/auth.md`:
 
@@ -55,24 +53,23 @@ Ask for a slug if they did not give one. Suggest a short kebab-case name (`lunch
 They have HTML or a small static folder and want someone to click it.
 
 1. Confirm a slug (“Use `onboarding-draft`?”).
-2. `POST /v1/sites` with `{"slug":"onboarding-draft","overwrite":false}` and a `ttl` from `/v1/help` `retention.presets` unless they want this Energon's default.
-3. On **201**, PUT files. `index.html` at site root makes `/sites/{slug}/` render the page.
-4. On **409**, go to Scenario E. Do not PUT yet.
-5. Hand them `{{ORIGIN}}/{handle}/s/{slug}/`.
+2. `POST /v1/sites` with `{"slug":"onboarding-draft","ttl":"7d"}` and a `ttl` from `/v1/help` `retention.presets` unless they want this Energon's default.
+3. On **201**, PUT files using the returned `id`. `index.html` at site root makes `/{handle}/s/{id}/{slug}/` render the page.
+4. Hand them `{{ORIGIN}}/{handle}/s/{id}/{slug}/` from the create response `url`.
 
 ```bash
 curl -sS {{ORIGIN}}/v1/sites \
   -H "Authorization: Bearer ${{TOKEN_ENV}}" \
   -H "content-type: application/json" \
-  -d '{"slug":"onboarding-draft","overwrite":false,"ttl":"7d"}'
+  -d '{"slug":"onboarding-draft","ttl":"7d"}'
 
-curl -sS {{ORIGIN}}/v1/sites/onboarding-draft/files/index.html \
+curl -sS {{ORIGIN}}/v1/sites/{id}/files/index.html \
   -H "Authorization: Bearer ${{TOKEN_ENV}}" \
   -H "content-type: text/html" \
   --data-binary @index.html
 ```
 
-A site does **not** need `index.html`. `index.md` is the homepage if `index.html` is missing. If you only PUT `notes.md`, `/{handle}/s/{slug}/` shows a file list and `/{handle}/s/{slug}/notes.md` serves the file (rendered in a browser, raw to `curl` / `?raw=1`).
+A site does **not** need `index.html`. `index.md` is the homepage if `index.html` is missing. If you only PUT `notes.md`, `/{handle}/s/{id}/{slug}/` shows a file list and `/{handle}/s/{id}/{slug}/notes.md` serves the file (rendered in a browser, raw to `curl` / `?raw=1`).
 
 ## Scenario B — Hand a file to another session
 
@@ -124,10 +121,10 @@ They want a brief, RFC-ish note, or meeting doc that people and agents will keep
 If it is **one** markdown file, prefer a loose file (Scenario B) and PUT the same id. If it lives next to other files, use a site:
 
 1. Confirm a slug (`ios-brief`).
-2. Create or claim the site (Scenarios A/E).
-3. `PUT /v1/sites/ios-brief/files/notes.md` with the markdown.
-4. Give humans `{{ORIGIN}}/{handle}/s/ios-brief/notes.md` (browser page; `?raw=1` for source).
-5. Give agents `{{ORIGIN}}/v1/sites/ios-brief/files/notes.md`.
+2. Create the site (Scenario A).
+3. `PUT /v1/sites/{id}/files/notes.md` with the markdown.
+4. Give humans `{{ORIGIN}}/{handle}/s/{id}/ios-brief/notes.md` (browser page; `?raw=1` for source).
+5. Give agents `{{ORIGIN}}/v1/sites/{id}/files/notes.md`.
 
 Next edit is the same PUT. Last write wins. If two people save over each other, say so once — there is no merge. If they needed comments or suggestions, this is the wrong product; still publish if they want the link.
 
@@ -135,41 +132,28 @@ Next edit is the same PUT. Last write wins. If two people save over each other, 
 
 The site (or path) already exists. They want a new version, or another agent should read then write.
 
-1. `GET /v1/sites/{slug}` or `GET /v1/sites/{slug}/files/{path}` so you know what is there.
+1. `GET /v1/sites/{id}` or `GET /v1/sites/{id}/files/{path}` so you know what is there.
 2. Do **not** delete the site. PUT only the paths that change.
-3. A PUT to an unknown slug is **404**. Create first.
+3. A PUT to an unknown id is **404**. Create first. A guessed slug is also 404 — API keys by id.
 
 ```bash
-curl -sS {{ORIGIN}}/v1/sites/onboarding-draft/files/index.html \
+curl -sS {{ORIGIN}}/v1/sites/{id}/files/index.html \
   -H "Authorization: Bearer ${{TOKEN_ENV}}" \
   -H "content-type: text/html" \
   --data-binary @index.html
 ```
 
-This is the collaboration model: a shared slug, last write wins per path. Two agents, or a human and an agent, can take turns if they both know the path.
+This is the collaboration model: a shared site id, last write wins per path. Two agents, or a human and an agent, can take turns if they both know the site id and path.
 
-## Scenario E — Slug already exists (409)
+## Scenario E — Folder is easier as a zip
 
-`POST /v1/sites` without overwrite returns 409 with `url`, `last_written_by`, `updated_at`, `file_count`, and a `hint`. **Read that aloud to the human.**
-
-Ask them:
-
-- Pick a **new slug** (keeps both), or
-- Retry with `"overwrite": true` to **claim** the existing bucket.
-
-Overwrite claims the slug for further PUTs. It does **not** wipe files and does **not** change TTL unless you also send `ttl`. Only a later PUT to the same path replaces that path.
-
-If they wanted a brand-new thing and the slug is taken, prefer a new slug (`onboarding-draft-2`). To **copy** an existing site or file onto a new URL, use Scenario I — do not GET+PUT every path through context.
-
-## Scenario F — Folder is easier as a zip
-
-1. Create or claim the slug (A/E). Import 404s if the slug does not exist.
+1. Create the site (Scenario A). Import 404s if the id does not exist.
 2. Zip the folder. If every entry is under one wrapping directory (`my-site/index.html`), {{PRODUCT}} strips that folder so `index.html` lands at the site root.
-3. `POST /v1/sites/{slug}/import` with `Content-Type: application/zip`.
+3. `POST /v1/sites/{id}/import` with `Content-Type: application/zip`.
 4. Zip body ≤ 25 MB; each extracted file ≤ 25 MB. `..` paths are rejected.
 
 ```bash
-curl -sS {{ORIGIN}}/v1/sites/onboarding-draft/import \
+curl -sS {{ORIGIN}}/v1/sites/{id}/import \
   -H "Authorization: Bearer ${{TOKEN_ENV}}" \
   -H "content-type: application/zip" \
   --data-binary @site.zip
@@ -178,14 +162,14 @@ curl -sS {{ORIGIN}}/v1/sites/onboarding-draft/import \
 To download a site back as a zip (same 25 MB / file-count caps; empty site is 400):
 
 ```bash
-curl -sS {{ORIGIN}}/v1/sites/onboarding-draft/export \
+curl -sS {{ORIGIN}}/v1/sites/{id}/export \
   -H "Authorization: Bearer ${{TOKEN_ENV}}" \
   -o onboarding-draft.zip
 ```
 
 A single file is never a zip. `GET /v1/files/{id}?download=1` (or the public URL with `?download=1`) returns the file with `Content-Disposition: attachment`.
 
-## Scenario G — No token, expired token, or 401
+## Scenario F — No token, expired token, or 401
 
 Stop using a rejected or expired token. Then, in order:
 
@@ -198,11 +182,11 @@ Then retry with the **new** token. Do not scrape HTML for a token. Do not automa
 
 If the 401 body has `error: token_expired`, the token passed its lifetime. It cannot be extended and there is no renew call: do not retry with it, do not invent a replacement, follow the steps above. `GET /v1/whoami` returns your token's `expires_at` (`null` means never) if you want to warn the human before it happens.
 
-## Scenario H — Too big, password, or TTL
+## Scenario G — Too big, password, or TTL
 
 413 on a file or zip: over the **25 MB** cap. Shrink, split, or put large media elsewhere.
 
-413 `storage_cap`: the 20 GB platform safety valve. Suggest deleting an old site (`DELETE /v1/sites/{slug}` — no recycle bin) after they confirm.
+413 `storage_cap`: the 20 GB platform safety valve. Suggest deleting an old site (`DELETE /v1/sites/{id}` — no recycle bin) after they confirm.
 
 Who can write is per site or file: `owner` (only the creator) or `org` (any token on this host). New objects copy this Energon's default (`/v1/help` `retention.write_policy`) unless you set `write_policy` on create. Anyone with a token can still **read** via `/v1`, including password-protected links. `PATCH write_policy` is creator-only. A share password only gates the public `/sites` and `/files` URL.
 
@@ -215,10 +199,10 @@ If they want a password on the public link:
 curl -sS {{ORIGIN}}/v1/sites \
   -H "Authorization: Bearer ${{TOKEN_ENV}}" \
   -H "content-type: application/json" \
-  -d '{"slug":"private-draft","overwrite":false,"password":"the-password","ttl":"7d"}'
+  -d '{"slug":"private-draft","password":"the-password","ttl":"7d"}'
 
 # or later
-curl -sS {{ORIGIN}}/v1/sites/private-draft \
+curl -sS {{ORIGIN}}/v1/sites/{id} \
   -X PATCH \
   -H "Authorization: Bearer ${{TOKEN_ENV}}" \
   -H "content-type: application/json" \
@@ -237,11 +221,11 @@ Tell them the password. Agents that fetch the human URL send `-H "X-Energon-Pass
 
 If they asked for real ACLs or named-user ownership, say {{PRODUCT}} does not have those, then publish (with or without a password) if they still want the link.
 
-## Scenario I — Make a copy
+## Scenario H — Make a copy
 
 They want the same bytes under a **new** URL (fork an owner-locked site, copy a large file, edit one path after). Do **not** zip the site through context. Do **not** GET+PUT every path.
 
-1. `POST /v1/sites` with `{"slug":"new-slug","duplicate_from":"existing-slug"}`.
+1. `POST /v1/sites` with `{"slug":"new-slug","duplicate_from":"existing-id"}`.
 2. Or `POST /v1/files` with `{"duplicate_from":"id"}` (optional `filename`).
 3. You become `created_by`. `write_policy` is this Energon's default. Fresh TTL. Share password and write password are not copied.
 4. Anyone who can **read** via `/v1` can duplicate. A 403 on PUT of the original does not block this.
@@ -252,10 +236,10 @@ If you already have replacement bytes this turn, POST/PUT those as a new object.
 curl -sS {{ORIGIN}}/v1/sites \
   -H "Authorization: Bearer ${{TOKEN_ENV}}" \
   -H "content-type: application/json" \
-  -d '{"slug":"onboarding-draft-2","duplicate_from":"onboarding-draft"}'
+  -d '{"slug":"onboarding-draft-2","duplicate_from":"{id}"}'
 ```
 
-## Scenario J — Outside agent updates this URL
+## Scenario I — Outside agent updates this URL
 
 They want someone who is not on this host to replace bytes at a public URL. Do **not** mint them a token. Do **not** send them to /connect.
 
@@ -263,14 +247,14 @@ They want someone who is not on this host to replace bytes at a public URL. Do *
 2. The human sends the public URL and the write password to the outside agent.
 3. That agent `GET`s the content-origin `/llms.txt` (or the guest-write section of hub `/llms.txt` when the origins are the same) and `PUT`s the public URL with header `X-Energon-Write-Password` and a raw body. Site paths also accept `DELETE`.
 
-A file write password only replaces that file (including empty). A site write password can add, replace, or delete paths under that slug, including `index.html`, and cannot delete the site.
+A file write password only replaces that file (including empty). A site write password can add, replace, or delete paths under that site, including `index.html`, and cannot delete the site.
 
 ```bash
 # creator
 curl -sS {{ORIGIN}}/v1/sites \
   -H "Authorization: Bearer ${{TOKEN_ENV}}" \
   -H "content-type: application/json" \
-  -d '{"slug":"shared-draft","overwrite":false,"write_password":"the-write-password"}'
+  -d '{"slug":"shared-draft","write_password":"the-write-password"}'
 
 # outside agent — no Authorization
 curl -sS "$CONTENT_ORIGIN/llms.txt"
@@ -289,8 +273,7 @@ Give:
 - The write password if you set one
 - When it expires (`expires_at` / the `ttl` they picked)
 - The agent `api_url` if another session will fetch it (or the human URL plus the password header)
-- What you did (created vs claimed, files written)
-- If a 409 happened, what they chose
+- What you did (created, files written)
 
 Do not dump the whole API. Do not keep the token in your reply.
 

@@ -2,7 +2,7 @@
   import { onMount, onDestroy, tick, untrack } from 'svelte';
   import type { CatalogData, CatalogItem, HubData, LinkAccess } from '../types';
   import { api, jsonBody, errorMessage } from '../api';
-  import { stageFiles, publish, firstFreeSlug, slugify, isCollision, type StagedUpload, type PublishResult } from '../uploads';
+  import { stageFiles, publish, slugify, type StagedUpload, type PublishResult } from '../uploads';
   import { nextNumberedSlug } from "../../slugs";
   import { registerHubTools } from '../model-context';
   import PageTitle from '../components/PageTitle.svelte';
@@ -36,9 +36,6 @@
   let stageAccessOpen = $state(false);
   let stageTtl = $state(untrack(() => data.policy.default_ttl));
   let stageWrite = $state(untrack(() => data.policy.write_policy));
-  let conflictSlug = $state('');
-  let overwriteSlug = $state('');
-  let stageNote = $state('');
   let dragDepth = $state(0);
   let messages = $state<{ tone: 'ok' | 'err'; text: string; url?: string; name?: string; password?: string; writePassword?: string }[]>([]);
   let target = $state<{ kind: 'site' | 'file'; item: CatalogItem } | null>(null);
@@ -79,26 +76,19 @@
   const writeOptions = [{ value: 'owner', label: 'Only the creator' }, { value: 'org', label: 'Anyone in the org' }];
   const doorOptions = [{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }];
   const targetName = $derived(target ? (target.item.slug ?? target.item.filename) : '');
-  const targetPath = $derived(
-    !target
-      ? ''
-      : target.kind === 'file'
-        ? `/account/files/${encodeURIComponent(target.item.id!)}`
-        : `/account/sites/${encodeURIComponent(target.item.slug!)}${target.item.handle ? `?handle=${encodeURIComponent(target.item.handle)}` : ''}`,
-  );
+  const targetPath = $derived(target ? `/account/${target.kind === 'site' ? 'sites' : 'files'}/${encodeURIComponent(target.item.id)}` : '');
   const ttlNote = $derived('You can delete this whenever you want. Expiration is only the automatic stop.' + (!data.policy.allow_unlimited && ttlOptions.length ? ` Longest allowed is ${ttlOptions.at(-1)?.label}.` : ''));
   const isTargetCreator = $derived(!!target && target.item.created_by === data.email);
   const canMutateTarget = $derived(!!target && (target.item.write_policy !== 'owner' || target.item.created_by === data.email));
   const writePasswordNote = $derived(target?.kind === 'file'
     ? 'Replaces that file only. Someone not on this host can PUT the public URL.'
     : 'Full control of served bytes, including replacing index.html. Someone not on this host can PUT or DELETE paths.');
-  const shareDirty = $derived(!isTargetCreator ? false : shareDoor !== (loadedShareOn ? 'on' : 'off') || (shareDoor === 'on' && password.trim() !== loadedShare && !(shareUnrecovered && !password.trim())));
+  const shareDirty = $derived(shareDoor !== (loadedShareOn ? 'on' : 'off') || (shareDoor === 'on' && password.trim() !== loadedShare && !(shareUnrecovered && !password.trim())));
   const writeDirty = $derived(!isTargetCreator ? false : writeDoor !== (loadedWriteOn ? 'on' : 'off') || (writeDoor === 'on' && writePassword.trim() !== loadedWrite && !(writeUnrecovered && !writePassword.trim())));
-  const sharePhraseOk = $derived(!isTargetCreator || shareDoor === 'off' || !!password.trim() || (shareUnrecovered && shareDoor === 'on'));
+  const sharePhraseOk = $derived(shareDoor === 'off' || !!password.trim() || (shareUnrecovered && shareDoor === 'on'));
   const writePhraseOk = $derived(!isTargetCreator || writeDoor === 'off' || !!writePassword.trim() || (writeUnrecovered && writeDoor === 'on'));
   const linkAccessReady = $derived(linkAccessLoaded && !passwordLoading && (shareDirty || writeDirty) && sharePhraseOk && writePhraseOk);
   const linkAccessBusy = $derived(mutationBusy || passwordLoading || !linkAccessLoaded);
-  const overwriteMode = $derived(!!staged && overwriteSlug === staged.slug);
 
   function message(text: string, tone: 'ok' | 'err' = 'ok', result?: PublishResult) {
     messages = [{ tone, text, url: result?.url, name: result?.slug || result?.filename, password: result?.password, writePassword: result?.write_password }, ...messages];
@@ -123,7 +113,7 @@
     timer = setTimeout(() => refresh(), 200);
   }
   function resetStage() {
-    stageSequence++; staged = null; stagePassword = ''; stageWritePassword = ''; stageAccessOpen = false; conflictSlug = ''; overwriteSlug = ''; stageNote = '';
+    stageSequence++; staged = null; stagePassword = ''; stageWritePassword = ''; stageAccessOpen = false;
   }
   async function choose(files: File[], entries: FileSystemEntry[] = [], folder = false) {
     if (busy) return;
@@ -132,19 +122,9 @@
       const next = await stageFiles(files, entries, folder);
       if (sequence !== stageSequence || !next) return;
       if (!next.files.length) throw new Error('That folder is empty. Choose a folder containing files.');
-      staged = next; stagePassword = ''; stageWritePassword = ''; stageAccessOpen = false; conflictSlug = ''; overwriteSlug = ''; stageNote = '';
+      staged = next; stagePassword = ''; stageWritePassword = ''; stageAccessOpen = false;
       await tick();
       document.getElementById(next.kind === 'loose' ? 'stage-filename' : 'stage-slug')?.focus();
-      if (next.kind !== 'loose') {
-        const preferred = next.slug;
-        try {
-          const available = await firstFreeSlug(preferred, contentOrigin, handle);
-          if (sequence === stageSequence && staged?.slug === preferred) {
-            staged.slug = available;
-            if (available !== preferred) stageNote = `'${preferred}' exists. Using '${available}'.`;
-          }
-        } catch { /* Creation still checks collisions atomically if the public lookup fails. */ }
-      }
     } catch (error) { message(errorMessage(error), 'err'); }
     finally { busy = false; }
   }
@@ -159,25 +139,12 @@
     busy = true; publishing = true;
     staged.slug = slugify(staged.slug);
     const upload = staged;
-    const overwrite = overwriteSlug === upload.slug;
     try {
-      const result = await publish(upload, { password: stagePassword.trim(), write_password: stageWritePassword.trim(), ttl: stageTtl, write_policy: stageWrite, overwrite });
+      const result = await publish(upload, { password: stagePassword.trim(), write_password: stageWritePassword.trim(), ttl: stageTtl, write_policy: stageWrite });
       message('Published', 'ok', { ...result, password: result.password || stagePassword.trim() || undefined, write_password: result.write_password || stageWritePassword.trim() || undefined });
       resetStage(); await refresh();
     } catch (error) {
-      if (upload.kind !== 'loose' && isCollision(error) && !overwrite) {
-        if (conflictSlug === upload.slug) {
-          overwriteSlug = upload.slug;
-          stageNote = `'${upload.slug}' exists. Choose “Write into it” to update the existing site. Other paths stay. Expiration, who can write, and link passwords are unchanged.`;
-        } else {
-          conflictSlug = upload.slug;
-          try {
-            const suggested = await firstFreeSlug(nextNumberedSlug(upload.slug), contentOrigin, handle);
-            stageNote = `'${upload.slug}' exists. Using '${suggested}'. Publish to create it, or put '${upload.slug}' back to write into the existing site.`;
-            staged.slug = suggested;
-          } catch (lookupError) { message(errorMessage(lookupError), 'err'); }
-        }
-      } else { message(errorMessage(error), 'err'); await refresh(); }
+      message(errorMessage(error), 'err'); await refresh();
     } finally { busy = false; publishing = false; }
   }
   function selectTarget(kind: 'site' | 'file', item: CatalogItem) { target = { kind, item }; modalError = ''; }
@@ -215,7 +182,7 @@
   async function loadLinkAccess() {
     if (!target) return;
     const seq = ++linkAccessSeq;
-    const path = targetPath;
+    const path = `/account/${target.kind === 'site' ? 'sites' : 'files'}/${encodeURIComponent(target.item.id)}`;
     passwordLoading = true;
     modalError = '';
     try {
@@ -224,7 +191,7 @@
       loadedShareOn = !!detail.password_protected;
       loadedShare = detail.password || '';
       password = loadedShare;
-      shareUnrecovered = isTargetCreator && loadedShareOn && !detail.password;
+      shareUnrecovered = loadedShareOn && !detail.password;
       shareDoor = loadedShareOn ? 'on' : 'off';
       if (isTargetCreator) {
         loadedWriteOn = !!detail.write_password_protected;
@@ -258,16 +225,14 @@
       await mutate(async () => { message('Duplicated', 'ok', await api<PublishResult>('/account/files', jsonBody('POST', { duplicate_from: target!.item.id }))); });
       return;
     }
-    try {
-      duplicateSlug = await firstFreeSlug(nextNumberedSlug(target.item.slug ?? target.item.id), contentOrigin, handle);
-      confirmAction = 'Duplicate'; confirmOpen = true;
-    } catch (error) { message(errorMessage(error), 'err'); }
+    duplicateSlug = nextNumberedSlug(target.item.slug ?? target.item.id);
+    confirmAction = 'Duplicate'; confirmOpen = true;
   }
   async function confirm(value: string) {
     if (!target) return;
     await mutate(async () => {
       if (confirmAction === 'Delete') { await api(targetPath, { method: 'DELETE' }); message(`Deleted ${targetName}.`); }
-      else message('Duplicated', 'ok', await api<PublishResult>('/account/sites', jsonBody('POST', { slug: slugify(value), duplicate_from: target!.item.slug })));
+      else message('Duplicated', 'ok', await api<PublishResult>('/account/sites', jsonBody('POST', { slug: slugify(value), duplicate_from: target!.item.id })));
       confirmOpen = false;
     });
   }
@@ -329,6 +294,9 @@
     return () => { unregister(); document.removeEventListener('dragenter', enter); document.removeEventListener('dragover', over); document.removeEventListener('dragleave', leave); document.removeEventListener('drop', drop); };
   });
   onDestroy(() => { clearTimeout(timer); controller?.abort(); stageSequence++; });
+  $effect(() => {
+    if (stagePassword.trim() || stageWritePassword.trim()) stageAccessOpen = true;
+  });
 </script>
 
 <main class="en-wrap">
@@ -358,20 +326,15 @@
   <form id="stage" class="en-stage" onsubmit={launch}>
     <div class="en-stage-status" id="stage-status"><Unit size={5} />{staged.kind === 'loose' ? '1 file ready' : `${staged.files.length} ${staged.files.length === 1 ? 'file' : 'files'} ready`}</div>
     {#if staged.kind === 'loose'}<div id="stage-loose"><Field label="URL" htmlFor="stage-filename"><UrlField id="stage-filename" ariaLabel="Filename" prefix={`${contentOrigin}/${handle}/f/{id}/`} bind:value={staged.filename} disabled={busy} /></Field></div>
-    {:else}<div id="stage-site"><Field label="URL" htmlFor="stage-slug"><UrlField id="stage-slug" ariaLabel="Site slug" prefix={`${contentOrigin}/${handle}/s/`} suffix="/" bind:value={staged.slug} disabled={busy} oninput={() => { overwriteSlug = ''; }} /></Field></div>{/if}
-    {#if stageNote}<p id="stage-exists" class="en-stage-exists">{stageNote}</p>{/if}
-    <Field label="Expiration" htmlFor="stage-ttl" noteId="stage-ttl-note" note={ttlNote}><Select id="stage-ttl" aria-label="When this expires" options={ttlOptions} bind:value={stageTtl} disabled={busy || overwriteMode} /></Field>
-    <Field label="Who can write" htmlFor="stage-write" note="Controls who with a token can update or delete this work. It does not grant or deny the write-password door."><Select id="stage-write" aria-label="Who can write" options={writeOptions} bind:value={stageWrite} disabled={busy || overwriteMode} /></Field>
+    {:else}<div id="stage-site"><Field label="URL" htmlFor="stage-slug"><UrlField id="stage-slug" ariaLabel="Site slug" prefix={`${contentOrigin}/${handle}/s/{id}/`} suffix="/" bind:value={staged.slug} disabled={busy} /></Field></div>{/if}
+    <Field label="Expiration" htmlFor="stage-ttl" noteId="stage-ttl-note" note={ttlNote}><Select id="stage-ttl" aria-label="When this expires" options={ttlOptions} bind:value={stageTtl} disabled={busy} /></Field>
+    <Field label="Who can write" htmlFor="stage-write" note="Controls who with a token can update or delete this work. It does not grant or deny the write-password door."><Select id="stage-write" aria-label="Who can write" options={writeOptions} bind:value={stageWrite} disabled={busy} /></Field>
     <details id="stage-access" class="en-stage-access" bind:open={stageAccessOpen}>
       <summary>Link access</summary>
-      {#if overwriteMode}
-        <p class="en-lede">Writing into an existing site does not change its share or write password. Use Link access on the catalog row after publish.</p>
-      {:else}
       <Field label="Share password" htmlFor="stage-password" noteId="stage-password-note" note="Leave empty so anyone with the link can open it. Valid API tokens on this host can read the work even with a share password."><PasswordField id="stage-password" generateId="stage-pw-gen" copyId="stage-pw-copy" words={data.words} bind:value={stagePassword} describedby="stage-password-note" disabled={busy} /></Field>
       <Field label="Write password" htmlFor="stage-write-password" noteId="stage-write-password-note" note={staged.kind === 'loose' ? 'Replaces this file only. Leave empty to keep guests from writing.' : 'Full control of served bytes, including replacing index.html. Leave empty to keep guests from writing.'}><PasswordField id="stage-write-password" generateId="stage-wpw-gen" copyId="stage-wpw-copy" words={data.words} bind:value={stageWritePassword} describedby="stage-write-password-note" disabled={busy} /></Field>
-      {/if}
     </details>
-    <div class="en-stage-actions"><Button id="stage-cancel" onclick={resetStage} disabled={busy}>Cancel</Button><Button type="submit" id="stage-go" variant="primary" disabled={busy}>{publishing ? 'Publishing…' : busy ? 'Preparing…' : overwriteMode ? 'Write into it' : 'Publish'}</Button></div>
+    <div class="en-stage-actions"><Button id="stage-cancel" onclick={resetStage} disabled={busy}>Cancel</Button><Button type="submit" id="stage-go" variant="primary" disabled={busy}>{publishing ? 'Publishing…' : busy ? 'Preparing…' : 'Publish'}</Button></div>
   </form>
 {/if}{/snippet}
 
@@ -381,7 +344,6 @@
 <Dialog dismissible={!mutationBusy} id="pw-dlg" bind:open={passwordOpen} title="Link access" message="Copy a phrase to share the link. Turn a password off and save to remove it.">
   {#if modalError}<Flash tone="err">{modalError}</Flash>{/if}
   <form onsubmit={e => { e.preventDefault(); void saveLinkAccess(); }}>
-    {#if !target || isTargetCreator}
     <Field label="Share password" htmlFor={shareDoor === 'on' ? 'pw-dlg-input' : undefined} noteId="pw-dlg-note" note={shareDoor === 'off' ? 'Anyone with the link can open it. Valid API tokens on this host can still read the work.' : shareUnrecovered && !password.trim() ? 'This password was set before Energon kept phrases for display. Generate a new one to copy it, or turn it off.' : 'Anyone with this password can open the link. Valid API tokens on this host can still read the work.'}>
       {#snippet action()}
         <SegmentedControl id="pw-dlg-share-door" className="en-seg--door" bind:value={shareDoor} onChange={setShareDoor} ariaLabel="Share password" options={doorOptions} disabled={linkAccessBusy} />
@@ -390,10 +352,7 @@
         <PasswordField id="pw-dlg-input" generateId="pw-dlg-gen" copyId="pw-dlg-copy" describedby="pw-dlg-note" words={data.words} bind:value={password} disabled={linkAccessBusy} />
       {/if}
     </Field>
-    {:else}
-      <Flash tone="ok">{loadedShareOn ? 'Share password is on. Only the creator can copy or change it.' : 'No share password. Only the creator can set one.'}</Flash>
-    {/if}
-    {#if !target || isTargetCreator}
+    {#if isTargetCreator}
       <Field label="Write password" htmlFor={writeDoor === 'on' ? 'pw-dlg-write-input' : undefined} noteId="pw-dlg-write-note" note={writeDoor === 'off' ? 'Turn on so someone not on this host can write. Valid tokens still follow Who can write.' : writeUnrecovered && !writePassword.trim() ? 'This password was set before Energon kept phrases for display. Generate a new one to copy it, or turn it off.' : writePasswordNote}>
         {#snippet action()}
           <SegmentedControl id="pw-dlg-write-door" className="en-seg--door" bind:value={writeDoor} onChange={setWriteDoor} ariaLabel="Write password" options={doorOptions} disabled={linkAccessBusy} />
@@ -403,7 +362,7 @@
         {/if}
       </Field>
     {/if}
-    <div class="en-dialog-actions"><Button disabled={mutationBusy} onclick={() => passwordOpen = false}>Cancel</Button>{#if !target || isTargetCreator}<Button id="pw-dlg-ok" type="submit" variant="primary" disabled={mutationBusy || !linkAccessReady}>Save</Button>{/if}</div>
+    <div class="en-dialog-actions"><Button disabled={mutationBusy} onclick={() => passwordOpen = false}>Cancel</Button><Button id="pw-dlg-ok" type="submit" variant="primary" disabled={mutationBusy || !linkAccessReady}>Save</Button></div>
   </form>
 </Dialog>
 <Dialog dismissible={!mutationBusy} id="write-dlg" bind:open={writeOpen} title="Who can write" message="Only the creator can change this.">

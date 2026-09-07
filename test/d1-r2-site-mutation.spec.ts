@@ -16,7 +16,7 @@ describe("mock-free site mutation integrity", () => {
       log.write("setup", "phase_start");
       const token = await mint("site-file-native-d1-abort");
       const slug = "native-abort-put";
-      await createSiteFixture(token, slug, { "index.html": "original" });
+      const fixture = await createSiteFixture(token, slug, { "index.html": "original" });
       const before = await snapshotSiteMutation(env, "ada", slug);
       log.snapshot("setup", "before", mutationSnapshotSummary(before));
 
@@ -25,13 +25,13 @@ describe("mock-free site mutation integrity", () => {
         "fail_native_site_file_update",
         `CREATE TRIGGER fail_native_site_file_update
          BEFORE UPDATE OF size ON site_files
-         WHEN NEW.slug = '${slug}' AND NEW.path = 'index.html' AND NEW.size = 11
+         WHEN NEW.site_id = '${fixture.id}' AND NEW.path = 'index.html' AND NEW.size = 11
          BEGIN
            SELECT RAISE(ABORT, 'test native D1 abort');
          END`,
         async () => {
           log.write("act", "phase_start", { mutation: "site_file_replace", failure: "native_d1_abort" });
-          return json(`/v1/sites/${slug}/files/index.html`, {
+          return json(`/v1/sites/${fixture.id}/files/index.html`, {
             method: "PUT",
             headers: auth(token),
             body: "replacement",
@@ -52,11 +52,11 @@ describe("mock-free site mutation integrity", () => {
       log.write("setup", "phase_start", { paths: 50 });
       const token = await mint("site-import-batch-edge");
       const slug = "batch-edge-import";
-      await createSiteFixture(token, slug);
+      const fixture = await createSiteFixture(token, slug);
       const originalFiles = Object.fromEntries(
         Array.from({ length: 50 }, (_, index) => [`path-${index.toString().padStart(2, "0")}.txt`, strToU8(`old-${index}`)]),
       );
-      const initialImport = await json(`/v1/sites/${slug}/import`, {
+      const initialImport = await json(`/v1/sites/${fixture.id}/import`, {
         method: "POST",
         headers: auth(token, { "content-type": "application/zip" }),
         body: zipSync(originalFiles),
@@ -85,7 +85,7 @@ describe("mock-free site mutation integrity", () => {
          END`,
         async () => {
           log.write("act", "phase_start", { mutation: "site_import", paths: 50, failure: "native_d1_abort" });
-          return json(`/v1/sites/${slug}/import`, {
+          return json(`/v1/sites/${fixture.id}/import`, {
             method: "POST",
             headers: auth(token, { "content-type": "application/zip" }),
             body: zipSync(replacementFiles),
@@ -108,7 +108,7 @@ describe("mock-free site mutation integrity", () => {
       log.write("setup", "phase_start");
       const token = await mint("site-delete-backup-abort");
       const slug = "delete-backup-abort";
-      await createSiteFixture(token, slug, {
+      const fixture = await createSiteFixture(token, slug, {
         "index.html": "<h1>original</h1>",
         "app.css": "body { color: teal; }",
         "notes.txt": "preserve me",
@@ -127,7 +127,7 @@ describe("mock-free site mutation integrity", () => {
          END`,
         async () => {
           log.write("act", "phase_start", { mutation: "site_delete", failure: "native_d1_abort" });
-          return json(`/v1/sites/${slug}`, { method: "DELETE", headers: auth(token) });
+          return json(`/v1/sites/${fixture.id}`, { method: "DELETE", headers: auth(token) });
         },
       );
       expect(response.status).toBe(500);

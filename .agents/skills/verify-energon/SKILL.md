@@ -20,7 +20,7 @@ The skill lives in `.agents/skills/verify-energon/`; `.claude/skills/verify-ener
 
 ## Launch
 
-Localhost skips Cloudflare Access. Identity is `DEV_ACCESS_EMAIL` from `.dev.vars`, else `dev@example.com`. The handle is the email local-part (`dev` for the default). Published URLs are `/{handle}/s/{slug}/` and `/{handle}/f/{id}/{filename}`.
+Localhost skips Cloudflare Access. Identity is `DEV_ACCESS_EMAIL` from `.dev.vars`, else `dev@example.com`. The handle is the email local-part (`dev` for the default). Published URLs are `/{handle}/s/{id}/{slug}/` and `/{handle}/f/{id}/{filename}`. Site API keys by id: `/v1/sites/{id}`.
 
 Never use the default `.wrangler/state` directory. Never attach to an already-running server unless `bin/doctor` says that process is this run's pid.
 
@@ -84,7 +84,7 @@ curl -sS -D /tmp/h -o /tmp/b -X POST "$ORIGIN/v1/sites" \
 # expect 201, body.url = $ORIGIN/$HANDLE/s/verify-site/
 ```
 
-Save request method+path, response status, and body into `$EVIDENCE/<feature>/`. Then GET the public URL (and a second view: hub catalog or `/v1/sites/{slug}`) so persistence is not proven by the write response alone.
+Save request method+path, response status, and body into `$EVIDENCE/<feature>/`. Then GET the public URL (and a second view: hub catalog or `/v1/sites/{id}`) so persistence is not proven by the write response alone.
 
 ### Browser recipe shape
 

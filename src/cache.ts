@@ -12,8 +12,8 @@ export function privateCacheControl(): string {
   return "private, no-store";
 }
 
-export function siteCacheTag(handle: string, slug: string): string {
-  return `site-${handle}-${slug}`;
+export function siteCacheTag(handle: string, id: string): string {
+  return `site-${handle}-${id}`;
 }
 
 export function fileCacheTag(id: string): string {
@@ -29,8 +29,8 @@ export async function purgeContent(ctx: ExecutionContext | undefined, prefixes: 
   await api.purge({ pathPrefixes: prefixes });
 }
 
-export function sitePrefix(handle: string, slug: string): string {
-  return `/${handle}/s/${slug}/`;
+export function sitePrefix(handle: string, id: string): string {
+  return `/${handle}/s/${id}/`;
 }
 
 export function filePrefix(handle: string, id: string): string {
