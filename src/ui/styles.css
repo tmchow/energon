@@ -80,8 +80,6 @@
 .en-scan svg { display: block; width: var(--scan-glyph); height: var(--scan-glyph); }
 .en-scan--on { color: var(--fg-hot); }
 .en-scan:hover { background: var(--bg-raised); color: var(--fg-1); }
-.en-scan-example-name { font-weight: 500; }
-.en-scan-example-note { color: var(--fg-3); font: var(--weight-regular) var(--text-sm)/1.3 var(--font-mono); }
 .en-md-wrap { max-width: 46rem; }
 @media (max-width: 719px) {
   .en-mint { grid-template-columns: 1fr; }
