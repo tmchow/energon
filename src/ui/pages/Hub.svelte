@@ -59,6 +59,8 @@
   let linkAccessSeq = 0;
   let writeOpen = $state(false);
   let write = $state('owner');
+  let ttlOpen = $state(false);
+  let ttl = $state(untrack(() => data.policy.default_ttl));
   let mutationBusy = $state(false);
   let modalError = $state('');
   let filepick: HTMLInputElement;
@@ -77,6 +79,7 @@
   const targetPath = $derived(target ? `/account/${target.kind === 'site' ? 'sites' : 'files'}/${encodeURIComponent(target.item.id)}` : '');
   const ttlNote = $derived('You can delete this whenever you want. Expiration is only the automatic stop.' + (!data.policy.allow_unlimited && ttlOptions.length ? ` Longest allowed is ${ttlOptions.at(-1)?.label}.` : ''));
   const isTargetCreator = $derived(!!target && target.item.created_by === data.email);
+  const canMutateTarget = $derived(!!target && (target.item.write_policy !== 'owner' || target.item.created_by === data.email));
   const writePasswordNote = $derived(target?.kind === 'file'
     ? 'Replaces that file only. Someone not on this host can PUT the public URL.'
     : 'Full control of served bytes, including replacing index.html. Someone not on this host can PUT or DELETE paths.');
@@ -262,11 +265,15 @@
   async function saveWrite() {
     await mutate(async () => { await api(targetPath, jsonBody('PATCH', { write_policy: write })); message('Who can write updated.'); writeOpen = false; });
   }
+  async function saveTtl() {
+    await mutate(async () => { await api(targetPath, jsonBody('PATCH', { ttl })); message('Expiration updated.'); ttlOpen = false; });
+  }
   const moreItems = $derived(target ? [
     ...(target.kind === 'file' || (target.item.file_count ?? 0) > 0 ? [{ label: target.kind === 'site' ? 'Download zip' : 'Download', icon: 'download' as const, href: `${targetPath}/${target.kind === 'site' ? 'export' : 'download'}` }] : []),
     { label: 'Duplicate', icon: 'fork' as const, onClick: duplicate },
     { label: target.item.password_protected || target.item.write_password_protected ? 'Change or remove password' : 'Set password', icon: 'lock' as const, onClick: () => { moreOpen = false; editPassword(target!.kind, target!.item); } },
     ...(target.item.created_by === data.email ? [{ label: 'Who can write', icon: 'person' as const, onClick: () => { write = target!.item.write_policy; writeOpen = true; } }] : []),
+    ...(canMutateTarget ? [{ label: 'Change expiration', icon: 'clock' as const, onClick: () => { ttl = data.policy.default_ttl; ttlOpen = true; } }] : []),
     { label: 'Delete', icon: 'trash' as const, danger: true, onClick: () => { confirmAction = 'Delete'; confirmOpen = true; } },
   ] : []);
 
@@ -362,6 +369,12 @@
   {#if modalError}<Flash tone="err">{modalError}</Flash>{/if}
   <form onsubmit={e => { e.preventDefault(); void saveWrite(); }}><Field label="Who can write" htmlFor="write-dlg-select"><Select id="write-dlg-select" aria-label="Who can write" options={writeOptions} bind:value={write} disabled={mutationBusy} /></Field>
     <div class="en-dialog-actions"><Button disabled={mutationBusy} onclick={() => writeOpen = false}>Cancel</Button><Button id="write-dlg-ok" type="submit" variant="primary" disabled={mutationBusy}>Save</Button></div>
+  </form>
+</Dialog>
+<Dialog dismissible={!mutationBusy} id="ttl-dlg" bind:open={ttlOpen} title="Expiration" message="The new timer starts now, not from when this was published.">
+  {#if modalError}<Flash tone="err">{modalError}</Flash>{/if}
+  <form onsubmit={e => { e.preventDefault(); void saveTtl(); }}><Field label="Expiration" htmlFor="ttl-dlg-select" noteId="ttl-dlg-note" note={ttlNote}><Select id="ttl-dlg-select" aria-label="When this expires" options={ttlOptions} bind:value={ttl} disabled={mutationBusy} /></Field>
+    <div class="en-dialog-actions"><Button disabled={mutationBusy} onclick={() => ttlOpen = false}>Cancel</Button><Button id="ttl-dlg-ok" type="submit" variant="primary" disabled={mutationBusy}>Save</Button></div>
   </form>
 </Dialog>
 <div id="drop-overlay" class="en-drop-overlay" hidden={dragDepth === 0} aria-hidden={dragDepth === 0}><div class="en-drop-overlay-frame"><div class="en-drop-title">Drop to stage</div><div class="en-drop-sub">A folder or zip becomes a site. One file gets a stable URL. Nothing is written until you Publish.</div></div></div>
