@@ -14,8 +14,8 @@ Share password lets a user lock a public site or file URL behind a phrase. Brows
 
 ## How to get to it (user POV)
 
-- Hub stage: fill `Optional password` (or generate with `Generate a readable password`) before `Publish`.
-- Hub catalog: lock mark `Set view password` / `View password`, or More actions `Set password` / `Change or remove password`.
+- Hub stage: open `#stage-access` (Link access), then fill `#stage-password` (or generate with `Generate a readable password`) before `Publish`.
+- Hub catalog: lock mark `View password` only when a view password is set. Unprotected rows have no password mark. More actions still `Set password` / `Change or remove password`. Dialog `#pw-dlg` title is Link access.
 - API: `"password"` on `POST /v1/sites` or `PATCH /v1/sites/{slug}`; `X-Energon-Set-Password` on `POST`/`PUT /v1/files`.
 - Open the public URL; submit the form, or retry with header `X-Energon-Password`.
 
@@ -33,7 +33,7 @@ Preconditions:
 - **Wrong header.** Run the public GET with `-H "X-Energon-Password: wrong-phrase"`. Status `401`. Still no `gated-ok`.
 - **Right header.** Run `curl -sS -o "$EVIDENCE/share-password/unlocked.html" -w '%{http_code}' "$ORIGIN/$HANDLE/s/verify-gated/" -H "X-Energon-Password: correct-horse"`. Status `200`. Body contains `gated-ok`.
 - **Token skips gate.** `GET $ORIGIN/v1/sites/verify-gated/files/index.html` with Bearer token and no password header. Status `200`. Body contains `gated-ok`.
-- **Hub lock.** On a site without a password, choose the lock (`Set view password`) or More → `Set password`. Dialog `#pw-dlg` title about password. Generate or type a phrase, choose `Save`. Catalog row lock hover is `View password`. Public GET without header is 401.
+- **Hub lock.** On a site without a password, choose More → `Set password`. Dialog `#pw-dlg` title `Link access`. Set share password to replace, generate or type a phrase, choose `Save`. Catalog row lock hover is `View password`. Public GET without header is 401.
 - **Clear.** `PATCH /v1/sites/verify-gated` with `{"password":""}`. Public GET without header is 200 and contains `gated-ok`.
 - **Proof.** Save gate HTML, JSON 401, unlocked HTML, and the create echo. Browser proof: screenshot of the gate page with `This link is password-protected.` visible, then a screenshot after a correct form submit showing `gated-ok`.
 

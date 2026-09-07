@@ -16,7 +16,7 @@ This skill talks only to **{{ORIGIN}}**. Install a separately rendered skill for
 | --- | --- | --- |
 | 401 | `unauthorized` | Stop. Connect with a code (auth.md) or have the human provision a token at {{ORIGIN}}/tokens |
 | 401 | `token_expired` | Terminal. The token passed its lifetime and cannot be extended. Do not retry with it; connect again or the human provisions a new one at {{ORIGIN}}/tokens (`expired_at` and `tokens_url` are in the body) |
-| 401 | `password_required` | Retry the human URL with `X-Energon-Password`, or use `api_url` with a token |
+| 401 | `password_required` | Retry the human URL with `X-Energon-Password` to read, or `X-Energon-Write-Password` to write. Token `api_url` still skips the share password. |
 | 404 | `site_not_found` / `file_not_found` | Create the site first; never implicit-create. For files, check the path or id. |
 | 409 | `site_exists` | Show `url` + last writer. Ask: new slug or `overwrite: true` |
 | 410 | `expired` | Content passed `expires_at`. It is gone or about to be purged. Do not retry the same URL. |
@@ -25,8 +25,8 @@ This skill talks only to **{{ORIGIN}}**. Install a separately rendered skill for
 ## Sites
 
 ```
-POST   /v1/sites                         { "slug", "overwrite": false, "password"?: string, "ttl"?: string, "duplicate_from"?: slug }
-PATCH  /v1/sites/{slug}                  { "password"?: string, "ttl"?: string }  empty password clears; ttl resets expiry from now
+POST   /v1/sites                         { "slug", "overwrite": false, "password"?: string, "write_password"?: string, "ttl"?: string, "duplicate_from"?: slug }
+PATCH  /v1/sites/{slug}                  { "password"?: string, "write_password"?: string, "ttl"?: string }  empty password or write_password clears; ttl resets expiry from now; write_password is creator-only
 GET    /v1/sites/{slug}/files/{path}     raw bytes (token)
 PUT    /v1/sites/{slug}/files/{path}     raw body (path may contain slashes). Does not extend expiry.
 POST   /v1/sites/{slug}/import           application/zip
@@ -37,7 +37,7 @@ DELETE /v1/sites/{slug}                  site + all objects (no recycle bin)
 DELETE /v1/sites/{slug}/files/{path}     one path
 ```
 
-Create `201` `{ slug, url, created: true, password_protected, password, ttl, expires_at }`. `password` is the phrase you just set, or `null`. `duplicate_from` copies an existing site onto the new slug (you own the copy; fresh TTL; password is not copied). Overwrite-claim of an existing slug is `200` `{ created: false }` and does not change TTL unless `ttl` is sent. PUT is `201` for a new path, `200` if replacing. PUT/GET file responses include `url` and `api_url`. GET listings have `password_protected` and `expires_at`.
+Create `201` `{ slug, url, created: true, password_protected, password, write_password_protected, write_password, ttl, expires_at }`. `password` / `write_password` are the phrases you just set, or `null`. `duplicate_from` copies an existing site onto the new slug (you own the copy; fresh TTL; share password and write password are not copied). Overwrite-claim of an existing slug is `200` `{ created: false }` and does not change TTL unless `ttl` is sent. PUT is `201` for a new path, `200` if replacing. PUT/GET file responses include `url` and `api_url`. GET listings have `password_protected`, `write_password_protected`, and `expires_at`.
 
 Human URL: `{{ORIGIN}}/{handle}/s/{slug}/{path}`  
 Agent URL: `{{ORIGIN}}/v1/sites/{slug}/files/{path}`  
@@ -49,17 +49,20 @@ Directory URL: `{{ORIGIN}}/{handle}/s/{slug}/` serves `index.html` if present, e
 POST /v1/files           multipart field "file"  OR  raw body + header X-Filename
                          OR JSON { "duplicate_from", "filename"? }
                          optional X-Energon-Set-Password (or multipart field password)
+                         optional X-Energon-Set-Write-Password (or multipart field write_password)
                          optional X-Energon-TTL (or multipart field ttl)
                          optional X-Energon-Duplicate-From
 PUT  /v1/files/{id}      replace bytes; optional X-Filename; same id and URL
                          optional X-Energon-Set-Password. Does not extend expiry.
-PATCH /v1/files/{id}     { "password"?: string, "ttl"?: string }  empty password clears
+PATCH /v1/files/{id}     { "password"?: string, "write_password"?: string, "ttl"?: string }  empty password or write_password clears; write_password is creator-only
 GET  /v1/files           recent loose files (`total`, `next_cursor`, `?limit=&cursor=`)
 GET  /v1/files/{id}      raw bytes (token). ?download=1 → attachment
 DELETE /v1/files/{id}    delete the file (no recycle bin)
 ```
 
-`201` `{ url, api_url, id, handle, filename, size, password_protected, password, ttl, expires_at }` on create. `password` is the phrase you just set, or `null`. `duplicate_from` copies an existing file to a new id. `200` `{ ..., replaced: true }` on PUT. Human URL: `/{handle}/f/{id}/{filename}`. Agent URL: `/v1/files/{id}`. PUT 404s if the id does not exist — there is no implicit create. GET listings have `password_protected` and `expires_at`.
+`201` `{ url, api_url, id, handle, filename, size, password_protected, password, write_password_protected, write_password, ttl, expires_at }` on create. `password` / `write_password` are the phrases you just set, or `null`. `duplicate_from` copies an existing file to a new id (write password is not copied). `200` `{ ..., replaced: true }` on PUT. Human URL: `/{handle}/f/{id}/{filename}`. Agent URL: `/v1/files/{id}`. PUT 404s if the id does not exist — there is no implicit create. GET listings have `password_protected`, `write_password_protected`, and `expires_at`.
+
+Guest write on the public URL uses header `X-Energon-Write-Password` (not a `/v1` header). Read `GET {content_origin}/llms.txt`. A file write password only PUTs that file. A site write password can PUT or DELETE a path. Do not mint the outside agent a token.
 
 ## Retention
 

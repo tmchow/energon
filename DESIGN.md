@@ -72,7 +72,7 @@ Keep the supplied canvas wash. Cards and controls use the established surfaces, 
 
 Charge belongs on the cube, primary action, focal drop zone, URL field, selected controls, progress indicators, focus, and conduit units. Use at most one charged card per page. Do not glow body copy or every panel. App actions use their existing interaction states; do not add breathing animations to buttons.
 
-Green indicates a successful result, amber a warning or expiry condition, and rose an error or destructive confirmation. Existing destructive icon buttons use amber. Preserve that distinction and always provide a text label or other non-color cue. A lock describes a share password, not an individual access-control list.
+Green indicates a successful result, amber a warning or expiry condition, and rose an error or destructive confirmation. Existing destructive icon buttons use amber. Preserve that distinction and always provide a text label or other non-color cue. A lock describes a share password, not an individual access-control list. The lockup (lock northwest, filled pencil southeast) describes a write password.
 
 The application ships dark. Light tokens and specimen examples exist for exploration; their presence is not a reason to add a theme switch or claim a production light theme is complete.
 

@@ -43,3 +43,4 @@ Preconditions:
 - Delete requires the exact slug or filename. Cancel leaves the object in place — confirm with a GET.
 - `Load more` appears only when a cursor is present. Do not treat a short list as a pagination bug.
 - Opening the public link leaves the hub. Re-open `$ORIGIN/` before another catalog assertion.
+- Password marks: view-password-only is a padlock (`View password`). Any write password is the lockup (`Write password`). Neither hash: no password mark. More still offers `Set password`.
