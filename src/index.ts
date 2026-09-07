@@ -4,7 +4,7 @@ import { decideConnection, exchangeConnection, purgeConnections, startConnection
 import { aboutResponse } from "./about";
 import { instanceFooter, PRIVATE_HTML_HEADERS } from "./chrome";
 import logoSvg from "./logo.svg";
-import { actorFromAccess, assertEmailAllowed, helpBody, listTokens, mintToken, rejectWorkersDevForHumans, requireHuman, requireToken, revokeToken, unauthorized } from "./auth";
+import { actorFromAccess, assertEmailAllowed, bulkRevokeResponse, helpBody, listTokens, mintToken, rejectWorkersDevForHumans, requireHuman, requireToken, revokeToken, unauthorized } from "./auth";
 import { setupResponse } from "./setup";
 import { statsResponse } from "./stats";
 import { parseListQuery } from "./catalog";
@@ -216,6 +216,11 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
       { id: minted.id, label: minted.label, token: minted.token, expires_at: minted.expires_at, recoverable: false },
       201,
     );
+  }
+
+  if (path === "/account/tokens/revoke" && method === "POST") {
+    const actor = await requireHuman(request, env, ctx);
+    return bulkRevokeResponse(env, actor, await readJson(request));
   }
 
   const revokeMatch = path.match(/^\/account\/tokens\/([^/]+)\/revoke$/);

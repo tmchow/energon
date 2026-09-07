@@ -6,7 +6,8 @@ import {
   formatBytes,
 } from "./config";
 import { helpGuestWriteSop } from "./guest-write-protocol";
-import { ApiError, decodeJwtPayload, isLocalHost, isWorkersDev, nanoid, publicOrigin, sha256Hex } from "./http";
+import { assertNever } from "./catalog";
+import { ApiError, decodeJwtPayload, isLocalHost, isWorkersDev, json, nanoid, publicOrigin, sha256Hex } from "./http";
 import { identityFromEnv, installLine } from "./instance";
 import {
   emailAllowed,
@@ -18,6 +19,15 @@ import {
   tokenPolicy,
   tokenPolicyPublic,
 } from "./policy";
+import {
+  BULK_REVOKE_TARGETS,
+  bulkRevokeEligible,
+  tokenStatus,
+  type BulkRevokePreview,
+  type BulkRevokeResult,
+  type BulkRevokeTarget,
+  type TokenSummary,
+} from "./token-status";
 import { ensureUser, getUser, getUserById } from "./handles";
 import type { Actor, Env, TokenRow } from "./types";
 
@@ -244,19 +254,9 @@ type TokenListRow = {
   expires_at: string | null;
 };
 
-export async function listTokens(env: Env, email: string, userId?: string): Promise<
-  {
-    id: string;
-    label: string;
-    hint: string | null;
-    created_at: string;
-    last_used_at: string | null;
-    expires_at: string | null;
-    expired: boolean;
-    revoked: boolean;
-    recoverable: boolean;
-  }[]
-> {
+export type TokenListing = TokenSummary & { expired: boolean; revoked: boolean; recoverable: boolean };
+
+export async function listTokens(env: Env, email: string, userId?: string, now = Date.now()): Promise<TokenListing[]> {
   const columns = `id, label, created_at, last_used_at, revoked_at, token_hint, expires_at`;
   const rows = userId
     ? await env.DB.prepare(
@@ -266,17 +266,93 @@ export async function listTokens(env: Env, email: string, userId?: string): Prom
     : await env.DB.prepare(`SELECT ${columns} FROM tokens WHERE user_email = ? ORDER BY created_at DESC`)
         .bind(email)
         .all<TokenListRow>();
-  return (rows.results || []).map((r) => ({
-    id: r.id,
-    label: r.label,
-    hint: r.token_hint,
-    created_at: r.created_at,
-    last_used_at: r.last_used_at,
-    expires_at: r.expires_at ?? null,
-    expired: tokenExpired(r.expires_at),
-    revoked: Boolean(r.revoked_at),
-    recoverable: false,
-  }));
+  return (rows.results || []).map((r) => {
+    const status = tokenStatus(r, now);
+    return {
+      id: r.id,
+      label: r.label,
+      hint: r.token_hint,
+      created_at: r.created_at,
+      last_used_at: r.last_used_at,
+      expires_at: r.expires_at ?? null,
+      status,
+      expired: status === "expired",
+      revoked: status === "revoked",
+      recoverable: false,
+    };
+  });
+}
+
+const BULK_REVOKE_SAMPLE = 10;
+/** Bump when the canonical confirm string changes shape so stale confirms drift instead of executing. */
+const BULK_REVOKE_CONFIRM_VERSION = "1";
+const BULK_REVOKE_CONFIRM_RE = /^[0-9a-f]{32}$/;
+
+type BulkRevokeOutcome =
+  | { kind: "preview"; preview: BulkRevokePreview }
+  | { kind: "drift"; preview: BulkRevokePreview }
+  | { kind: "executed"; result: BulkRevokeResult };
+
+function isBulkRevokeTarget(value: unknown): value is BulkRevokeTarget {
+  return typeof value === "string" && (BULK_REVOKE_TARGETS as readonly string[]).includes(value);
+}
+
+async function bulkRevokeConfirm(target: BulkRevokeTarget, eligible: TokenListing[]): Promise<string> {
+  const ids = eligible.map((token) => token.id).sort();
+  return (await sha256Hex([BULK_REVOKE_CONFIRM_VERSION, "tokens", target, ...ids].join("\n"))).slice(0, 32);
+}
+
+export async function bulkRevokeTokens(
+  env: Env,
+  email: string,
+  userId: string | undefined,
+  body: Record<string, unknown>,
+): Promise<BulkRevokeOutcome> {
+  const target = body.target;
+  if (!isBulkRevokeTarget(target)) {
+    throw new ApiError(400, "bad_target", `target must be one of: ${BULK_REVOKE_TARGETS.join(", ")}.`);
+  }
+  const confirm = body.confirm === undefined || body.confirm === null ? null : String(body.confirm).trim().toLowerCase();
+  if (confirm !== null && !BULK_REVOKE_CONFIRM_RE.test(confirm)) {
+    throw new ApiError(400, "bad_confirm", "confirm must be the confirm string from a preview of this same request. Omit it to preview.");
+  }
+  const eligible = (await listTokens(env, email, userId)).filter((token) => bulkRevokeEligible(target, token.status));
+  const expected = await bulkRevokeConfirm(target, eligible);
+  const preview: BulkRevokePreview = {
+    target,
+    executed: false,
+    matched: eligible.length,
+    sample: eligible.slice(0, BULK_REVOKE_SAMPLE).map(({ id, label, hint, status, last_used_at }) => ({ id, label, hint, status, last_used_at })),
+    confirm: expected,
+  };
+  if (confirm === null) return { kind: "preview", preview };
+  if (confirm !== expected) return { kind: "drift", preview };
+  if (eligible.length) {
+    const marks = eligible.map(() => "?").join(", ");
+    await env.DB.prepare(`UPDATE tokens SET revoked_at = ? WHERE revoked_at IS NULL AND id IN (${marks})`)
+      .bind(new Date().toISOString(), ...eligible.map((token) => token.id))
+      .run();
+  }
+  return { kind: "executed", result: { ok: true, target, executed: true, revoked: eligible.length } };
+}
+
+export async function bulkRevokeResponse(env: Env, actor: Actor, body: Record<string, unknown>): Promise<Response> {
+  const outcome = await bulkRevokeTokens(env, actor.email, actor.userId, body);
+  switch (outcome.kind) {
+    case "preview":
+      return json(outcome.preview);
+    case "executed":
+      return json(outcome.result);
+    case "drift":
+      return new ApiError(
+        409,
+        "token_revoke_drift",
+        "Your tokens changed since that preview. Review this fresh preview and resend with its confirm.",
+        outcome.preview,
+      ).toResponse(publicOrigin(env));
+    default:
+      return assertNever(outcome);
+  }
 }
 
 export async function revokeToken(env: Env, email: string, id: string, userId?: string): Promise<void> {

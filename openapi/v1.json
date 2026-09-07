@@ -2231,6 +2231,7 @@
               "storage_rollback_failed",
               "token_expired",
               "token_not_found",
+              "token_revoke_drift",
               "too_large",
               "too_many_files",
               "ttl_required",
