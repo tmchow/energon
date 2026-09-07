@@ -1,9 +1,8 @@
-import { nextNumberedSlug } from "../slugs";
-import { api, jsonBody, RequestError } from './api';
+import { api, jsonBody } from './api';
 
 export type UploadFile = { path: string; file: File };
 export type StagedUpload = { kind: 'loose' | 'folder' | 'zip'; file?: File; files: UploadFile[]; slug: string; filename: string };
-export type PublishResult = { url: string; slug?: string; filename?: string; file_count?: number; password?: string; password_protected?: boolean; write_password?: string; write_password_protected?: boolean; written?: string[] };
+export type PublishResult = { url: string; id?: string; slug?: string; filename?: string; file_count?: number; password?: string; password_protected?: boolean; write_password?: string; write_password_protected?: boolean; written?: string[] };
 
 export function safeFilename(name: string, fallback: string): string {
   const base = String(name || fallback || 'file').replace(/\\/g, '/').split('/').pop() || 'file';
@@ -12,16 +11,6 @@ export function safeFilename(name: string, fallback: string): string {
 
 export function slugify(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 63) || 'site';
-}
-
-export async function firstFreeSlug(start: string, origin: string, handle: string): Promise<string> {
-  let slug = slugify(start);
-  for (let i = 0; i < 50; i++) {
-    const response = await fetch(`${origin}/${encodeURIComponent(handle)}/s/${encodeURIComponent(slug)}/`, { headers: { accept: 'application/json' } });
-    if (response.status === 404 || response.status === 410) return slug;
-    slug = nextNumberedSlug(slug);
-  }
-  throw new Error('Could not find an available slug. Choose a different name.');
 }
 
 export async function readEntry(entry: FileSystemEntry, prefix = ''): Promise<UploadFile[]> {
@@ -60,7 +49,7 @@ export async function stageFiles(files: File[], entries: FileSystemEntry[] = [],
   return { kind: 'folder', files: files.map(file => ({ path: file.webkitRelativePath || file.name, file })), slug: slugify(files[0].webkitRelativePath?.split('/')[0] || 'site'), filename: '' };
 }
 
-export async function publish(upload: StagedUpload, options: { password: string; write_password: string; ttl: string; write_policy: string; overwrite: boolean }): Promise<PublishResult> {
+export async function publish(upload: StagedUpload, options: { password: string; write_password: string; ttl: string; write_policy: string }): Promise<PublishResult> {
   if (upload.kind === 'loose' && upload.file) {
     const form = new FormData();
     form.set('file', upload.file, safeFilename(upload.filename, upload.file.name));
@@ -71,29 +60,24 @@ export async function publish(upload: StagedUpload, options: { password: string;
     return api('/account/files', { method: 'POST', body: form });
   }
   const slug = slugify(upload.slug);
-  const settings = options.overwrite ? {} : { ttl: options.ttl, write_policy: options.write_policy };
-  const siteBody: Record<string, unknown> = { slug, overwrite: options.overwrite, ...settings };
+  const siteBody: Record<string, unknown> = { slug, ttl: options.ttl, write_policy: options.write_policy };
   if (options.password) siteBody.password = options.password;
   if (options.write_password) siteBody.write_password = options.write_password;
   const site = await api<PublishResult>('/account/sites', jsonBody('POST', siteBody));
+  const siteId = site.id || slug;
   try {
     if (upload.kind === 'zip') {
-      const imported = await api<PublishResult>(`/account/sites/${encodeURIComponent(slug)}/import`, { method: 'POST', headers: { 'content-type': 'application/zip' }, body: upload.file });
-      return { ...imported, password: site.password || options.password, file_count: imported.written?.length || 0 };
+      const imported = await api<PublishResult>(`/account/sites/${encodeURIComponent(siteId)}/import`, { method: 'POST', headers: { 'content-type': 'application/zip' }, body: upload.file });
+      return { ...imported, id: siteId, password: site.password || options.password, file_count: imported.written?.length || 0 };
     }
     const files = stripWrapFiles(upload.files).filter(item => item.path && !item.path.endsWith('/'));
     for (const item of files) {
-      await api(`/account/sites/${encodeURIComponent(slug)}/files/${item.path.split('/').map(encodeURIComponent).join('/')}`, {
+      await api(`/account/sites/${encodeURIComponent(siteId)}/files/${item.path.split('/').map(encodeURIComponent).join('/')}`, {
         method: 'PUT', headers: { 'content-type': item.file.type || 'application/octet-stream' }, body: item.file,
       });
     }
-    return { ...site, file_count: files.length };
+    return { ...site, id: siteId, file_count: files.length };
   } catch (error) {
-    // A later upload failure must not be mistaken for a create-site collision.
-    throw new Error(`Site “${slug}” was created or opened, but uploading its files failed. ${error instanceof Error ? error.message : 'Try again.'}`);
+    throw new Error(`Site “${slug}” was created, but uploading its files failed. ${error instanceof Error ? error.message : 'Try again.'}`);
   }
-}
-
-export function isCollision(error: unknown): boolean {
-  return error instanceof RequestError && error.status === 409;
 }

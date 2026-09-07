@@ -36,14 +36,14 @@
         <CatalogScan mark={orgMark(item)!} label={orgLabel(item)} />
       {/if}
     </div>
-    {#if kind === 'file' || (item.file_count ?? 0) > 0}<IconButton icon="download" label={kind === 'site' ? 'Download zip' : 'Download'} extra iconSize={CATALOG_ACTION_SIZE} href={kind === 'site' ? `/account/sites/${encodeURIComponent(item.slug ?? item.id)}/export` : `/account/files/${encodeURIComponent(item.id ?? item.slug)}/download`} />{/if}
+    {#if kind === 'file' || (item.file_count ?? 0) > 0}<IconButton icon="download" label={kind === 'site' ? 'Download zip' : 'Download'} extra iconSize={CATALOG_ACTION_SIZE} href={kind === 'site' ? `/account/sites/${encodeURIComponent(item.id)}/export` : `/account/files/${encodeURIComponent(item.id)}/download`} />{/if}
     <CopyButton text={item.url} label="Copy URL" iconOnly iconSize={CATALOG_ACTION_SIZE} />
     <IconButton icon="trash" label="Delete" tone="danger" extra iconSize={CATALOG_ACTION_SIZE} onclick={() => onDelete(item)} />
     <IconButton icon="more" label="More actions" more iconSize={CATALOG_ACTION_SIZE} onclick={() => onMore(item)} />
   </div>
 {/snippet}
 {#snippet pager()}<Button variant="ghost" size="sm" disabled={busy} onclick={onLoadMore}>{busy ? 'Loading…' : 'Load more'}</Button>{/snippet}
-{#if items.length}<Table rows={items} rowKey={item => item.slug ?? item.id} pager={cursor ? pager : undefined}
+{#if items.length}<Table rows={items} rowKey={item => item.id} pager={cursor ? pager : undefined}
   columns={[{ header: kind === 'site' ? 'Slug' : 'File', cell: itemName, className: 'name' }, { header: 'Last writer', cell: writer, className: 'clip' }, { header: 'Updated', cell: updated, className: 'when' }, { header: 'Expires', cell: expires, className: 'when' }, { header: 'Size', cell: itemSize, className: 'num' }, { cell: meta, className: 'meta' }, { cell: actions, className: 'actions' }]} />
 {:else if kind === 'site'}<EmptyState title="No sites yet">Publish a prepared folder or ask your agent to publish a prototype.</EmptyState>
 {:else}<EmptyState title="No files yet">Upload a document or ask your agent to publish one, then share its link.</EmptyState>{/if}
