@@ -2043,12 +2043,39 @@ describe("Energon", () => {
       const listed = await json("/v1/files?q=vadmin-old", { headers: auth(ownerToken) });
       const row = listed.body.files.find((f: { id: string }) => f.id === fileId);
       expect(Date.parse(row.expires_at) - Date.now()).toBeGreaterThan(6 * 86400 * 1000);
+      expect(row.last_written_by).toBe("ada@esperlabs.app");
+      expect(row.updated_at).toBe(listedBefore.body.files.find((f: { id: string }) => f.id === fileId).updated_at);
 
       const audit = await json("/v1/admin/audit", { headers: auth(admin) });
       expect(audit.status).toBe(200);
       expect(audit.body.events.some((e: { executed: boolean; action: string }) => e.action === "cleanup" && e.executed)).toBe(true);
       expect(audit.body.events.some((e: { executed: boolean }) => !e.executed)).toBe(true);
       expect(JSON.stringify(audit.body)).not.toContain(admin);
+    });
+
+    it("deletes another account's owner-policy file", async () => {
+      const ownerToken = await mint("admin-del-owner", "ada@esperlabs.app");
+      const created = await json("/v1/files", {
+        method: "POST",
+        headers: auth(ownerToken, { "X-Filename": "vadmin-del.md", "content-type": "text/plain", "X-Energon-Write-Policy": "owner" }),
+        body: "drop-me",
+      });
+      expect(created.status).toBe(201);
+      const fileId = created.body.id as string;
+
+      const admin = await mintAdmin("admin-del-ops");
+      const preview = await post(admin, { target: { files: [fileId] }, action: "delete" });
+      expect(preview.status).toBe(200);
+      expect(preview.body).toMatchObject({ executed: false, action: "delete", eligible: 1 });
+
+      const executed = await post(admin, { target: { files: [fileId] }, action: "delete", confirm: preview.body.confirm });
+      expect(executed.status).toBe(200);
+      expect(executed.body.executed).toBe(true);
+      expect(executed.body.applied.total).toBe(1);
+      expect(executed.body.skipped.total).toBe(0);
+
+      const listed = await json("/v1/files?q=vadmin-del", { headers: auth(ownerToken) });
+      expect(listed.body.files.find((f: { id: string }) => f.id === fileId)).toBeUndefined();
     });
   });
 });

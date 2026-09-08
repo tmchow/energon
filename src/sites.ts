@@ -451,9 +451,14 @@ export async function patchSite(
   const ts = new Date().toISOString();
   const resolved = patch.setTtl ? resolveExpiresAt(instancePolicy(env), patch.ttl) : null;
   const notClaimed = `last_written_by NOT LIKE ?`;
+  const ttlOnlyAdmin = asAdmin && Boolean(patch.setTtl) && hash === undefined && writeHash === undefined && !wantsWrite;
   if (hash !== undefined || writeHash !== undefined || resolved || wantsWrite) {
-    const assignments = ["updated_at = ?", "last_written_by = ?", "written_via = NULL"];
-    const values: unknown[] = [ts, actor.email];
+    const assignments: string[] = [];
+    const values: unknown[] = [];
+    if (!ttlOnlyAdmin) {
+      assignments.push("updated_at = ?", "last_written_by = ?", "written_via = NULL");
+      values.push(ts, actor.email);
+    }
     if (hash !== undefined) {
       assignPasswordStore(assignments, values, hash, patch.password, "password_hash", "password_secret");
     }

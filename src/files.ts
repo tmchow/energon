@@ -636,9 +636,14 @@ export async function patchLoose(
   const resolved = patch.setTtl ? resolveExpiresAt(instancePolicy(env), patch.ttl) : null;
   const notClaimed = `ifnull(last_written_by, '') NOT LIKE ? AND (ifnull(last_written_by, '') NOT LIKE ? OR updated_at IS NULL OR updated_at <= ?)`;
   const claimGuards = [PURGE_CLAIM_LIKE, WRITE_CLAIM_LIKE, staleClaimCutoff()] as const;
+  const ttlOnlyAdmin = asAdmin && Boolean(patch.setTtl) && hash === undefined && writeHash === undefined && !wantsWrite;
   if (hash !== undefined || writeHash !== undefined || resolved || wantsWrite) {
-    const assignments = ["updated_at = ?", "last_written_by = ?", "written_via = NULL"];
-    const values: unknown[] = [ts, actor.email];
+    const assignments: string[] = [];
+    const values: unknown[] = [];
+    if (!ttlOnlyAdmin) {
+      assignments.push("updated_at = ?", "last_written_by = ?", "written_via = NULL");
+      values.push(ts, actor.email);
+    }
     if (hash !== undefined) {
       assignPasswordStore(assignments, values, hash, patch.password, "password_hash", "password_secret");
     }
@@ -863,6 +868,7 @@ export async function deleteLooseFile(
     id,
     row,
     actor,
+    asAdmin,
   );
   if (!claim) {
     const current = await env.DB.prepare(`SELECT last_written_by FROM loose_files WHERE id = ?`)
