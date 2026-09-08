@@ -1271,6 +1271,114 @@
         }
       }
     },
+    "/v1/admin/cleanup": {
+      "post": {
+        "operationId": "adminCleanup",
+        "tags": [
+          "admin"
+        ],
+        "summary": "Preview, then delete or re-expire sites and files across this Energon",
+        "description": "Needs an admin token. Same preview, confirm hash, skip reporting, and 100-eligible cap as POST /v1/cleanup, without involvement. target.scope is 400. owner is a handle; last_read_before matches never-read or older last_read_at. set_ttl without ttl defaults to 7d so the owner sees Expires in their catalog. expire on content the caller does not own is 400 expire_not_own. delete is the explicit choice. Sample includes owner and last_read_at. Never returns published bytes, share passwords, or write passwords. Preview and execute are recorded on GET /v1/admin/audit.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CleanupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Preview (executed: false, with confirm) when confirm was omitted; result (executed: true) when it matched.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/CleanupPreview"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CleanupResult"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad body, target, action, ttl, confirm, or expire on someone else's content.",
+            "x-error-codes": [
+              "bad_json",
+              "bad_target",
+              "bad_query",
+              "bad_action",
+              "bad_confirm",
+              "ttl_required",
+              "bad_ttl",
+              "ttl_too_long",
+              "expire_not_own"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenAdmin"
+          },
+          "409": {
+            "description": "The eligible set differs from the preview that produced this confirm. Nothing was changed. The body is a fresh preview; show it and resend with its confirm.",
+            "x-error-codes": [
+              "cleanup_drift"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CleanupDriftError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "More than 100 eligible objects. Nothing was changed. Narrow the target.",
+            "x-error-codes": [
+              "cleanup_too_many"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CleanupTooManyError"
+                }
+              }
+            }
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/connections": {
       "post": {
         "operationId": "startConnection",
@@ -2319,6 +2427,7 @@
               "empty_site",
               "empty_zip",
               "expired",
+              "expire_not_own",
               "export_failed",
               "file_busy",
               "file_delete_lost",
@@ -2537,6 +2646,15 @@
             ],
             "description": "Bytes or a unit suffix (500kb, 5mb, 1gb)."
           },
+          "owner": {
+            "type": "string",
+            "description": "Public handle. On /v1/cleanup this is still intersected with involvement. On /v1/admin/cleanup it selects that account's catalog."
+          },
+          "last_read_before": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Never-read objects and those whose last_read_at is older than this timestamp."
+          },
           "kind": {
             "type": "string",
             "enum": [
@@ -2638,6 +2756,10 @@
             "type": "string",
             "description": "Slug or filename."
           },
+          "owner": {
+            "type": "string",
+            "description": "Public handle of the owning account."
+          },
           "bytes": {
             "type": "integer",
             "description": "File size, or the sum of a site's files."
@@ -2651,6 +2773,13 @@
           },
           "updated_at": {
             "type": "string",
+            "format": "date-time"
+          },
+          "last_read_at": {
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           }
         }
@@ -4031,7 +4160,7 @@
               "string",
               "null"
             ],
-            "description": "Redacted token, ee_live_admin… plus last four when this was an admin token."
+            "description": "Redacted token. Admin tokens insert admin after the token prefix, then an ellipsis and the last four."
           },
           "action": {
             "type": "string",

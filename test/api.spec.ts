@@ -1989,4 +1989,66 @@ describe("Energon", () => {
       expect(noAuth.status).toBe(401);
     });
   });
+
+  describe("admin cleanup", () => {
+    const post = (token: string, body: unknown) =>
+      json("/v1/admin/cleanup", { method: "POST", headers: auth(token, { "content-type": "application/json" }), body: JSON.stringify(body) });
+
+    it("sets a 7d ttl on another account's work and records the action", async () => {
+      const ownerToken = await mint("admin-clean-owner", "ada@esperlabs.app");
+      const created = await json("/v1/files", {
+        method: "POST",
+        headers: auth(ownerToken, { "X-Filename": "vadmin-old.md", "content-type": "text/plain", "X-Energon-Write-Policy": "owner" }),
+        body: "keep-me",
+      });
+      expect(created.status).toBe(201);
+      expect(created.body.expires_at).toBeNull();
+      const fileId = created.body.id as string;
+      const handle = created.body.handle as string;
+
+      const outsider = await mint("admin-clean-ada", "ada@esperlabs.app");
+      const refused = await post(outsider, { target: { owner: handle, q: "vadmin-old" }, action: "set_ttl" });
+      expect(refused.status).toBe(403);
+      expect(refused.body.error).toBe("forbidden_admin");
+
+      const admin = await mintAdmin("admin-clean-ops");
+      const scoped = await post(admin, { target: { scope: "involved" }, action: "delete" });
+      expect(scoped.status).toBe(400);
+      expect(scoped.body.error).toBe("bad_target");
+
+      const expire = await post(admin, { target: { files: [fileId] }, action: "expire" });
+      expect(expire.status).toBe(400);
+      expect(expire.body.error).toBe("expire_not_own");
+
+      const preview = await post(admin, { target: { owner: handle, q: "vadmin-old", expires: "never" }, action: "set_ttl" });
+      expect(preview.status).toBe(200);
+      expect(preview.body).toMatchObject({ executed: false, action: "set_ttl", ttl: "7d", eligible: 1 });
+      expect(preview.body.sample[0]).toMatchObject({ kind: "file", ref: fileId, name: "vadmin-old.md", owner: handle, last_read_at: null });
+      expect(JSON.stringify(preview.body)).not.toContain("keep-me");
+      expect(JSON.stringify(preview.body)).not.toMatch(/password/i);
+
+      const listedBefore = await json("/v1/files?q=vadmin-old", { headers: auth(ownerToken) });
+      expect(listedBefore.body.files.find((f: { id: string }) => f.id === fileId).expires_at).toBeNull();
+
+      const executed = await post(admin, {
+        target: { owner: handle, q: "vadmin-old", expires: "never" },
+        action: "set_ttl",
+        confirm: preview.body.confirm,
+      });
+      expect(executed.status).toBe(200);
+      expect(executed.body.executed).toBe(true);
+      expect(executed.body.applied.total).toBe(1);
+      expect(Date.parse(executed.body.applied.objects[0].expires_at) - Date.now()).toBeGreaterThan(6 * 86400 * 1000);
+
+      const listed = await json("/v1/files?q=vadmin-old", { headers: auth(ownerToken) });
+      const row = listed.body.files.find((f: { id: string }) => f.id === fileId);
+      expect(Date.parse(row.expires_at) - Date.now()).toBeGreaterThan(6 * 86400 * 1000);
+
+      const audit = await json("/v1/admin/audit", { headers: auth(admin) });
+      expect(audit.status).toBe(200);
+      expect(audit.body.events.some((e: { executed: boolean; action: string }) => e.action === "cleanup" && e.executed)).toBe(true);
+      expect(audit.body.events.some((e: { executed: boolean }) => !e.executed)).toBe(true);
+      expect(JSON.stringify(audit.body)).not.toContain(admin);
+    });
+  });
 });

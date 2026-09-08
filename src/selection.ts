@@ -35,6 +35,10 @@ export type CleanupObject = {
   bytes: number;
   expires_at: string | null;
   updated_at: string;
+  last_read_at: string | null;
+  owner: string;
+  ownerId: string | null;
+  createdBy: string;
   involved: boolean;
   writable: boolean;
   purging: boolean;
@@ -95,11 +99,18 @@ function selectionObjects(raw: unknown): SelectionObjects {
  * Explicit ids and filters never mix: an agent that sends both is confused about
  * what it is deleting, and the safe answer is to make it say so.
  */
-export function parseSelection(raw: unknown): Selection {
+export function parseSelection(raw: unknown, opts?: { admin?: boolean }): Selection {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw badTarget("target must be an object: { sites, files } or list filters. {} selects everything you are involved in.");
+    throw badTarget(
+      opts?.admin
+        ? "target must be an object: { sites, files } or list filters. {} selects every site and file on this Energon."
+        : "target must be an object: { sites, files } or list filters. {} selects everything you are involved in.",
+    );
   }
   const target = raw as Record<string, unknown>;
+  if (opts?.admin && "scope" in target) {
+    throw badTarget("scope is involvement-only. Admin cleanup is host-wide; filter with owner instead.");
+  }
   const unknown = Object.keys(target).filter((key) => !TARGET_KEYS.has(key));
   if (unknown.length) throw badTarget(`Unknown target keys: ${unknown.join(", ")}.`);
   const explicit = "sites" in target || "files" in target;
@@ -131,12 +142,14 @@ type SiteScanRow = {
   write_policy: string | null;
   updated_at: string;
   expires_at: string | null;
+  last_read_at: string | null;
   size: number;
 };
 
 type FileScanRow = {
   id: string;
   filename: string;
+  handle: string | null;
   owner_id: string | null;
   created_by: string;
   last_written_by: string | null;
@@ -144,6 +157,7 @@ type FileScanRow = {
   created_at: string;
   updated_at: string | null;
   expires_at: string | null;
+  last_read_at: string | null;
   size: number;
 };
 
@@ -156,6 +170,10 @@ function siteObject(actor: Actor, row: SiteScanRow): CleanupObject {
     bytes: Number(row.size ?? 0),
     expires_at: row.expires_at ?? null,
     updated_at: row.updated_at,
+    last_read_at: row.last_read_at ?? null,
+    owner: row.handle,
+    ownerId: row.owner_id ?? null,
+    createdBy: row.created_by,
     involved: involvedInSite(actor, row),
     writable: canMutate(actor, row),
     purging: isPurgeClaimed(row.last_written_by),
@@ -171,6 +189,10 @@ function fileObject(actor: Actor, row: FileScanRow): CleanupObject {
     bytes: Number(row.size ?? 0),
     expires_at: row.expires_at ?? null,
     updated_at: row.updated_at || row.created_at,
+    last_read_at: row.last_read_at ?? null,
+    owner: row.handle || "",
+    ownerId: row.owner_id ?? null,
+    createdBy: row.created_by,
     involved: involvedInLoose(actor, row),
     writable: canMutate(actor, row),
     purging: isPurgeClaimed(row.last_written_by),
@@ -178,14 +200,14 @@ function fileObject(actor: Actor, row: FileScanRow): CleanupObject {
 }
 
 const SITE_SCAN_SELECT =
-  `s.id, s.handle, s.slug, s.owner_id, s.created_by, s.last_written_by, s.write_policy, s.updated_at, s.expires_at, ${SITE_SIZE_SQL} AS size`;
+  `s.id, s.handle, s.slug, s.owner_id, s.created_by, s.last_written_by, s.write_policy, s.updated_at, s.expires_at, s.last_read_at, ${SITE_SIZE_SQL} AS size`;
 const FILE_SCAN_SELECT =
-  `id, filename, owner_id, created_by, last_written_by, write_policy, created_at, updated_at, expires_at, size`;
+  `id, filename, handle, owner_id, created_by, last_written_by, write_policy, created_at, updated_at, expires_at, last_read_at, size`;
 
 type Scan = { objects: CleanupObject[]; truncated: boolean };
 
-async function scanSites(env: Env, actor: Actor, criteria: SelectionCriteria): Promise<Scan> {
-  const sql = criteriaSql("sites", criteria, actor.email, actor.userId);
+async function scanSites(env: Env, actor: Actor, criteria: SelectionCriteria, involve = true): Promise<Scan> {
+  const sql = criteriaSql("sites", criteria, actor.email, actor.userId, { involve });
   const rows = await env.DB.prepare(
     `SELECT ${SITE_SCAN_SELECT}
      FROM sites s
@@ -202,8 +224,8 @@ async function scanSites(env: Env, actor: Actor, criteria: SelectionCriteria): P
   return { objects: found.slice(0, CLEANUP_SCAN_BOUND).map((row) => siteObject(actor, row)), truncated: found.length > CLEANUP_SCAN_BOUND };
 }
 
-async function scanFiles(env: Env, actor: Actor, criteria: SelectionCriteria): Promise<Scan> {
-  const sql = criteriaSql("files", criteria, actor.email, actor.userId);
+async function scanFiles(env: Env, actor: Actor, criteria: SelectionCriteria, involve = true): Promise<Scan> {
+  const sql = criteriaSql("files", criteria, actor.email, actor.userId, { involve });
   const rows = await env.DB.prepare(
     `SELECT ${FILE_SCAN_SELECT}
      FROM loose_files
@@ -232,10 +254,16 @@ function scansFor(objects: SelectionObjects): CatalogKind[] {
 
 type Candidates = { objects: CleanupObject[]; unresolved: SkippedObject[]; truncated: boolean };
 
-async function criteriaCandidates(env: Env, actor: Actor, criteria: SelectionCriteria, objects: SelectionObjects): Promise<Candidates> {
+async function criteriaCandidates(
+  env: Env,
+  actor: Actor,
+  criteria: SelectionCriteria,
+  objects: SelectionObjects,
+  involve = true,
+): Promise<Candidates> {
   const result: Candidates = { objects: [], unresolved: [], truncated: false };
   for (const kind of scansFor(objects)) {
-    const scan = kind === "sites" ? await scanSites(env, actor, criteria) : await scanFiles(env, actor, criteria);
+    const scan = kind === "sites" ? await scanSites(env, actor, criteria, involve) : await scanFiles(env, actor, criteria, involve);
     result.objects.push(...scan.objects);
     result.truncated = result.truncated || scan.truncated;
   }
@@ -258,6 +286,7 @@ async function lookupSite(env: Env, actor: Actor, id: string): Promise<CleanupOb
     write_policy: site.write_policy ?? null,
     updated_at: site.updated_at,
     expires_at: site.expires_at ?? null,
+    last_read_at: site.last_read_at ?? null,
     size: Number(usage?.size ?? 0),
   });
 }
@@ -295,14 +324,14 @@ function tooMany(matched: number, resolved?: Omit<ResolvedSelection, "matched">)
   return new ApiError(
     413,
     "cleanup_too_many",
-    `Cleanup handles at most ${CLEANUP_MAX_ITEMS} eligible objects per call. Narrow the target (q, created_by, expires_before, updated_before, min_size, kind) or pass explicit ids, then retry.`,
+    `Cleanup handles at most ${CLEANUP_MAX_ITEMS} eligible objects per call. Narrow the target (q, owner, created_by, expires_before, updated_before, last_read_before, min_size, kind) or pass explicit ids, then retry.`,
     extra,
   );
 }
 
-function classify(object: CleanupObject, skip?: SkipPredicate): SkipReason | null {
+function classify(object: CleanupObject, skip?: SkipPredicate, asAdmin = false): SkipReason | null {
   if (object.purging) return "purging";
-  if (!object.writable) return "not_writable";
+  if (!asAdmin && !object.writable) return "not_writable";
   return skip ? skip(object) : null;
 }
 
@@ -310,7 +339,13 @@ function classify(object: CleanupObject, skip?: SkipPredicate): SkipReason | nul
  * Write claims are not a skip reason here: they clear within seconds, so a preview
  * that named them would drift against its own execute for no reason.
  */
-export async function resolveSelection(env: Env, actor: Actor, selection: Selection, skip?: SkipPredicate): Promise<ResolvedSelection> {
+export async function resolveSelection(
+  env: Env,
+  actor: Actor,
+  selection: Selection,
+  skip?: SkipPredicate,
+  opts?: { admin?: boolean },
+): Promise<ResolvedSelection> {
   let candidates: Candidates;
   switch (selection.kind) {
     case "explicit": {
@@ -320,7 +355,7 @@ export async function resolveSelection(env: Env, actor: Actor, selection: Select
       break;
     }
     case "criteria":
-      candidates = await criteriaCandidates(env, actor, selection.criteria, selection.objects);
+      candidates = await criteriaCandidates(env, actor, selection.criteria, selection.objects, opts?.admin ? false : true);
       break;
     default:
       return assertNever(selection);
@@ -328,7 +363,7 @@ export async function resolveSelection(env: Env, actor: Actor, selection: Select
   const eligible: CleanupObject[] = [];
   const skipped: SkippedObject[] = [...candidates.unresolved];
   for (const object of candidates.objects) {
-    const reason = classify(object, skip);
+    const reason = classify(object, skip, Boolean(opts?.admin));
     if (reason) skipped.push({ kind: object.ref.kind, ref: refString(object.ref), reason });
     else eligible.push(object);
   }

@@ -8,7 +8,7 @@ import { actorFromAccess, assertEmailAllowed, bulkRevokeResponse, helpBody, list
 import { setupResponse } from "./setup";
 import { statsResponse } from "./stats";
 import { parseListQuery } from "./catalog";
-import { adminAuditResponse } from "./audit";
+import { adminAuditResponse, requireAdminActor } from "./audit";
 import { cleanupResponse } from "./cleanup";
 import { llmsResponse } from "./llms";
 import { authMarkdownResponse } from "./auth-doc";
@@ -439,6 +439,11 @@ async function api(
 
   if (path === "/v1/admin/audit" && method === "GET") {
     return adminAuditResponse(request, env);
+  }
+
+  if (path === "/v1/admin/cleanup" && method === "POST") {
+    const actor = await requireAdminActor(request, env);
+    return cleanupResponse(env, ctx, actor, await readJson(request), { admin: true });
   }
 
   const looseOne = path.match(/^\/v1\/files\/([^/]+)(?:\/[^/]+)?$/);
