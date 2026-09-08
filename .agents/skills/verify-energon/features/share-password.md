@@ -23,20 +23,16 @@ Share password lets a user lock a public site or file URL behind a phrase. Brows
 
 Preconditions:
 
-- Doctor has passed. `TOKEN` minted. `$HANDLE` known.
+- `bin/up` passed. `$TOKEN` and `$HANDLE` known.
 - Phrase to use: `correct-horse`. Do not reuse a production password.
 
-- **Create protected site.** Run `curl -sS -o "$EVIDENCE/share-password/create.json" -w '%{http_code}' -X POST "$ORIGIN/v1/sites" -H "Authorization: Bearer $TOKEN" -H "content-type: application/json" --data '{"slug":"verify-gated","password":"correct-horse"}'`. Status `201`. Body has `id`. Body `password` is `correct-horse` (echo of what you set). `password_protected` is true. `/v1` GET of that JSON later must not contain the phrase.
-- **Put bytes.** Set `SITE_ID` from `create.json`. `PUT /v1/sites/$SITE_ID/files/index.html` with body `<h1>gated-ok</h1>`.
-- **Public without password.** Run `curl -sS -o "$EVIDENCE/share-password/gate.html" -w '%{http_code}' "$ORIGIN/$HANDLE/s/$SITE_ID/verify-gated/"`. Status `401`. Body is the gate page: heading Energon, copy `This link is password-protected.`, a `Password` field, button `Open`, and the agent hint `X-Energon-Password`. Body does not contain `gated-ok` or `correct-horse`.
-- **JSON gate.** Run `curl -sS -o "$EVIDENCE/share-password/gate.json" -w '%{http_code}' "$ORIGIN/$HANDLE/s/$SITE_ID/verify-gated/" -H "accept: application/json"`. Status `401`. `error` is `password_required`.
-- **Wrong header.** Run the public GET with `-H "X-Energon-Password: wrong-phrase"`. Status `401`. Still no `gated-ok`.
-- **Right header.** Run `curl -sS -o "$EVIDENCE/share-password/unlocked.html" -w '%{http_code}' "$ORIGIN/$HANDLE/s/$SITE_ID/verify-gated/" -H "X-Energon-Password: correct-horse"`. Status `200`. Body contains `gated-ok`.
-- **Token skips gate.** `GET $ORIGIN/v1/sites/$SITE_ID/files/index.html` with Bearer token and no password header. Status `200`. Body contains `gated-ok`.
-- **Hub lock.** On a site without a password, choose More → `Set password`. Dialog `#pw-dlg` title `Link access`. `#pw-dlg-share-door` starts Off. Turn On: `#pw-dlg-input` appears with a generated phrase (or type one), choose `Save`. Re-open the dialog: the door is On, the same phrase is in `#pw-dlg-input` and can be copied. Catalog row lock hover is `View password`. The slug cell has no Password chip. Public GET without header is 401.
-- **Clear.** Hub: open Link access, set `#pw-dlg-share-door` to Off, `Save`. Lock disappears. Public GET without header is 200 and contains `gated-ok`. API: `PATCH /v1/sites/$SITE_ID` with `{"password":""}` also clears.
-- **Hub account GET.** `GET $ORIGIN/account/sites/$SITE_ID` (no bearer; localhost Access identity) returns `password` `correct-horse` while the password is set. `GET $ORIGIN/v1/sites/$SITE_ID` with the token does not.
-- **Proof.** Save gate HTML, JSON 401, unlocked HTML, the create echo, and the hub account GET. Browser proof: screenshot of the gate page with `This link is password-protected.` visible, then a screenshot after a correct form submit showing `gated-ok`. Hub proof: Link access dialog showing the stored phrase with copy.
+- **Default — Create protected site.** `.agents/skills/verify-energon/bin/save --expect 201 share-password create POST "$ORIGIN/v1/sites" -H "Authorization: Bearer $TOKEN" -H "content-type: application/json" --data '{"slug":"verify-gated","password":"correct-horse"}'`. Body has `id`. Body `password` is `correct-horse`. `password_protected` is true. Later `/v1` GET of that JSON must not contain the phrase.
+- **Default — Put bytes.** `PUT /v1/sites/$SITE_ID/files/index.html` with body `<h1>gated-ok</h1>`.
+- **Default — Public without password.** `GET "$ORIGIN/$HANDLE/s/$SITE_ID/verify-gated/"` is `401`. Gate HTML: heading Energon, `This link is password-protected.`, `Password` field, `Open`, `X-Energon-Password`. No `gated-ok` or `correct-horse`.
+- **Default — JSON gate / wrong / right / skip.** `Accept: application/json` → `401` `password_required`. Wrong `X-Energon-Password` → `401`. Right header → `200` `gated-ok`. Token GET `/v1/sites/$SITE_ID/files/index.html` with no password header → `200` `gated-ok`.
+- **Default — Clear.** `PATCH /v1/sites/$SITE_ID` `{"password":""}` then public GET without header is `200` and contains `gated-ok`. `GET $ORIGIN/account/sites/$SITE_ID` returned `password` `correct-horse` before clear; `/v1` GET never did.
+- **Extra (pw-form / Hub.svelte) — Hub lock and gate form.** More → `Set password`, `#pw-dlg`. Browser submit of the gate form. Drive when `#pw-dlg` or Gate.svelte changes.
+- **Proof.** Default: gate HTML, JSON 401, unlocked HTML, create echo. Screenshots only for Extra form/dialog.
 
 ## Gotchas
 

@@ -22,19 +22,15 @@ Operators listed on `ADMIN_EMAILS` list and revoke API token metadata across acc
 Preconditions:
 
 - Launch with `ENERGON_VERIFY_VARS="ADMIN_EMAILS:$EMAIL"` so the doctor identity is an operator. `$EMAIL` must be the address `GET /account/data` reports (`.dev.vars` `DEV_ACCESS_EMAIL` if set, else `dev@example.com`).
-- Doctor has passed for `$ORIGIN`.
+- `bin/up` passed.
 - Owner identity for this recipe is `vadmin-tok@example.com` (sent as `Cf-Access-Authenticated-User-Email`). Handle is `vadmin-tok`.
 - Every fixture label starts with `vadmin-tok` so other recipes stay out of the target.
 
-- **Owner fixture.** Mint an owner token: `curl -sS -o "$EVIDENCE/admin-tokens/owner-token.json" -w '%{http_code}' -X POST "$ORIGIN/account/tokens" -H "content-type: application/json" -H "origin: $ORIGIN" -H "Cf-Access-Authenticated-User-Email: vadmin-tok@example.com" --data '{"label":"vadmin-tok-agent"}'` (`201`). Record `token` as `$OWNER_TOKEN`. `GET "$ORIGIN/v1/whoami"` with it is `200`.
-- **Non-admin route.** Mint a doctor *account* token with `.agents/skills/verify-energon/bin/mint-token vadmin-tok-account` (no `scope`). `GET "$ORIGIN/v1/admin/tokens?owner=vadmin-tok"` with that secret is `403 forbidden_admin`. Save as `account-token-403.json`. `POST "$ORIGIN/v1/admin/tokens/revoke"` with the same secret and `{"owner":"vadmin-tok","target":"all"}` is `403 forbidden_admin`. Save as `account-token-revoke-403.json`.
-- **Admin token.** Run `curl -sS -o "$EVIDENCE/admin-tokens/admin-token.json" -w '%{http_code}' -X POST "$ORIGIN/account/tokens" -H "content-type: application/json" -H "origin: $ORIGIN" --data '{"label":"vadmin-tok-ops","ttl":"1d","scope":"admin"}'` (`201`). Record `token` as `$ADMIN_TOKEN`.
-- **List.** `GET "$ORIGIN/v1/admin/tokens?owner=vadmin-tok"` with `$ADMIN_TOKEN` is `200`. Body `tokens` includes `label` `vadmin-tok-agent`, `owner_email` `vadmin-tok@example.com`, `owner_handle` `vadmin-tok`, a `hint`, and `status`. Body does not contain `$OWNER_TOKEN` or `token_hash`. Save as `list.json`.
-- **Hub list.** Open `/admin`. `#admin-tokens-owner` is present. Fill it with `vadmin-tok`, choose List. `#admin-tokens-table` names `vadmin-tok-agent`. Save a screenshot of `/admin` with Energon and `#who` visible.
-- **Preview.** `POST "$ORIGIN/v1/admin/tokens/revoke"` with `$ADMIN_TOKEN` and `{"owner":"vadmin-tok","target":"all"}` is `200`. Body `executed` false, `matched` at least `1`, `sample` includes `vadmin-tok-agent`, `confirm` is 32 hex. Record `confirm` as `$CONFIRM`. Owner `GET "$ORIGIN/v1/whoami"` with `$OWNER_TOKEN` is still `200`. Save as `preview.json`.
-- **Execute.** Resend the preview POST with `"confirm":"$CONFIRM"`, saving to `execute.json`. Status `200`, `executed` true, `revoked` at least `1`. `GET "$ORIGIN/v1/whoami"` with `$OWNER_TOKEN` is `401`.
-- **Audit.** `GET "$ORIGIN/v1/admin/audit" -H "Authorization: Bearer $ADMIN_TOKEN"` is `200` with a preview event and an executed event whose `action` is `tokens`. Neither body contains `$ADMIN_TOKEN` or `$OWNER_TOKEN`. Save as `audit.json`.
-- **Proof.** Save every status and body under `$EVIDENCE/admin-tokens/`, plus screenshots of `/admin` (operator list) and `#admin-tokens-dlg` if driven in the browser.
+- **Default — Owner fixture.** `POST /account/tokens` with Access header `vadmin-tok@example.com`, `origin: $ORIGIN`, `{"label":"vadmin-tok-agent"}` (`201`). Record `$OWNER_TOKEN`. `GET /v1/whoami` is `200`.
+- **Default — Non-admin 403.** `bin/mint-token vadmin-tok-account` on `GET /v1/admin/tokens?owner=vadmin-tok` and `POST /v1/admin/tokens/revoke` is `403 forbidden_admin`.
+- **Default — Admin list / preview / execute / audit.** Mint `{"label":"vadmin-tok-ops","ttl":"1d","scope":"admin"}`. `GET /v1/admin/tokens?owner=vadmin-tok` includes `vadmin-tok-agent`, owner email/handle, hint, status; no `$OWNER_TOKEN` or `token_hash`. Preview `{"owner":"vadmin-tok","target":"all"}` `executed` false, 32-hex `confirm`; owner whoami still `200`. Execute with `confirm`: owner whoami `401`. Audit events `action` `tokens`; no secrets.
+- **Extra (admin-tokens-page) — Hub list.** Open `/admin`, `#admin-tokens-owner`, List, `#admin-tokens-dlg`. Drive when Admin.svelte tokens card changes.
+- **Proof.** Default: list, 403s, preview, execute, audit JSON. Screenshot only for Extra hub.
 
 ## Gotchas
 

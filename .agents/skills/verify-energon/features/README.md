@@ -4,21 +4,33 @@ This directory is the maintained source for verifying the user-facing behavior o
 
 ## Baseline preconditions
 
-- Launch with `.agents/skills/verify-energon/bin/launch` so the Worker uses `/tmp/energon-verify/$RUN/persist`, not `.wrangler/state`.
+- Start with `.agents/skills/verify-energon/bin/up` (launch + doctor + ready). Persist is `/tmp/energon-verify/$RUN/persist`, not `.wrangler/state`.
 - Origin is `http://127.0.0.1:$PORT` (default port `18787`). `GET /v1/help` `hub`, `content_origin`, and the origin of `openapi` must equal that origin. `GET /v1/openapi.json` (no auth) is the `/v1` contract with `servers[0].url` set to that origin; use it to check a route's request shape or `error` code before reporting a product bug.
-- Run `.agents/skills/verify-energon/bin/doctor` and require pid ownership of the port, hub HTML, and a signed-in email.
-- Mint with `.agents/skills/verify-energon/bin/mint-token` when the recipe needs `/v1`. Do not invent a token.
+- Doctor (inside `bin/up`) requires pid ownership of the port, hub HTML, and a signed-in email. Do not re-run it between features.
+- `bin/up` mints `$TOKEN` when `state.env` has none. Use `bin/mint-token` only for a second label. Do not invent a token. Hub POSTs under `/account` need `-H "origin: $ORIGIN"`.
 - Identity on localhost is `dev@example.com` unless `.dev.vars` sets `DEV_ACCESS_EMAIL`. Handle is the email local-part (`dev` for the default).
 - Never drive a run that was not started by this verification launch.
 
 ## Driving conventions
 
-- Start every recipe from the baseline state unless its preconditions say otherwise.
+- Reuse the launched instance and minted token. Create fixtures only when this recipe needs them. Do not relaunch between features.
+- Doctor once per session. Do not re-GET `/health` or `/v1/help` as a second doctor.
 - Prefer `#id`, ARIA labels, and `/v1` paths over CSS position or tab order.
-- Treat every command as literal. Keep slugs, headers, and filenames unchanged.
-- HTTP actions use `curl` against `$ORIGIN` with `Authorization: Bearer $TOKEN` on `/v1`.
-- Browser actions use the hub at `$ORIGIN/` and the ids in the skill Drive section.
+- Treat every **Default** command as literal. Keep slugs, headers, and filenames unchanged.
+- HTTP actions use `curl` or `bin/save` against `$ORIGIN` with `Authorization: Bearer $TOKEN` on `/v1`.
+- Browser actions are Extra unless the change is that hub control. Use the ids in the feature file.
 - Restore or delete fixture objects in persist-backed storage; do not remove proof artifacts during cleanup.
+
+## How much to drive
+
+Drive only the feature file that matches the change. Do not replay this index.
+
+Each Driving section marks:
+
+- **Default** — required for a proof of that feature. HTTP unless the feature has no HTTP twin.
+- **Extra (`sub-feature`)** — drive only when the diff touches that sub-feature, handle, or policy (`ALLOW_UNLIMITED_TOKENS`, Connect.svelte, Hub.svelte, a 200-file cap, a lockout). Skipping Extra is `n/a` plus the reason, not a skipped entry point.
+
+A second wrangler, a 200-file zip, twenty wrong-password hits, and a 10-minute Connect wait are always Extra.
 
 ## Proof and skip reporting
 

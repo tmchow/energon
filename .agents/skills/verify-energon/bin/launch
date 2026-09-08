@@ -99,7 +99,7 @@ cleanup_failed_launch() {
 }
 
 ok=0
-for _ in $(seq 1 90); do
+for _ in $(seq 1 120); do
   if ! pid_alive "$PID"; then
     cleanup_failed_launch
     die "wrangler exited before becoming ready. See $LOG"
@@ -109,7 +109,7 @@ for _ in $(seq 1 90); do
     ok=1
     break
   fi
-  sleep 1
+  sleep 0.25
 done
 
 if [[ "$ok" != "1" ]]; then
