@@ -48,14 +48,24 @@ else
   fi
 fi
 
-code="$(curl -sS -o /tmp/energon-verify-body.$$ -w '%{http_code}' "$ORIGIN/health" || true)"
-if [[ "$code" == "200" ]] && grep -q '"ok":true' /tmp/energon-verify-body.$$; then
+fetch_dir="$(state_dir)/doctor"
+mkdir -p "$fetch_dir"
+curl -sS -o "$fetch_dir/health.json" -w '%{http_code}' "$ORIGIN/health" >"$fetch_dir/health.code" 2>/dev/null &
+curl -sS -o "$fetch_dir/help.json" -w '%{http_code}' "$ORIGIN/v1/help" >"$fetch_dir/help.code" 2>/dev/null &
+curl -sS -o "$fetch_dir/openapi.json" -w '%{http_code}' "$ORIGIN/v1/openapi.json" >"$fetch_dir/openapi.code" 2>/dev/null &
+hub_file="$(state_dir)/hub.html"
+curl -sS -o "$hub_file" -w '%{http_code}' "$ORIGIN/" >"$fetch_dir/hub.code" 2>/dev/null &
+curl -sS -o "$fetch_dir/account.json" -w '%{http_code}' "$ORIGIN/account/data" >"$fetch_dir/account.code" 2>/dev/null &
+wait
+
+code="$(cat "$fetch_dir/health.code" 2>/dev/null || true)"
+if [[ "$code" == "200" ]] && grep -q '"ok":true' "$fetch_dir/health.json"; then
   ok "GET /health -> 200 {ok:true}"
 else
-  bad "GET /health -> $code $(curl_body | head -c 200)"
+  bad "GET /health -> $code $(head -c 200 "$fetch_dir/health.json" 2>/dev/null || true)"
 fi
 
-help_json="$(curl -sS "$ORIGIN/v1/help" || true)"
+help_json="$(cat "$fetch_dir/help.json" 2>/dev/null || true)"
 hub="$(json_get "$help_json" "hub" 2>/dev/null || true)"
 content="$(json_get "$help_json" "content_origin" 2>/dev/null || true)"
 env_name="$(json_get "$help_json" "env" 2>/dev/null || true)"
@@ -67,14 +77,12 @@ if [[ "$prefix" == "ee_live_" ]]; then ok "token prefix ee_live_"; else bad "tok
 openapi_url="$(json_get "$help_json" "openapi" 2>/dev/null || true)"
 if [[ "$openapi_url" == "$ORIGIN/v1/openapi.json" ]]; then ok "GET /v1/help openapi=$openapi_url"; else bad "GET /v1/help openapi=$openapi_url expected $ORIGIN/v1/openapi.json"; fi
 
-openapi_json="$(curl -sS "$ORIGIN/v1/openapi.json" || true)"
+openapi_json="$(cat "$fetch_dir/openapi.json" 2>/dev/null || true)"
 openapi_version="$(json_get "$openapi_json" "openapi" 2>/dev/null || true)"
 openapi_servers="$(json_get "$openapi_json" "servers" 2>/dev/null || true)"
 if [[ "$openapi_version" == "3.1.0" ]]; then ok "GET /v1/openapi.json openapi=3.1.0"; else bad "GET /v1/openapi.json openapi=$openapi_version expected 3.1.0"; fi
 if [[ "$openapi_servers" == *"\"url\": \"$ORIGIN\""* ]]; then ok "GET /v1/openapi.json servers[0].url=$ORIGIN"; else bad "GET /v1/openapi.json servers=$openapi_servers expected url $ORIGIN"; fi
 
-hub_file="$(state_dir)/hub.html"
-curl -sS -o "$hub_file" "$ORIGIN/" || true
 # grep -q on a pipe trips pipefail (writer gets SIGPIPE). Read a file instead.
 if grep -F -q 'Publish a document, prototype, or file.' "$hub_file"; then
   ok "GET / is the Energon hub"
@@ -87,7 +95,7 @@ else
   bad "hub HTML is missing id=pick-files"
 fi
 
-account="$(curl -sS "$ORIGIN/account/data" || true)"
+account="$(cat "$fetch_dir/account.json" 2>/dev/null || true)"
 email="$(json_get "$account" "email" 2>/dev/null || true)"
 if [[ -n "$email" && "$email" != "null" ]]; then
   ok "signed in as $email"

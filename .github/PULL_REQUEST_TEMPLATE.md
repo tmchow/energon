@@ -1,7 +1,9 @@
 <!--
-Read CONTRIBUTING.md. Keep these headings. Replace the comments with answers.
-Do not paste tokens, Access JWTs, or other people's files.
-Do not include fork identity: wrangler.toml ids/origins, plugins/, marketplace catalogs, .dev.vars.
+Read CONTRIBUTING.md. Required headings: What, Why, Verify, Risk, Authorship.
+Keep those. Add extra ## headings when they help a reviewer.
+Do not replace the body with a commit dump. Do not paste tokens, Access JWTs,
+or other people's files. Do not include fork identity: wrangler.toml ids/origins,
+plugins/, marketplace catalogs, .dev.vars.
 
 PR title: imperative sentence. No feat:/fix:/chore: prefix.
 Fill Authorship. Name the model, not the product. Do not claim a human reviewed the diff if they did not.

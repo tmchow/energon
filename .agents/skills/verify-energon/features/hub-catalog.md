@@ -28,21 +28,12 @@ Hub catalog lets a signed-in human see sites and files they created or last wrot
 
 Preconditions:
 
-- Doctor has passed. At least one site `verify-site` and one file exist from the publish recipes, or create them first.
+- `bin/up` passed. At least one site `verify-site` and one file exist from the publish recipes, or create them first.
 - Search query `verify-site` matches that site and not an unrelated seeded name.
 
-- **Empty (optional, fresh persist).** On a brand-new launch before any publish, `#sites` contains `No sites yet` and `#files` contains `No files yet`. `#who` shows the doctor email.
-- **List after publish.** Open `$ORIGIN/`. Sites table has a row whose name link text is `verify-site` and whose Last writer cell matches the email. There is no Created by column. Unlimited rows do not show Never in the slug cell. If the site expires, the Expires cell has a date. The Sites card heading includes a non-empty count.
-- **Search.** Fill `#q` with `verify-site`. Wait for the 200ms debounce and a new `/account/data?q=verify-site` request. The Sites table contains `verify-site` and does not contain a slug that does not match. Clear `#q` to restore the full list.
-- **Scope.** Choose `Created by you`. The `verify-site` you minted stays visible. Choose `Last edited by you` only if a second actor exists; on a single-user local run this may be empty — record that, do not treat it as a missing site.
-- **Never expires.** Publish a file without a TTL. Choose `Never expires` in `#catalog-expires`. Wait for `/account/data?expires=never`. That file stays listed. A file published with `X-Energon-TTL: 1h` does not. Last read cells read `No recorded read` (never "unread"). There is no `#catalog-last-read` control.
-- **Size and oldest.** Choose `Size` in `#sort`. The larger file is first. Choose `Oldest`. The earlier-written file is first. Open `/?expires=never&sort=size`: `#catalog-expires` has `Never expires` pressed and `#sort` is Size.
-- **Open public URL.** Choose the `verify-site` link. The next document is `$ORIGIN/$HANDLE/s/<id>/verify-site/` and contains the published homepage.
-- **Copy URL.** Choose `Copy URL` on that row. Clipboard (or the button `aria-label` flipping to `Copied`) holds `$ORIGIN/$HANDLE/s/<id>/verify-site/` (id from the create/list JSON).
-- **HTTP list.** `GET $ORIGIN/v1/sites?q=verify-site` with Bearer token returns the same slug and `id`. `GET $ORIGIN/account/data?q=verify-site` returns it without a token header on localhost.
-- **Change expiration.** Publish a file with a short TTL (`POST $ORIGIN/v1/files` with `X-Energon-TTL: 1h` or `1d` and Bearer token). Open Hub. On that row choose `More actions` then `Change expiration`. Dialog `#ttl-dlg`. Choose a later preset in `#ttl-dlg-select`, Save `#ttl-dlg-ok`. Catalog Expires and `expires_at` on `GET $ORIGIN/v1/files` listing and `GET $ORIGIN/account/data` move later. Repeat with an earlier preset and confirm they move earlier. `GET /v1/files/{id}` returns bytes, not metadata.
-- **Delete.** Choose `Delete`. Dialog title `Delete site`. Type `verify-site` (mismatch shows `Type the exact name.`). Confirm. Catalog no longer has that link. Public GET of the old URL is 404 (or 410 if expired — not this recipe).
-- **Proof.** Screenshot of the hub with `verify-site` listed and `#who` visible; saved `/account/data` JSON; after delete, a 404 body for the public URL.
+- **Default — HTTP list.** `GET $ORIGIN/v1/sites?q=verify-site` with Bearer `$TOKEN` returns that slug and `id`. `GET $ORIGIN/account/data?q=verify-site` returns it without a token header on localhost. Public GET `$ORIGIN/$HANDLE/s/<id>/verify-site/` contains the published homepage. Do not delete `verify-site` (other recipes reuse it).
+- **Extra (catalog-empty / catalog-search / catalog-delete / Hub.svelte) — Hub UI.** Empty persist copy, `#q` debounce (200ms), `#scope`, `#catalog-expires`, `#sort`, Copy URL, `#ttl-dlg`, Delete dialog (mint a dedicated `verify-catalog-del` site first). Drive when Hub.svelte catalog controls change.
+- **Proof.** Default: saved `/account/data` JSON and public GET of the listed URL. Screenshot only for Extra hub.
 
 ## Gotchas
 

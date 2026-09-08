@@ -22,25 +22,14 @@ A signed-in person retires their own catalog work in bulk from the hub. Filters 
 
 Preconditions:
 
-- Doctor has passed for `$ORIGIN`.
-- `TOKEN` is a minted `ee_live_` secret for this Energon (`bin/mint-token vhubclean`).
-- `$HANDLE` is the bootstrap handle.
+- `bin/up` passed. `$TOKEN` and `$HANDLE` known.
 - This local Energon keeps content forever by default, so fixtures created without `ttl` match `expires=never`.
 - Every fixture name starts with `vhubclean` so `q=vhubclean` keeps other recipes out.
 
-- **Fixtures.** Publish six files and one site with mixed TTLs and sizes. `POST $ORIGIN/v1/files` with Bearer `$TOKEN` and `content-type: text/plain`:
-  - `vhubclean-a.md` body `a` (never expires, small)
-  - `vhubclean-b.md` body `bbbbbbbbbbbbbbbbbbbb` (never expires, larger)
-  - `vhubclean-c.md` body `c` (never expires, small)
-  - `vhubclean-d.md` body `dddddddddddddddddddddddddddddd` (never expires, largest of the never set)
-  - `vhubclean-e.md` with `X-Energon-TTL: 1h` body `e` (expiring)
-  - `vhubclean-f.md` with `X-Energon-TTL: 1d` body `ffffffffffffffff` (expiring, medium)
-  Record ids `$ID_A` … `$ID_F`. `POST $ORIGIN/v1/sites` `{"slug":"vhubclean-site"}` then PUT `index.md` so the site has size. Record `$SITE_ID`. All `201`. Save create JSON under `$EVIDENCE/hub-cleanup/`.
-- **Filter never-expiring, select three, set expiry.** Open `$ORIGIN/?q=vhubclean`. Choose `Never expires` in `#catalog-expires`. Wait for `/account/data?q=vhubclean&expires=never`. Check three never-expiring files (`#catalog-select-file-$ID_A`, `$ID_B`, `$ID_C`). `#catalog-cleanup` is visible. `#catalog-cleanup-action` has Set expiry pressed and Delete not pressed. Choose `7d` in `#catalog-cleanup-ttl` if it is not already selected. Preview `#catalog-cleanup-preview`. `#catalog-cleanup-sample` names those three. Eligible is `3`. Screenshot with Energon and `#who` visible. Choose `#catalog-cleanup-confirm`. In `#catalog-cleanup-dlg` type `3 objects` and confirm. Catalog Expires cells for those three become dates. `GET $ORIGIN/v1/files?q=vhubclean` with Bearer `$TOKEN` shows `expires_at` set on a, b, and c, still null on d.
-- **Filter by size, select all matching, delete cancel then confirm.** Clear Never expires. Choose `Size` in `#sort`. Fill `#catalog-min-size` with a value that matches only the largest remaining never-expiring file (`vhubclean-d.md`; try `15b` or whatever the list JSON `size` requires). Wait for `/account/data`. Choose `#catalog-select-matching`. Preview. Switch `#catalog-cleanup-action` to Delete. Preview again. `#catalog-cleanup-sample` names `vhubclean-d.md`. Open `#catalog-cleanup-dlg`, choose Cancel. `GET $ORIGIN/v1/files?q=vhubclean-d` still `200`. Open confirm again, type the eligible count, confirm. That file is gone from the catalog. `GET $ORIGIN/v1/files?q=vhubclean-d` is `total` `0`. `GET $ORIGIN/v1/files/$ID_D` is `404`.
-- **Confirm-hash drift.** Check two remaining files. Preview Set expiry. Uncheck one row so the selection no longer matches the preview. Confirm with the old dialog (or Preview's confirm against the new target). Status `409`, dialog copy `The selection changed since this preview`. The catalog is unchanged. Preview again and confirm the new count to finish, or Cancel.
-- **HTTP twin.** `POST $ORIGIN/account/cleanup` with Access and `origin: $ORIGIN` previews the same shape as `/v1/cleanup`. Omit Origin: `403 bad_origin`. `{ "target": { "files": ["$ID_A"] }, "action": "set_ttl" }` without `ttl`: `400 ttl_required`.
-- **Proof.** Screenshots of never-expires selection + preview, Expires after set expiry, delete cancel vs gone catalog, and the drift dialog. Saved `/account/cleanup` and `/v1/files` JSON for each step.
+- **Default — Fixtures (slim).** `POST $ORIGIN/v1/files` twice with Bearer `$TOKEN`, `content-type: text/plain`, `X-Filename: vhubclean-a.md` body `a`, and `vhubclean-b.md` body `bbbbbbbbbbbbbbbbbbbb`. Both `201`. Record `$ID_A` `$ID_B`.
+- **Default — HTTP twin.** `POST $ORIGIN/account/cleanup` with `-H "origin: $ORIGIN"` and `{"target":{"files":["$ID_A"]},"action":"set_ttl","ttl":"7d"}` previews `executed: false`. Omit Origin: `403 bad_origin`. `{ "target": { "files": ["$ID_A"] }, "action": "set_ttl" }` without `ttl`: `400 ttl_required`. Resend the preview body plus `confirm` from the first response: `executed: true`. `GET $ORIGIN/v1/files?q=vhubclean-a` shows `expires_at` set; `vhubclean-b` still null.
+- **Extra (hub-cleanup-select / Hub.svelte) — Six-file browser recipe.** Publish six files and one site (`vhubclean-a`…`f` plus `vhubclean-site`) with mixed TTLs. Open `$ORIGIN/?q=vhubclean`, Never expires, check three rows, Preview, type `3 objects`. Size filter + `#catalog-select-matching`, Delete cancel then confirm. Uncheck a row for `409 cleanup_drift`. Drive when Hub.svelte cleanup bar or checkboxes change.
+- **Proof.** Default: `/account/cleanup` JSON for bad_origin, ttl_required, preview, execute, and the list GET. Screenshots only for Extra browser.
 
 ## Gotchas
 

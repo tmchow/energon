@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# One-shot session start: launch, doctor, mint if needed.
+# Usage (from repo root): .agents/skills/verify-energon/bin/up
+# Then: set -a; source "/tmp/energon-verify/$(cat /tmp/energon-verify/current)/state.env"; set +a
+
+set -euo pipefail
+_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$_script_dir/_lib.sh"
+
+cd "$REPO_ROOT"
+"$_script_dir/launch"
+export ENERGON_VERIFY_RUN
+ENERGON_VERIFY_RUN="$(cat "$CURRENT_FILE")"
+"$_script_dir/doctor"
+"$_script_dir/ready"

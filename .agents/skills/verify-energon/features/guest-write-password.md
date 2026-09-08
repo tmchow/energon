@@ -22,26 +22,20 @@ Guest write password lets the creator give someone outside the host a second sha
 
 Preconditions:
 
-- Doctor has passed. `TOKEN` minted. `$HANDLE` known.
+- `bin/up` passed. `$TOKEN` and `$HANDLE` known.
 - Phrase to use: `guest-write-ok`. Do not reuse a production password.
 - Single-origin local: assert the guest-write section of hub `/llms.txt` rather than two Hosts.
 
-- **Create writable site.** `POST $ORIGIN/v1/sites` with `{"slug":"verify-guest","write_password":"guest-write-ok"}`. Status `201`. Body has `id`. Body `write_password` is `guest-write-ok`. `write_password_protected` is true. `/v1` GET of that JSON later must not contain the phrase. Hub `GET /account/sites/$SITE_ID` returns `write_password` `guest-write-ok`.
-- **Put homepage with token.** `PUT /v1/sites/$SITE_ID/files/index.html` with body `<h1>guest-home</h1>`.
-- **Guest PUT new path.** `PUT $ORIGIN/$HANDLE/s/$SITE_ID/verify-guest/note.txt` with `-H "X-Energon-Write-Password: guest-write-ok"` and body `from-guest`, no `Authorization`. Status `201`. Body has no `hub`. Public GET of that path is `200` with `from-guest`.
-- **Guest DELETE path.** `DELETE $ORIGIN/$HANDLE/s/$SITE_ID/verify-guest/note.txt` with the write header. Status `200`. Body `{ "deleted": true, "path": "note.txt" }`.
-- **Last-path DELETE.** Guest-DELETE `index.html`. `GET $ORIGIN/$HANDLE/s/$SITE_ID/verify-guest/` is still `200`.
-- **Directory DELETE.** `DELETE $ORIGIN/$HANDLE/s/$SITE_ID/verify-guest/` with the write header. Status `405`. `Allow` is `GET`.
-- **Create writable file.** `POST /v1/files` with `X-Filename: guest.bin`, `X-Energon-Set-Write-Password: guest-write-ok`, body `abc`, `content-type: application/octet-stream`. Status `201`.
-- **Empty loose PUT then GET.** `PUT` the public file URL with the write header and empty body. Status `200`. Later GET is `200` with length `0` and the same `Content-Type`.
-- **Loose DELETE.** `DELETE` that public file URL with the write header. Status `405`.
-- **Header-bound.** Same phrase on `X-Energon-Password` cannot PUT or DELETE. Cookie from a share-password form POST cannot PUT or DELETE. Distinct secrets: form POST of the write phrase is `303`; cookie GET is `200`; that cookie PUT/DELETE is `401`. Share header carrying the write phrase is `401` on GET.
-- **Owner policy.** Create a site with `"write_policy":"owner","write_password":"guest-write-ok"`. Guest PUT of a path still succeeds.
-- **Unset is 405.** `PATCH` `{ "write_password": "" }` then guest PUT is `405` and the body does not name `X-Energon-Write-Password`.
-- **Creator-only.** A second-account token `PATCH` of `write_password` is `403`.
-- **Hub marks.** Write-only row lockup hover is `Write password` (no sibling padlock). View-only row padlock hover is `View password`. Unprotected row has no password mark. No Password chip. More menu still offers `Set password`. `#scan-examples` is gone. Last writer stays the account; via copy is `Updated via shared write` after a guest PUT. Open Link access on the write-only row: `#pw-dlg-write-door` is On and `#pw-dlg-write-input` shows `guest-write-ok` and can be copied. Turn Off and Save to clear.
-- **Discovery.** `GET $ORIGIN/llms.txt` contains the guest-write section and `X-Energon-Write-Password`.
-- **Proof.** Save create echo, guest PUT `201`, path DELETE `200` JSON, last-path site GET `200`, empty-file GET length `0`, 405 bodies, catalog `/account/data` row (`write_password_protected`, `written_via`, `last_written_by`). Browser proof: Hub stage with `#stage-access` closed, then open showing both fields; catalog lockup on the write-password row with `#who` visible.
+- **Default — Create writable site.** `POST $ORIGIN/v1/sites` with `{"slug":"verify-guest","write_password":"guest-write-ok"}`. Status `201`. Body `write_password` is `guest-write-ok`. `write_password_protected` is true. Later `/v1` GET must not contain the phrase. Hub `GET /account/sites/$SITE_ID` returns it.
+- **Default — Put homepage with token.** `PUT /v1/sites/$SITE_ID/files/index.html` with body `<h1>guest-home</h1>`.
+- **Default — Guest PUT / DELETE / last-path.** `PUT $ORIGIN/$HANDLE/s/$SITE_ID/verify-guest/note.txt` with `-H "X-Energon-Write-Password: guest-write-ok"` and body `from-guest`, no `Authorization` → `201`, public GET `from-guest`. DELETE that path → `200` `{ "deleted": true, "path": "note.txt" }`. Guest-DELETE `index.html`; site URL GET is still `200`. Directory DELETE of the site URL → `405`, `Allow: GET`.
+- **Default — Writable file.** `POST /v1/files` with `X-Filename: guest.bin`, `X-Energon-Set-Write-Password: guest-write-ok`, body `abc`. Empty PUT then GET length `0`. Loose DELETE of that URL → `405`.
+- **Default — Unset is 405.** `PATCH` `{ "write_password": "" }` then guest PUT is `405` and the body does not name `X-Energon-Write-Password`.
+- **Default — Discovery.** `GET $ORIGIN/llms.txt` contains the guest-write section and `X-Energon-Write-Password`.
+- **Extra (wpw-denied) — Header-bound.** Same phrase on `X-Energon-Password` cannot PUT or DELETE. Cookie from a share-password form POST cannot PUT or DELETE. Drive when gate cookie vs write header binding changes.
+- **Extra (wpw-set) — Owner policy / creator-only.** Create with `"write_policy":"owner","write_password":"guest-write-ok"`; guest PUT still succeeds. A second-account token `PATCH` of `write_password` is `403`. Drive when write policy or creator-only changes.
+- **Extra (wpw-marks / Hub.svelte) — Hub marks.** Write-only lockup hover `Write password`. `#pw-dlg-write-door` On shows `guest-write-ok`. Drive when Hub.svelte password marks change.
+- **Proof.** Default: create echo, guest PUT `201`, path DELETE `200`, last-path site GET `200`, empty-file GET length `0`, 405 bodies. Screenshots only for Extra hub.
 
 ## Gotchas
 
