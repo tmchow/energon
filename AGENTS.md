@@ -12,6 +12,7 @@ This file is how to **change this tree**. It is not a product README and not the
 | Deploy your own Energon or connect an agent | [INSTALL.md](./INSTALL.md) |
 | Deploy vars, Access, fork hygiene | [docs/DEPLOY.md](./docs/DEPLOY.md) |
 | Domain terms (purge claim, write claim, this Energon) | [CONCEPTS.md](./CONCEPTS.md) |
+| Why something is built the way it is, or a bug that was already solved once (quota drift, purge races, edge cache and `last_read_at`) | `docs/solutions/`; read the matching file before redesigning or re-debugging |
 | Open a PR against `tmchow/energon` | [CONTRIBUTING.md](./CONTRIBUTING.md); fill [`.github/PULL_REQUEST_TEMPLATE.md`](./.github/PULL_REQUEST_TEMPLATE.md) |
 
 ## Hard stops
