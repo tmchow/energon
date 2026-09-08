@@ -152,6 +152,7 @@ describe("agent connections", () => {
     expect(JSON.parse(bootstrap![1]).data.connection).toEqual({
       id: connection.id, label: row!.label, expires_at: row!.expires_at,
     });
+    expect(JSON.parse(bootstrap![1]).data.ended_kind).toBeNull();
     for (const secret of [row!.code_hash, row!.poll_hash, connection.user_code, connection.poll_token]) {
       expect(html).not.toContain(secret);
     }
@@ -205,5 +206,55 @@ describe("agent connections", () => {
     })));
     expect(results.filter(r => r.status === 201)).toHaveLength(20);
     expect(results.filter(r => r.status === 429)).toHaveLength(2);
+  });
+
+  it("serves HTML instead of JSON when a human opens an ended connect URL", async () => {
+    const expired = await start("ended html expired");
+    await env.DB.prepare("UPDATE agent_connections SET expires_at = ? WHERE id = ?")
+      .bind("2000-01-01T00:00:00.000Z", expired.id).run();
+    const expiredPage = await req(`/connect?request=${expired.id}`, { headers: access("connect@esperlabs.app") });
+    expect(expiredPage.status).toBe(410);
+    expect(expiredPage.headers.get("content-type")).toContain("text/html");
+    const expiredHtml = await expiredPage.text();
+    expect(expiredHtml).toContain("This request has expired; ask your agent to start a new one.");
+    expect(expiredHtml).not.toContain('id="connect-code"');
+    expect(expiredHtml).not.toContain("connection_expired");
+    expect(JSON.parse(expiredHtml.match(/<script id="bootstrap" type="application\/json">([\s\S]*?)<\/script>/)![1]).data.ended_kind).toBe("expired");
+    assertDomBindings(expiredHtml);
+
+    const consumed = await start("ended html consumed");
+    expect((await decide(consumed)).status).toBe(200);
+    expect((await exchange(consumed)).status).toBe(200);
+    const consumedPage = await req(`/connect?request=${consumed.id}`, { headers: access("connect@esperlabs.app") });
+    expect(consumedPage.status).toBe(410);
+    expect(consumedPage.headers.get("content-type")).toContain("text/html");
+    const consumedHtml = await consumedPage.text();
+    expect(consumedHtml).toContain("This request has expired; ask your agent to start a new one.");
+    expect(consumedHtml).not.toContain('id="connect-code"');
+    expect(consumedHtml).not.toContain(consumed.poll_token);
+
+    const approved = await start("ended html approved");
+    expect((await decide(approved)).status).toBe(200);
+    const approvedPage = await req(`/connect?request=${approved.id}`, { headers: access("connect@esperlabs.app") });
+    expect(approvedPage.status).toBe(409);
+    const approvedHtml = await approvedPage.text();
+    expect(approvedHtml).toContain("This request has already been approved. Return to the agent.");
+    expect(approvedHtml).not.toContain('id="connect-code"');
+
+    const denied = await start("ended html denied");
+    expect((await decide(denied, "deny")).status).toBe(200);
+    const deniedPage = await req(`/connect?request=${denied.id}`, { headers: access("connect@esperlabs.app") });
+    expect(deniedPage.status).toBe(403);
+    expect(deniedPage.headers.get("content-type")).toContain("text/html");
+    const deniedHtml = await deniedPage.text();
+    expect(deniedHtml).toContain("This connection was denied.");
+    expect(deniedHtml).not.toContain('id="connect-code"');
+
+    const missing = await req("/connect?request=missingrequestid0000001", { headers: access("connect@esperlabs.app") });
+    expect(missing.status).toBe(410);
+    expect(missing.headers.get("content-type")).toContain("text/html");
+    const missingHtml = await missing.text();
+    expect(missingHtml).toContain("This request has expired; ask your agent to start a new one.");
+    expect(missingHtml).not.toContain('id="connect-code"');
   });
 });

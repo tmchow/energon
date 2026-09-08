@@ -24,11 +24,69 @@ type ConnectionState = Pick<Connection, "status" | "expires_at">;
 type HumanConnection = Pick<Connection, "id" | "label" | "code_hash" | "status" | "expires_at">;
 type PollConnection = Pick<Connection, "label" | "status" | "expires_at" | "user_id" | "token_expires_at">;
 
+export type ConnectPageKind = "pending" | "expired" | "approved" | "denied";
+export type ConnectEndedKind = Exclude<ConnectPageKind, "pending">;
+
 function assertActive(row: ConnectionState | null): asserts row is ConnectionState {
   if (!row || row.status === "consumed" || row.expires_at <= new Date().toISOString()) {
     throw new ApiError(410, "connection_expired", "This connection request ended. Start a new request; do not reuse its secrets.");
   }
   if (row.status === "denied") throw new ApiError(403, "connection_denied", "The connection was denied. Stop and ask the human before trying again.");
+}
+
+export function connectPageKind(row: ConnectionState | null, now = new Date().toISOString()): ConnectPageKind {
+  if (!row || row.expires_at <= now) return "expired";
+  switch (row.status) {
+    case "consumed":
+      return "expired";
+    case "denied":
+      return "denied";
+    case "approved":
+      return "approved";
+    case "pending":
+      return "pending";
+    default: {
+      const _never: never = row.status;
+      return _never;
+    }
+  }
+}
+
+export function connectPageStatus(kind: ConnectPageKind): number {
+  switch (kind) {
+    case "pending":
+      return 200;
+    case "expired":
+      return 410;
+    case "approved":
+      return 409;
+    case "denied":
+      return 403;
+    default: {
+      const _never: never = kind;
+      return _never;
+    }
+  }
+}
+
+export type HumanConnectPage = {
+  connection: { id: string; label: string; expires_at: string } | null;
+  ended_kind: ConnectEndedKind | null;
+  status: number;
+};
+
+export async function humanConnectPage(env: Env, id: string): Promise<HumanConnectPage> {
+  const row = id
+    ? await env.DB.prepare("SELECT id, label, status, expires_at FROM agent_connections WHERE id = ?")
+        .bind(id)
+        .first<Pick<Connection, "id" | "label" | "status" | "expires_at">>()
+    : null;
+  const kind = connectPageKind(row);
+  return {
+    connection: row ? { id: row.id, label: row.label, expires_at: row.expires_at } : null,
+    ended_kind: kind === "pending" ? null : kind,
+    status: connectPageStatus(kind),
+  };
 }
 
 export async function startConnection(request: Request, env: Env, body: Record<string, unknown>): Promise<Response> {
