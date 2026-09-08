@@ -39,12 +39,13 @@ import {
   resolveExpiresAt,
   resolveWritePolicy,
 } from "./policy";
+import { noteRead } from "./reads";
 import type { Actor, Env, SiteFileRow, SiteRow } from "./types";
 import { isSiteId, sitePublicUrl } from "./urls";
 import { packZip, unpackZip } from "./zip";
 
 const SITE_SELECT =
-  `id, handle, slug, owner_id, created_at, updated_at, created_by, last_written_by, password_hash, password_secret, expires_at, write_policy, write_password_hash, write_password_secret, written_via`;
+  `id, handle, slug, owner_id, created_at, updated_at, created_by, last_written_by, password_hash, password_secret, expires_at, write_policy, write_password_hash, write_password_secret, written_via, last_read_at`;
 const D1_BATCH_MAX_STATEMENTS = 100;
 
 type R2Snapshot = {
@@ -639,6 +640,7 @@ export async function getSiteFile(
   if (!obj) {
     throw new ApiError(404, "file_not_found", `No file at ${sitePublicPathHint(site.handle, site.id, site.slug, path)}.`);
   }
+  noteRead(env, ctx, { table: "sites", id: site.id, last_read_at: site.last_read_at });
   const headers = new Headers();
   headers.set("content-type", obj.httpMetadata?.contentType || "application/octet-stream");
   headers.set("x-content-type-options", "nosniff");
@@ -754,6 +756,7 @@ export async function exportSiteZip(
     files.push({ path: row.path, bytes: new Uint8Array(await obj.arrayBuffer()) });
   }
   const zip = packZip(files, policy.fileBytes);
+  noteRead(env, ctx, { table: "sites", id: site.id, last_read_at: site.last_read_at });
   const headers = new Headers();
   headers.set("content-type", "application/zip");
   headers.set("x-content-type-options", "nosniff");
@@ -903,6 +906,7 @@ export async function listSiteJson(
     write_password_protected: Boolean(site.write_password_hash),
     written_via: site.written_via ?? null,
     expires_at: site.expires_at ?? null,
+    last_read_at: site.last_read_at ?? null,
     write_policy: resolveWritePolicy(site.write_policy),
     files: (files.results || []).map((f) => ({
       ...f,
@@ -959,6 +963,7 @@ export async function listSitesFor(
     write_password_protected: boolean;
     written_via: string | null;
     expires_at: string | null;
+    last_read_at: string | null;
     write_policy: string;
   }>
 > {
@@ -980,7 +985,7 @@ export async function listSitesFor(
   const total = Number(countRow?.n ?? 0);
   const rows = await env.DB.prepare(
     `SELECT s.id, s.handle, s.slug, s.created_at, s.updated_at, s.created_by, s.last_written_by,
-            s.password_hash, s.write_password_hash, s.written_via, s.expires_at, s.write_policy,
+            s.password_hash, s.write_password_hash, s.written_via, s.expires_at, s.last_read_at, s.write_policy,
             COUNT(f.path) AS file_count, COALESCE(SUM(f.size), 0) AS size
      FROM sites s
      LEFT JOIN site_files f ON s.id = f.site_id
@@ -1003,6 +1008,7 @@ export async function listSitesFor(
       write_password_hash: string | null;
       written_via: string | null;
       expires_at: string | null;
+      last_read_at: string | null;
       write_policy: string | null;
       file_count: number;
       size: number;
@@ -1017,6 +1023,7 @@ export async function listSitesFor(
       write_password_protected: Boolean(write_password_hash),
       written_via: s.written_via ?? null,
       expires_at: s.expires_at ?? null,
+      last_read_at: s.last_read_at ?? null,
       write_policy: resolveWritePolicy(write_policy),
     };
   });
@@ -1074,15 +1081,23 @@ export async function serveSite(
   if (request.method === "POST") {
     return json({ error: "method_not_allowed", message: "Method not allowed." }, 405);
   }
+  // Stamp only when stored bytes are served; 404s and the generated listing do not count.
+  const read = () => noteRead(env, ctx, { table: "sites", id: site.id, last_read_at: site.last_read_at });
 
   const remaining = remainingCacheSeconds(site.expires_at);
   const cacheable = !site.password_hash && unlocked !== "unlocked";
   const wantsIndex = pathRaw === "" || pathRaw === "/";
   if (wantsIndex) {
     const index = await env.BUCKET.get(siteKey(handle, site.id, "index.html"));
-    if (index) return serveObject(index, "text/html; charset=utf-8", cacheable, siteCacheTag(handle, site.id), remaining);
+    if (index) {
+      read();
+      return serveObject(index, "text/html; charset=utf-8", cacheable, siteCacheTag(handle, site.id), remaining);
+    }
     const indexMd = await env.BUCKET.get(siteKey(handle, site.id, "index.md"));
-    if (indexMd) return respondMarkdown(request, indexMd, "index.md");
+    if (indexMd) {
+      read();
+      return respondMarkdown(request, indexMd, "index.md");
+    }
     return htmlPage(await fileListHtml(env, site), 200, {
       "cache-control": cacheable ? publicCacheControl(remaining) : privateCacheControl(),
       "cache-tag": siteCacheTag(handle, site.id),
@@ -1105,6 +1120,7 @@ export async function serveSite(
       { "cache-control": "no-store" },
     );
   }
+  read();
   if (isMarkdownName(path)) return respondMarkdown(request, obj, path);
   const type = obj.httpMetadata?.contentType || "application/octet-stream";
   return serveObject(obj, type, cacheable, siteCacheTag(handle, site.id), remaining, {

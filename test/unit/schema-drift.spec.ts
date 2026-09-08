@@ -59,4 +59,16 @@ describe("schema representations", () => {
       "ALTER TABLE loose_files ADD COLUMN write_password_secret TEXT;",
     ]);
   });
+
+  it("ships last_read_at as a single additive migration", () => {
+    const migration = readFileSync("migrations/0019_last_read_at.sql", "utf8");
+    const statements = migration
+      .split("\n")
+      .filter((line: string) => line.trim() && !line.trim().startsWith("--"));
+
+    expect(statements).toEqual([
+      "ALTER TABLE sites ADD COLUMN last_read_at TEXT;",
+      "ALTER TABLE loose_files ADD COLUMN last_read_at TEXT;",
+    ]);
+  });
 });

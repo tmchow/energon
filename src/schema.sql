@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS sites (
   write_policy TEXT NOT NULL DEFAULT 'org',
   write_password_hash TEXT,
   write_password_secret TEXT,
-  written_via TEXT
+  written_via TEXT,
+  last_read_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS site_files (
@@ -57,7 +58,8 @@ CREATE TABLE IF NOT EXISTS loose_files (
   write_policy TEXT NOT NULL DEFAULT 'org',
   write_password_hash TEXT,
   write_password_secret TEXT,
-  written_via TEXT
+  written_via TEXT,
+  last_read_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS tokens (
