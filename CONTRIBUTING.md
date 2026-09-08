@@ -37,16 +37,25 @@ Those files are how a fork becomes *your* Energon. Upstream stays a template.
 
 ## Commits and titles
 
-Do **not** use conventional-commit prefixes (`feat:`, `fix:`, `chore:`, `docs:`).
-This repo squash-merges; the **PR title** is the durable subject.
+This repo squash-merges. The **PR title** is the commit on `main`. CI
+(`.github/workflows/pr-title.yml`) requires [Conventional Commits](https://www.conventionalcommits.org/):
 
-Write an imperative sentence that names the change:
+```
+type(scope)?: subject
+```
 
-- Yes: `Cap public edge cache at one day`
-- No: `feat: cap cache` / `chore: misc` / `Updates`
+- Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
+- Scope is optional (`hub`, `v1`, `gate`, `skill`, …). Breaking change: `feat(v1)!: …`
+- Subject is lowercase imperative, no trailing period
+- Yes: `feat(hub): show expiry on the catalog row`
+- No: `Cap public edge cache at one day` / `feat: Cap public edge cache` / `Updates`
 
-Commit bodies explain why when the subject cannot. Multiple logical commits on a branch are fine;
-they will likely squash on merge.
+Do not put `feat:` on every commit on the branch. Those commits are squashed away.
+Commit bodies explain why when the subject cannot.
+
+GitHub squash default should be **Pull request title** (Settings → General → Pull Requests),
+not title and description. Mark **Conventional commit title** required on `main` so a PR
+cannot merge without it.
 
 ## Tests
 

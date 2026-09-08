@@ -5,7 +5,7 @@ Do not replace the body with a commit dump. Do not paste tokens, Access JWTs,
 or other people's files. Do not include fork identity: wrangler.toml ids/origins,
 plugins/, marketplace catalogs, .dev.vars.
 
-PR title: imperative sentence. No feat:/fix:/chore: prefix.
+PR title: Conventional Commits (`feat:`, `fix:`, `docs:`). Subject is lowercase imperative. CI checks this.
 Fill Authorship. Name the model, not the product.
 -->
 
