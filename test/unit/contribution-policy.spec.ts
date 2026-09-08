@@ -28,9 +28,11 @@ describe("contribution policy", () => {
 
   it("keeps a PR template agents can fill without conventional-commit prefixes", () => {
     const template = readFileSync(join(root, ".github/PULL_REQUEST_TEMPLATE.md"), "utf8");
-    for (const heading of ["## What", "## Why", "## Verify", "## Risk"]) {
+    for (const heading of ["## What", "## Why", "## Verify", "## Risk", "## Authorship"]) {
       expect(template).toContain(heading);
     }
+    expect(template).toContain("**Model:**");
+    expect(template).toContain("**Human review:**");
     expect(template).toContain("No feat:/fix:/chore: prefix");
     expect(template).not.toMatch(/^Fork PRs are closed automatically/m);
   });

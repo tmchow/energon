@@ -4,6 +4,7 @@ Do not paste tokens, Access JWTs, or other people's files.
 Do not include fork identity: wrangler.toml ids/origins, plugins/, marketplace catalogs, .dev.vars.
 
 PR title: imperative sentence. No feat:/fix:/chore: prefix.
+Fill Authorship. Name the model, not the product. Do not claim a human reviewed the diff if they did not.
 -->
 
 ## What
@@ -28,3 +29,10 @@ Check every row this PR touches. Leave the rest unchecked.
 - [ ] Public content URL or cache
 - [ ] Skill templates (`templates/`)
 - [ ] Hub UI (follow DESIGN.md)
+
+## Authorship
+
+<!-- Name the model, not the product. "None" is valid. Do not claim a human reviewed the diff if they did not. -->
+
+- **Model:** <!-- Cursor Grok 4.6, Claude Opus 4.6, none -->
+- **Human review:** <!-- none (fully agent-created) / author reviewed the diff / another person reviewed -->

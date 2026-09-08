@@ -30,7 +30,8 @@ This file is how to **change this tree**. It is not a product README and not the
 
 When you open a PR:
 
-- Use [`.github/PULL_REQUEST_TEMPLATE.md`](./.github/PULL_REQUEST_TEMPLATE.md) as the body. Keep the headings. Fill What, Verify, and Risk. Do not paste secrets.
+- Use [`.github/PULL_REQUEST_TEMPLATE.md`](./.github/PULL_REQUEST_TEMPLATE.md) as the body. Keep the headings. Fill What, Verify, Risk, and Authorship. Do not paste secrets.
+- Authorship: name the actual model (for example `Cursor Grok 4.6`, not `Cursor` or `an AI`). Say whether a human reviewed the diff, or `none (fully agent-created)`. Do not claim review you did not get. "None" is valid.
 - Title and commit subjects are imperative sentences (`Cap public edge cache at one day`). Do not use conventional-commit prefixes (`feat:`, `fix:`, `chore:`). History is squash-merged; the PR title is the durable subject.
 - One concern per PR. Do not mix formatting or drive-by refactors with a behavior change.
 - Do not include fork identity: `wrangler.toml` database ids and origins, `.dev.vars`, `plugins/`, marketplace catalogs, or an `instance-skill.json` pointed at a real origin.
