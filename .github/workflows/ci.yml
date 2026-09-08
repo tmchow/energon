@@ -5,6 +5,10 @@ on:
   push:
     branches: [main]
 
+# Fork PRs are untrusted. Read the tree; never pull_request_target.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}

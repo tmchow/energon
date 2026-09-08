@@ -5,4 +5,4 @@ contact_links:
     about: Private vulnerability report. Do not file a public issue.
   - name: How this repo takes contributions
     url: https://github.com/tmchow/energon/blob/main/CONTRIBUTING.md
-    about: Issues yes. Pull requests against tmchow/energon are not merged.
+    about: Issues and pull requests. Keep fork identity off upstream PRs.

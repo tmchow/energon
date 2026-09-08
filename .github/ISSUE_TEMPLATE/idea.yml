@@ -1,12 +1,12 @@
 name: Idea
-description: A change you want in this codebase. Not a patch.
+description: A change you want. Open this before a large PR.
 title: "[idea] "
 labels: []
 body:
   - type: markdown
     attributes:
       value: |
-        Describe the problem. Do not attach a pull request.
+        Describe the problem. Open an issue first for behavior, schema, or `/v1` changes; a PR can follow once the idea is accepted.
         See [CONTRIBUTING.md](https://github.com/tmchow/energon/blob/main/CONTRIBUTING.md).
   - type: textarea
     id: problem
@@ -19,6 +19,6 @@ body:
     id: idea
     attributes:
       label: Idea
-      description: Optional. A sketch is enough. Keep the work on your fork if you build it.
+      description: Optional. A sketch is enough. A PR that implements this should wait until the idea is accepted.
     validations:
       required: false

@@ -148,7 +148,7 @@ The same query with `expires_at IS NULL` lists never-expiring tokens, which is w
 
 ## Customize a fork
 
-Keep the diff small so `git merge upstream` stays easy.
+Keep the diff small so `git merge upstream` stays easy. Worker, hub, `/v1`, template, and docs changes that apply to every Energon belong in a PR against `tmchow/energon`; keep this fork's identity files here. See [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 Supported hooks are wrangler vars (`FOOTER_TEXT`, TTL, email domains, `WRITE_POLICY`) and `instance-skill.json` + `npm run skill:render`. After you merge `upstream/main`, take any **new keys** from `wrangler.example.toml`. Editing `src/hub.html` works but will conflict.
 
