@@ -4,7 +4,6 @@ export type HubCleanupFind = {
   expires: 'any' | 'never';
   expiresBefore: string;
   updatedBefore: string;
-  lastReadBefore: string;
   minSize: string;
 };
 
@@ -20,7 +19,6 @@ export function hubCleanupTarget(pick: HubCleanupPick, find: HubCleanupFind): Re
     if (find.expires === 'never') target.expires = 'never';
     else if (find.expiresBefore.trim()) target.expires_before = find.expiresBefore.trim();
     if (find.updatedBefore.trim()) target.updated_before = find.updatedBefore.trim();
-    if (find.lastReadBefore.trim()) target.last_read_before = find.lastReadBefore.trim();
     if (find.minSize.trim()) target.min_size = find.minSize.trim();
     return target;
   }

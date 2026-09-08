@@ -24,7 +24,7 @@ describe("signed-in pages", () => {
     expect(res.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
     const html = await res.text();
     for (const text of ["Publish a document, prototype, or file.", "Choose files", "Choose folder", "No sites yet", "No files yet", "Drop to stage"]) expect(html).toContain(text);
-    for (const id of ["app", "pick-files", "pick-folder", "filepick", "folderpick", "q", "scope", "sort", "catalog-filters", "catalog-expires", "catalog-expires-before", "catalog-updated-before", "catalog-last-read", "catalog-min-size", "catalog-select-matching", "catalog-cleanup", "catalog-cleanup-action", "catalog-cleanup-preview", "catalog-cleanup-ttl", "catalog-cleanup-dlg", "sites", "files", "account-export", "drop-overlay", "pw-dlg", "write-dlg", "ttl-dlg"]) expect(html).toContain(`id="${id}"`);
+    for (const id of ["app", "pick-files", "pick-folder", "filepick", "folderpick", "q", "scope", "sort", "catalog-filters", "catalog-expires", "catalog-expires-before", "catalog-updated-before", "catalog-min-size", "catalog-select-matching", "catalog-cleanup", "catalog-cleanup-action", "catalog-cleanup-preview", "catalog-cleanup-ttl", "catalog-cleanup-dlg", "sites", "files", "account-export", "drop-overlay", "pw-dlg", "write-dlg", "ttl-dlg"]) expect(html).toContain(`id="${id}"`);
     expect(html).toContain("Download what you own");
     expect(html).toContain("Download everything you own");
     expect(html).toContain('href="/account/export"');
@@ -46,8 +46,9 @@ describe("signed-in pages", () => {
     expect(html).toContain('aria-label="When this expires"');
     expect(html).toContain('aria-label="Expiry filter"');
     expect(html).toContain("Never expires");
-    expect(html).toContain("Last read before");
-    expect(html).toContain("Reads lag up to about a day.");
+    expect(html).not.toContain('id="catalog-last-read"');
+    expect(html).not.toContain("Last read before");
+    expect(html).not.toContain("Reads lag up to about a day.");
     expect(html).toContain(">Oldest<");
     expect(html).toContain("Select all matching these filters");
     expect(html).toContain('aria-label="Cleanup action"');

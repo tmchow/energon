@@ -23,7 +23,6 @@ export type HubQuery = {
   sort: string;
   expires?: { kind: 'never' } | { kind: 'before'; at: string };
   updatedBefore?: string;
-  lastReadBefore?: string;
   minSize?: number;
 };
 export type HubData = CatalogData & { handle: string | null; origin: string; content_origin: string; policy: RetentionPolicy; words: readonly string[]; query?: HubQuery };

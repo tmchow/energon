@@ -32,7 +32,6 @@
   let expires = $state<'any' | 'never'>(untrack(() => data.query?.expires?.kind === 'never' ? 'never' : 'any'));
   let expiresBefore = $state(untrack(() => data.query?.expires?.kind === 'before' ? data.query.expires.at : ''));
   let updatedBefore = $state(untrack(() => data.query?.updatedBefore || ''));
-  let lastReadBefore = $state(untrack(() => data.query?.lastReadBefore || ''));
   let minSize = $state(untrack(() => data.query?.minSize != null ? String(data.query.minSize) : ''));
   let selectedSites = $state<string[]>([]);
   let selectedFiles = $state<string[]>([]);
@@ -105,7 +104,7 @@
   const writePhraseOk = $derived(!isTargetCreator || writeDoor === 'off' || !!writePassword.trim() || (writeUnrecovered && writeDoor === 'on'));
   const linkAccessReady = $derived(linkAccessLoaded && !passwordLoading && (shareDirty || writeDirty) && sharePhraseOk && writePhraseOk);
   const linkAccessBusy = $derived(mutationBusy || passwordLoading || !linkAccessLoaded);
-  const filtered = $derived(!!(q.trim() || scope !== 'involved' || sort !== 'updated' || expires === 'never' || expiresBefore.trim() || updatedBefore.trim() || lastReadBefore.trim() || minSize.trim()));
+  const filtered = $derived(!!(q.trim() || scope !== 'involved' || sort !== 'updated' || expires === 'never' || expiresBefore.trim() || updatedBefore.trim() || minSize.trim()));
   const hasSelection = $derived(matching || selectedSites.length + selectedFiles.length > 0);
   const selectionLabel = $derived(matching ? 'Everything matching these filters' : `${selectedSites.length + selectedFiles.length} selected`);
   const cleanupActionOptions = [
@@ -124,7 +123,6 @@
     if (expires === 'never') query.set('expires', 'never');
     else if (expiresBefore.trim()) query.set('expires_before', expiresBefore.trim());
     if (updatedBefore.trim()) query.set('updated_before', updatedBefore.trim());
-    if (lastReadBefore.trim()) query.set('last_read_before', lastReadBefore.trim());
     if (minSize.trim()) query.set('min_size', minSize.trim());
     if (only && lists[`${only}_cursor`]) query.set(`${only}_cursor`, lists[`${only}_cursor`]!);
     try {
@@ -193,7 +191,7 @@
   function cleanupTarget(): Record<string, unknown> | null {
     return hubCleanupTarget(
       matching ? { matching: true } : { matching: false, sites: selectedSites, files: selectedFiles },
-      { q, scope, expires, expiresBefore, updatedBefore, lastReadBefore, minSize },
+      { q, scope, expires, expiresBefore, updatedBefore, minSize },
     );
   }
   function cleanupBody(confirm?: string): Record<string, unknown> | null {
@@ -446,7 +444,6 @@
         <Field label="Expiry"><SegmentedControl id="catalog-expires" ariaLabel="Expiry filter" options={[{ value: 'any', label: 'Any' }, { value: 'never', label: 'Never expires' }]} bind:value={expires} onChange={() => { expiresBefore = ''; applyFilters(); }} /></Field>
         <Field label="Expires before" htmlFor="catalog-expires-before"><Input id="catalog-expires-before" bind:value={expiresBefore} mono placeholder="2026-01-01" disabled={expires === 'never'} onchange={applyFilters} /></Field>
         <Field label="Last written before" htmlFor="catalog-updated-before"><Input id="catalog-updated-before" bind:value={updatedBefore} mono placeholder="2026-01-01" onchange={applyFilters} /></Field>
-        <Field label="Last read before" htmlFor="catalog-last-read" note="ISO timestamp. Matches work with no recorded read too. Reads lag up to about a day."><Input id="catalog-last-read" bind:value={lastReadBefore} mono placeholder="2026-01-01" onchange={applyFilters} /></Field>
         <Field label="Minimum size" htmlFor="catalog-min-size"><Input id="catalog-min-size" bind:value={minSize} placeholder="1mb" onchange={applyFilters} /></Field>
       </div>
       <div class="en-card-body en-catalog-select">

@@ -159,6 +159,13 @@ export function parseListQuery(url: URL): ListQuery {
   };
 }
 
+/** Hub catalog listing. last_read_before stays on admin cleanup, not the personal catalog. */
+export function parseHubListQuery(url: URL): ListQuery {
+  const query = parseListQuery(url);
+  delete query.lastReadBefore;
+  return query;
+}
+
 /** Canonical catalog filter query string. Keep keys aligned with `parseListQuery`. */
 export function catalogSearchParams(input: {
   q: string;

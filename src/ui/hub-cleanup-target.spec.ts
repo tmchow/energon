@@ -7,7 +7,6 @@ const find: HubCleanupFind = {
   expires: 'any',
   expiresBefore: '',
   updatedBefore: '',
-  lastReadBefore: '',
   minSize: '',
 };
 
@@ -23,7 +22,6 @@ describe('hubCleanupTarget', () => {
       expires: 'any',
       expiresBefore: '',
       updatedBefore: '',
-      lastReadBefore: '',
       minSize: '',
     })).toEqual({});
   });
@@ -37,5 +35,6 @@ describe('hubCleanupTarget', () => {
       expires: 'never',
       min_size: '15b',
     });
+    expect(hubCleanupTarget({ matching: true }, { ...find, expires: 'never' })).not.toHaveProperty('last_read_before');
   });
 });

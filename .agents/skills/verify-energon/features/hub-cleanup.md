@@ -1,11 +1,11 @@
 # Hub cleanup
 
-A signed-in person retires their own catalog work in bulk from the hub. Filters find never-expiring, largest, oldest, or long-unread rows. Checkboxes or Select all matching these filters choose the target. Set expiry, Expire soon, or Delete then uses the same preview and count-to-confirm as `/admin`. The hub POST is `/account/cleanup` (Access, trusted Origin). It calls the same engine as `POST /v1/cleanup` without the admin flag, so involvement and `canMutate` keep other people's work out.
+A signed-in person retires their own catalog work in bulk from the hub. Filters find never-expiring, largest, or oldest rows. Checkboxes or Select all matching these filters choose the target. Set expiry, Expire soon, or Delete then uses the same preview and count-to-confirm as `/admin`. The hub POST is `/account/cleanup` (Access, trusted Origin). It calls the same engine as `POST /v1/cleanup` without the admin flag, so involvement and `canMutate` keep other people's work out.
 
 ## Sub-features
 
 - `hub-cleanup-select` is a checkbox on each catalog row (`#catalog-select-file-{id}`, `#catalog-select-site-{id}`) and Select visible (`#catalog-select-files` / `#catalog-select-sites`).
-- `hub-cleanup-matching` is `#catalog-select-matching`. The target is the current catalog filters (`q`, `scope`, `expires`, dates, `min_size`), not the loaded page of ids. Unchecking a row after matching turns the target into the remaining visible ids.
+- `hub-cleanup-matching` is `#catalog-select-matching`. The target is the current catalog filters (`q`, `scope`, `expires`, `expires_before`, `updated_before`, `min_size`), not the loaded page of ids. Matching does not send `last_read_before`. Unchecking a row after matching turns the target into the remaining visible ids.
 - `hub-cleanup-bar` is `#catalog-cleanup`, shown once something is selected. `#catalog-cleanup-action` offers Set expiry (pressed by default), Expire soon, and Delete (`aria-pressed="false"` until chosen). `#catalog-cleanup-ttl` is required for Set expiry. `#catalog-cleanup-preview` POSTs `/account/cleanup` without `confirm`.
 - `hub-cleanup-preview` returns `executed: false` with matched, eligible, skipped, bytes, sample (`#catalog-cleanup-sample`), and a 32-hex `confirm`. Last read cells read `No recorded read` (never "unread").
 - `hub-cleanup-confirm` is `#catalog-cleanup-confirm` then `#catalog-cleanup-dlg`. Type `{n} objects` to execute. Cancel leaves the catalog unchanged.
@@ -49,7 +49,7 @@ Preconditions:
 - `#catalog-cleanup` is in the HTML even when hidden. Drive it after a selection so it is visible.
 - Matching follows the current filters, including rows not yet loaded. Unchecking one row after matching keeps only the remaining *visible* ids.
 - Changing search, scope, or filters clears the selection and drops the preview. Sort does not. A cleared row selection never posts `target: {}` (that would mean every involved object). Only Select all matching these filters may send `{}`.
-- `last_read_at` is a floor that can lag about a day. Never label it unread.
+- `last_read_at` is a floor that can lag about a day. Never label it unread. The Last read column still shows that floor. Hub filters and `POST /account/cleanup` do not take `last_read_before`; that cutoff stays on `/admin`.
 - Per-item Change expiration and `/admin` are unchanged. Do not drive `#ttl-dlg` or `/admin` for this recipe.
 - `expire` keeps a 30-minute grace. Finish the recipe before those objects 410, or skip Expire soon if the clock is tight.
 - `/v1/cleanup` behavior does not change. If `openapi-drift` fails, a `/v1` surface landed by mistake.

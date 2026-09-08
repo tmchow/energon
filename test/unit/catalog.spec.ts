@@ -10,6 +10,7 @@ import {
   likeNeedle,
   nextFileCursor,
   nextSiteCursor,
+  parseHubListQuery,
   parseListQuery,
   parseSort,
   catalogSearchParams,
@@ -87,7 +88,7 @@ describe("parseListQuery", () => {
     expect(q("?min_size=-5").minSize).toBeUndefined();
   });
 
-  it("round-trips hub catalog filters through catalogSearchParams", () => {
+  it("round-trips catalog list filters through catalogSearchParams", () => {
     const params = catalogSearchParams({
       q: "notes",
       scope: "created",
@@ -113,6 +114,14 @@ describe("parseListQuery", () => {
     expect(parsed.updatedBefore).toBe("2026-03-01T00:00:00.000Z");
     expect(parsed.lastReadBefore).toBe("2026-01-01T00:00:00.000Z");
     expect(parsed.minSize).toBe(1024 * 1024);
+  });
+
+  it("hub list query drops last_read_before", () => {
+    const url = new URL("https://energon.example.com/?expires=never&last_read_before=2026-01-01T00:00:00.000Z");
+    expect(parseListQuery(url).lastReadBefore).toBe("2026-01-01T00:00:00.000Z");
+    const hub = parseHubListQuery(url);
+    expect(hub.expires).toEqual({ kind: "never" });
+    expect(hub.lastReadBefore).toBeUndefined();
   });
 
   it("sends expires_before only when expiry is a cutoff, not never", () => {
