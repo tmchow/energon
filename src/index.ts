@@ -24,7 +24,7 @@ import { MEMORABLE_WORDS } from "./memorable";
 import { deleteLooseFile, getLooseFile, hubLists, hubLooseLinkAccess, listLooseJson, patchLoose, postLooseFromRequest, putLooseFromRequest, serveLoose } from "./files";
 import { passwordField, writePasswordField } from "./gate";
 import { ApiError, accountOriginRequired, assertTrustedAccountOrigin, contentOrigin, dedicatedContentOrigin, isLocalHost, isMermaidAssetPath, isPublicContentPath, json, jsonMaybeSecret, publicOrigin, readBodyCapped, secretJson, serveMermaidAsset, wantsDownload } from "./http";
-import { instancePolicy, policyPublic, tokenPolicy, tokenPolicyPublic } from "./policy";
+import { instancePolicy, policyPublic, tokenPolicy, tokenPolicyPublic, adminTokenPolicy } from "./policy";
 import {
   createSite,
   deleteSite,
@@ -211,9 +211,16 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   if (path === "/account/tokens" && method === "POST") {
     const actor = await requireHuman(request, env, ctx);
     const body = await readJson(request);
-    const minted = await mintToken(env, actor.email, String(body.label ?? ""), actor.userId, body.ttl);
+    const minted = await mintToken(env, actor.email, String(body.label ?? ""), actor.userId, body.ttl, body.scope);
     return secretJson(
-      { id: minted.id, label: minted.label, token: minted.token, expires_at: minted.expires_at, recoverable: false },
+      {
+        id: minted.id,
+        label: minted.label,
+        token: minted.token,
+        expires_at: minted.expires_at,
+        recoverable: false,
+        admin: minted.scope === "admin",
+      },
       201,
     );
   }
@@ -394,7 +401,12 @@ async function api(
 
   if (path === "/v1/whoami" && method === "GET") {
     const actor = await requireToken(request, env);
-    return secretJson({ email: actor.email, label: actor.tokenLabel, expires_at: actor.tokenExpiresAt ?? null });
+    return secretJson({
+      email: actor.email,
+      label: actor.tokenLabel,
+      expires_at: actor.tokenExpiresAt ?? null,
+      admin: Boolean(actor.admin),
+    });
   }
 
   if (path === "/v1/whoami" && method === "DELETE") {
@@ -536,6 +548,8 @@ async function serveTokens(request: Request, env: Env, ctx: ExecutionContext): P
     tokens,
     token_env: identityFromEnv(env).tokenEnv,
     token_policy: tokenPolicyPublic(tokenPolicy(env), publicOrigin(env)),
+    admin: Boolean(actor.admin),
+    admin_token_policy: tokenPolicyPublic(adminTokenPolicy(), publicOrigin(env)),
   };
   return new Response(uiPage(`Tokens — ${PRODUCT}`, { page: "tokens", data: { ...bootstrap, now: Date.now() }, footer: instanceFooter(env) }), { headers: PRIVATE_HTML_HEADERS });
 }

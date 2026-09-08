@@ -142,6 +142,8 @@ describe("signed-in pages", () => {
     expect(tokensHtml).not.toContain("Reveal returns the full secret");
     expect(tokensHtml).not.toContain("function reveal(");
     expect(tokensHtml).toContain('id="mint-ttl"');
+    expect(tokensHtml).not.toContain('id="mint-scope"');
+    expect(bootstrap(tokensHtml).data.admin).toBe(false);
     expect(tokensHtml).toContain('aria-label="Token lifetime"');
     expect(tokensHtml).toMatch(/"token_policy":\{"presets":\[\{"id":"1d"/);
     expect(tokensHtml).toContain('"default":"90d"');
@@ -161,6 +163,17 @@ describe("signed-in pages", () => {
     const emptyHtml = await (await req("/tokens", { headers: access("notokens@esperlabs.app") })).text();
     expect(emptyHtml).toContain("No live tokens");
     expect(emptyHtml).toContain("Set up your agent and approve its code");
+
+    const adminTokens = await req("/tokens", { headers: access("admin@esperlabs.app") });
+    expect(adminTokens.status).toBe(200);
+    const adminHtml = await adminTokens.text();
+    expect(adminHtml).toContain('id="mint-scope"');
+    expect(adminHtml).toContain('aria-label="Token scope"');
+    expect(adminHtml).toContain('id="mint-admin-note"');
+    expect(bootstrap(adminHtml).data.admin).toBe(true);
+    expect(bootstrap(adminHtml).data.admin_token_policy.default).toBe("1d");
+    expect(bootstrap(adminHtml).data.admin_token_policy.allow_never).toBe(false);
+    assertDomBindings(adminHtml);
   });
 
   it("serves the Energon cube mark", async () => {

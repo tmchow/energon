@@ -37,6 +37,12 @@ The marker at the beginning of an API Token that identifies which token format t
 ### Token Expiry
 The lifetime a human chooses when minting an API Token, after which authentication rejects it. An expired token is kept in the account's token list as a record and can still be revoked, but it cannot be renewed; like every API Token it has no recoverable secret. Token expiry is governed by its own policy on this Energon, separate from content retention.
 
+### Admin
+An operator listed in the `ADMIN_EMAILS` deploy var. Not a database role. Removing an email from that list strips admin from their tokens immediately; the tokens still act as the account for ordinary `/v1` calls.
+
+### Admin Token
+An API Token minted at `/tokens` with an admin scope by someone on `ADMIN_EMAILS`. The connect flow never grants this scope. It still authenticates as the owning account for ordinary `/v1` calls. Admin tokens use a shorter maximum lifetime than account tokens, cannot be `never`, and are recognizable by an `adm` marker after this Energon's Token Prefix.
+
 ### Write Password
 A per-object shared secret that lets someone outside the host replace bytes at a published URL without an API Token, Access, or `/connect`. It is independent of the share password. The write header authorizes PUT (and site-path DELETE). The write header also unlocks GET. The HTML gate form accepts the write password for reading when a share password is also set. The cookie never authorizes PUT or DELETE. It is not an account and is not recorded as Last writer. The Hub keeps the phrase for the creator so they can copy it again. `/v1` GET returns only whether it is set.
 

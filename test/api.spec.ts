@@ -23,7 +23,8 @@ describe("Energon", () => {
     expect(text).toContain("user (global) scope");
     expect(text).toContain("unless the human asked for that");
     expect(text).toContain("token_expired");
-    expect(text).not.toMatch(/ee_live_[A-Za-z0-9]+/);
+    expect(text).toContain("ee_live_adm…");
+    expect(text.replaceAll("ee_live_adm…", "")).not.toMatch(/ee_live_[A-Za-z0-9]+/);
   });
 
   it("minted tokens are shown once and cannot be recovered", async () => {
@@ -692,6 +693,46 @@ describe("Energon", () => {
     const forever = await mint("whoami-forever", "who@esperlabs.app", undefined, "never");
     const meForever = await json("/v1/whoami", { headers: auth(forever) });
     expect(meForever.body.expires_at).toBeNull();
+    expect(me.body.admin).toBe(false);
+    expect(meForever.body.admin).toBe(false);
+  });
+
+  it("mints an admin token only for an operator on ADMIN_EMAILS", async () => {
+    const denied = await json("/account/tokens", {
+      method: "POST",
+      headers: access("ada@esperlabs.app", { "content-type": "application/json" }),
+      body: JSON.stringify({ label: "nope", scope: "admin", ttl: "1d" }),
+    });
+    expect(denied.status).toBe(403);
+    expect(denied.body.error).toBe("not_admin");
+
+    const created = await json("/account/tokens", {
+      method: "POST",
+      headers: access("admin@esperlabs.app", { "content-type": "application/json" }),
+      body: JSON.stringify({ label: "ops", scope: "admin" }),
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.admin).toBe(true);
+    expect(String(created.body.token)).toMatch(/^ee_live_adm_/);
+    expect(Date.parse(created.body.expires_at) - Date.now()).toBeLessThan(2 * 86400 * 1000);
+
+    const me = await json("/v1/whoami", { headers: auth(created.body.token) });
+    expect(me.status).toBe(200);
+    expect(me.body.admin).toBe(true);
+    expect(me.body.email).toBe("admin@esperlabs.app");
+    expect(me.body.label).toBe("ops");
+
+    const account = await json("/account/tokens", {
+      method: "POST",
+      headers: access("admin@esperlabs.app", { "content-type": "application/json" }),
+      body: JSON.stringify({ label: "plain" }),
+    });
+    expect(account.status).toBe(201);
+    expect(account.body.admin).toBe(false);
+    expect(String(account.body.token)).toMatch(/^ee_live_/);
+    expect(String(account.body.token)).not.toMatch(/^ee_live_adm_/);
+    const plainMe = await json("/v1/whoami", { headers: auth(account.body.token) });
+    expect(plainMe.body.admin).toBe(false);
   });
 
   it("expired token gets a terminal token_expired 401 and no usage bump", async () => {

@@ -8,9 +8,9 @@ import type { Env, TokenRow } from "../../src/types";
 const env = { PUBLIC_ORIGIN: "https://energon.example.com" } as Env;
 
 describe("maskToken", () => {
-  it("shows prefix plus last 4, never the secret middle", () => {
-    const token = `${TOKEN_PREFIX}abcdefghijKLMN`;
-    expect(maskToken(token)).toBe(`${TOKEN_PREFIX}…KLMN`);
+  it("marks an admin secret so a log reader can tell it from an account token", () => {
+    const token = `${TOKEN_PREFIX}adm_abcdefghijKLMN`;
+    expect(maskToken(token)).toBe(`${TOKEN_PREFIX}adm…KLMN`);
     expect(maskToken(token)).not.toContain("abcdefghij");
   });
 
@@ -99,13 +99,48 @@ describe("mintToken lifetime", () => {
     return { env: { PUBLIC_ORIGIN: "https://energon.example.com", ...extra, DB: { prepare } } as unknown as Env, binds };
   }
 
-  it("binds the resolved expiry as the last INSERT value", async () => {
+  it("binds the resolved expiry and account scope", async () => {
     const { env, binds } = mintEnv();
     const minted = await mintToken(env, "agent@esperlabs.app", "laptop", "user-id", "1d");
     expect(binds).toHaveLength(1);
     expect(binds[0][4]).toMatch(/^[a-f0-9]{64}$/);
     expect(binds[0][7]).toBe(minted.expires_at);
+    expect(binds[0][8]).toBe("account");
     expect(Date.parse(String(minted.expires_at)) - Date.now()).toBeGreaterThan(86000 * 1000);
+  });
+
+  it("mints an admin secret only for an operator, with the 1d default", async () => {
+    const { env, binds } = mintEnv({ ADMIN_EMAILS: "agent@esperlabs.app" });
+    const minted = await mintToken(env, "agent@esperlabs.app", "ops", "user-id", undefined, "admin");
+    expect(minted.scope).toBe("admin");
+    expect(minted.token).toMatch(/^ee_live_adm_/);
+    expect(binds[0][8]).toBe("admin");
+    expect(Date.parse(String(minted.expires_at)) - Date.now()).toBeGreaterThan(86000 * 1000);
+    expect(Date.parse(String(minted.expires_at)) - Date.now()).toBeLessThan(2 * 86400 * 1000);
+  });
+
+  it("refuses an admin mint from someone not on ADMIN_EMAILS", async () => {
+    const { env, binds } = mintEnv();
+    let error: unknown;
+    try {
+      await mintToken(env, "agent@esperlabs.app", "ops", "user-id", "1d", "admin");
+    } catch (err) {
+      error = err;
+    }
+    expect(error).toMatchObject({ status: 403, code: "not_admin" });
+    expect(binds).toHaveLength(0);
+  });
+
+  it("refuses never on an admin token", async () => {
+    const { env, binds } = mintEnv({ ADMIN_EMAILS: "agent@esperlabs.app" });
+    let error: unknown;
+    try {
+      await mintToken(env, "agent@esperlabs.app", "ops", "user-id", "never", "admin");
+    } catch (err) {
+      error = err;
+    }
+    expect(error).toMatchObject({ status: 400, code: "bad_ttl" });
+    expect(binds).toHaveLength(0);
   });
 
   it("refuses never when this Energon forbids it, before touching the database", async () => {
@@ -218,8 +253,27 @@ describe("requireToken", () => {
       tokenId: row.id,
       tokenLabel: row.label,
       tokenExpiresAt: null,
+      tokenScope: "account",
+      admin: false,
     });
     expect(updateRun).toHaveBeenCalledOnce();
+  });
+
+  it("is admin only while the owner is on ADMIN_EMAILS and the token is admin-scoped", async () => {
+    const prepare = vi.fn((sql: string) => {
+      if (sql.includes("FROM users")) return { bind: () => ({ first: async () => null }) };
+      if (sql.includes("SELECT")) return { bind: () => ({ first: async () => ({ ...row, scope: "admin" }) }) };
+      return { bind: () => ({ run: async () => undefined }) };
+    });
+    const listed = {
+      DB: { prepare },
+      PUBLIC_ORIGIN: "https://energon.example.com",
+      ADMIN_EMAILS: "agent@esperlabs.app",
+    } as unknown as Env;
+    await expect(requireToken(request, listed)).resolves.toMatchObject({ tokenScope: "admin", admin: true });
+
+    const stripped = { ...listed, ADMIN_EMAILS: "" } as unknown as Env;
+    await expect(requireToken(request, stripped)).resolves.toMatchObject({ tokenScope: "admin", admin: false });
   });
 
   it("rejects an expired token with token_expired and never bumps last_used_at", async () => {
@@ -295,7 +349,7 @@ describe("actorFromAccess", () => {
 
     await expect(
       actorFromAccess(new Request("https://energon.example.com/account"), env, { access }),
-    ).resolves.toEqual({ email: "ada@esperlabs.app", idpSub: "uuid-ada", via: "access" });
+    ).resolves.toEqual({ email: "ada@esperlabs.app", idpSub: "uuid-ada", via: "access", admin: false });
   });
 
   it("rejects production Access identity that has no subject", async () => {
@@ -323,6 +377,7 @@ describe("actorFromAccess", () => {
       email: "ada@esperlabs.app",
       idpSub: "uuid-ada",
       via: "access",
+      admin: false,
     });
   });
 
@@ -337,6 +392,7 @@ describe("actorFromAccess", () => {
       email: "ada@esperlabs.app",
       idpSub: "idp-ada",
       via: "access",
+      admin: false,
     });
 
     const jwt = `x.${btoa(JSON.stringify({ sub: "jwt-ada" }))}.x`;
@@ -351,6 +407,7 @@ describe("actorFromAccess", () => {
       email: "ada@esperlabs.app",
       idpSub: "jwt-ada",
       via: "access",
+      admin: false,
     });
   });
 });

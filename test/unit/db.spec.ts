@@ -72,7 +72,7 @@ describe("schema upgrades", () => {
     expect([...db.tables.get("loose_files") || []]).toEqual(
       expect.arrayContaining(["updated_at", "last_written_by", "password_hash", "handle", "owner_id", "expires_at", "write_policy", "last_read_at"]),
     );
-    expect([...db.tables.get("tokens") || []]).toEqual(expect.arrayContaining(["token_secret", "token_hint", "user_id", "expires_at"]));
+    expect([...db.tables.get("tokens") || []]).toEqual(expect.arrayContaining(["token_secret", "token_hint", "user_id", "expires_at", "scope"]));
     expect([...db.tables.get("users") || []]).toEqual(expect.arrayContaining(["idp_sub"]));
     expect([...db.tables.get("gate_attempts") || []]).toEqual(expect.arrayContaining(["scope", "fails", "window_start"]));
     expect([...db.tables.get("agent_connections") || []]).toEqual(expect.arrayContaining(["id", "poll_hash", "code_hash", "status", "expires_at", "user_id"]));
@@ -108,6 +108,7 @@ describe("schema upgrades", () => {
     await ensureSchema(db as unknown as D1Database);
 
     expect([...db.tables.get("tokens") || []]).toContain("expires_at");
+    expect([...db.tables.get("tokens") || []]).toContain("scope");
     expect(db.executed.filter((sql) => /ALTER TABLE/.test(sql))).toHaveLength(0);
   });
 

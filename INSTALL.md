@@ -82,6 +82,7 @@ Strings only (Wrangler). Committed defaults are company-shaped. Full table: [doc
 | `DEFAULT_TTL` / `MAX_TTL` | `never` |
 | `WRITE_POLICY` | `org` |
 | `ALLOWED_EMAIL_DOMAINS` | `your.co,your.com` |
+| `ADMIN_EMAILS` | `you@your.co` (operators; empty means nobody) |
 | `FOOTER_TEXT` | omit, or one internal line |
 
 `WRITE_POLICY` is the default for **new** sites and files. Each object stores its own policy. The creator can lock one object to `owner` from the hub or `PATCH`. Anyone with a token can still read `/v1` and `duplicate_from`.
@@ -95,7 +96,7 @@ The Worker reads `Cf-Access-Authenticated-User-Email`. It does not implement sig
 - IdP: Google Workspace / Okta / GitHub Enterprise, restricted to your org.
 - Also set `ALLOWED_EMAIL_DOMAINS` so a mis-aimed Access policy cannot mint tokens for random Gmail.
 
-**Allow** (signed-in): `/`, `/account*`, `/about`, `/stats`, `/setup`, `/tokens`, `/connect`
+**Allow** (signed-in): `/`, `/account*`, `/about`, `/stats`, `/setup`, `/tokens`, `/admin`, `/connect`
 
 **Bypass**: `/v1*`, `/health`, `/llms.txt`, `/auth.md`, `/favicon.svg`, `/static*`, and (by default) `/{handle}/s/*`, `/{handle}/f/*` on the content hostname
 

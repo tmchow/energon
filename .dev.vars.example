@@ -7,3 +7,4 @@ DEV_ACCESS_EMAIL=dev@example.com
 # WRITE_POLICY=org
 # ALLOW_UNLIMITED_TOKENS=true
 # ALLOWED_EMAIL_DOMAINS=example.com
+# ADMIN_EMAILS=you@example.com

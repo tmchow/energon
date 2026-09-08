@@ -18,11 +18,14 @@ export interface Env {
   TTL_PRESETS?: string;
   ALLOW_UNLIMITED_TOKENS?: string;
   ALLOWED_EMAIL_DOMAINS?: string;
+  ADMIN_EMAILS?: string;
   MAX_FILE_BYTES?: string;
   MAX_PLATFORM_BYTES?: string;
   WRITE_POLICY?: string;
   FOOTER_TEXT?: string;
 }
+
+export type TokenScope = "account" | "admin";
 
 export type Actor = {
   email: string;
@@ -32,6 +35,9 @@ export type Actor = {
   tokenId?: string;
   tokenLabel?: string;
   tokenExpiresAt?: string | null;
+  tokenScope?: TokenScope;
+  /** True when this request may take admin actions: email is on ADMIN_EMAILS, and a token also carries the admin scope. */
+  admin?: boolean;
 };
 
 export type SiteRow = {
@@ -96,4 +102,5 @@ export type TokenRow = {
   last_used_at: string | null;
   revoked_at: string | null;
   expires_at?: string | null;
+  scope?: string | null;
 };

@@ -3,6 +3,7 @@ import {
   MAX_IMPORT_FILES,
   PRODUCT,
   TOKEN_SECRET_LEN,
+  ADMIN_TOKEN_INFIX,
   formatBytes,
 } from "./config";
 import { helpGuestWriteSop } from "./guest-write-protocol";
@@ -13,11 +14,15 @@ import {
   emailAllowed,
   forbiddenDomain,
   instancePolicy,
+  isAdminEmail,
+  parseTokenScope,
   policyPublic,
   resolveTokenExpiresAt,
+  storedTokenScope,
   tokenExpired,
   tokenPolicy,
   tokenPolicyPublic,
+  adminTokenPolicy,
 } from "./policy";
 import {
   BULK_REVOKE_TARGETS,
@@ -92,7 +97,7 @@ export async function requireToken(request: Request, env: Env): Promise<Actor> {
   }
   const tokenHash = await hashToken(token);
   const row = await env.DB.prepare(
-    `SELECT id, user_email, user_id, label, token_hash, created_at, last_used_at, revoked_at, expires_at
+    `SELECT id, user_email, user_id, label, token_hash, created_at, last_used_at, revoked_at, expires_at, scope
      FROM tokens WHERE token_hash = ?`,
   )
     .bind(tokenHash)
@@ -117,14 +122,18 @@ export async function requireToken(request: Request, env: Env): Promise<Actor> {
       // Usage metadata is best-effort and must not make a valid token unusable.
     }
   }
+  const email = user?.email || row.user_email;
+  const tokenScope = storedTokenScope(row.scope);
   return {
-    email: user?.email || row.user_email,
+    email,
     userId: user?.id,
     idpSub: user?.idp_sub || undefined,
     via: "token",
     tokenId: row.id,
     tokenLabel: row.label,
     tokenExpiresAt: row.expires_at ?? null,
+    tokenScope,
+    admin: isAdminEmail(env, email) && tokenScope === "admin",
   };
 }
 
@@ -167,7 +176,7 @@ export async function actorFromAccess(
       .trim()
       .toLowerCase();
     const idpSub = identitySubFromRequest(request, email);
-    return { email, idpSub, via: "access" };
+    return { email, idpSub, via: "access", admin: isAdminEmail(env, email) };
   }
 
   if (!ctx?.access?.aud) return null;
@@ -177,7 +186,7 @@ export async function actorFromAccess(
     if (!email.includes("@")) return null;
     const idpSub = identitySubFromAccess(identity);
     if (!idpSub) return null;
-    return { email, idpSub, via: "access" };
+    return { email, idpSub, via: "access", admin: isAdminEmail(env, email) };
   } catch {
     return null;
   }
@@ -193,7 +202,7 @@ export async function requireHuman(
   if (!actor) throw humanUnauthorized(origin);
   assertEmailAllowed(env, actor.email);
   const user = await ensureUser(env, actor.email, actor.idpSub);
-  return { ...actor, userId: user.id, email: user.email };
+  return { ...actor, userId: user.id, email: user.email, admin: isAdminEmail(env, user.email) };
 }
 
 export function rejectWorkersDevForHumans(request: Request, env?: Env): Response | null {
@@ -215,31 +224,45 @@ export async function mintToken(
   label: string,
   userId?: string,
   ttl?: unknown,
-): Promise<{ id: string; token: string; label: string; expires_at: string | null }> {
+  scope?: unknown,
+): Promise<{ id: string; token: string; label: string; expires_at: string | null; scope: "account" | "admin" }> {
   const trimmed = label.trim().slice(0, 64);
   if (!trimmed) {
     throw new ApiError(400, "bad_label", "Give the token a label, like laptop or ci.");
   }
+  const tokenScope = parseTokenScope(scope);
+  if (tokenScope === "admin" && !isAdminEmail(env, email)) {
+    throw new ApiError(403, "not_admin", "Only an operator on ADMIN_EMAILS can mint an admin token.");
+  }
   const now = new Date();
-  const expiresAt = resolveTokenExpiresAt(tokenPolicy(env), ttl, now);
+  const policy = tokenScope === "admin" ? adminTokenPolicy() : tokenPolicy(env);
+  const expiresAt = resolveTokenExpiresAt(policy, ttl, now);
   const user = (userId ? await getUserById(env, userId) : null) || (await ensureUser(env, email));
   const id = nanoid(12);
-  const token = `${identityFromEnv(env).tokenPrefix}${nanoid(TOKEN_SECRET_LEN)}`;
+  const prefix = identityFromEnv(env).tokenPrefix;
+  const token =
+    tokenScope === "admin"
+      ? `${prefix}${ADMIN_TOKEN_INFIX}${nanoid(TOKEN_SECRET_LEN)}`
+      : `${prefix}${nanoid(TOKEN_SECRET_LEN)}`;
   const tokenHash = await hashToken(token);
   const created = now.toISOString();
   const hint = maskToken(token, env);
   await env.DB.prepare(
-    `INSERT INTO tokens (id, user_email, user_id, label, token_hash, token_secret, token_hint, created_at, last_used_at, revoked_at, expires_at)
-     VALUES (?, ?, ?, ?, ?, NULL, ?, ?, NULL, NULL, ?)`,
+    `INSERT INTO tokens (id, user_email, user_id, label, token_hash, token_secret, token_hint, created_at, last_used_at, revoked_at, expires_at, scope)
+     VALUES (?, ?, ?, ?, ?, NULL, ?, ?, NULL, NULL, ?, ?)`,
   )
-    .bind(id, user.email, user.id, trimmed, tokenHash, hint, created, expiresAt)
+    .bind(id, user.email, user.id, trimmed, tokenHash, hint, created, expiresAt, tokenScope)
     .run();
-  return { id, token, label: trimmed, expires_at: expiresAt };
+  if (tokenScope === "admin") console.log(`admin token minted id=${id} email=${user.email}`);
+  return { id, token, label: trimmed, expires_at: expiresAt, scope: tokenScope };
 }
 
 export function maskToken(token: string, env?: Env): string {
   const tokenPrefix = identityFromEnv(env || {}).tokenPrefix;
   if (token.length < 8) return `${tokenPrefix}…`;
+  if (token.startsWith(`${tokenPrefix}${ADMIN_TOKEN_INFIX}`)) {
+    return `${tokenPrefix}adm…${token.slice(-4)}`;
+  }
   const prefix = token.startsWith(tokenPrefix) ? tokenPrefix : "";
   return `${prefix}…${token.slice(-4)}`;
 }
@@ -252,12 +275,13 @@ type TokenListRow = {
   revoked_at: string | null;
   token_hint: string | null;
   expires_at: string | null;
+  scope: string | null;
 };
 
-export type TokenListing = TokenSummary & { expired: boolean; revoked: boolean; recoverable: boolean };
+export type TokenListing = TokenSummary & { expired: boolean; revoked: boolean; recoverable: boolean; admin: boolean };
 
 export async function listTokens(env: Env, email: string, userId?: string, now = Date.now()): Promise<TokenListing[]> {
-  const columns = `id, label, created_at, last_used_at, revoked_at, token_hint, expires_at`;
+  const columns = `id, label, created_at, last_used_at, revoked_at, token_hint, expires_at, scope`;
   const rows = userId
     ? await env.DB.prepare(
         `SELECT ${columns} FROM tokens
@@ -279,6 +303,7 @@ export async function listTokens(env: Env, email: string, userId?: string, now =
       expired: status === "expired",
       revoked: status === "revoked",
       recoverable: false,
+      admin: storedTokenScope(r.scope) === "admin",
     };
   });
 }
@@ -410,6 +435,7 @@ export function helpBody(origin: string, env?: Env): unknown {
     sop: [
       `Look for env ${id.tokenEnv}. If missing and a human can respond, follow ${origin}/auth.md to connect with a code and save the delivered token as ${id.tokenEnv} where this environment keeps secrets. If no human can respond, stop and ask for a token provisioned at ${origin}/tokens. The secret is delivered once. Do not invent a token.`,
       `Tokens expire after the lifetime the human picked at mint (default 90 days; see tokens.presets). A 401 with error token_expired is terminal: stop using it, connect again with a code or ask the human to provision a replacement at ${origin}/tokens, and do not retry the expired token. Tokens cannot be extended. GET /v1/whoami shows your token's expires_at.`,
+      `An admin-scoped token is minted only at ${origin}/tokens by someone listed in ADMIN_EMAILS. The connect flow never grants it. Admin tokens use a shorter lifetime (1d or 7d; never is not offered) and are recognizable as ${id.tokenPrefix}adm…. GET /v1/whoami admin is true only while that owner is still on the list. Ordinary /v1 calls still act as the account.`,
       `When your task is done and nothing else will use this token, DELETE /v1/whoami revokes it (self only: it cannot list or revoke other tokens). Later calls with it are 401. Do not do this to a token the human stored for reuse, such as CI.`,
       `This Energon's skill is ${id.skill} (install ${installLine(id)}). The origin is ${origin}. Do not guess another Energon.`,
       `The HTTP schema (paths, request and response bodies, status codes, error codes) is ${origin}/v1/openapi.json. This document describes this Energon: origins, token env, retention presets, token lifetimes, limits.`,
@@ -438,7 +464,7 @@ export function helpBody(origin: string, env?: Env): unknown {
       "GET /v1/help": "this document, no auth",
       "GET /v1/health": "liveness, no auth",
       "GET /v1/openapi.json": "OpenAPI 3.1 HTTP contract, no auth",
-      "GET /v1/whoami": "token label, owner email, and expires_at (null = never)",
+      "GET /v1/whoami": "token label, owner email, expires_at (null = never), and admin (true only for an admin-scoped token whose owner is still on ADMIN_EMAILS)",
       "DELETE /v1/whoami": "revoke the calling token (self only); later calls with it are 401",
       "POST /v1/sites": '{ "slug", "password"?: string, "write_password"?: string, "ttl"?: string, "write_policy"?: "owner"|"org", "duplicate_from"?: id }',
       "PATCH /v1/sites/{id}": '{ "password"?: string, "write_password"?: string, "ttl"?: string, "write_policy"?: "owner"|"org" } — empty password or write_password clears. ttl resets expiry from now. write_policy and write_password are creator-only.',

@@ -27,6 +27,7 @@
   let tokens = $state(untrack(() => data.tokens));
   let show = $state<Show>('live');
   let label = $state('');
+  let scope = $state<'account' | 'admin'>('account');
   let ttl = $state(untrack(() => data.token_policy.default));
   let minted = $state('');
   let error = $state('');
@@ -38,7 +39,13 @@
   let confirmOpen = $state(false);
   let bulk = $state<BulkRevokePreview | null>(null);
   let bulkOpen = $state(false);
-  const options = $derived(data.token_policy.presets.map(p => ({ value: p.id, label: p.label })));
+  const accountOptions = $derived(data.token_policy.presets.map(p => ({ value: p.id, label: p.label })));
+  const adminOptions = $derived((data.admin_token_policy?.presets || []).map(p => ({ value: p.id, label: p.label })));
+  const options = $derived(scope === 'admin' ? adminOptions : accountOptions);
+  function setScope(next: string) {
+    scope = next === 'admin' ? 'admin' : 'account';
+    ttl = scope === 'admin' ? (data.admin_token_policy?.default || '1d') : data.token_policy.default;
+  }
   function count(status: TokenStatus) { return tokens.filter(t => t.status === status).length; }
   const staleCount = $derived(count('stale'));
   const liveCount = $derived(count('live') + staleCount);
@@ -69,8 +76,8 @@
     if (busy) return;
     busy = true; mintError = ''; minted = ''; notice = '';
     try {
-      const result = await api<{ token: string }>('/account/tokens', jsonBody('POST', { label, ttl }));
-      minted = result.token; label = ''; ttl = data.token_policy.default;
+      const result = await api<{ token: string }>('/account/tokens', jsonBody('POST', { label, ttl, scope: data.admin ? scope : undefined }));
+      minted = result.token; label = ''; ttl = scope === 'admin' ? (data.admin_token_policy?.default || '1d') : data.token_policy.default;
       await refresh();
     } catch (err) { mintError = errorMessage(err); }
     finally { busy = false; }
@@ -112,7 +119,7 @@
   }
 </script>
 
-{#snippet tokenHint(token: Token)}<code>{token.hint || '—'}</code>{/snippet}
+{#snippet tokenHint(token: Token)}<code>{token.hint || '—'}</code>{#if token.admin}{' '}<Badge>Admin</Badge>{/if}{/snippet}
 {#snippet created(token: Token)}<Timestamp value={token.created_at} />{/snippet}
 {#snippet lastUsed(token: Token)}<Timestamp value={token.last_used_at} empty="never" />{#if token.status === 'stale'}{' '}<Badge tone="warn">Stale</Badge>{/if}{/snippet}
 {#snippet expires(token: Token)}{#if token.status === 'revoked'}Revoked{:else if token.status === 'expired'}Expired{:else}<Timestamp value={token.expires_at} dateOnly empty="Never" />{#if token.expires_at}{' '}({expiry(token)}){/if}{/if}{/snippet}
@@ -143,10 +150,12 @@
     <p class="en-muted-copy">Store the secret as <code>{data.token_env}</code> in that environment's secret store. It is shown once.</p>
     <form id="mint" class="en-mint" onsubmit={mint}>
       <Field label="Label" htmlFor="mint-label"><Input id="mint-label" name="label" bind:value={label} placeholder="ci" required maxlength={64} disabled={busy} /></Field>
+      {#if data.admin}<Field label="Scope" htmlFor="mint-scope"><SegmentedControl id="mint-scope" bind:value={scope} ariaLabel="Token scope" onChange={setScope} options={[{ value: 'account', label: 'Account' }, { value: 'admin', label: 'Admin' }]} /></Field>{/if}
       <Field label="Lifetime" htmlFor="mint-ttl"><Select id="mint-ttl" name="ttl" aria-label="Token lifetime" bind:value={ttl} {options} disabled={busy} /></Field>
       <Button type="submit" variant="primary" disabled={busy}>{busy ? 'Minting…' : 'Mint token'}</Button>
     </form>
-    <p class="en-note" id="mint-ttl-note" hidden={data.token_policy.allow_never}>This Energon does not allow never-expiring tokens.</p>
+    <p class="en-note" id="mint-ttl-note" hidden={scope === 'admin' || data.token_policy.allow_never}>This Energon does not allow never-expiring tokens.</p>
+    <p class="en-note" id="mint-admin-note" hidden={scope !== 'admin'}>Admin tokens last at most 7 days and still act as your account for ordinary API calls. The connect flow cannot mint them.</p>
     <div id="new-token">{#if minted}<TokenReveal token={minted} tokenEnv={data.token_env} />{/if}</div>
   </Card>
 </main>

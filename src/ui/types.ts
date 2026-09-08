@@ -5,7 +5,7 @@ import type { BulkRevokePreview, BulkRevokeResult, BulkRevokeTarget, TokenStatus
 export type Preset = { id: string; label: string };
 export type RetentionPolicy = { presets: Preset[]; default_ttl: string; allow_unlimited: boolean; write_policy: string; file_bytes?: number };
 export type TokenPolicy = { presets: Preset[]; default: string; allow_never: boolean };
-export type Token = { id: string; label: string; hint: string | null; recoverable?: boolean; status: TokenStatus; revoked: boolean; expired: boolean; created_at: string; last_used_at: string | null; expires_at: string | null };
+export type Token = { id: string; label: string; hint: string | null; recoverable?: boolean; status: TokenStatus; revoked: boolean; expired: boolean; created_at: string; last_used_at: string | null; expires_at: string | null; admin?: boolean };
 export type { BulkRevokePreview, BulkRevokeResult, BulkRevokeTarget, TokenStatus };
 export type CatalogItem = {
   url: string; created_by: string; last_written_by: string | null;
@@ -23,7 +23,7 @@ export type LinkAccess = {
   write_password_protected?: boolean;
   write_password?: string | null;
 };
-export type TokensData = { email: string; tokens: Token[]; token_env: string; token_policy: TokenPolicy; now: number };
+export type TokensData = { email: string; tokens: Token[]; token_env: string; token_policy: TokenPolicy; now: number; admin?: boolean; admin_token_policy?: TokenPolicy };
 export type SetupData = { email: string; identity: InstanceIdentity; install: string };
 export type ConnectData = { email: string; host: string; connection: { id: string; label: string; expires_at: string }; token_policy: TokenPolicy };
 export type GateData = { action: string; wrong: boolean; limited?: boolean; passwordHeader: string };

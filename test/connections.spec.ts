@@ -44,6 +44,8 @@ describe("agent connections", () => {
     expect(who.status).toBe(200);
     expect(who.body.email).toBe("connect@esperlabs.app");
     expect(who.body.label).toBe("test agent");
+    expect(who.body.admin).toBe(false);
+    expect(issued.body.token).not.toMatch(/ee_live_adm_/);
     expect((await exchange(connection)).status).toBe(410);
     const list = await json("/account/data", { headers: access("connect@esperlabs.app") });
     expect(JSON.stringify(list.body)).not.toContain(issued.body.token);

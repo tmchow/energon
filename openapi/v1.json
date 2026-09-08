@@ -178,6 +178,7 @@
           "discovery"
         ],
         "summary": "Who this token is",
+        "description": "Owner email, token label, expiry, and whether this credential currently authorizes admin routes.",
         "responses": {
           "200": {
             "description": "Token owner, label, and expiry.",
@@ -2235,6 +2236,7 @@
               "bad_query",
               "bad_request",
               "bad_slug",
+              "bad_scope",
               "bad_target",
               "bad_ttl",
               "bad_write_policy",
@@ -2269,6 +2271,7 @@
               "method_not_allowed",
               "missing_file",
               "missing_filename",
+              "not_admin",
               "not_found",
               "password_required",
               "rate_limited",
@@ -3897,7 +3900,8 @@
         "required": [
           "email",
           "label",
-          "expires_at"
+          "expires_at",
+          "admin"
         ],
         "properties": {
           "email": {
@@ -3915,6 +3919,10 @@
             ],
             "format": "date-time",
             "description": "When this token stops working; null means never. Warn the human before it passes."
+          },
+          "admin": {
+            "type": "boolean",
+            "description": "True only for an admin-scoped token whose owner is still listed in ADMIN_EMAILS. Ordinary /v1 calls still act as the account."
           }
         }
       },

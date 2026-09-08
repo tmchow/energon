@@ -1,6 +1,6 @@
 import { MAX_FILE_BYTES, MAX_PLATFORM_BYTES, PRODUCT } from "./config";
 import { ApiError } from "./http";
-import type { Actor, Env } from "./types";
+import type { Actor, Env, TokenScope } from "./types";
 
 export type WritePolicy = "owner" | "org";
 
@@ -184,6 +184,9 @@ export function instancePolicy(
 /** Token lifetimes are their own catalog. Content retention vars never apply to tokens. */
 export const TOKEN_TTL_CATALOG = ["1d", "7d", "30d", "60d", "90d", "180d", "365d"] as const;
 export const TOKEN_DEFAULT_TTL = "90d";
+/** Admin-scoped tokens: shorter than account tokens, and never is not offered. */
+export const ADMIN_TOKEN_TTL_CATALOG = ["1d", "7d"] as const;
+export const ADMIN_TOKEN_DEFAULT_TTL = "1d";
 
 export type TokenPolicy = {
   allowUnlimited: boolean;
@@ -205,6 +208,37 @@ export function tokenPolicy(env: Pick<Env, "ALLOW_UNLIMITED_TOKENS">): TokenPoli
   }));
   if (allowUnlimited) presets.push({ id: "never", seconds: null, label: formatTtlLabel("never") });
   return { allowUnlimited, defaultTtl: TOKEN_DEFAULT_TTL, presets };
+}
+
+export function adminEmails(env: Pick<Env, "ADMIN_EMAILS">): string[] {
+  return csv(env.ADMIN_EMAILS);
+}
+
+export function isAdminEmail(env: Pick<Env, "ADMIN_EMAILS">, email: string): boolean {
+  return adminEmails(env).includes(String(email || "").trim().toLowerCase());
+}
+
+export function parseTokenScope(raw: unknown): TokenScope {
+  if (raw === undefined || raw === null || (typeof raw === "string" && raw.trim() === "")) return "account";
+  const id = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  if (id === "account" || id === "admin") return id;
+  throw new ApiError(400, "bad_scope", "scope must be account or admin.");
+}
+
+export function storedTokenScope(raw: string | null | undefined): TokenScope {
+  return raw === "admin" ? "admin" : "account";
+}
+
+export function adminTokenPolicy(): TokenPolicy {
+  return {
+    allowUnlimited: false,
+    defaultTtl: ADMIN_TOKEN_DEFAULT_TTL,
+    presets: ADMIN_TOKEN_TTL_CATALOG.map((id) => ({
+      id,
+      seconds: parseDuration(id),
+      label: formatTtlLabel(id),
+    })),
+  };
 }
 
 export function tokenPolicyPublic(policy: TokenPolicy, origin: string) {

@@ -30,6 +30,7 @@ WRITE_POLICY = "org"
 # Only affects future mints; tokens already minted keep working until revoked on /tokens.
 ALLOW_UNLIMITED_TOKENS = "true"
 # ALLOWED_EMAIL_DOMAINS = "example.com"
+# ADMIN_EMAILS = "you@example.com"
 # Optional line on signed-in pages. Omit or leave empty for no footer.
 # FOOTER_TEXT = "Internal — not for the public internet."
 # File / zip cap. Omit for 25 MB.

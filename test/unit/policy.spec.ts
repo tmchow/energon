@@ -13,14 +13,19 @@ import {
   parseWritePolicyEnv,
   requestedWritePolicy,
   resolveCreateWritePolicy,
-  resolveExpiresAt,
   resolveWritePolicy,
-  resolveTokenExpiresAt,
-  tokenExpired,
+  resolveExpiresAt,
   tokenPolicy,
   tokenPolicyPublic,
-  TTL_CATALOG,
   TOKEN_TTL_CATALOG,
+  TTL_CATALOG,
+  resolveTokenExpiresAt,
+  tokenExpired,
+  adminEmails,
+  adminTokenPolicy,
+  isAdminEmail,
+  parseTokenScope,
+  storedTokenScope,
 } from "../../src/policy";
 
 function env(overrides: Record<string, string | undefined> = {}) {
@@ -370,5 +375,34 @@ describe("tokenExpired", () => {
     expect(tokenExpired("2026-09-02T15:00:00+02:00", now)).toBe(false);
     expect(tokenExpired("2026-09-02T12:00:00.000Z", now)).toBe(true);
     expect(tokenExpired("2026-09-02T12:00:00.001Z", now)).toBe(false);
+  });
+});
+
+describe("admin identity", () => {
+  it("treats an empty ADMIN_EMAILS list as nobody", () => {
+    expect(isAdminEmail(env(), "ada@esperlabs.app")).toBe(false);
+    expect(adminEmails(env())).toEqual([]);
+  });
+
+  it("matches emails case-insensitively", () => {
+    const configured = env({ ADMIN_EMAILS: "Ada@EsperLabs.app, ops@esperlabs.ai" });
+    expect(isAdminEmail(configured, "ada@esperlabs.app")).toBe(true);
+    expect(isAdminEmail(configured, "OPS@esperlabs.ai")).toBe(true);
+    expect(isAdminEmail(configured, "bob@esperlabs.app")).toBe(false);
+  });
+
+  it("parses token scope and stores unknown as account", () => {
+    expect(parseTokenScope(undefined)).toBe("account");
+    expect(parseTokenScope("Admin")).toBe("admin");
+    expect(storedTokenScope(null)).toBe("account");
+    expect(storedTokenScope("admin")).toBe("admin");
+    expect(() => parseTokenScope("write")).toThrow(expect.objectContaining({ status: 400, code: "bad_scope" }));
+  });
+
+  it("offers only 1d and 7d for admin tokens", () => {
+    const policy = adminTokenPolicy();
+    expect(policy.presets.map((p) => p.id)).toEqual(["1d", "7d"]);
+    expect(policy.allowUnlimited).toBe(false);
+    expect(policy.defaultTtl).toBe("1d");
   });
 });
