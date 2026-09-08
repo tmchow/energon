@@ -32,7 +32,7 @@ Those files are how a fork becomes *your* Energon. Upstream stays a template.
 1. [Open an issue](https://github.com/tmchow/energon/issues/new/choose) first when the change is a new `/v1` surface, a schema migration, or a hub flow that is not an obvious bug. A short "should this exist?" issue saves a large patch that will not merge.
 2. Skip the issue for typos, test-only fixes, and bugs that already have a reproduction in the PR.
 3. One concern per PR. Do not mix formatting or drive-by refactors with a behavior change.
-4. Fill [`.github/PULL_REQUEST_TEMPLATE.md`](./.github/PULL_REQUEST_TEMPLATE.md). Keep the headings. Agents: do not delete sections or replace the body with a commit dump. Name the model in Authorship (not "Cursor" or "an AI") and whether a human reviewed the diff. "None" and "fully agent-created" are valid answers. Do not claim review you did not get.
+4. Fill [`.github/PULL_REQUEST_TEMPLATE.md`](./.github/PULL_REQUEST_TEMPLATE.md). Keep the required headings (What, Why, Verify, Risk, Authorship). Add extra `##` sections when they help a reviewer — bug root cause, approach, screenshots, follow-ups. Agents: do not delete required sections or replace the body with a commit dump. Name the model in Authorship (not "Cursor" or "an AI") and whether a human reviewed the diff. "None" and "fully agent-created" are valid answers. Do not claim review you did not get.
 
 ## Commits and titles
 

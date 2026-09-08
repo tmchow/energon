@@ -31,6 +31,10 @@ describe("contribution policy", () => {
     for (const heading of ["## What", "## Why", "## Verify", "## Risk", "## Authorship"]) {
       expect(template).toContain(heading);
     }
+    expect(template).toContain("Required headings:");
+    expect(template).toContain("Add extra ## headings when they help a reviewer.");
+    expect(template).toContain("## Root cause");
+    expect(template).toContain("## Approach");
     expect(template).toContain("**Model:**");
     expect(template).toContain("**Human review:**");
     expect(template).toContain("**Tests:**");
@@ -46,11 +50,14 @@ describe("contribution policy", () => {
     expect(contributing).not.toContain("Pull requests are not.");
     expect(contributing).toContain("Do **not** use conventional-commit prefixes");
     expect(contributing).toContain("verify-energon skill");
+    expect(contributing).toContain("Keep the required headings");
+    expect(contributing).toContain("Add extra `##` sections when they help a reviewer");
   });
 
   it("tells agents to read and run the verify-energon skill", () => {
     const agents = readFileSync(join(root, "AGENTS.md"), "utf8");
     expect(agents).toContain(".agents/skills/verify-energon/SKILL.md");
     expect(agents).toContain("name that file in Verify");
+    expect(agents).toContain("Add extra `##` sections when they help a reviewer");
   });
 });
