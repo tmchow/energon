@@ -31,8 +31,8 @@ This file is how to **change this tree**. It is not a product README and not the
 
 When you open a PR:
 
-- Use [`.github/PULL_REQUEST_TEMPLATE.md`](./.github/PULL_REQUEST_TEMPLATE.md) as the body. Keep and fill the required headings (What, Why, Verify, Risk, Authorship). Verify needs Tests **and** verify-energon. Add extra `##` sections when they help a reviewer. Do not delete required sections or replace the body with a commit dump. Do not paste secrets.
-- Authorship: name the actual model (for example `Cursor Grok 4.6`, not `Cursor` or `an AI`). Say whether a human reviewed the diff, or `none (fully agent-created)`. Do not claim review you did not get. "None" is valid.
+- Use [`.github/PULL_REQUEST_TEMPLATE.md`](./.github/PULL_REQUEST_TEMPLATE.md) as the body. Keep and fill the required headings (What, Why, Verify, Risk, Authorship). Verify needs Tests, verify-energon, and How. Add extra `##` sections when they help a reviewer. Do not delete required sections or replace the body with a commit dump. Do not paste secrets.
+- Authorship: name the actual model (for example `Cursor Grok 4.6`, not `Cursor` or `an AI`). "None" is valid when a person wrote the patch.
 - Title and commit subjects are imperative sentences (`Cap public edge cache at one day`). Do not use conventional-commit prefixes (`feat:`, `fix:`, `chore:`). History is squash-merged; the PR title is the durable subject.
 - One concern per PR. Do not mix formatting or drive-by refactors with a behavior change.
 - Do not include fork identity: `wrangler.toml` database ids and origins, `.dev.vars`, `plugins/`, marketplace catalogs, or an `instance-skill.json` pointed at a real origin.

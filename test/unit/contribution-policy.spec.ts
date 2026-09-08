@@ -41,9 +41,10 @@ describe("contribution policy", () => {
       "## Authorship",
     ]);
     expect(template).toContain("**Model:**");
-    expect(template).toContain("**Human review:**");
+    expect(template).not.toContain("**Human review:**");
     expect(template).toContain("**Tests:**");
     expect(template).toContain("**verify-energon:**");
+    expect(template).toContain("**How:**");
     expect(template).toContain(".agents/skills/verify-energon/SKILL.md");
     expect(template).toContain("No feat:/fix:/chore: prefix");
     expect(template).not.toMatch(/^Fork PRs are closed automatically/m);
@@ -57,6 +58,8 @@ describe("contribution policy", () => {
     expect(contributing).toContain("verify-energon skill");
     expect(contributing).toContain("Keep the required headings");
     expect(contributing).toContain("Add extra `##` sections when they help a reviewer");
+    expect(contributing).toContain("before you build");
+    expect(contributing).not.toContain("whether a human reviewed");
   });
 
   it("tells agents to read and run the verify-energon skill", () => {
