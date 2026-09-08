@@ -77,6 +77,9 @@ describe("schema upgrades", () => {
     expect([...db.tables.get("gate_attempts") || []]).toEqual(expect.arrayContaining(["scope", "fails", "window_start"]));
     expect([...db.tables.get("agent_connections") || []]).toEqual(expect.arrayContaining(["id", "poll_hash", "code_hash", "status", "expires_at", "user_id"]));
     expect([...db.tables.get("platform_quota") || []]).toEqual(expect.arrayContaining(["id", "used"]));
+    expect([...db.tables.get("admin_audit") || []]).toEqual(
+      expect.arrayContaining(["id", "at", "actor_email", "token_id", "action", "target_json", "matched", "applied"]),
+    );
     expect([...db.indexes]).toEqual(
       expect.arrayContaining([
         "idx_site_files_site",
@@ -89,6 +92,7 @@ describe("schema upgrades", () => {
         "idx_loose_expires_at",
         "idx_tokens_user_id",
         "idx_users_idp_sub",
+        "idx_admin_audit_at",
       ]),
     );
   });

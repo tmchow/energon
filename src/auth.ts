@@ -192,6 +192,17 @@ export async function actorFromAccess(
   }
 }
 
+export function requireAdmin(actor: Actor): Actor {
+  if (actor.admin) return actor;
+  throw new ApiError(
+    403,
+    "not_admin",
+    actor.via === "token"
+      ? "This route needs an admin-scoped token whose owner is still listed in ADMIN_EMAILS."
+      : "This is for operators listed in ADMIN_EMAILS.",
+  );
+}
+
 export async function requireHuman(
   request: Request,
   env: Env,
@@ -435,7 +446,7 @@ export function helpBody(origin: string, env?: Env): unknown {
     sop: [
       `Look for env ${id.tokenEnv}. If missing and a human can respond, follow ${origin}/auth.md to connect with a code and save the delivered token as ${id.tokenEnv} where this environment keeps secrets. If no human can respond, stop and ask for a token provisioned at ${origin}/tokens. The secret is delivered once. Do not invent a token.`,
       `Tokens expire after the lifetime the human picked at mint (default 90 days; see tokens.presets). A 401 with error token_expired is terminal: stop using it, connect again with a code or ask the human to provision a replacement at ${origin}/tokens, and do not retry the expired token. Tokens cannot be extended. GET /v1/whoami shows your token's expires_at.`,
-      `An admin-scoped token is minted only at ${origin}/tokens by someone listed in ADMIN_EMAILS. The connect flow never grants it. Admin tokens use a shorter lifetime (1d or 7d; never is not offered) and are recognizable as ${id.tokenPrefix}adm…. GET /v1/whoami admin is true only while that owner is still on the list. Ordinary /v1 calls still act as the account.`,
+      `An admin-scoped token is minted only at ${origin}/tokens by someone listed in ADMIN_EMAILS. The connect flow never grants it. Admin tokens use a shorter lifetime (1d or 7d; never is not offered) and are recognizable as ${id.tokenPrefix}adm…. GET /v1/whoami admin is true only while that owner is still on the list. Ordinary /v1 calls still act as the account. GET /v1/admin/audit lists recorded operator actions (metadata only). 403 not_admin if you are not an operator.`,
       `When your task is done and nothing else will use this token, DELETE /v1/whoami revokes it (self only: it cannot list or revoke other tokens). Later calls with it are 401. Do not do this to a token the human stored for reuse, such as CI.`,
       `This Energon's skill is ${id.skill} (install ${installLine(id)}). The origin is ${origin}. Do not guess another Energon.`,
       `The HTTP schema (paths, request and response bodies, status codes, error codes) is ${origin}/v1/openapi.json. This document describes this Energon: origins, token env, retention presets, token lifetimes, limits.`,
@@ -466,6 +477,7 @@ export function helpBody(origin: string, env?: Env): unknown {
       "GET /v1/openapi.json": "OpenAPI 3.1 HTTP contract, no auth",
       "GET /v1/whoami": "token label, owner email, expires_at (null = never), and admin (true only for an admin-scoped token whose owner is still on ADMIN_EMAILS)",
       "DELETE /v1/whoami": "revoke the calling token (self only); later calls with it are 401",
+      "GET /v1/admin/audit": "operator log of admin actions that touched content metadata: who, token id if any, action, filters, counts, when. ?limit=&cursor=. Never bytes or secrets. 403 not_admin otherwise",
       "POST /v1/sites": '{ "slug", "password"?: string, "write_password"?: string, "ttl"?: string, "write_policy"?: "owner"|"org", "duplicate_from"?: id }',
       "PATCH /v1/sites/{id}": '{ "password"?: string, "write_password"?: string, "ttl"?: string, "write_policy"?: "owner"|"org" } — empty password or write_password clears. ttl resets expiry from now. write_policy and write_password are creator-only.',
       "GET /v1/sites/{id}/files/{path}": "raw file bytes (token)",

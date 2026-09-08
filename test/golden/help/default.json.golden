@@ -145,7 +145,7 @@
   "sop": [
     "Look for env ENERGON_TOKEN. If missing and a human can respond, follow https://hub.energon.example.com/auth.md to connect with a code and save the delivered token as ENERGON_TOKEN where this environment keeps secrets. If no human can respond, stop and ask for a token provisioned at https://hub.energon.example.com/tokens. The secret is delivered once. Do not invent a token.",
     "Tokens expire after the lifetime the human picked at mint (default 90 days; see tokens.presets). A 401 with error token_expired is terminal: stop using it, connect again with a code or ask the human to provision a replacement at https://hub.energon.example.com/tokens, and do not retry the expired token. Tokens cannot be extended. GET /v1/whoami shows your token's expires_at.",
-    "An admin-scoped token is minted only at https://hub.energon.example.com/tokens by someone listed in ADMIN_EMAILS. The connect flow never grants it. Admin tokens use a shorter lifetime (1d or 7d; never is not offered) and are recognizable as ee_live_adm…. GET /v1/whoami admin is true only while that owner is still on the list. Ordinary /v1 calls still act as the account.",
+    "An admin-scoped token is minted only at https://hub.energon.example.com/tokens by someone listed in ADMIN_EMAILS. The connect flow never grants it. Admin tokens use a shorter lifetime (1d or 7d; never is not offered) and are recognizable as ee_live_adm…. GET /v1/whoami admin is true only while that owner is still on the list. Ordinary /v1 calls still act as the account. GET /v1/admin/audit lists recorded operator actions (metadata only). 403 not_admin if you are not an operator.",
     "When your task is done and nothing else will use this token, DELETE /v1/whoami revokes it (self only: it cannot list or revoke other tokens). Later calls with it are 401. Do not do this to a token the human stored for reuse, such as CI.",
     "This Energon's skill is energon (install energon@energon). The origin is https://hub.energon.example.com. Do not guess another Energon.",
     "The HTTP schema (paths, request and response bodies, status codes, error codes) is https://hub.energon.example.com/v1/openapi.json. This document describes this Energon: origins, token env, retention presets, token lifetimes, limits.",
@@ -178,6 +178,7 @@
     "GET /v1/openapi.json": "OpenAPI 3.1 HTTP contract, no auth",
     "GET /v1/whoami": "token label, owner email, expires_at (null = never), and admin (true only for an admin-scoped token whose owner is still on ADMIN_EMAILS)",
     "DELETE /v1/whoami": "revoke the calling token (self only); later calls with it are 401",
+    "GET /v1/admin/audit": "operator log of admin actions that touched content metadata: who, token id if any, action, filters, counts, when. ?limit=&cursor=. Never bytes or secrets. 403 not_admin otherwise",
     "POST /v1/sites": "{ \"slug\", \"password\"?: string, \"write_password\"?: string, \"ttl\"?: string, \"write_policy\"?: \"owner\"|\"org\", \"duplicate_from\"?: id }",
     "PATCH /v1/sites/{id}": "{ \"password\"?: string, \"write_password\"?: string, \"ttl\"?: string, \"write_policy\"?: \"owner\"|\"org\" } — empty password or write_password clears. ttl resets expiry from now. write_policy and write_password are creator-only.",
     "GET /v1/sites/{id}/files/{path}": "raw file bytes (token)",

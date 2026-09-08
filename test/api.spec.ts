@@ -735,6 +735,62 @@ describe("Energon", () => {
     expect(plainMe.body.admin).toBe(false);
   });
 
+  it("lets only an admin-scoped token read the audit log", async () => {
+    const denied = await json("/v1/admin/audit", { headers: auth(await mint("plain", "ada@esperlabs.app")) });
+    expect(denied.status).toBe(403);
+    expect(denied.body.error).toBe("not_admin");
+
+    const operatorAccount = await json("/account/tokens", {
+      method: "POST",
+      headers: access("admin@esperlabs.app", { "content-type": "application/json" }),
+      body: JSON.stringify({ label: "ops-account" }),
+    });
+    expect(operatorAccount.status).toBe(201);
+    const stillDenied = await json("/v1/admin/audit", { headers: auth(operatorAccount.body.token) });
+    expect(stillDenied.status).toBe(403);
+
+    const created = await json("/account/tokens", {
+      method: "POST",
+      headers: access("admin@esperlabs.app", { "content-type": "application/json" }),
+      body: JSON.stringify({ label: "ops-audit", scope: "admin" }),
+    });
+    expect(created.status).toBe(201);
+    const empty = await json("/v1/admin/audit", { headers: auth(created.body.token) });
+    expect(empty.status).toBe(200);
+    expect(empty.body.events).toEqual([]);
+    expect(empty.body.total).toBe(0);
+    expect(empty.body.next_cursor).toBeNull();
+
+    const { recordAdminAudit } = await import("../src/audit");
+    await recordAdminAudit(env, { email: "admin@esperlabs.app", via: "token", tokenId: "tok-audit", admin: true }, {
+      action: "cleanup",
+      target: { owner: "ada@esperlabs.app", password: "secret-phrase" },
+      matched: 1,
+      eligible: 1,
+      applied: 1,
+      skipped: 0,
+      failed: 0,
+      confirm: "deadbeefdeadbeefdeadbeefdeadbeef",
+    });
+    const listed = await json("/v1/admin/audit", { headers: auth(created.body.token) });
+    expect(listed.status).toBe(200);
+    const event = listed.body.events.find((row: { confirm: string | null }) => row.confirm === "deadbeefdeadbeefdeadbeefdeadbeef");
+    expect(event).toMatchObject({
+      action: "cleanup",
+      actor_email: "admin@esperlabs.app",
+      target: { owner: "ada@esperlabs.app" },
+      applied: 1,
+    });
+    expect(JSON.stringify(listed.body)).not.toContain("secret-phrase");
+
+    const hubDenied = await json("/account/admin/audit", { headers: access("ada@esperlabs.app") });
+    expect(hubDenied.status).toBe(403);
+    expect(hubDenied.body.error).toBe("not_admin");
+    const hub = await json("/account/admin/audit", { headers: access("admin@esperlabs.app") });
+    expect(hub.status).toBe(200);
+    expect(hub.body.events.some((row: { confirm: string | null }) => row.confirm === "deadbeefdeadbeefdeadbeefdeadbeef")).toBe(true);
+  });
+
   it("expired token gets a terminal token_expired 401 and no usage bump", async () => {
     const { env } = await import("cloudflare:test");
     const email = "expired-writer@esperlabs.app";

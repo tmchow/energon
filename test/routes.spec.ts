@@ -19,7 +19,7 @@ describe("host and route contracts", () => {
     const contentHelp = await json("https://energon.example.com/v1/help");
     expect(contentHelp.status).toBe(404);
     expect(contentHelp.body.message).toContain("GET /llms.txt");
-    for (const path of ["/v1", "/v1/", "/v1/whoami"]) {
+    for (const path of ["/v1", "/v1/", "/v1/whoami", "/v1/admin/audit"]) {
       const rejected = await json(path);
       expect(rejected.status).toBe(401);
       expect(rejected.body.auth_url).toBe("https://hub.energon.example.com/auth.md");

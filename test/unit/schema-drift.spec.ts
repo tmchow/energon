@@ -80,4 +80,10 @@ describe("schema representations", () => {
 
     expect(statements).toEqual(["ALTER TABLE tokens ADD COLUMN scope TEXT;"]);
   });
+
+  it("ships admin audit as a create-table migration", () => {
+    const migration = readFileSync("migrations/0021_admin_audit.sql", "utf8");
+    expect(migration).toContain("CREATE TABLE admin_audit");
+    expect(migration).toContain("CREATE INDEX idx_admin_audit_at ON admin_audit(at DESC, id DESC)");
+  });
 });

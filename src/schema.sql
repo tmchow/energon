@@ -130,3 +130,20 @@ CREATE TABLE IF NOT EXISTS agent_connections (
 CREATE INDEX IF NOT EXISTS idx_connections_ip_created ON agent_connections(ip_hash, created_at);
 CREATE INDEX IF NOT EXISTS idx_connections_created ON agent_connections(created_at);
 CREATE INDEX IF NOT EXISTS idx_connections_expires ON agent_connections(expires_at);
+
+CREATE TABLE IF NOT EXISTS admin_audit (
+  id TEXT PRIMARY KEY,
+  at TEXT NOT NULL,
+  actor_email TEXT NOT NULL,
+  token_id TEXT,
+  action TEXT NOT NULL,
+  target_json TEXT NOT NULL,
+  matched INTEGER NOT NULL,
+  eligible INTEGER NOT NULL,
+  applied INTEGER NOT NULL,
+  skipped INTEGER NOT NULL,
+  failed INTEGER NOT NULL,
+  confirm TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_audit_at ON admin_audit(at DESC, id DESC);

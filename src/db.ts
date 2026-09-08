@@ -13,6 +13,20 @@ const TABLE_STATEMENTS = [
     user_id TEXT,
     token_expires_at TEXT
   )`,
+  `CREATE TABLE IF NOT EXISTS admin_audit (
+    id TEXT PRIMARY KEY,
+    at TEXT NOT NULL,
+    actor_email TEXT NOT NULL,
+    token_id TEXT,
+    action TEXT NOT NULL,
+    target_json TEXT NOT NULL,
+    matched INTEGER NOT NULL,
+    eligible INTEGER NOT NULL,
+    applied INTEGER NOT NULL,
+    skipped INTEGER NOT NULL,
+    failed INTEGER NOT NULL,
+    confirm TEXT
+  )`,
   `CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     email TEXT NOT NULL UNIQUE,
@@ -101,6 +115,7 @@ const INDEX_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_connections_ip_created ON agent_connections(ip_hash, created_at)`,
   `CREATE INDEX IF NOT EXISTS idx_connections_created ON agent_connections(created_at)`,
   `CREATE INDEX IF NOT EXISTS idx_connections_expires ON agent_connections(expires_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_admin_audit_at ON admin_audit(at DESC, id DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_site_files_site ON site_files(site_id)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_site_files_id_path ON site_files(site_id, path)`,
   `CREATE INDEX IF NOT EXISTS idx_loose_files_created ON loose_files(created_at DESC)`,

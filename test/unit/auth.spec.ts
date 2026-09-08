@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { TOKEN_PREFIX } from "../../src/config";
-import { actorFromAccess, helpBody, maskToken, mintToken, parseBearer, rejectWorkersDevForHumans, requireToken } from "../../src/auth";
+import { actorFromAccess, helpBody, maskToken, mintToken, parseBearer, rejectWorkersDevForHumans, requireAdmin, requireToken } from "../../src/auth";
 import { readCookie } from "../../src/gate";
 import { tokenPolicy } from "../../src/policy";
 import type { Env, TokenRow } from "../../src/types";
@@ -413,12 +413,25 @@ describe("actorFromAccess", () => {
 });
 
 describe("rejectWorkersDevForHumans", () => {
-  it("blocks the human hub on workers.dev and leaves the custom domain alone", () => {
+  it("blocks the human hub on workers.dev and leaves the custom domain alone", async () => {
     const blocked = rejectWorkersDevForHumans(new Request("https://energon.workers.dev/"));
     expect(blocked?.status).toBe(403);
     const ok = rejectWorkersDevForHumans(new Request("https://energon.example.com/"));
     expect(ok).toBeNull();
     const local = rejectWorkersDevForHumans(new Request("http://127.0.0.1:8787/"));
     expect(local).toBeNull();
+  });
+});
+
+describe("requireAdmin", () => {
+  it("lets an admin through and refuses everyone else", () => {
+    const admin = { email: "admin@esperlabs.app", via: "token" as const, admin: true };
+    expect(requireAdmin(admin)).toBe(admin);
+    expect(() => requireAdmin({ email: "ada@esperlabs.app", via: "token", admin: false })).toThrow(
+      expect.objectContaining({ status: 403, code: "not_admin" }),
+    );
+    expect(() => requireAdmin({ email: "ada@esperlabs.app", via: "access" })).toThrow(
+      expect.objectContaining({ status: 403, code: "not_admin" }),
+    );
   });
 });

@@ -4,7 +4,8 @@ import { decideConnection, exchangeConnection, purgeConnections, startConnection
 import { aboutResponse } from "./about";
 import { instanceFooter, PRIVATE_HTML_HEADERS } from "./chrome";
 import logoSvg from "./logo.svg";
-import { actorFromAccess, assertEmailAllowed, bulkRevokeResponse, helpBody, listTokens, mintToken, rejectWorkersDevForHumans, requireHuman, requireToken, revokeToken, unauthorized } from "./auth";
+import { actorFromAccess, assertEmailAllowed, bulkRevokeResponse, helpBody, listTokens, mintToken, rejectWorkersDevForHumans, requireAdmin, requireHuman, requireToken, revokeToken, unauthorized } from "./auth";
+import { auditListResponse } from "./audit";
 import { setupResponse } from "./setup";
 import { statsResponse } from "./stats";
 import { parseListQuery } from "./catalog";
@@ -194,6 +195,12 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
 
   if (path === "/tokens" && method === "GET") {
     return serveTokens(request, env, ctx);
+  }
+
+  if (path === "/account/admin/audit" && method === "GET") {
+    const actor = await requireHuman(request, env, ctx);
+    requireAdmin(actor);
+    return auditListResponse(env, url);
   }
 
   if (path === "/account/data" && method === "GET") {
@@ -440,6 +447,12 @@ async function api(
   if (path === "/v1/cleanup" && method === "POST") {
     const actor = await requireToken(request, env);
     return cleanupResponse(env, ctx, actor, await readJson(request));
+  }
+
+  if (path === "/v1/admin/audit" && method === "GET") {
+    const actor = await requireToken(request, env);
+    requireAdmin(actor);
+    return auditListResponse(env, new URL(request.url));
   }
 
   const looseOne = path.match(/^\/v1\/files\/([^/]+)(?:\/[^/]+)?$/);

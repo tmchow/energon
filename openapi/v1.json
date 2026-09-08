@@ -36,6 +36,10 @@
     {
       "name": "cleanup",
       "description": "Bulk delete or re-expire the sites and files you can write. Dry run by default; execute with the confirm string from the preview."
+    },
+    {
+      "name": "admin",
+      "description": "Operator maintenance. Needs an admin-scoped token whose owner is still listed in ADMIN_EMAILS. Metadata only: never bytes, share passwords, or write passwords."
     }
   ],
   "paths": {
@@ -1207,6 +1211,66 @@
         }
       }
     },
+    "/v1/admin/audit": {
+      "get": {
+        "operationId": "listAdminAudit",
+        "tags": [
+          "admin"
+        ],
+        "summary": "List recorded operator actions",
+        "description": "Newest first. Each row is who acted, which token if any, the action, the filters they used, and the counts. Never bytes, share passwords, or write passwords. 403 not_admin unless this token is admin-scoped and the owner is still listed in ADMIN_EMAILS.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of audit events.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAuditList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Not an operator, or the token's account email is outside this Energon's allowed domains.",
+            "x-error-codes": [
+              "not_admin",
+              "forbidden_domain"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/connections": {
       "post": {
         "operationId": "startConnection",
@@ -2214,7 +2278,7 @@
     "schemas": {
       "Error": {
         "type": "object",
-        "description": "Every non-2xx JSON body. Some codes add fields: token_expired, cleanup_drift, and cleanup_too_many are typed below; too_large and storage_cap add limit_bytes plus actual_bytes or used_bytes; bad_ttl, ttl_required, and ttl_too_long add presets and default_ttl or max_ttl; forbidden_domain adds allowed_email_domains; site_not_found adds hint; bad_query adds fields (the malformed cleanup target filters). bad_target, bad_action, and bad_confirm come only from POST /v1/cleanup. password_required (401) and rate_limited (429) come from the public content gate, not /v1. bad_label, bad_origin, and token_not_found come from the hub /account API. not_found is any unknown route. bad_path is also returned for a URL that is not valid percent-encoding. connection_bad_code and connection_decided come from the human /account/connections API.",
+        "description": "Every non-2xx JSON body. Some codes add fields: token_expired, cleanup_drift, and cleanup_too_many are typed below; too_large and storage_cap add limit_bytes plus actual_bytes or used_bytes; bad_ttl, ttl_required, and ttl_too_long add presets and default_ttl or max_ttl; forbidden_domain adds allowed_email_domains; site_not_found adds hint; bad_query adds fields (the malformed cleanup target filters). bad_target, bad_action, and bad_confirm come only from POST /v1/cleanup. password_required (401) and rate_limited (429) come from the public content gate, not /v1. bad_label, bad_origin, and token_not_found come from the hub /account API. not_found is any unknown route. bad_path is also returned for a URL that is not valid percent-encoding. connection_bad_code and connection_decided come from the human /account/connections API. not_admin is an admin route called without an admin-scoped token whose owner is still on ADMIN_EMAILS.",
         "required": [
           "error",
           "message"
@@ -3923,6 +3987,100 @@
           "admin": {
             "type": "boolean",
             "description": "True only for an admin-scoped token whose owner is still listed in ADMIN_EMAILS. Ordinary /v1 calls still act as the account."
+          }
+        }
+      },
+      "AdminAuditEvent": {
+        "type": "object",
+        "required": [
+          "id",
+          "at",
+          "actor_email",
+          "token_id",
+          "action",
+          "target",
+          "matched",
+          "eligible",
+          "applied",
+          "skipped",
+          "failed",
+          "confirm"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "actor_email": {
+            "type": "string",
+            "description": "The operator who acted."
+          },
+          "token_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The admin token used, if any. Null for a signed-in human on the hub."
+          },
+          "action": {
+            "type": "string",
+            "description": "What ran, for example cleanup."
+          },
+          "target": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "The filters or ids used. Never bytes or secrets."
+          },
+          "matched": {
+            "type": "integer"
+          },
+          "eligible": {
+            "type": "integer"
+          },
+          "applied": {
+            "type": "integer"
+          },
+          "skipped": {
+            "type": "integer"
+          },
+          "failed": {
+            "type": "integer"
+          },
+          "confirm": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AdminAuditList": {
+        "type": "object",
+        "required": [
+          "events",
+          "total",
+          "next_cursor"
+        ],
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminAuditEvent"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Events across all pages."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Pass as cursor for the next page; null on the last page."
           }
         }
       },
