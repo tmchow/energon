@@ -92,5 +92,6 @@ describe("contribution policy", () => {
     expect(workflow).toContain("github.event.pull_request.title");
     expect(workflow).toMatch(/^permissions:\n  contents: read$/m);
     expect(/^[ \t]*pull_request_target[ \t]*:/m.test(workflow)).toBe(false);
+    expect(readFileSync(join(root, "test/tsconfig.json"), "utf8")).toContain("pr-title.spec.ts");
   });
 });
