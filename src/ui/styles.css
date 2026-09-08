@@ -35,6 +35,17 @@
 .en-setup-stack { margin-top: 28px; max-width: 42rem; }
 .en-setup-next { margin-top: 28px; }
 .en-hub-messages { margin-top: 20px; }
+.en-flash { overflow-wrap: anywhere; }
+.en-flash--dismissible { display: flex; align-items: flex-start; gap: 8px; }
+.en-flash-body { flex: 1; min-width: 0; }
+.en-flash-dismiss { flex: none; margin: -4px -6px -4px 0; color: inherit; opacity: 0.7; }
+.en-flash-dismiss:hover { opacity: 1; color: inherit; background: rgba(var(--glow-rgb), 0.1); }
+.en-flash-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.en-flash-actions .en-btn { color: inherit; border-color: currentColor; }
+.en-field-error { display: block; font-size: var(--text-sm); line-height: 1.4; color: var(--danger-fg); margin: 2px 0 0; }
+.en-field--invalid .en-input { border-color: var(--danger-border); }
+.en-dialog h3, .en-dialog label, .en-dialog .en-note { overflow-wrap: anywhere; }
+.en-table td.name:has(.en-check) a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .en-hub-export .en-lede { margin: 0; }
 .en-hub-export .en-btn { width: fit-content; }
 .en-catalog-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 16px; padding-top: 0; }

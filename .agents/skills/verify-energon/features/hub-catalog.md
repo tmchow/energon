@@ -42,6 +42,8 @@ Preconditions:
 - Scope `involved` is the Your work button inside `#scope`; the selected button has `aria-pressed="true"`.
 - Delete requires the exact slug or filename. Cancel leaves the object in place — confirm with a GET.
 - `Load more` appears only when a cursor is present. Do not treat a short list as a pagination bug.
+- A malformed `#catalog-expires-before`, `#catalog-updated-before`, or `#catalog-min-size` value shows an inline error under the field and the hub does not send the query. The server still ignores malformed filters when they arrive through the URL. `#catalog-status` is a visually hidden live region that announces the counts after each load.
+- Catalog load failures appear as a dismissable flash with a `Try again` button. Every hub flash has a `Dismiss` control and the list keeps at most six.
 - Opening the public link leaves the hub. Re-open `$ORIGIN/` before another catalog assertion.
 - Password marks: view-password-only is a padlock (`View password`). Any write password is the lockup (`Write password`). Neither hash: no password mark. More still offers `Set password`. No Password chip next to the slug.
 - Change expiration measures the new TTL from now, not from the original publish. `never` appears only when this Energon's policy allows unlimited. The control is hidden when `write_policy` is owner and you are not the creator.

@@ -54,3 +54,20 @@ export function formatBytes(n: number): string {
 export function formatCount(n: number): string {
   return Math.max(0, Math.round(Number.isFinite(n) ? n : 0)).toLocaleString("en-US");
 }
+
+/** `25mb`, `5 MB`, `20gb`, or a positive integer of bytes. */
+export function parseByteSize(raw: string | undefined): number | null {
+  const s = (raw || "").trim().toLowerCase().replace(/\s+/g, "");
+  if (!s) return null;
+  if (/^\d+$/.test(s)) {
+    const n = Number(s);
+    return Number.isInteger(n) && n > 0 ? n : null;
+  }
+  const match = /^(\d+(?:\.\d+)?)(b|kb|mb|gb)$/.exec(s);
+  if (!match) return null;
+  const n = Number(match[1]);
+  if (!(n > 0) || !Number.isFinite(n)) return null;
+  const mul = match[2] === "gb" ? 1024 ** 3 : match[2] === "mb" ? 1024 ** 2 : match[2] === "kb" ? 1024 : 1;
+  const bytes = Math.round(n * mul);
+  return bytes > 0 ? bytes : null;
+}

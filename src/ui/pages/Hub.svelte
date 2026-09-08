@@ -4,6 +4,7 @@
   import { api, jsonBody, errorMessage, RequestError } from '../api';
   import { stageFiles, publish, slugify, type StagedUpload, type PublishResult } from '../uploads';
   import { nextNumberedSlug } from "../../slugs";
+  import { parseByteSize } from '../../config';
   import { hubCleanupDoneMessage, hubCleanupTarget } from '../hub-cleanup-target';
   import { registerHubTools } from '../model-context';
   import PageTitle from '../components/PageTitle.svelte';
@@ -52,7 +53,9 @@
   let stageTtl = $state(untrack(() => data.policy.default_ttl));
   let stageWrite = $state(untrack(() => data.policy.write_policy));
   let dragDepth = $state(0);
-  let messages = $state<{ tone: 'ok' | 'err'; text: string; url?: string; name?: string; password?: string; writePassword?: string }[]>([]);
+  let messages = $state<{ id: number; tone: 'ok' | 'err'; text: string; url?: string; name?: string; password?: string; writePassword?: string; retry?: () => void }[]>([]);
+  let messageSequence = 0;
+  let catalogStatus = $state('');
   let target = $state<{ kind: 'site' | 'file'; item: CatalogItem } | null>(null);
   let moreOpen = $state(false);
   let confirmOpen = $state(false);
@@ -113,10 +116,22 @@
     { value: 'delete', label: 'Delete' },
   ];
 
-  function message(text: string, tone: 'ok' | 'err' = 'ok', result?: PublishResult) {
-    messages = [{ tone, text, url: result?.url, name: result?.slug || result?.filename, password: result?.password, writePassword: result?.write_password }, ...messages];
+  const MAX_MESSAGES = 6;
+  function message(text: string, tone: 'ok' | 'err' = 'ok', result?: PublishResult, retry?: () => void) {
+    messages = [{ id: ++messageSequence, tone, text, url: result?.url, name: result?.slug || result?.filename, password: result?.password, writePassword: result?.write_password, retry }, ...messages].slice(0, MAX_MESSAGES);
   }
+  function dismiss(id: number) { messages = messages.filter((item) => item.id !== id); }
+  function count(n: number, noun: string) { return `${n} ${noun}${n === 1 ? '' : 's'}`; }
+  // The server ignores malformed filters instead of rejecting them, so refuse them here with the same grammar it uses.
+  const validTimestamp = (raw: string) => !raw.trim() || Number.isFinite(Date.parse(raw.trim()));
+  const validSize = (raw: string) => !raw.trim() || parseByteSize(raw) !== null;
+  const dateError = 'Enter a date like 2026-01-01 or a full ISO timestamp.';
+  const expiresBeforeError = $derived(validTimestamp(expiresBefore) ? '' : dateError);
+  const updatedBeforeError = $derived(validTimestamp(updatedBefore) ? '' : dateError);
+  const minSizeError = $derived(validSize(minSize) ? '' : 'Enter bytes or a size like 500kb, 1mb, or 2gb.');
+  const filtersValid = $derived(!expiresBeforeError && !updatedBeforeError && !minSizeError);
   async function refresh(only?: 'sites' | 'files') {
+    if (!filtersValid) return;
     const sequence = ++requestSequence;
     controller?.abort(); controller = new AbortController(); loading = true;
     const query = new URLSearchParams({ q: q.trim(), scope, sort });
@@ -130,8 +145,12 @@
       if (sequence !== requestSequence) return;
       if (!only) lists = next;
       else lists = { ...lists, [only]: [...lists[only], ...next[only]], [`${only}_total`]: next[`${only}_total`], [`${only}_cursor`]: next[`${only}_cursor`] };
+      catalogStatus = only ? `Loaded ${count(lists[only].length, only === 'sites' ? 'site' : 'file')} of ${lists[`${only}_total`]}.` : `${count(lists.sites_total, 'site')} and ${count(lists.files_total, 'file')}${filtered ? ' match' : ''}.`;
     } catch (error) {
-      if (sequence === requestSequence && !(error instanceof DOMException && error.name === 'AbortError')) message(errorMessage(error), 'err');
+      if (sequence === requestSequence && !(error instanceof DOMException && error.name === 'AbortError')) {
+        catalogStatus = 'The catalog did not load.';
+        message(`The catalog did not load. ${errorMessage(error)}`, 'err', undefined, () => { void refresh(only); });
+      }
     } finally { if (sequence === requestSequence) loading = false; }
   }
   function search() {
@@ -426,24 +445,25 @@
 
 <main class="en-wrap">
   <PageTitle wide title="Publish a document, prototype, or file."><p class="en-lede">Upload here and get a link. Or <a href="/setup">connect your agent</a> to publish for you.</p></PageTitle>
-  <div id="messages" class="en-hub-messages">{#each messages as item}<Flash tone={item.tone} password={item.password} writePassword={item.writePassword}>{item.text}{#if item.url} <a href={item.url}>{item.name}</a>{/if}</Flash>{/each}</div>
+  <div id="messages" class="en-hub-messages">{#each messages as item (item.id)}<Flash tone={item.tone} password={item.password} writePassword={item.writePassword} onDismiss={() => dismiss(item.id)}>{item.text}{#if item.url} <a href={item.url}>{item.name}</a>{/if}{#snippet action()}{#if item.retry}<Button variant="outline" size="sm" onclick={() => { dismiss(item.id); item.retry?.(); }}>Try again</Button>{/if}{/snippet}</Flash>{/each}</div>
   <div class="en-space-after"><Card charged tight>
     <DropZone over={dragDepth > 0} {busy} onFiles={() => filepick.click()} onFolder={() => folderpick.click()} children={staged ? stage : undefined} />
-    <input bind:this={filepick} id="filepick" class="en-sr-only" type="file" multiple onchange={e => picked(e)} />
-    <input bind:this={folderpick} id="folderpick" class="en-sr-only" type="file" webkitdirectory onchange={e => picked(e, true)} />
+    <input bind:this={filepick} id="filepick" class="en-sr-only" type="file" multiple tabindex="-1" aria-hidden="true" onchange={e => picked(e)} />
+    <input bind:this={folderpick} id="folderpick" class="en-sr-only" type="file" webkitdirectory tabindex="-1" aria-hidden="true" onchange={e => picked(e, true)} />
   </Card></div>
   <div class="en-stack en-space-after">
-    <Card title="Sites" hint={`${lists.sites.length < lists.sites_total ? `${lists.sites.length} of ` : ''}${lists.sites_total} ${lists.sites_total === 1 ? 'site' : 'sites'}`} tight>
+    <Card title="Sites" hint={`${lists.sites.length < lists.sites_total ? `${lists.sites.length} of ` : ''}${count(lists.sites_total, 'site')}`} tight>
       <div class="en-card-body en-toolbar"><Input size="md" id="q" class="en-search" type="search" placeholder="Search slugs and filenames" aria-label="Search slugs and filenames" bind:value={q} oninput={search} />
         <SegmentedControl id="scope" bind:value={scope} ariaLabel="Catalog scope" onChange={() => { applyFilters(); }} options={[{ value: 'involved', label: 'Your work' }, { value: 'created', label: 'Created by you' }, { value: 'edited', label: 'Last edited by you' }]} />
         <Select id="sort" aria-label="Sort" bind:value={sort} onchange={() => refresh()} options={[{ value: 'updated', label: 'Updated' }, { value: 'name', label: 'Name' }, { value: 'size', label: 'Size' }, { value: 'age', label: 'Oldest' }]} />
       </div>
       <div id="catalog-filters" class="en-card-body en-catalog-filters">
         <Field label="Expiry"><SegmentedControl id="catalog-expires" ariaLabel="Expiry filter" options={[{ value: 'any', label: 'Any' }, { value: 'never', label: 'Never expires' }]} bind:value={expires} onChange={() => { expiresBefore = ''; applyFilters(); }} /></Field>
-        <Field label="Expires before" htmlFor="catalog-expires-before"><Input id="catalog-expires-before" bind:value={expiresBefore} mono placeholder="2026-01-01" disabled={expires === 'never'} onchange={applyFilters} /></Field>
-        <Field label="Last written before" htmlFor="catalog-updated-before"><Input id="catalog-updated-before" bind:value={updatedBefore} mono placeholder="2026-01-01" onchange={applyFilters} /></Field>
-        <Field label="Minimum size" htmlFor="catalog-min-size"><Input id="catalog-min-size" bind:value={minSize} placeholder="1mb" onchange={applyFilters} /></Field>
+        <Field label="Expires before" htmlFor="catalog-expires-before" note="A date, 2026-01-01, or an ISO timestamp." noteId="catalog-expires-before-note" error={expiresBeforeError} errorId="catalog-expires-before-error"><Input id="catalog-expires-before" bind:value={expiresBefore} mono placeholder="2026-01-01" disabled={expires === 'never'} aria-invalid={expiresBeforeError ? 'true' : undefined} aria-describedby={expiresBeforeError ? 'catalog-expires-before-error catalog-expires-before-note' : 'catalog-expires-before-note'} onchange={applyFilters} /></Field>
+        <Field label="Last written before" htmlFor="catalog-updated-before" note="A date, 2026-01-01, or an ISO timestamp." noteId="catalog-updated-before-note" error={updatedBeforeError} errorId="catalog-updated-before-error"><Input id="catalog-updated-before" bind:value={updatedBefore} mono placeholder="2026-01-01" aria-invalid={updatedBeforeError ? 'true' : undefined} aria-describedby={updatedBeforeError ? 'catalog-updated-before-error catalog-updated-before-note' : 'catalog-updated-before-note'} onchange={applyFilters} /></Field>
+        <Field label="Minimum size" htmlFor="catalog-min-size" note="Bytes, or a size like 500kb, 1mb, or 2gb." noteId="catalog-min-size-note" error={minSizeError} errorId="catalog-min-size-error"><Input id="catalog-min-size" bind:value={minSize} placeholder="1mb" aria-invalid={minSizeError ? 'true' : undefined} aria-describedby={minSizeError ? 'catalog-min-size-error catalog-min-size-note' : 'catalog-min-size-note'} onchange={applyFilters} /></Field>
       </div>
+      <p id="catalog-status" class="en-sr-only" role="status">{catalogStatus}</p>
       <div class="en-card-body en-catalog-select">
         <Button id="catalog-select-matching" size="md" onclick={selectMatching}>Select all matching these filters</Button>
       </div>
@@ -460,10 +480,10 @@
         {/if}
         <Button id="catalog-cleanup-preview" variant="primary" disabled={cleanupBusy} onclick={() => { void previewCleanup(); }}>{cleanupBusy && !cleanupConfirmOpen ? 'Previewing…' : 'Preview'}</Button>
       </div>
-      <div id="sites"><Catalog kind="site" items={lists.sites} cursor={lists.sites_cursor} busy={loading} filtered={filtered} writePolicyDefault={data.policy.write_policy} selected={siteSelected} onToggle={(item, on) => toggleItem('site', item, on)} onToggleVisible={(on) => toggleVisible('site', on)} onMore={item => openMore('site', item)} onPassword={item => editPassword('site', item)} onDelete={item => deleteItem('site', item)} onLoadMore={() => refresh('sites')} /></div>
+      <div id="sites" aria-busy={loading}><Catalog kind="site" items={lists.sites} cursor={lists.sites_cursor} busy={loading} filtered={filtered} writePolicyDefault={data.policy.write_policy} selected={siteSelected} onToggle={(item, on) => toggleItem('site', item, on)} onToggleVisible={(on) => toggleVisible('site', on)} onMore={item => openMore('site', item)} onPassword={item => editPassword('site', item)} onDelete={item => deleteItem('site', item)} onLoadMore={() => refresh('sites')} /></div>
     </Card>
-    <Card title="Files" hint={`${lists.files.length < lists.files_total ? `${lists.files.length} of ` : ''}${lists.files_total} ${lists.files_total === 1 ? 'file' : 'files'}`} tight>
-      <div id="files"><Catalog kind="file" items={lists.files} cursor={lists.files_cursor} busy={loading} filtered={filtered} writePolicyDefault={data.policy.write_policy} selected={fileSelected} onToggle={(item, on) => toggleItem('file', item, on)} onToggleVisible={(on) => toggleVisible('file', on)} onMore={item => openMore('file', item)} onPassword={item => editPassword('file', item)} onDelete={item => deleteItem('file', item)} onLoadMore={() => refresh('files')} /></div>
+    <Card title="Files" hint={`${lists.files.length < lists.files_total ? `${lists.files.length} of ` : ''}${count(lists.files_total, 'file')}`} tight>
+      <div id="files" aria-busy={loading}><Catalog kind="file" items={lists.files} cursor={lists.files_cursor} busy={loading} filtered={filtered} writePolicyDefault={data.policy.write_policy} selected={fileSelected} onToggle={(item, on) => toggleItem('file', item, on)} onToggleVisible={(on) => toggleVisible('file', on)} onMore={item => openMore('file', item)} onPassword={item => editPassword('file', item)} onDelete={item => deleteItem('file', item)} onLoadMore={() => refresh('files')} /></div>
     </Card>
     <CleanupReview preview={cleanupPreview} action={cleanupAction} bind:confirmOpen={cleanupConfirmOpen} bind:confirmError={cleanupConfirmError} busy={cleanupBusy} sampleId="catalog-cleanup-sample" confirmId="catalog-cleanup-dlg" confirmButtonId="catalog-cleanup-confirm" onConfirm={() => { void confirmCleanup(); }} />
     <Card className="en-hub-export" id="account-export" title="Download what you own">
@@ -478,10 +498,10 @@
 
 {#snippet stage()}{#if staged}
   <form id="stage" class="en-stage" onsubmit={launch}>
-    <div class="en-stage-status" id="stage-status"><Unit size={5} />{staged.kind === 'loose' ? '1 file ready' : `${staged.files.length} ${staged.files.length === 1 ? 'file' : 'files'} ready`}</div>
-    {#if staged.kind === 'loose'}<div id="stage-loose"><Field label="URL" htmlFor="stage-filename"><UrlField id="stage-filename" ariaLabel="Filename" prefix={`${contentOrigin}/${handle}/f/{id}/`} bind:value={staged.filename} disabled={busy} /></Field></div>
-    {:else}<div id="stage-site"><Field label="URL" htmlFor="stage-slug"><UrlField id="stage-slug" ariaLabel="Site slug" prefix={`${contentOrigin}/${handle}/s/{id}/`} suffix="/" bind:value={staged.slug} disabled={busy} /></Field></div>{/if}
-    <Field label="Expiration" htmlFor="stage-ttl" noteId="stage-ttl-note" note={ttlNote}><Select id="stage-ttl" aria-label="When this expires" options={ttlOptions} bind:value={stageTtl} disabled={busy} /></Field>
+    <div class="en-stage-status" id="stage-status"><Unit size={5} />{staged.kind === 'loose' ? '1 file ready' : `${count(staged.files.length, 'file')} ready`}</div>
+    {#if staged.kind === 'loose'}<div id="stage-loose"><Field label="Filename" htmlFor="stage-filename" note="The last part of the public URL."><UrlField id="stage-filename" prefix={`${contentOrigin}/${handle}/f/{id}/`} bind:value={staged.filename} disabled={busy} /></Field></div>
+    {:else}<div id="stage-site"><Field label="Site slug" htmlFor="stage-slug" note="The last part of the public URL."><UrlField id="stage-slug" prefix={`${contentOrigin}/${handle}/s/{id}/`} suffix="/" bind:value={staged.slug} disabled={busy} /></Field></div>{/if}
+    <Field label="Expiration" htmlFor="stage-ttl" noteId="stage-ttl-note" note={ttlNote}><Select id="stage-ttl" aria-describedby="stage-ttl-note" options={ttlOptions} bind:value={stageTtl} disabled={busy} /></Field>
     <Field label="Who can write" htmlFor="stage-write" note="Controls who with a token can update or delete this work. It does not grant or deny the write-password door."><Select id="stage-write" aria-label="Who can write" options={writeOptions} bind:value={stageWrite} disabled={busy} /></Field>
     <details id="stage-access" class="en-stage-access" bind:open={stageAccessOpen}>
       <summary>Link access</summary>
@@ -527,7 +547,7 @@
 </Dialog>
 <Dialog dismissible={!mutationBusy} id="ttl-dlg" bind:open={ttlOpen} title="Expiration" message="The new timer starts now, not from when this was published.">
   {#if modalError}<Flash tone="err">{modalError}</Flash>{/if}
-  <form onsubmit={e => { e.preventDefault(); void saveTtl(); }}><Field label="Expiration" htmlFor="ttl-dlg-select" noteId="ttl-dlg-note" note={ttlNote}><Select id="ttl-dlg-select" aria-label="When this expires" options={ttlOptions} bind:value={ttl} disabled={mutationBusy} /></Field>
+  <form onsubmit={e => { e.preventDefault(); void saveTtl(); }}><Field label="Expiration" htmlFor="ttl-dlg-select" noteId="ttl-dlg-note" note={ttlNote}><Select id="ttl-dlg-select" aria-describedby="ttl-dlg-note" options={ttlOptions} bind:value={ttl} disabled={mutationBusy} /></Field>
     <div class="en-dialog-actions"><Button disabled={mutationBusy} onclick={() => ttlOpen = false}>Cancel</Button><Button id="ttl-dlg-ok" type="submit" variant="primary" disabled={mutationBusy}>Save</Button></div>
   </form>
 </Dialog>
