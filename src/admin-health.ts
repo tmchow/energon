@@ -109,7 +109,7 @@ function parseUnlockScope(body: unknown): string {
   }
   const scope = (body as { scope?: unknown }).scope;
   if (typeof scope !== "string" || !scope.trim()) {
-    throw new ApiError(400, "bad_target", "Give the gate scope to unlock, such as obj:/handle/f/id/name or ip:.");
+    throw new ApiError(400, "bad_target", "Give the gate scope to unlock, such as obj:/handle/f/id/ or ip:.");
   }
   return scope.trim();
 }

@@ -2303,6 +2303,8 @@ describe("Energon", () => {
       const empty = await post("/v1/admin/gates/unlock", admin, { scope: "  " });
       expect(empty.status).toBe(400);
       expect(empty.body.error).toBe("bad_target");
+      expect(empty.body.message).toContain("obj:/handle/f/id/");
+      expect(empty.body.message).not.toContain("obj:/handle/f/id/name");
 
       const notObject = await json("/v1/admin/gates/unlock", {
         method: "POST",
