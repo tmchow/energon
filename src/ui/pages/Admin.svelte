@@ -40,6 +40,16 @@
   let confirmOpen = $state(false);
   let confirmError = $state('');
   const ttlOptions = $derived(data.policy.presets.map(p => ({ value: p.id, label: p.label })));
+  const ownFilter = $derived(owner.trim().toLowerCase() === data.handle.trim().toLowerCase());
+  const actionOptions = $derived([
+    { value: 'set_ttl', label: 'Set expiry' },
+    { value: 'delete', label: 'Delete' },
+    ...(ownFilter ? [{ value: 'expire', label: 'Expire soon' }] : []),
+  ]);
+  const actionNote = $derived(ownFilter
+    ? 'Set expiry is the safe default: the owner sees Expires and can push it back. Expire soon is only for your own work.'
+    : 'Set expiry is the safe default: the owner sees Expires and can push it back.');
+  $effect(() => { if (!ownFilter && action === 'expire') action = 'set_ttl'; });
   const eligibleLabel = $derived(preview ? `${preview.eligible} ${preview.eligible === 1 ? 'object' : 'objects'}` : '');
   const confirmAction = $derived(action === 'delete' ? 'Delete' : action === 'expire' ? 'Expire' : 'Set expiry');
   const confirmMessage = $derived(action === 'delete'
@@ -102,7 +112,7 @@
 {#snippet sampleName(row: AdminCleanupPreview['sample'][number])}{row.name}{/snippet}
 {#snippet sampleSize(row: AdminCleanupPreview['sample'][number])}{formatBytes(row.bytes)}{/snippet}
 {#snippet sampleWritten(row: AdminCleanupPreview['sample'][number])}<Timestamp value={row.updated_at} />{/snippet}
-{#snippet sampleRead(row: AdminCleanupPreview['sample'][number])}<Timestamp value={row.last_read_at} empty="Never" />{/snippet}
+{#snippet sampleRead(row: AdminCleanupPreview['sample'][number])}<Timestamp value={row.last_read_at} empty="No recorded read" />{/snippet}
 {#snippet sampleExpiry(row: AdminCleanupPreview['sample'][number])}<Timestamp value={row.expires_at} dateOnly empty="" />{/snippet}
 {#snippet auditWhen(event: AdminAuditEvent)}<Timestamp value={event.created_at} />{/snippet}
 {#snippet auditWho(event: AdminAuditEvent)}{event.actor_email}{/snippet}
@@ -122,17 +132,17 @@
         <Field label="Owner" htmlFor="admin-owner" note="Handle, not email"><Input id="admin-owner" bind:value={owner} mono placeholder="ada" disabled={busy} /></Field>
         <Field label="Name contains" htmlFor="admin-q"><Input id="admin-q" bind:value={q} placeholder="old-notes" disabled={busy} /></Field>
         <Field label="Created by" htmlFor="admin-created-by"><Input id="admin-created-by" bind:value={createdBy} mono placeholder="ada@esperlabs.app" disabled={busy} /></Field>
-        <Field label="Last read before" htmlFor="admin-last-read" note="ISO timestamp. Never-read matches too."><Input id="admin-last-read" bind:value={lastReadBefore} mono placeholder="2026-01-01" disabled={busy} /></Field>
+        <Field label="Last read before" htmlFor="admin-last-read" note="ISO timestamp. Matches work with no recorded read too. Reads lag up to about a day."><Input id="admin-last-read" bind:value={lastReadBefore} mono placeholder="2026-01-01" disabled={busy} /></Field>
         <Field label="Last written before" htmlFor="admin-updated-before"><Input id="admin-updated-before" bind:value={updatedBefore} mono placeholder="2026-01-01" disabled={busy} /></Field>
         <Field label="Minimum size" htmlFor="admin-min-size"><Input id="admin-min-size" bind:value={minSize} placeholder="1mb" disabled={busy} /></Field>
       </div>
       <Field label="Kind"><SegmentedControl id="admin-kind" ariaLabel="Object kind" options={[{ value: 'both', label: 'Sites and files' }, { value: 'sites', label: 'Sites' }, { value: 'files', label: 'Files' }]} bind:value={kind} disabled={busy} /></Field>
       <Field label="Expiry"><SegmentedControl id="admin-expires" ariaLabel="Expiry filter" options={[{ value: 'any', label: 'Any' }, { value: 'never', label: 'Never expires' }]} bind:value={expires} disabled={busy} /></Field>
-      <Field label="Action" note="set_ttl is the safe default. expire is only for content you own.">
-        <SegmentedControl id="admin-action" ariaLabel="Cleanup action" options={[{ value: 'set_ttl', label: 'Set expiry' }, { value: 'delete', label: 'Delete' }, { value: 'expire', label: 'Expire soon' }]} bind:value={action} disabled={busy} />
+      <Field label="Action" note={actionNote}>
+        <SegmentedControl id="admin-action" ariaLabel="Cleanup action" options={actionOptions} bind:value={action} disabled={busy} />
       </Field>
       {#if action === 'set_ttl'}
-        <Field label="New expiry" htmlFor="admin-ttl" note="Omitted on the wire, this is 7 days.">
+        <Field label="New expiry" htmlFor="admin-ttl" note="Defaults to 7 days.">
           <Select id="admin-ttl" name="ttl" aria-label="New expiry" bind:value={ttl} options={[{ value: '', label: '7 days (default)' }, ...ttlOptions]} disabled={busy} />
         </Field>
       {/if}

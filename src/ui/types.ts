@@ -76,7 +76,7 @@ export type AdminAuditEvent = {
   bytes: number | null;
   confirm: string | null;
 };
-export type AdminData = { email: string; admin: boolean; policy: RetentionPolicy };
+export type AdminData = { email: string; handle: string; admin: boolean; policy: RetentionPolicy };
 export type PageProps = (
   | { page: 'hub'; data: HubData }
   | { page: 'tokens'; data: TokensData }
