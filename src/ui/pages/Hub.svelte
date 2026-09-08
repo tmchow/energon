@@ -1,9 +1,10 @@
 <script lang="ts">
   import { onMount, onDestroy, tick, untrack } from 'svelte';
-  import type { CatalogData, CatalogItem, HubData, LinkAccess } from '../types';
-  import { api, jsonBody, errorMessage } from '../api';
+  import type { AdminCleanupPreview, AdminCleanupResult, CatalogData, CatalogItem, HubData, LinkAccess } from '../types';
+  import { api, jsonBody, errorMessage, RequestError } from '../api';
   import { stageFiles, publish, slugify, type StagedUpload, type PublishResult } from '../uploads';
   import { nextNumberedSlug } from "../../slugs";
+  import { hubCleanupDoneMessage, hubCleanupTarget } from '../hub-cleanup-target';
   import { registerHubTools } from '../model-context';
   import PageTitle from '../components/PageTitle.svelte';
   import Card from '../components/Card.svelte';
@@ -17,6 +18,7 @@
   import Button from '../components/Button.svelte';
   import Flash from '../components/Flash.svelte';
   import Catalog from '../components/Catalog.svelte';
+  import CleanupReview from '../components/CleanupReview.svelte';
   import Dialog from '../components/Dialog.svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import Sheet from '../components/Sheet.svelte';
@@ -27,6 +29,19 @@
   let q = $state(untrack(() => data.query?.q || ''));
   let scope = $state(untrack(() => data.query?.scope || 'involved'));
   let sort = $state(untrack(() => data.query?.sort || 'updated'));
+  let expires = $state<'any' | 'never'>(untrack(() => data.query?.expires?.kind === 'never' ? 'never' : 'any'));
+  let expiresBefore = $state(untrack(() => data.query?.expires?.kind === 'before' ? data.query.expires.at : ''));
+  let updatedBefore = $state(untrack(() => data.query?.updatedBefore || ''));
+  let minSize = $state(untrack(() => data.query?.minSize != null ? String(data.query.minSize) : ''));
+  let selectedSites = $state<string[]>([]);
+  let selectedFiles = $state<string[]>([]);
+  let matching = $state(false);
+  let cleanupAction = $state<'set_ttl' | 'delete' | 'expire'>('set_ttl');
+  let cleanupTtl = $state(untrack(() => data.policy.presets.some(p => p.id === '7d') ? '7d' : (data.policy.presets.find(p => p.id !== 'never')?.id || data.policy.default_ttl)));
+  let cleanupPreview = $state<AdminCleanupPreview | null>(null);
+  let cleanupBusy = $state(false);
+  let cleanupConfirmOpen = $state(false);
+  let cleanupConfirmError = $state('');
   let loading = $state(false);
   let staged = $state<StagedUpload | null>(null);
   let busy = $state(false);
@@ -89,6 +104,14 @@
   const writePhraseOk = $derived(!isTargetCreator || writeDoor === 'off' || !!writePassword.trim() || (writeUnrecovered && writeDoor === 'on'));
   const linkAccessReady = $derived(linkAccessLoaded && !passwordLoading && (shareDirty || writeDirty) && sharePhraseOk && writePhraseOk);
   const linkAccessBusy = $derived(mutationBusy || passwordLoading || !linkAccessLoaded);
+  const filtered = $derived(!!(q.trim() || scope !== 'involved' || sort !== 'updated' || expires === 'never' || expiresBefore.trim() || updatedBefore.trim() || minSize.trim()));
+  const hasSelection = $derived(matching || selectedSites.length + selectedFiles.length > 0);
+  const selectionLabel = $derived(matching ? 'Everything matching these filters' : `${selectedSites.length + selectedFiles.length} selected`);
+  const cleanupActionOptions = [
+    { value: 'set_ttl', label: 'Set expiry' },
+    { value: 'expire', label: 'Expire soon' },
+    { value: 'delete', label: 'Delete' },
+  ];
 
   function message(text: string, tone: 'ok' | 'err' = 'ok', result?: PublishResult) {
     messages = [{ tone, text, url: result?.url, name: result?.slug || result?.filename, password: result?.password, writePassword: result?.write_password }, ...messages];
@@ -97,6 +120,10 @@
     const sequence = ++requestSequence;
     controller?.abort(); controller = new AbortController(); loading = true;
     const query = new URLSearchParams({ q: q.trim(), scope, sort });
+    if (expires === 'never') query.set('expires', 'never');
+    else if (expiresBefore.trim()) query.set('expires_before', expiresBefore.trim());
+    if (updatedBefore.trim()) query.set('updated_before', updatedBefore.trim());
+    if (minSize.trim()) query.set('min_size', minSize.trim());
     if (only && lists[`${only}_cursor`]) query.set(`${only}_cursor`, lists[`${only}_cursor`]!);
     try {
       const next = await api<CatalogData>('/account/data?' + query, { signal: controller.signal });
@@ -110,7 +137,105 @@
   function search() {
     clearTimeout(timer);
     requestSequence++; controller?.abort();
+    clearCleanupSelection();
     timer = setTimeout(() => refresh(), 200);
+  }
+  function applyFilters() {
+    clearTimeout(timer);
+    clearCleanupSelection();
+    refresh();
+  }
+  function dropCleanupPreview() {
+    cleanupPreview = null;
+    cleanupConfirmOpen = false;
+    cleanupConfirmError = '';
+  }
+  function clearCleanupSelection() {
+    selectedSites = [];
+    selectedFiles = [];
+    matching = false;
+    dropCleanupPreview();
+  }
+  function siteSelected(id: string) { return matching || selectedSites.includes(id); }
+  function fileSelected(id: string) { return matching || selectedFiles.includes(id); }
+  function materializeMatching() {
+    if (!matching) return;
+    matching = false;
+    selectedSites = lists.sites.map((item) => item.id);
+    selectedFiles = lists.files.map((item) => item.id);
+  }
+  function toggleItem(kind: 'site' | 'file', item: CatalogItem, on: boolean) {
+    materializeMatching();
+    if (kind === 'site') {
+      selectedSites = on ? (selectedSites.includes(item.id) ? selectedSites : [...selectedSites, item.id]) : selectedSites.filter((id) => id !== item.id);
+    } else {
+      selectedFiles = on ? (selectedFiles.includes(item.id) ? selectedFiles : [...selectedFiles, item.id]) : selectedFiles.filter((id) => id !== item.id);
+    }
+    if (!matching && selectedSites.length + selectedFiles.length === 0) dropCleanupPreview();
+  }
+  function toggleVisible(kind: 'site' | 'file', on: boolean) {
+    materializeMatching();
+    const visible = (kind === 'site' ? lists.sites : lists.files).map((item) => item.id);
+    if (kind === 'site') {
+      selectedSites = on ? [...new Set([...selectedSites, ...visible])] : selectedSites.filter((id) => !visible.includes(id));
+    } else {
+      selectedFiles = on ? [...new Set([...selectedFiles, ...visible])] : selectedFiles.filter((id) => !visible.includes(id));
+    }
+    if (!matching && selectedSites.length + selectedFiles.length === 0) dropCleanupPreview();
+  }
+  function selectMatching() {
+    matching = true;
+    selectedSites = [];
+    selectedFiles = [];
+  }
+  function cleanupTarget(): Record<string, unknown> | null {
+    return hubCleanupTarget(
+      matching ? { matching: true } : { matching: false, sites: selectedSites, files: selectedFiles },
+      { q, scope, expires, expiresBefore, updatedBefore, minSize },
+    );
+  }
+  function cleanupBody(confirm?: string): Record<string, unknown> | null {
+    const target = cleanupTarget();
+    if (!target) return null;
+    const body: Record<string, unknown> = { target, action: cleanupAction };
+    if (cleanupAction === 'set_ttl') body.ttl = cleanupTtl;
+    if (confirm) body.confirm = confirm;
+    return body;
+  }
+  async function previewCleanup() {
+    const body = cleanupBody();
+    if (!body || cleanupBusy) return;
+    cleanupBusy = true; cleanupConfirmError = '';
+    try {
+      cleanupPreview = await api<AdminCleanupPreview>('/account/cleanup', jsonBody('POST', body));
+    } catch (error) { cleanupPreview = null; message(errorMessage(error), 'err'); }
+    finally { cleanupBusy = false; }
+  }
+  async function confirmCleanup() {
+    if (!cleanupPreview || cleanupBusy) return;
+    const body = cleanupBody(cleanupPreview.confirm);
+    if (!body) {
+      dropCleanupPreview();
+      return;
+    }
+    cleanupBusy = true; cleanupConfirmError = '';
+    try {
+      const result = await api<AdminCleanupResult>('/account/cleanup', jsonBody('POST', body));
+      cleanupConfirmOpen = false;
+      cleanupPreview = null;
+      clearCleanupSelection();
+      message(hubCleanupDoneMessage(result.action, result.applied.total));
+      await refresh();
+    } catch (error) {
+      if (error instanceof RequestError && error.status === 409) {
+        const next = cleanupBody();
+        if (!next) dropCleanupPreview();
+        else {
+          cleanupPreview = await api<AdminCleanupPreview>('/account/cleanup', jsonBody('POST', next)).catch(() => cleanupPreview);
+          cleanupConfirmError = 'The selection changed since this preview. Review the new count and confirm again.';
+        }
+      } else cleanupConfirmError = errorMessage(error);
+    } finally { cleanupBusy = false; }
   }
   function resetStage() {
     stageSequence++; staged = null; stagePassword = ''; stageWritePassword = ''; stageAccessOpen = false;
@@ -310,14 +435,37 @@
   <div class="en-stack en-space-after">
     <Card title="Sites" hint={`${lists.sites.length < lists.sites_total ? `${lists.sites.length} of ` : ''}${lists.sites_total} ${lists.sites_total === 1 ? 'site' : 'sites'}`} tight>
       <div class="en-card-body en-toolbar"><Input size="md" id="q" class="en-search" type="search" placeholder="Search slugs and filenames" aria-label="Search slugs and filenames" bind:value={q} oninput={search} />
-        <SegmentedControl id="scope" bind:value={scope} ariaLabel="Catalog scope" onChange={() => refresh()} options={[{ value: 'involved', label: 'Your work' }, { value: 'created', label: 'Created by you' }, { value: 'edited', label: 'Last edited by you' }]} />
-        <Select id="sort" aria-label="Sort" bind:value={sort} onchange={() => refresh()} options={[{ value: 'updated', label: 'Updated' }, { value: 'name', label: 'Name' }]} />
+        <SegmentedControl id="scope" bind:value={scope} ariaLabel="Catalog scope" onChange={() => { applyFilters(); }} options={[{ value: 'involved', label: 'Your work' }, { value: 'created', label: 'Created by you' }, { value: 'edited', label: 'Last edited by you' }]} />
+        <Select id="sort" aria-label="Sort" bind:value={sort} onchange={() => refresh()} options={[{ value: 'updated', label: 'Updated' }, { value: 'name', label: 'Name' }, { value: 'size', label: 'Size' }, { value: 'age', label: 'Oldest' }]} />
       </div>
-      <div id="sites"><Catalog kind="site" items={lists.sites} cursor={lists.sites_cursor} busy={loading} writePolicyDefault={data.policy.write_policy} onMore={item => openMore('site', item)} onPassword={item => editPassword('site', item)} onDelete={item => deleteItem('site', item)} onLoadMore={() => refresh('sites')} /></div>
+      <div id="catalog-filters" class="en-card-body en-catalog-filters">
+        <Field label="Expiry"><SegmentedControl id="catalog-expires" ariaLabel="Expiry filter" options={[{ value: 'any', label: 'Any' }, { value: 'never', label: 'Never expires' }]} bind:value={expires} onChange={() => { expiresBefore = ''; applyFilters(); }} /></Field>
+        <Field label="Expires before" htmlFor="catalog-expires-before"><Input id="catalog-expires-before" bind:value={expiresBefore} mono placeholder="2026-01-01" disabled={expires === 'never'} onchange={applyFilters} /></Field>
+        <Field label="Last written before" htmlFor="catalog-updated-before"><Input id="catalog-updated-before" bind:value={updatedBefore} mono placeholder="2026-01-01" onchange={applyFilters} /></Field>
+        <Field label="Minimum size" htmlFor="catalog-min-size"><Input id="catalog-min-size" bind:value={minSize} placeholder="1mb" onchange={applyFilters} /></Field>
+      </div>
+      <div class="en-card-body en-catalog-select">
+        <Button id="catalog-select-matching" size="md" onclick={selectMatching}>Select all matching these filters</Button>
+      </div>
+      <div id="catalog-cleanup" class="en-card-body en-catalog-cleanup" hidden={!hasSelection}>
+        <p class="en-catalog-cleanup-count">{selectionLabel}</p>
+        <Button id="catalog-cleanup-clear" size="md" onclick={clearCleanupSelection}>Clear</Button>
+        <Field label="Action" note="Set expiry is the safe default. Delete has no recycle bin.">
+          <SegmentedControl id="catalog-cleanup-action" ariaLabel="Cleanup action" options={cleanupActionOptions} bind:value={cleanupAction} disabled={cleanupBusy} />
+        </Field>
+        {#if cleanupAction === 'set_ttl'}
+          <Field label="New expiry" htmlFor="catalog-cleanup-ttl">
+            <Select id="catalog-cleanup-ttl" aria-label="New expiry" bind:value={cleanupTtl} options={ttlOptions} disabled={cleanupBusy} />
+          </Field>
+        {/if}
+        <Button id="catalog-cleanup-preview" variant="primary" disabled={cleanupBusy} onclick={() => { void previewCleanup(); }}>{cleanupBusy && !cleanupConfirmOpen ? 'Previewing…' : 'Preview'}</Button>
+      </div>
+      <div id="sites"><Catalog kind="site" items={lists.sites} cursor={lists.sites_cursor} busy={loading} filtered={filtered} writePolicyDefault={data.policy.write_policy} selected={siteSelected} onToggle={(item, on) => toggleItem('site', item, on)} onToggleVisible={(on) => toggleVisible('site', on)} onMore={item => openMore('site', item)} onPassword={item => editPassword('site', item)} onDelete={item => deleteItem('site', item)} onLoadMore={() => refresh('sites')} /></div>
     </Card>
     <Card title="Files" hint={`${lists.files.length < lists.files_total ? `${lists.files.length} of ` : ''}${lists.files_total} ${lists.files_total === 1 ? 'file' : 'files'}`} tight>
-      <div id="files"><Catalog kind="file" items={lists.files} cursor={lists.files_cursor} busy={loading} writePolicyDefault={data.policy.write_policy} onMore={item => openMore('file', item)} onPassword={item => editPassword('file', item)} onDelete={item => deleteItem('file', item)} onLoadMore={() => refresh('files')} /></div>
+      <div id="files"><Catalog kind="file" items={lists.files} cursor={lists.files_cursor} busy={loading} filtered={filtered} writePolicyDefault={data.policy.write_policy} selected={fileSelected} onToggle={(item, on) => toggleItem('file', item, on)} onToggleVisible={(on) => toggleVisible('file', on)} onMore={item => openMore('file', item)} onPassword={item => editPassword('file', item)} onDelete={item => deleteItem('file', item)} onLoadMore={() => refresh('files')} /></div>
     </Card>
+    <CleanupReview preview={cleanupPreview} action={cleanupAction} bind:confirmOpen={cleanupConfirmOpen} bind:confirmError={cleanupConfirmError} busy={cleanupBusy} sampleId="catalog-cleanup-sample" confirmId="catalog-cleanup-dlg" confirmButtonId="catalog-cleanup-confirm" onConfirm={() => { void confirmCleanup(); }} />
     <Card className="en-hub-export" id="account-export" title="Download what you own">
       <div class="en-stack">
         <p class="en-lede">Sites and loose files keyed to this account, as one zip, before a bulk cleanup. Work you only edited is not included. Same size and file-count caps as a site export.</p>
