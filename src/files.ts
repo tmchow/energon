@@ -63,6 +63,7 @@ import {
   ttlFromRequest,
   writePolicyFromRequest,
 } from "./policy";
+import { noteRead } from "./reads";
 import type { Actor, Env, LooseFileRow } from "./types";
 
 type R2Snapshot = {
@@ -784,7 +785,7 @@ export async function getLooseFile(
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
   const row = await env.DB.prepare(
-    `SELECT id, handle, filename, content_type, expires_at, write_policy FROM loose_files WHERE id = ?`,
+    `SELECT id, handle, filename, content_type, expires_at, write_policy, last_read_at FROM loose_files WHERE id = ?`,
   )
     .bind(id)
     .first<{
@@ -794,6 +795,7 @@ export async function getLooseFile(
       content_type: string;
       expires_at: string | null;
       write_policy: string | null;
+      last_read_at: string | null;
     }>();
   if (!row) {
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
@@ -810,6 +812,7 @@ export async function getLooseFile(
   if (!obj) {
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
+  noteRead(env, ctx, { table: "loose_files", id: row.id, last_read_at: row.last_read_at });
   const headers = new Headers();
   headers.set("content-type", obj.httpMetadata?.contentType || row.content_type || "application/octet-stream");
   headers.set("x-content-type-options", "nosniff");
@@ -950,6 +953,7 @@ export async function listLooseFor(
     write_password_protected: boolean;
     written_via: string | null;
     expires_at: string | null;
+    last_read_at: string | null;
     write_policy: string;
   }>
 > {
@@ -964,7 +968,7 @@ export async function listLooseFor(
     .first<{ n: number }>();
   const total = Number(countRow?.n ?? 0);
   const rows = await env.DB.prepare(
-    `SELECT id, handle, filename, size, content_type, created_at, created_by, updated_at, last_written_by, password_hash, write_password_hash, written_via, expires_at, write_policy
+    `SELECT id, handle, filename, size, content_type, created_at, created_by, updated_at, last_written_by, password_hash, write_password_hash, written_via, expires_at, last_read_at, write_policy
      FROM loose_files
      WHERE ${clauses.where}
      ORDER BY ${cursor.order}
@@ -983,6 +987,7 @@ export async function listLooseFor(
       write_password_protected: Boolean(write_password_hash),
       written_via: f.written_via ?? null,
       expires_at: f.expires_at ?? null,
+      last_read_at: f.last_read_at ?? null,
       write_policy: resolveWritePolicy(write_policy),
     };
   });
@@ -1014,7 +1019,7 @@ export async function serveLoose(
   }
   filename = basename(filename);
   const row = await env.DB.prepare(
-    `SELECT id, handle, filename, password_hash, write_password_hash, expires_at FROM loose_files WHERE id = ?`,
+    `SELECT id, handle, filename, password_hash, write_password_hash, expires_at, last_read_at FROM loose_files WHERE id = ?`,
   )
     .bind(id)
     .first<{
@@ -1024,6 +1029,7 @@ export async function serveLoose(
       password_hash: string | null;
       write_password_hash: string | null;
       expires_at: string | null;
+      last_read_at: string | null;
     }>();
   if (!row || (row.handle && row.handle !== handle)) {
     return new Response("Not found", { status: 404, headers: { "cache-control": "no-store" } });
@@ -1050,6 +1056,7 @@ export async function serveLoose(
   }
   const obj = await env.BUCKET.get(fileKey(id, row.filename));
   if (!obj) return new Response("Not found", { status: 404, headers: { "cache-control": "no-store" } });
+  noteRead(env, ctx, { table: "loose_files", id: row.id, last_read_at: row.last_read_at });
   if (isMarkdownName(row.filename)) {
     return respondMarkdown(request, obj, row.filename);
   }

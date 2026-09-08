@@ -1856,4 +1856,97 @@ describe("Energon", () => {
       expect(wrongMethod.status).toBe(404);
     });
   });
+
+  describe("last_read_at", () => {
+    const email = "reader@esperlabs.app";
+
+    async function lastRead(table: "sites" | "loose_files", id: string): Promise<string | null> {
+      const row = await env.DB.prepare(`SELECT last_read_at FROM ${table} WHERE id = ?`).bind(id).first<{ last_read_at: string | null }>();
+      return row?.last_read_at ?? null;
+    }
+
+    // waitUntil settles after the response; poll instead of sleeping a fixed time.
+    async function settledLastRead(table: "sites" | "loose_files", id: string): Promise<string> {
+      for (let i = 0; i < 50; i++) {
+        const value = await lastRead(table, id);
+        if (value) return value;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      throw new Error(`${table} ${id} never recorded a read`);
+    }
+
+    it("is null until a public read, then holds inside the throttle window", async () => {
+      const token = await mint("reader-site", email);
+      const created = await createSite(token, "read-me");
+      await req(`/v1/sites/${created.id}/files/index.html`, {
+        method: "PUT",
+        headers: auth(token, { "content-type": "text/html" }),
+        body: "<h1>read me</h1>",
+      });
+      expect(await lastRead("sites", created.id)).toBeNull();
+      const before = await json("/v1/sites?q=read-me", { headers: auth(token) });
+      expect(before.body.sites.find((s: { id: string }) => s.id === created.id).last_read_at).toBeNull();
+
+      const page = await req(`/${created.handle}/s/${created.id}/read-me/`);
+      expect(page.status).toBe(200);
+      const first = await settledLastRead("sites", created.id);
+      expect(Date.parse(first)).toBeGreaterThan(Date.now() - 60_000);
+
+      await req(`/${created.handle}/s/${created.id}/read-me/index.html`);
+      await new Promise((r) => setTimeout(r, 50));
+      expect(await lastRead("sites", created.id)).toBe(first);
+
+      const listed = await json("/v1/sites?q=read-me", { headers: auth(token) });
+      expect(listed.body.sites.find((s: { id: string }) => s.id === created.id).last_read_at).toBe(first);
+      const detail = await json(`/v1/sites/${created.id}`, { headers: auth(token) });
+      expect(detail.body.last_read_at).toBe(first);
+      const hub = await json("/account/data?q=read-me", { headers: access(email) });
+      expect(hub.body.sites.find((s: { id: string }) => s.id === created.id).last_read_at).toBe(first);
+    });
+
+    it("rewrites once the stored stamp is older than the throttle window", async () => {
+      const token = await mint("reader-stale", email);
+      const created = await createSite(token, "stale-read");
+      await req(`/v1/sites/${created.id}/files/index.html`, {
+        method: "PUT",
+        headers: auth(token, { "content-type": "text/html" }),
+        body: "<h1>stale</h1>",
+      });
+      const old = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      await env.DB.prepare(`UPDATE sites SET last_read_at = ? WHERE id = ?`).bind(old, created.id).run();
+
+      const viaApi = await req(`/v1/sites/${created.id}/files/index.html`, { headers: auth(token) });
+      expect(viaApi.status).toBe(200);
+      for (let i = 0; i < 50 && (await lastRead("sites", created.id)) === old; i++) {
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      expect(Date.parse(await settledLastRead("sites", created.id))).toBeGreaterThan(Date.parse(old));
+    });
+
+    it("records loose file reads from the public URL and /v1", async () => {
+      const token = await mint("reader-file", email);
+      const posted = await json("/v1/files", {
+        method: "POST",
+        headers: auth(token, { "X-Filename": "read.txt", "content-type": "text/plain" }),
+        body: "read me",
+      });
+      expect(posted.status).toBe(201);
+      const id = String(posted.body.id);
+      expect(await lastRead("loose_files", id)).toBeNull();
+
+      const viaApi = await req(`/v1/files/${id}`, { headers: auth(token) });
+      expect(viaApi.status).toBe(200);
+      const first = await settledLastRead("loose_files", id);
+
+      const pub = await req(new URL(posted.body.url).pathname);
+      expect(pub.status).toBe(200);
+      await new Promise((r) => setTimeout(r, 50));
+      expect(await lastRead("loose_files", id)).toBe(first);
+
+      const listed = await json("/v1/files?q=read.txt", { headers: auth(token) });
+      expect(listed.body.files.find((f: { id: string }) => f.id === id).last_read_at).toBe(first);
+      const hub = await json("/account/data?q=read.txt", { headers: access(email) });
+      expect(hub.body.files.find((f: { id: string }) => f.id === id).last_read_at).toBe(first);
+    });
+  });
 });
