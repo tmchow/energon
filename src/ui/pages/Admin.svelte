@@ -4,6 +4,7 @@
   import { api, jsonBody, errorMessage, RequestError } from '../api';
   import { formatBytes } from '../../config';
   import PageTitle from '../components/PageTitle.svelte';
+  import AdminTokens from '../components/AdminTokens.svelte';
   import Card from '../components/Card.svelte';
   import Field from '../components/Field.svelte';
   import Input from '../components/Input.svelte';
@@ -176,6 +177,7 @@
       {/if}
     </Card>
   {/if}
+  <AdminTokens />
   <Card title="Audit" className="en-admin-card" tight>
     <p class="en-muted-copy en-admin-note">Who, which token, what, which filters, how many, when. Metadata only.</p>
     <div id="admin-audit">

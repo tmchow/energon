@@ -277,8 +277,15 @@ export async function usedStorage(db: D1Database): Promise<number> {
 
 export async function recomputeStorage(db: D1Database): Promise<{ before: number; after: number }> {
   const before = await usedStorage(db);
-  const after = await totalStoredBytes(db);
-  await db.prepare(`UPDATE platform_quota SET used = ? WHERE id = 1`).bind(after).run();
+  await db
+    .prepare(
+      `UPDATE platform_quota SET used = (
+        (SELECT COALESCE(SUM(size), 0) FROM site_files) +
+        (SELECT COALESCE(SUM(size), 0) FROM loose_files)
+      ) WHERE id = 1`,
+    )
+    .run();
+  const after = await usedStorage(db);
   return { before, after };
 }
 

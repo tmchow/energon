@@ -6,6 +6,7 @@ export type Preset = { id: string; label: string };
 export type RetentionPolicy = { presets: Preset[]; default_ttl: string; allow_unlimited: boolean; write_policy: string; file_bytes?: number };
 export type TokenPolicy = { presets: Preset[]; default: string; allow_never: boolean };
 export type Token = { id: string; label: string; hint: string | null; recoverable?: boolean; status: TokenStatus; revoked: boolean; expired: boolean; created_at: string; last_used_at: string | null; expires_at: string | null; scope: 'account' | 'admin' };
+export type AdminToken = Token & { owner_email: string; owner_handle: string };
 export type { BulkRevokePreview, BulkRevokeResult, BulkRevokeTarget, TokenStatus };
 export type CatalogItem = {
   url: string; created_by: string; last_written_by: string | null;
