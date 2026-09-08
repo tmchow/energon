@@ -2078,4 +2078,76 @@ describe("Energon", () => {
       expect(listed.body.files.find((f: { id: string }) => f.id === fileId)).toBeUndefined();
     });
   });
+
+  describe("admin tokens", () => {
+    it("lists another account's tokens as metadata only", async () => {
+      const ownerToken = await mint("vadmin-tok-owner", "ada@esperlabs.app");
+      const admin = await mintAdmin("vadmin-tok-ops");
+      const listed = await json("/v1/admin/tokens?owner=ada", { headers: auth(admin) });
+      expect(listed.status).toBe(200);
+      const row = listed.body.tokens.find((t: { label: string }) => t.label === "vadmin-tok-owner");
+      expect(row).toMatchObject({
+        owner_email: "ada@esperlabs.app",
+        owner_handle: "ada",
+        label: "vadmin-tok-owner",
+        scope: "account",
+        status: "live",
+      });
+      expect(Object.keys(row).sort()).toEqual(
+        [
+          "created_at",
+          "expired",
+          "expires_at",
+          "hint",
+          "id",
+          "label",
+          "last_used_at",
+          "owner_email",
+          "owner_handle",
+          "recoverable",
+          "revoked",
+          "scope",
+          "status",
+        ].sort(),
+      );
+      expect(JSON.stringify(listed.body)).not.toContain(ownerToken);
+      expect(JSON.stringify(listed.body)).not.toContain("token_hash");
+      expect(JSON.stringify(listed.body)).not.toContain("token_secret");
+
+      const paged = await json("/v1/admin/tokens?owner=ada&limit=1", { headers: auth(admin) });
+      expect(paged.body.tokens).toHaveLength(1);
+      expect(typeof paged.body.next_cursor === "string" || paged.body.next_cursor === null).toBe(true);
+    });
+
+    it("revokes another account's tokens and records preview plus execute", async () => {
+      const ownerEmail = "tok-api@esperlabs.app";
+      const ownerToken = await mint("vadmin-tok-live", ownerEmail);
+      const admin = await mintAdmin("vadmin-tok-revoke-ops");
+      const preview = await json("/v1/admin/tokens/revoke", {
+        method: "POST",
+        headers: auth(admin, { "content-type": "application/json" }),
+        body: JSON.stringify({ owner: "tok-api", target: "all" }),
+      });
+      expect(preview.status).toBe(200);
+      expect(preview.body.executed).toBe(false);
+      expect(preview.body.matched).toBeGreaterThanOrEqual(1);
+      expect(preview.body.sample.some((t: { label: string }) => t.label === "vadmin-tok-live")).toBe(true);
+
+      const executed = await json("/v1/admin/tokens/revoke", {
+        method: "POST",
+        headers: auth(admin, { "content-type": "application/json" }),
+        body: JSON.stringify({ owner: "tok-api", target: "all", confirm: preview.body.confirm }),
+      });
+      expect(executed.status).toBe(200);
+      expect(executed.body).toMatchObject({ ok: true, target: "all", executed: true });
+      expect(executed.body.revoked).toBe(preview.body.matched);
+      expect((await json("/v1/whoami", { headers: auth(ownerToken) })).status).toBe(401);
+
+      const audit = await json("/v1/admin/audit", { headers: auth(admin) });
+      expect(audit.body.events.some((e: { action: string; executed: boolean }) => e.action === "tokens" && !e.executed)).toBe(true);
+      expect(audit.body.events.some((e: { action: string; executed: boolean }) => e.action === "tokens" && e.executed)).toBe(true);
+      expect(JSON.stringify(audit.body)).not.toContain(admin);
+      expect(JSON.stringify(audit.body)).not.toContain(ownerToken);
+    });
+  });
 });

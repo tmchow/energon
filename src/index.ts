@@ -9,6 +9,7 @@ import { setupResponse } from "./setup";
 import { statsResponse } from "./stats";
 import { parseListQuery } from "./catalog";
 import { adminAuditResponse, listAdminAudit, requireAdminActor } from "./audit";
+import { adminTokensListResponse, hubAdminTokensListResponse, revokeAdminTokens } from "./admin-tokens";
 import { adminResponse } from "./admin";
 import { cleanupResponse } from "./cleanup";
 import { llmsResponse } from "./llms";
@@ -220,6 +221,16 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     const actor = await requireHuman(request, env, ctx);
     requireAdmin(actor, publicOrigin(env));
     return json(await listAdminAudit(env, url));
+  }
+
+  if (path === "/account/admin/tokens" && method === "GET") {
+    return hubAdminTokensListResponse(request, env, ctx);
+  }
+
+  if (path === "/account/admin/tokens/revoke" && method === "POST") {
+    const actor = await requireHuman(request, env, ctx);
+    requireAdmin(actor, publicOrigin(env));
+    return revokeAdminTokens(env, actor, await readJson(request));
   }
 
   if (path === "/account/admin/cleanup" && method === "POST") {
@@ -458,6 +469,15 @@ async function api(
 
   if (path === "/v1/admin/audit" && method === "GET") {
     return adminAuditResponse(request, env);
+  }
+
+  if (path === "/v1/admin/tokens" && method === "GET") {
+    return adminTokensListResponse(request, env);
+  }
+
+  if (path === "/v1/admin/tokens/revoke" && method === "POST") {
+    const actor = await requireAdminActor(request, env);
+    return revokeAdminTokens(env, actor, await readJson(request));
   }
 
   if (path === "/v1/admin/cleanup" && method === "POST") {

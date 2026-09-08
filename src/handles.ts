@@ -47,6 +47,14 @@ export async function getUserById(env: Env, id: string): Promise<User | null> {
     .first<User>();
 }
 
+export async function getUserByHandle(env: Env, handle: string): Promise<User | null> {
+  const normalized = assertHandle(handle);
+  if (!normalized) return null;
+  return env.DB.prepare(`SELECT id, email, handle, idp_sub FROM users WHERE handle = ?`)
+    .bind(normalized)
+    .first<User>();
+}
+
 function revokedEmail(id: string): string {
   return `revoked-${id}@invalid.invalid`;
 }

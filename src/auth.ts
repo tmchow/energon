@@ -328,7 +328,7 @@ const BULK_REVOKE_CONFIRM_RE = /^[0-9a-f]{32}$/;
 /** D1 caps a statement at 100 bound parameters; one slot goes to revoked_at. */
 const BULK_REVOKE_BATCH = 90;
 
-type BulkRevokeOutcome =
+export type BulkRevokeOutcome =
   | { kind: "preview"; preview: BulkRevokePreview }
   | { kind: "drift"; preview: BulkRevokePreview }
   | { kind: "executed"; result: BulkRevokeResult };
@@ -347,6 +347,7 @@ export async function bulkRevokeTokens(
   email: string,
   userId: string | undefined,
   body: Record<string, unknown>,
+  opts?: { excludeIds?: readonly string[] },
 ): Promise<BulkRevokeOutcome> {
   const target = body.target;
   if (!isBulkRevokeTarget(target)) {
@@ -356,7 +357,10 @@ export async function bulkRevokeTokens(
   if (confirm !== null && !BULK_REVOKE_CONFIRM_RE.test(confirm)) {
     throw new ApiError(400, "bad_confirm", "confirm must be the confirm string from a preview of this same request. Omit it to preview.");
   }
-  const eligible = (await listTokens(env, email, userId)).filter((token) => bulkRevokeEligible(target, token.status));
+  const exclude = new Set(opts?.excludeIds ?? []);
+  const eligible = (await listTokens(env, email, userId)).filter(
+    (token) => bulkRevokeEligible(target, token.status) && !exclude.has(token.id),
+  );
   const expected = await bulkRevokeConfirm(target, eligible);
   const preview: BulkRevokePreview = {
     target,
@@ -382,23 +386,25 @@ export async function bulkRevokeTokens(
   return { kind: "executed", result: { ok: true, target, executed: true, revoked: eligible.length } };
 }
 
-export async function bulkRevokeResponse(env: Env, actor: Actor, body: Record<string, unknown>): Promise<Response> {
-  const outcome = await bulkRevokeTokens(env, actor.email, actor.userId, body);
+export function bulkRevokeOutcomeResponse(
+  env: Env,
+  outcome: BulkRevokeOutcome,
+  driftMessage = "Your tokens changed since that preview. Review this fresh preview and resend with its confirm.",
+): Response {
   switch (outcome.kind) {
     case "preview":
       return json(outcome.preview);
     case "executed":
       return json(outcome.result);
     case "drift":
-      return new ApiError(
-        409,
-        "token_revoke_drift",
-        "Your tokens changed since that preview. Review this fresh preview and resend with its confirm.",
-        outcome.preview,
-      ).toResponse(publicOrigin(env));
+      return new ApiError(409, "token_revoke_drift", driftMessage, outcome.preview).toResponse(publicOrigin(env));
     default:
       return assertNever(outcome);
   }
+}
+
+export async function bulkRevokeResponse(env: Env, actor: Actor, body: Record<string, unknown>): Promise<Response> {
+  return bulkRevokeOutcomeResponse(env, await bulkRevokeTokens(env, actor.email, actor.userId, body));
 }
 
 export async function revokeToken(env: Env, email: string, id: string, userId?: string): Promise<void> {
@@ -468,7 +474,7 @@ export function helpBody(origin: string, env?: Env): unknown {
       `Make a copy: POST /v1/sites {"slug":"new-slug","duplicate_from":"existing-id"} or POST /v1/files {"duplicate_from":"id"} (optional filename). You become created_by. write_policy is this Energon's default. Fresh TTL. Password is not copied. Anyone who can read via /v1 can duplicate. If you already have replacement bytes this turn, POST/PUT those instead.`,
       `Give humans the /{handle}/s or /{handle}/f URL (and the password, if any). Agents can use that URL plus X-Energon-Password, or api_url with their token.`,
       `Clean up in bulk with POST /v1/cleanup: target ids or the list filters (expires=never, updated_before, min_size, q, created_by), action delete, set_ttl (with ttl), or expire (30m grace). Without confirm it is a dry run. Show the human the preview (matched, eligible, skipped, bytes, sample), then resend the same body with its confirm to execute. GET /v1/sites and GET /v1/files take the same filters plus sort=size|age to find candidates first.`,
-      `Operators on ADMIN_EMAILS mint an admin token, then POST /v1/admin/cleanup with the same preview/confirm shape, without involvement scope. Add owner (handle) and last_read_before. set_ttl without ttl is 7d so the owner sees Expires and can push it back. expire is 400 expire_not_own on anyone else's content. delete is explicit. GET /v1/admin/audit lists those actions. Never returns bytes or secrets.`,
+      `Operators on ADMIN_EMAILS mint an admin token, then POST /v1/admin/cleanup with the same preview/confirm shape, without involvement scope. Add owner (handle) and last_read_before. set_ttl without ttl is 7d so the owner sees Expires and can push it back. expire is 400 expire_not_own on anyone else's content. delete is explicit. GET /v1/admin/tokens lists token metadata across accounts (owner email and handle, label, hint, scope, created, last used, expires, status). Filter with ?owner=handle. Never the secret or the hash. POST /v1/admin/tokens/revoke previews then revokes stale or all tokens for an owner (confirm hash of the sorted ids; 409 token_revoke_drift). The calling admin token is left live. GET /v1/admin/audit lists those actions. Never returns bytes or secrets.`,
       ...helpGuestWriteSop(),
     ],
     routes: {
@@ -501,6 +507,10 @@ export function helpBody(origin: string, env?: Env): unknown {
         '{ "target": { "sites"?: [id], "files"?: [id] } or list filters { "scope"?, "q"?, "created_by"?, "expires"?: "never", "expires_before"?, "updated_before"?, "last_read_before"?, "owner"?, "min_size"?, "kind"?: "sites"|"files" }, "action": "delete"|"set_ttl"|"expire", "ttl"?: string (set_ttl only), "confirm"?: string } — without confirm: dry run { matched, eligible, skipped: { total, by_reason, sample }, bytes, sample, confirm }. Resend with that confirm to execute { applied, skipped, failed }. Only what you created or last wrote and can write; the rest is skipped. At most 100 eligible per call (413 cleanup_too_many). 409 cleanup_drift carries a fresh preview. {} targets everything you are involved in. No recycle bin.',
       "GET /v1/admin/audit":
         "admin token. Recorded admin actions: who, token hint, action, executed, filters, counts, when. ?limit=25&cursor=. Never includes bytes, share passwords, or write passwords.",
+      "GET /v1/admin/tokens":
+        "admin token. Token metadata across accounts: owner email and handle, label, hint, scope, created, last used, expires, status (live|stale|expired|revoked). ?owner=handle (or email) &limit=25&cursor=. Never the secret, never the hash.",
+      "POST /v1/admin/tokens/revoke":
+        'admin token. Preview then revoke another account\'s tokens. { "owner": handle or email, "target": "stale"|"all", "confirm"?: string }. Without confirm: dry run { target, executed: false, matched, sample, confirm }. Resend with that confirm to execute { ok, target, executed: true, revoked }. Missing or unknown owner is 400 bad_owner. 409 token_revoke_drift carries a fresh preview. The calling admin token is excluded so the request can finish. Recorded in GET /v1/admin/audit. Never the secret or the hash.',
       "POST /v1/admin/cleanup":
         "admin token. Same preview/confirm/cap as POST /v1/cleanup, host-wide (no involvement, no scope). target.owner is a handle; last_read_before matches never-read or last_read_at older than the timestamp. set_ttl without ttl is 7d. expire on anyone else's content is 400 expire_not_own. delete is explicit. Sample includes owner, last_read_at. Recorded in GET /v1/admin/audit. Never returns published bytes or secrets.",
     },

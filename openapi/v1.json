@@ -1271,6 +1271,165 @@
         }
       }
     },
+    "/v1/admin/tokens": {
+      "get": {
+        "operationId": "listAdminTokens",
+        "tags": [
+          "admin"
+        ],
+        "summary": "List API token metadata across accounts",
+        "description": "Needs an admin token (scope=admin and owner still on ADMIN_EMAILS). Newest first. Each row is owner email and handle, label, hint, scope, created, last used, expires, and status (live|stale|expired|revoked). Never the secret, never the hash. Filter with owner (handle or email). Account tokens and the connect flow get 403 forbidden_admin.",
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Public handle or account email. Omitted lists every token on this Energon."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 25
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque cursor from a previous next_cursor."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Token metadata, newest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminTokenList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenAdmin"
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/tokens/revoke": {
+      "post": {
+        "operationId": "revokeAdminTokens",
+        "tags": [
+          "admin"
+        ],
+        "summary": "Preview, then revoke another account's API tokens",
+        "description": "Needs an admin token. owner is a handle or email. target is stale (unused 30 days) or all (every unrevoked token). Without confirm the call is a dry run and returns a preview with a confirm string hashed from the sorted eligible ids. Resend the identical body plus that confirm to execute. If the eligible set changed, 409 token_revoke_drift returns a fresh preview. The calling admin token is excluded so the request can finish. Missing or unknown owner is 400 bad_owner. Preview and execute are recorded on GET /v1/admin/audit. Never the secret, never the hash. Account tokens and the connect flow get 403 forbidden_admin.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminTokenRevokeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Preview (executed: false, with confirm) when confirm was omitted; result (executed: true) when it matched.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BulkRevokePreview"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BulkRevokeResult"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad body, owner, target, or confirm.",
+            "x-error-codes": [
+              "bad_json",
+              "bad_owner",
+              "bad_target",
+              "bad_confirm"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenAdmin"
+          },
+          "409": {
+            "description": "The eligible set differs from the preview that produced this confirm. Nothing was changed. The body is a fresh preview; show it and resend with its confirm.",
+            "x-error-codes": [
+              "token_revoke_drift"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenRevokeDriftError"
+                }
+              }
+            }
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/admin/cleanup": {
       "post": {
         "operationId": "adminCleanup",
@@ -2403,6 +2562,7 @@
               "bad_json",
               "bad_label",
               "bad_origin",
+              "bad_owner",
               "bad_password",
               "bad_path",
               "bad_query",
@@ -4165,7 +4325,8 @@
           "action": {
             "type": "string",
             "enum": [
-              "cleanup"
+              "cleanup",
+              "tokens"
             ]
           },
           "executed": {
@@ -4230,6 +4391,245 @@
             ]
           }
         }
+      },
+      "AdminToken": {
+        "type": "object",
+        "description": "Redacted token metadata for an operator. Never includes the secret or the hash.",
+        "required": [
+          "id",
+          "label",
+          "created_at",
+          "status",
+          "scope",
+          "owner_email",
+          "owner_handle"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "hint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Redacted token. Admin tokens insert admin after the token prefix, then an ellipsis and the last four."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "account",
+              "admin"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "live",
+              "stale",
+              "expired",
+              "revoked"
+            ]
+          },
+          "expired": {
+            "type": "boolean"
+          },
+          "revoked": {
+            "type": "boolean"
+          },
+          "recoverable": {
+            "const": false
+          },
+          "owner_email": {
+            "type": "string"
+          },
+          "owner_handle": {
+            "type": "string"
+          }
+        }
+      },
+      "AdminTokenList": {
+        "type": "object",
+        "required": [
+          "tokens",
+          "next_cursor"
+        ],
+        "properties": {
+          "tokens": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminToken"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AdminTokenRevokeRequest": {
+        "type": "object",
+        "required": [
+          "owner",
+          "target"
+        ],
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Public handle or account email. Missing or unknown is 400 bad_owner."
+          },
+          "target": {
+            "type": "string",
+            "enum": [
+              "stale",
+              "all"
+            ],
+            "description": "stale revokes tokens unused for 30 days. all revokes every unrevoked token except the calling admin token."
+          },
+          "confirm": {
+            "type": "string",
+            "description": "Omit to preview. Send the confirm from the preview of this same body to execute. Any other shape is 400 bad_confirm; a stale value is 409 token_revoke_drift."
+          }
+        }
+      },
+      "BulkRevokePreview": {
+        "type": "object",
+        "required": [
+          "target",
+          "executed",
+          "matched",
+          "sample",
+          "confirm"
+        ],
+        "properties": {
+          "target": {
+            "type": "string",
+            "enum": [
+              "stale",
+              "all"
+            ]
+          },
+          "executed": {
+            "const": false
+          },
+          "matched": {
+            "type": "integer"
+          },
+          "sample": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "label",
+                "status"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "hint": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "live",
+                    "stale",
+                    "expired",
+                    "revoked"
+                  ]
+                },
+                "last_used_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                }
+              }
+            }
+          },
+          "confirm": {
+            "type": "string",
+            "description": "32 lowercase hex. Hash of the confirm version, tokens, target, and sorted eligible ids."
+          }
+        }
+      },
+      "BulkRevokeResult": {
+        "type": "object",
+        "required": [
+          "ok",
+          "target",
+          "executed",
+          "revoked"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "target": {
+            "type": "string",
+            "enum": [
+              "stale",
+              "all"
+            ]
+          },
+          "executed": {
+            "const": true
+          },
+          "revoked": {
+            "type": "integer"
+          }
+        }
+      },
+      "TokenRevokeDriftError": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Error"
+          },
+          {
+            "$ref": "#/components/schemas/BulkRevokePreview"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "error": {
+                "const": "token_revoke_drift"
+              }
+            }
+          }
+        ],
+        "description": "Nothing was changed. The body is a fresh preview of the same owner and target; its confirm executes it."
       },
       "AdminAuditList": {
         "type": "object",
