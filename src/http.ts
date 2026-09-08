@@ -369,3 +369,33 @@ export function htmlPage(body: string, status = 200, extraHeaders?: HeadersInit)
     },
   });
 }
+
+export function methodNotAllowed(): Response {
+  return json({ error: "method_not_allowed", message: "Method not allowed." }, 405);
+}
+
+export async function readJson(request: Request, maxBytes?: number): Promise<Record<string, unknown>> {
+  const ctype = request.headers.get("content-type") || "";
+  if (ctype.includes("application/x-www-form-urlencoded") || ctype.includes("multipart/form-data")) {
+    throw new ApiError(415, "bad_content_type", "Send a JSON object body.");
+  }
+  let received = 0;
+  const body = maxBytes && request.body
+    ? request.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        received += chunk.byteLength;
+        if (received > maxBytes) throw new ApiError(413, "too_large", `Connection requests must be at most ${maxBytes} bytes.`, { limit_bytes: maxBytes });
+        controller.enqueue(chunk);
+      },
+    }))
+    : request.body;
+  const text = maxBytes ? await new Response(body).text() : await request.text();
+  if (!text) return {};
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+    throw new Error("not object");
+  } catch {
+    throw new ApiError(400, "bad_json", "Send a JSON object body.");
+  }
+}

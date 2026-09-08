@@ -1,6 +1,6 @@
 import { ApiError, json, publicOrigin, recomputeStorage, totalStoredBytes, usedStorage } from "./http";
 import { requireAdmin, requireHuman } from "./auth";
-import { recordAdminAudit, requireAdminActor } from "./audit";
+import { recordAdminAudit } from "./audit";
 import { GATE_MAX_FAILS, GATE_WINDOW_MS } from "./gate";
 import { d1Changed, PURGE_CLAIM_LIKE, staleClaimCutoff, sweepExpired } from "./expire";
 import { instancePolicy } from "./policy";
@@ -114,20 +114,10 @@ function parseUnlockScope(body: unknown): string {
   return scope.trim();
 }
 
-export async function adminHealthResponse(request: Request, env: Env): Promise<Response> {
-  await requireAdminActor(request, env);
-  return json(await loadAdminHealth(env));
-}
-
 export async function hubAdminHealthResponse(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const actor = await requireHuman(request, env, ctx);
   requireAdmin(actor, publicOrigin(env));
   return json(await loadAdminHealth(env));
-}
-
-export async function adminRecomputeResponse(request: Request, env: Env): Promise<Response> {
-  const actor = await requireAdminActor(request, env);
-  return json(await recomputeQuota(env, actor));
 }
 
 export async function hubAdminRecomputeResponse(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -136,20 +126,10 @@ export async function hubAdminRecomputeResponse(request: Request, env: Env, ctx:
   return json(await recomputeQuota(env, actor));
 }
 
-export async function adminSweepResponse(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-  const actor = await requireAdminActor(request, env);
-  return json(await sweepNow(env, ctx, actor));
-}
-
 export async function hubAdminSweepResponse(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const actor = await requireHuman(request, env, ctx);
   requireAdmin(actor, publicOrigin(env));
   return json(await sweepNow(env, ctx, actor));
-}
-
-export async function adminUnlockResponse(request: Request, env: Env, body: unknown): Promise<Response> {
-  const actor = await requireAdminActor(request, env);
-  return json(await unlockGate(env, actor, body));
 }
 
 export async function hubAdminUnlockResponse(

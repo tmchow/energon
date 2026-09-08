@@ -2284,6 +2284,22 @@ describe("Energon", () => {
       const listed = await json("/v1/admin/health", { headers: auth(admin) });
       expect(listed.body.locked_scopes).toContain(scope);
 
+      const noauthMalformed = await json("/v1/admin/gates/unlock", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{",
+      });
+      expect(noauthMalformed.status).toBe(401);
+      expect(noauthMalformed.body.error).toBe("unauthorized");
+
+      const noauthEmpty = await json("/v1/admin/gates/unlock", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      expect(noauthEmpty.status).toBe(401);
+      expect(noauthEmpty.body.error).toBe("unauthorized");
+
       const empty = await post("/v1/admin/gates/unlock", admin, { scope: "  " });
       expect(empty.status).toBe(400);
       expect(empty.body.error).toBe("bad_target");

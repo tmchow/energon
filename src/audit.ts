@@ -1,4 +1,4 @@
-import { json, nanoid, publicOrigin } from "./http";
+import { nanoid, publicOrigin } from "./http";
 import { requireAdmin, requireToken } from "./auth";
 import type { Actor, Env } from "./types";
 
@@ -196,9 +196,4 @@ export async function requireAdminActor(request: Request, env: Env): Promise<Act
   const actor = await requireToken(request, env);
   requireAdmin(actor, publicOrigin(env));
   return actor;
-}
-
-export async function adminAuditResponse(request: Request, env: Env): Promise<Response> {
-  await requireAdminActor(request, env);
-  return json(await listAdminAudit(env, new URL(request.url)));
 }

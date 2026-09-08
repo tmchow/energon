@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { helpBody } from "../../src/auth";
+import { v1PathLiterals, v1PathPatterns } from "../../src/v1-routes";
 
 const METHODS = ["get", "post", "put", "patch", "delete"] as const;
 const ORIGIN = "https://hub.energon.example.com";
@@ -16,7 +17,6 @@ type Spec = {
 };
 
 const spec = JSON.parse(readFileSync("openapi/v1.json", "utf8")) as Spec;
-const router = readFileSync("src/index.ts", "utf8");
 const help = helpBody(ORIGIN) as { openapi: string; routes: Record<string, string> };
 
 function operations(): { key: string; op: Operation }[] {
@@ -46,14 +46,6 @@ function runtimeErrorCodes(): string[] {
     for (const match of source.matchAll(/\berror:\s*"([a-z_]+)"/g)) codes.add(match[1]);
   }
   return [...codes].sort();
-}
-
-function routerLiterals(): string[] {
-  return [...router.matchAll(/path === "(\/v1\/[^"]+)"/g)].map((match) => match[1]);
-}
-
-function routerPatterns(): RegExp[] {
-  return [...router.matchAll(/path\.match\(\/(\^\\\/v1\\\/[^\n]*?)\/\)/g)].map((match) => new RegExp(match[1]));
 }
 
 function sampleUrl(template: string): string {
@@ -103,13 +95,13 @@ describe("openapi/v1.json", () => {
 
   it("documents every /v1 path the router serves, and nothing the router does not", () => {
     const templates = Object.keys(spec.paths).filter((path) => path.startsWith("/v1/"));
-    const literals = routerLiterals();
-    const patterns = routerPatterns();
+    const literals = v1PathLiterals();
+    const patterns = v1PathPatterns();
     expect(patterns.length).toBeGreaterThan(0);
 
     for (const template of templates) {
       const routed = literals.includes(template) || patterns.some((pattern) => pattern.test(sampleUrl(template)));
-      expect(routed, `${template} has no route in src/index.ts`).toBe(true);
+      expect(routed, `${template} has no route in the /v1 table`).toBe(true);
     }
     for (const literal of literals) {
       expect(templates, `${literal} is routed but not in openapi/v1.json`).toContain(literal);
