@@ -27,8 +27,8 @@ Preconditions:
 - **Default — Delivery.** Poll token immediately after approve. Expect 200 with `token` (`ee_live_…`), label, token id, non-null `expires_at`. `GET /v1/whoami` with that token is 200. Second exchange is 410 `connection_expired`. Save only status, account, label, and expiry.
 - **Default — Deny.** New request, then `POST $ORIGIN/account/connections/$REQ_ID/deny` with `-H "origin: $ORIGIN"` and `{}`. Poll is 403 `connection_denied` and no token.
 - **Default — Revoke.** `DELETE /v1/whoami` with the delivered token (or hub revoke by label). `GET /v1/whoami` is 401.
-- **Extra (approve / Connect.svelte) — Browser chrome.** Open `verification_uri`. No app header/footer. h1 `Connect your agent to` plus this run's hub host. Fill `#connect-code`, `#connect-ttl`, Approve. `#connect-status` says `Connection approved`. Drive when Connect.svelte copy or controls change.
-- **Extra (request expiry) — Ten-minute wait.** Wait 10 minutes after create only when `src/connections.ts` expiry changed. GET `/connect?request=$id` and poll are 410. Do not wait otherwise.
+- **Extra (approve / Connect.svelte) — Browser chrome.** Open `verification_uri`. No app header/footer. The h1 reads `Connect your agent to` plus this run's hub host. Fill `#connect-code`, `#connect-ttl`, Approve. `#connect-status` contains `Connection approved` (full copy: `Connection approved. Return to your agent to finish connecting; it receives the token on its next poll.`). Drive when Connect.svelte copy or controls change.
+- **Extra (request expiry) — Ten-minute wait.** Wait 10 minutes after create only when `src/connections.ts` expiry changed. GET `/connect?request=$id` after expiry is `410 connection_expired` JSON, not the HTML page. Poll is 410. Do not wait otherwise.
 - **Proof.** Default: redacted request/pending/approve/delivery/deny status files. Screenshot only for Extra browser. Never save a raw credential response as evidence.
 
 ## Gotchas
@@ -38,3 +38,4 @@ Preconditions:
 - Delivery is one-time. If its response is lost, revoke the issued token by label before approving a new request. Do not retry a consumed request.
 - Default does not wait `interval` seconds. Poll pending once, approve via `POST /account/connections/{id}/approve` with `-H "origin: $ORIGIN"`, then poll delivery. A second pending poll within five seconds is `429 connection_slow_down`.
 - A denied request requires a new human decision, not automatic re-registration. This API is not OAuth device authorization.
+- The request lasts ten minutes (`expires_in: 600`). GET `/connect?request=` after expiry or after a consumed/denied request is `410 connection_expired` JSON, not the HTML page. Start a new request. Drive approval before that window closes.
