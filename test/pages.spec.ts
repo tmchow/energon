@@ -24,7 +24,7 @@ describe("signed-in pages", () => {
     expect(res.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
     const html = await res.text();
     for (const text of ["Publish a document, prototype, or file.", "Choose files", "Choose folder", "No sites yet", "No files yet", "Drop to stage"]) expect(html).toContain(text);
-    for (const id of ["app", "pick-files", "pick-folder", "filepick", "folderpick", "q", "scope", "sort", "catalog-filters", "catalog-expires", "catalog-expires-before", "catalog-updated-before", "catalog-last-read", "catalog-min-size", "sites", "files", "account-export", "drop-overlay", "pw-dlg", "write-dlg", "ttl-dlg"]) expect(html).toContain(`id="${id}"`);
+    for (const id of ["app", "pick-files", "pick-folder", "filepick", "folderpick", "q", "scope", "sort", "catalog-filters", "catalog-expires", "catalog-expires-before", "catalog-updated-before", "catalog-last-read", "catalog-min-size", "catalog-select-matching", "catalog-cleanup", "catalog-cleanup-action", "catalog-cleanup-preview", "catalog-cleanup-ttl", "catalog-cleanup-dlg", "sites", "files", "account-export", "drop-overlay", "pw-dlg", "write-dlg", "ttl-dlg"]) expect(html).toContain(`id="${id}"`);
     expect(html).toContain("Download what you own");
     expect(html).toContain("Download everything you own");
     expect(html).toContain('href="/account/export"');
@@ -49,6 +49,11 @@ describe("signed-in pages", () => {
     expect(html).toContain("Last read before");
     expect(html).toContain("Reads lag up to about a day.");
     expect(html).toContain(">Oldest<");
+    expect(html).toContain("Select all matching these filters");
+    expect(html).toContain('aria-label="Cleanup action"');
+    expect(html).toContain("Set expiry is the safe default");
+    expect(html).toContain("Expire soon");
+    expect(html).toContain('aria-pressed="false">Delete</button>');
     expect(html).not.toContain("unread");
     expect(html).not.toContain("Unread");
     expect(html).toContain('aria-label="Energon"');
@@ -98,6 +103,9 @@ describe("signed-in pages", () => {
     expect(html).toContain(">Last writer<");
     expect(html).toContain(">Last read<");
     expect(html).toContain("No recorded read");
+    expect(html).toContain('id="catalog-select-files"');
+    expect(html).toContain('type="checkbox"');
+    expect(html).toContain("Select visible");
     expect(html).not.toContain("unread");
     expect(html).not.toMatch(/<th[^>]*>Created by<\/th>/);
     expect(html).not.toMatch(/<span class="en-badge[^"]*">password<\/span>/i);

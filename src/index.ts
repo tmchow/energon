@@ -257,6 +257,11 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     return cleanupResponse(env, ctx, actor, await readJson(request), { admin: true });
   }
 
+  if (path === "/account/cleanup" && method === "POST") {
+    const actor = await requireHuman(request, env, ctx);
+    return cleanupResponse(env, ctx, actor, await readJson(request));
+  }
+
   if (path === "/account/tokens" && method === "POST") {
     const actor = await requireHuman(request, env, ctx);
     const body = await readJson(request);

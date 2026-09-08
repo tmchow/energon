@@ -646,6 +646,81 @@ describe("hub account API", () => {
     expect(JSON.stringify(health.body)).not.toMatch(/password/i);
   });
 
+  it("hub cleanup is a human involvement twin of /v1/cleanup", async () => {
+    const ada = "hub-clean-ada@esperlabs.app";
+    const bob = "hub-clean-bob@esperlabs.app";
+    const adaToken = await mint("hub-clean-ada", ada);
+    const created = await json("/v1/files", {
+      method: "POST",
+      headers: auth(adaToken, { "X-Filename": "hub-clean-ada.md", "content-type": "text/plain" }),
+      body: "keep",
+    });
+    expect(created.status).toBe(201);
+    const id = String(created.body.id);
+
+    const noOrigin = await json("/account/cleanup", {
+      method: "POST",
+      headers: { "Cf-Access-Authenticated-User-Email": ada, "content-type": "application/json" },
+      body: JSON.stringify({ target: { files: [id] }, action: "set_ttl", ttl: "7d" }),
+    });
+    expect(noOrigin.status).toBe(403);
+    expect(noOrigin.body.error).toBe("bad_origin");
+
+    const noTtl = await json("/account/cleanup", {
+      method: "POST",
+      headers: access(ada, { "content-type": "application/json" }),
+      body: JSON.stringify({ target: { files: [id] }, action: "set_ttl" }),
+    });
+    expect(noTtl.status).toBe(400);
+    expect(noTtl.body.error).toBe("ttl_required");
+
+    const bobPreview = await json("/account/cleanup", {
+      method: "POST",
+      headers: access(bob, { "content-type": "application/json" }),
+      body: JSON.stringify({ target: {}, action: "set_ttl", ttl: "7d" }),
+    });
+    expect(bobPreview.status).toBe(200);
+    expect(bobPreview.body.executed).toBe(false);
+    expect((bobPreview.body.sample || []).some((row: { ref: string }) => row.ref === id)).toBe(false);
+
+    const preview = await json("/account/cleanup", {
+      method: "POST",
+      headers: access(ada, { "content-type": "application/json" }),
+      body: JSON.stringify({ target: { files: [id] }, action: "set_ttl", ttl: "7d" }),
+    });
+    expect(preview.status).toBe(200);
+    expect(preview.body).toMatchObject({ executed: false, action: "set_ttl", ttl: "7d", eligible: 1 });
+    expect(JSON.stringify(preview.body)).not.toMatch(/password/i);
+
+    const other = await json("/v1/files", {
+      method: "POST",
+      headers: auth(adaToken, { "X-Filename": "hub-clean-other.md", "content-type": "text/plain" }),
+      body: "other",
+    });
+    expect(other.status).toBe(201);
+    const otherId = String(other.body.id);
+
+    const drift = await json("/account/cleanup", {
+      method: "POST",
+      headers: access(ada, { "content-type": "application/json" }),
+      body: JSON.stringify({ target: { files: [otherId] }, action: "set_ttl", ttl: "7d", confirm: preview.body.confirm }),
+    });
+    expect(drift.status).toBe(409);
+    expect(drift.body.error).toBe("cleanup_drift");
+
+    const done = await json("/account/cleanup", {
+      method: "POST",
+      headers: access(ada, { "content-type": "application/json" }),
+      body: JSON.stringify({ target: { files: [id] }, action: "set_ttl", ttl: "7d", confirm: preview.body.confirm }),
+    });
+    expect(done.status).toBe(200);
+    expect(done.body.executed).toBe(true);
+    expect(done.body.applied.total).toBe(1);
+
+    const listed = await json("/v1/files?q=hub-clean-ada", { headers: auth(adaToken) });
+    expect(listed.body.files[0].expires_at).toBeTruthy();
+  });
+
   it("hub admin repairs refuse non-operators and run for operators", async () => {
     const deniedRecompute = await json("/account/admin/quota/recompute", {
       method: "POST",

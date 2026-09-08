@@ -13,6 +13,7 @@ Hub catalog lets a signed-in human see sites and files they created or last wrot
 - `catalog-open` follows the slug or filename link to the public URL.
 - `catalog-delete` removes the object after typing the exact name.
 - `catalog-expire` lets a mutator change expiration from More → Change expiration; the new timer starts now; catalog Expires and listing `expires_at` update.
+- `catalog-select` is row checkboxes (`#catalog-select-file-{id}`, `#catalog-select-site-{id}`) plus `#catalog-select-matching`. Bulk actions are [Hub cleanup](./hub-cleanup.md).
 
 ## How to get to it (user POV)
 

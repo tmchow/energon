@@ -38,6 +38,13 @@
 .en-hub-export .en-lede { margin: 0; }
 .en-hub-export .en-btn { width: fit-content; }
 .en-catalog-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 16px; padding-top: 0; }
+.en-catalog-select { padding-top: 0; }
+.en-catalog-cleanup { display: flex; flex-wrap: wrap; align-items: end; gap: 12px 16px; border-top: 1px solid var(--border-1); }
+.en-catalog-cleanup-count { margin: 0; color: var(--fg-3); align-self: center; font: var(--type-ui); }
+.en-check { width: 1rem; height: 1rem; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.en-table td.name:has(.en-check) { display: flex; align-items: center; gap: 8px; }
+.en-table td.name .en-check { flex: none; }
+.en-table tr.row-selected td { background: rgba(var(--glow-rgb), 0.08); }
 .en-tokens-card { margin-top: 28px; }
 .en-admin-card { margin-top: 28px; }
 .en-admin-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 16px; }
