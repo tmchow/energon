@@ -303,6 +303,8 @@ describe("signed-in pages", () => {
     expect(html).toContain('id="admin-health-sweep"');
     expect(html).toContain('id="admin-health-unlock"');
     expect(html).toContain('id="admin-health-scope"');
+    expect(html).toContain("obj:/handle/f/id/");
+    expect(html).not.toContain("obj:/handle/f/id/name");
     expect(html).toContain('id="admin-health-recompute-dlg"');
     expect(html).toContain('id="admin-health-sweep-dlg"');
     expect(html).toContain('id="admin-owner"');

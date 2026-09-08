@@ -91,7 +91,7 @@
     <Button id="admin-health-sweep" disabled={busy} onclick={() => { error = ''; sweepOpen = true; }}>{sweepLabel}</Button>
   </div>
   <form class="en-admin-health-unlock" onsubmit={(event) => { event.preventDefault(); runUnlock(); }}>
-    <Field label="Share gate scope" htmlFor="admin-health-scope" note="obj:/handle/f/id/name, ip:, or the matching write scopes.">
+    <Field label="Share gate scope" htmlFor="admin-health-scope" note="obj:/handle/f/id/, ip:, or the matching write scopes.">
       <Input id="admin-health-scope" bind:value={scope} mono disabled={busy} />
     </Field>
     <Button id="admin-health-unlock" type="submit" disabled={busy || !scope.trim()}>Unlock</Button>

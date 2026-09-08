@@ -1759,7 +1759,7 @@
                 "properties": {
                   "scope": {
                     "type": "string",
-                    "description": "gate_attempts primary key, such as obj:/handle/f/id/name or ip:."
+                    "description": "gate_attempts primary key, such as obj:/handle/f/id/ or ip:."
                   }
                 }
               }
