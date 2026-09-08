@@ -11,6 +11,7 @@ describe("maskToken", () => {
   it("shows prefix plus last 4, never the secret middle", () => {
     const token = `${TOKEN_PREFIX}abcdefghijKLMN`;
     expect(maskToken(token)).toBe(`${TOKEN_PREFIX}…KLMN`);
+    expect(maskToken(token, undefined, "admin")).toBe(`${TOKEN_PREFIX}admin…KLMN`);
     expect(maskToken(token)).not.toContain("abcdefghij");
   });
 
@@ -105,6 +106,7 @@ describe("mintToken lifetime", () => {
     expect(binds).toHaveLength(1);
     expect(binds[0][4]).toMatch(/^[a-f0-9]{64}$/);
     expect(binds[0][7]).toBe(minted.expires_at);
+    expect(binds[0][8]).toBe("account");
     expect(Date.parse(String(minted.expires_at)) - Date.now()).toBeGreaterThan(86000 * 1000);
   });
 
@@ -120,6 +122,30 @@ describe("mintToken lifetime", () => {
     expect(String((error as Error).message)).not.toContain("never");
     expect(binds).toHaveLength(0);
     expect(tokenPolicy(env).presets.map((p) => p.id)).not.toContain("never");
+  });
+
+  it("refuses admin scope unless the email is on ADMIN_EMAILS", async () => {
+    const { env, binds } = mintEnv();
+    await expect(mintToken(env, "agent@esperlabs.app", "ops", "user-id", "1d", "admin")).rejects.toMatchObject({
+      status: 403,
+      code: "forbidden_admin",
+    });
+    expect(binds).toHaveLength(0);
+  });
+
+  it("mints an admin token with the admin catalog and hint", async () => {
+    const { env, binds } = mintEnv({ ADMIN_EMAILS: "agent@esperlabs.app" });
+    const minted = await mintToken(env, "agent@esperlabs.app", "ops", "user-id", undefined, "admin");
+    expect(minted.scope).toBe("admin");
+    expect(minted.token).toMatch(/^ee_live_/);
+    expect(binds[0][8]).toBe("admin");
+    expect(binds[0][5]).toMatch(/^ee_live_admin…/);
+    expect(Date.parse(String(minted.expires_at)) - Date.now()).toBeGreaterThan(86000 * 1000);
+    expect(Date.parse(String(minted.expires_at)) - Date.now()).toBeLessThan(2 * 86400 * 1000);
+    await expect(mintToken(env, "agent@esperlabs.app", "ops", "user-id", "never", "admin")).rejects.toMatchObject({
+      status: 400,
+      code: "bad_ttl",
+    });
   });
 
   it("still authenticates a never-expiring row when this Energon forbids new ones", async () => {
@@ -218,8 +244,31 @@ describe("requireToken", () => {
       tokenId: row.id,
       tokenLabel: row.label,
       tokenExpiresAt: null,
+      tokenScope: "account",
+      admin: false,
     });
     expect(updateRun).toHaveBeenCalledOnce();
+  });
+
+  it("treats an admin-scoped token as admin only while the owner is on ADMIN_EMAILS", async () => {
+    const adminRow = { ...row, scope: "admin" };
+    const prepare = vi.fn((sql: string) => {
+      if (sql.includes("FROM users")) return { bind: () => ({ first: async () => null }) };
+      if (sql.includes("SELECT")) return { bind: () => ({ first: async () => adminRow }) };
+      return { bind: () => ({ run: async () => undefined }) };
+    });
+    const listed = {
+      DB: { prepare },
+      PUBLIC_ORIGIN: "https://energon.example.com",
+      ADMIN_EMAILS: "agent@esperlabs.app",
+    } as unknown as Env;
+    const stripped = {
+      DB: { prepare },
+      PUBLIC_ORIGIN: "https://energon.example.com",
+      ADMIN_EMAILS: "other@esperlabs.app",
+    } as unknown as Env;
+    await expect(requireToken(request, listed)).resolves.toMatchObject({ tokenScope: "admin", admin: true });
+    await expect(requireToken(request, stripped)).resolves.toMatchObject({ tokenScope: "admin", admin: false });
   });
 
   it("rejects an expired token with token_expired and never bumps last_used_at", async () => {

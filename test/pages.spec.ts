@@ -161,6 +161,12 @@ describe("signed-in pages", () => {
     const emptyHtml = await (await req("/tokens", { headers: access("notokens@esperlabs.app") })).text();
     expect(emptyHtml).toContain("No live tokens");
     expect(emptyHtml).toContain("Set up your agent and approve its code");
+
+    const adminHtml = await (await req("/tokens", { headers: access("admin@esperlabs.app") })).text();
+    expect(adminHtml).toContain('id="mint-scope"');
+    expect(adminHtml).toContain('aria-label="Token authority"');
+    expect(bootstrap(adminHtml).data.admin).toBe(true);
+    expect(tokensHtml).not.toContain('id="mint-scope"');
   });
 
   it("serves the Energon cube mark", async () => {

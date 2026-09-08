@@ -687,6 +687,8 @@ describe("Energon", () => {
     expect(me.status).toBe(200);
     expect(me.body.email).toBe("who@esperlabs.app");
     expect(me.body.label).toBe("whoami-key");
+    expect(me.body.scope).toBe("account");
+    expect(me.body.admin).toBe(false);
     expect(Date.parse(me.body.expires_at)).toBeGreaterThan(Date.now() + 89 * 86400 * 1000);
 
     const forever = await mint("whoami-forever", "who@esperlabs.app", undefined, "never");

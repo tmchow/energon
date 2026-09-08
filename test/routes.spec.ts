@@ -357,4 +357,54 @@ describe("hub account API", () => {
     expect((await json("/v1/whoami", { headers: auth(secrets[0]) })).status).toBe(401);
     expect((await json("/v1/whoami", { headers: auth(secrets[count - 1]) })).status).toBe(401);
   });
+
+  it("mints admin tokens only for ADMIN_EMAILS and keeps connect at account scope", async () => {
+    const refused = await json("/account/tokens", {
+      method: "POST",
+      headers: access("ada@esperlabs.app", { "content-type": "application/json" }),
+      body: JSON.stringify({ label: "nope", scope: "admin", ttl: "1d" }),
+    });
+    expect(refused.status).toBe(403);
+    expect(refused.body.error).toBe("forbidden_admin");
+
+    const minted = await json("/account/tokens", {
+      method: "POST",
+      headers: access("admin@esperlabs.app", { "content-type": "application/json" }),
+      body: JSON.stringify({ label: "ops", scope: "admin" }),
+    });
+    expect(minted.status).toBe(201);
+    expect(minted.body.scope).toBe("admin");
+    expect(minted.body.token).toMatch(/^ee_live_/);
+    expect(Date.parse(minted.body.expires_at) - Date.now()).toBeLessThan(2 * 86400 * 1000);
+    const who = await json("/v1/whoami", { headers: auth(minted.body.token) });
+    expect(who.body).toMatchObject({
+      email: "admin@esperlabs.app",
+      label: "ops",
+      scope: "admin",
+      admin: true,
+    });
+    const listed = await json("/account/data", { headers: access("admin@esperlabs.app") });
+    const row = listed.body.tokens.find((t: { label: string }) => t.label === "ops");
+    expect(row.scope).toBe("admin");
+    expect(row.hint).toMatch(/^ee_live_admin…/);
+
+    const never = await json("/account/tokens", {
+      method: "POST",
+      headers: access("admin@esperlabs.app", { "content-type": "application/json" }),
+      body: JSON.stringify({ label: "forever", scope: "admin", ttl: "never" }),
+    });
+    expect(never.status).toBe(400);
+    expect(never.body.error).toBe("bad_ttl");
+
+    const account = await json("/account/tokens", {
+      method: "POST",
+      headers: access("admin@esperlabs.app", { "content-type": "application/json" }),
+      body: JSON.stringify({ label: "plain" }),
+    });
+    expect(account.status).toBe(201);
+    expect(account.body.scope).toBe("account");
+    const plain = await json("/v1/whoami", { headers: auth(account.body.token) });
+    expect(plain.body.admin).toBe(false);
+    expect(plain.body.scope).toBe("account");
+  });
 });

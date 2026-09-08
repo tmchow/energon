@@ -73,7 +73,8 @@ CREATE TABLE IF NOT EXISTS tokens (
   created_at TEXT NOT NULL,
   last_used_at TEXT,
   revoked_at TEXT,
-  expires_at TEXT
+  expires_at TEXT,
+  scope TEXT NOT NULL DEFAULT 'account'
 );
 
 CREATE TABLE IF NOT EXISTS gate_attempts (

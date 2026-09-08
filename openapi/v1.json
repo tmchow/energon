@@ -180,7 +180,7 @@
         "summary": "Who this token is",
         "responses": {
           "200": {
-            "description": "Token owner, label, and expiry.",
+            "description": "Token owner, label, expiry, scope, and whether this token is currently admin.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2235,6 +2235,7 @@
               "bad_query",
               "bad_request",
               "bad_slug",
+              "bad_scope",
               "bad_target",
               "bad_ttl",
               "bad_write_policy",
@@ -2259,6 +2260,7 @@
               "file_delete_rollback_failed",
               "file_not_found",
               "file_write_lost",
+              "forbidden_admin",
               "forbidden_domain",
               "forbidden_write",
               "forbidden_write_policy",
@@ -3897,7 +3899,9 @@
         "required": [
           "email",
           "label",
-          "expires_at"
+          "expires_at",
+          "scope",
+          "admin"
         ],
         "properties": {
           "email": {
@@ -3915,6 +3919,18 @@
             ],
             "format": "date-time",
             "description": "When this token stops working; null means never. Warn the human before it passes."
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "account",
+              "admin"
+            ],
+            "description": "account is an ordinary token. admin was minted with operator scope; admin routes still require the owner to be on ADMIN_EMAILS."
+          },
+          "admin": {
+            "type": "boolean",
+            "description": "True only when scope is admin and the owner is still on ADMIN_EMAILS. Ordinary /v1 calls still act as this account."
           }
         }
       },

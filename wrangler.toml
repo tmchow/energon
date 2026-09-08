@@ -34,6 +34,8 @@ WRITE_POLICY = "org"
 ALLOW_UNLIMITED_TOKENS = "true"
 # Lock token minting to your workspace after Access is set up.
 # ALLOWED_EMAIL_DOMAINS = "your.co,your.com"
+# Operators who may mint admin tokens and run host-wide cleanup. Comma list of emails.
+# ADMIN_EMAILS = "you@your.co"
 FOOTER_TEXT = ""
 
 [triggers]

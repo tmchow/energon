@@ -44,6 +44,8 @@ describe("agent connections", () => {
     expect(who.status).toBe(200);
     expect(who.body.email).toBe("connect@esperlabs.app");
     expect(who.body.label).toBe("test agent");
+    expect(who.body.scope).toBe("account");
+    expect(who.body.admin).toBe(false);
     expect((await exchange(connection)).status).toBe(410);
     const list = await json("/account/data", { headers: access("connect@esperlabs.app") });
     expect(JSON.stringify(list.body)).not.toContain(issued.body.token);
@@ -53,6 +55,16 @@ describe("agent connections", () => {
     const row = await env.DB.prepare("SELECT * FROM agent_connections WHERE id = ?").bind(connection.id).first();
     for (const secret of [connection.poll_token, connection.user_code, issued.body.token]) expect(JSON.stringify(row)).not.toContain(secret);
     expect(await mint("manual still works")).toMatch(/^ee_live_/);
+  });
+
+  it("never grants admin scope when an admin approves a connection", async () => {
+    const connection = await start("admin agent");
+    expect((await decide(connection, "approve", "admin@esperlabs.app")).status).toBe(200);
+    const issued = await exchange(connection);
+    expect(issued.status).toBe(200);
+    const who = await json("/v1/whoami", { headers: auth(issued.body.token) });
+    expect(who.body.scope).toBe("account");
+    expect(who.body.admin).toBe(false);
   });
 
   it("binds approval to the human code and rejects foreign-origin or unauthorized decisions", async () => {

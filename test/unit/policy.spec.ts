@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { MAX_FILE_BYTES, MAX_PLATFORM_BYTES } from "../../src/config";
 import {
   emailAllowed,
+  emailIsAdmin,
+  adminEmails,
+  adminTokenPolicy,
   formatDuration,
   formatTtlLabel,
   instancePolicy,
@@ -177,6 +180,29 @@ describe("emailAllowed", () => {
     expect(emailAllowed(policy, "ada@esperlabs.app")).toBe(true);
     expect(emailAllowed(policy, "Ada@EsperLabs.AI")).toBe(true);
     expect(emailAllowed(policy, "ada@gmail.com")).toBe(false);
+  });
+});
+
+describe("admin emails", () => {
+  it("treats an empty list as nobody", () => {
+    expect(adminEmails(env())).toEqual([]);
+    expect(emailIsAdmin(env(), "admin@esperlabs.app")).toBe(false);
+  });
+
+  it("matches listed emails case-insensitively", () => {
+    const listed = env({ ADMIN_EMAILS: "Admin@Esperlabs.app, ops@esperlabs.app" });
+    expect(adminEmails(listed)).toEqual(["admin@esperlabs.app", "ops@esperlabs.app"]);
+    expect(emailIsAdmin(listed, "ADMIN@esperlabs.app")).toBe(true);
+    expect(emailIsAdmin(listed, "ada@esperlabs.app")).toBe(false);
+  });
+
+  it("caps admin tokens at 7 days with no never", () => {
+    const policy = adminTokenPolicy();
+    expect(policy.allowUnlimited).toBe(false);
+    expect(policy.defaultTtl).toBe("1d");
+    expect(policy.presets.map((p) => p.id)).toEqual(["1d", "7d"]);
+    expect(() => resolveTokenExpiresAt(policy, "never")).toThrow(/ttl must be one of/);
+    expect(() => resolveTokenExpiresAt(policy, "90d")).toThrow(/ttl must be one of/);
   });
 });
 

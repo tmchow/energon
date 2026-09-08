@@ -60,6 +60,15 @@ describe("schema representations", () => {
     ]);
   });
 
+  it("ships token scope as a single additive migration", () => {
+    const migration = readFileSync("migrations/0020_token_scope.sql", "utf8");
+    const statements = migration
+      .split("\n")
+      .filter((line: string) => line.trim() && !line.trim().startsWith("--"));
+
+    expect(statements).toEqual(["ALTER TABLE tokens ADD COLUMN scope TEXT NOT NULL DEFAULT 'account';"]);
+  });
+
   it("ships last_read_at as a single additive migration", () => {
     const migration = readFileSync("migrations/0019_last_read_at.sql", "utf8");
     const statements = migration
