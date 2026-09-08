@@ -24,13 +24,13 @@ Preconditions:
 - `TOKEN` is a minted `ee_live_` secret for this Energon.
 - `$HANDLE` is the bootstrap handle.
 
-- **Mint file.** Run `curl -sS -D "$EVIDENCE/publish-file/create.headers" -o "$EVIDENCE/publish-file/create.json" -w '%{http_code}' -X POST "$ORIGIN/v1/files" -H "Authorization: Bearer $TOKEN" -H "X-Filename: brief.md" -H "content-type: text/markdown" --data 'verify-file-v1'`. Status `201`. Body has `id`, `filename` `brief.md`, and `url` matching `$ORIGIN/$HANDLE/f/{id}/brief.md`.
-- **Public GET.** Run `curl -sS -o "$EVIDENCE/publish-file/public.md" -w '%{http_code}' "$ORIGIN/$HANDLE/f/$ID/brief.md"` using `id` from the create body. Status `200`. Body is `verify-file-v1`.
-- **Token GET.** Run `curl -sS -o "$EVIDENCE/publish-file/api.md" "$ORIGIN/v1/files/$ID" -H "Authorization: Bearer $TOKEN"`. Status `200`. Body is `verify-file-v1`.
-- **Replace.** Run `curl -sS -o "$EVIDENCE/publish-file/put.json" -w '%{http_code}' -X PUT "$ORIGIN/v1/files/$ID" -H "Authorization: Bearer $TOKEN" -H "content-type: text/markdown" --data 'verify-file-v2'`. Status `200`. Body `url` and `id` are unchanged. Public GET now returns `verify-file-v2`.
-- **Download.** Run `curl -sS -D "$EVIDENCE/publish-file/download.headers" -o /dev/null "$ORIGIN/v1/files/$ID?download=1" -H "Authorization: Bearer $TOKEN"`. Status `200`. `Content-Disposition` is an attachment and includes `brief.md`.
-- **Hub entry.** Open `$ORIGIN/`. Choose `Choose files` and set one file on `#filepick`. `#stage-loose` is visible, `#stage-site` is absent, `#stage-filename` shows the name. Choose `Publish`. `#messages` links to `/$HANDLE/f/{id}/…` and the Files table lists that filename.
-- **Proof.** Save create JSON, public body before and after replace, and download headers. Browser proof: hub Files table showing `brief.md` with `#who` visible.
+- **Default — Mint file.** Run `curl -sS -D "$EVIDENCE/publish-file/create.headers" -o "$EVIDENCE/publish-file/create.json" -w '%{http_code}' -X POST "$ORIGIN/v1/files" -H "Authorization: Bearer $TOKEN" -H "X-Filename: brief.md" -H "content-type: text/markdown" --data 'verify-file-v1'`. Status `201`. Body has `id`, `filename` `brief.md`, and `url` matching `$ORIGIN/$HANDLE/f/{id}/brief.md`.
+- **Default — Public GET.** Run `curl -sS -o "$EVIDENCE/publish-file/public.md" -w '%{http_code}' "$ORIGIN/$HANDLE/f/$ID/brief.md"` using `id` from the create body. Status `200`. Body is `verify-file-v1`.
+- **Default — Token GET.** Run `curl -sS -o "$EVIDENCE/publish-file/api.md" "$ORIGIN/v1/files/$ID" -H "Authorization: Bearer $TOKEN"`. Status `200`. Body is `verify-file-v1`.
+- **Default — Replace.** Run `curl -sS -o "$EVIDENCE/publish-file/put.json" -w '%{http_code}' -X PUT "$ORIGIN/v1/files/$ID" -H "Authorization: Bearer $TOKEN" -H "content-type: text/markdown" --data 'verify-file-v2'`. Status `200`. Body `url` and `id` are unchanged. Public GET now returns `verify-file-v2`.
+- **Extra (file-download) — Download.** Run `curl -sS -D "$EVIDENCE/publish-file/download.headers" -o /dev/null "$ORIGIN/v1/files/$ID?download=1" -H "Authorization: Bearer $TOKEN"`. Status `200`. `Content-Disposition` is an attachment and includes `brief.md`. Drive when download disposition changes.
+- **Extra (file-hub) — Hub entry.** Open `$ORIGIN/`. Choose `Choose files` and set one file on `#filepick`. `#stage-loose` is visible, `#stage-site` is absent, `#stage-filename` shows the name. Choose `Publish`. Drive when Hub.svelte / uploads change.
+- **Proof.** Save create JSON, public body before and after replace. Browser screenshot only for Extra hub entry.
 
 ## Gotchas
 

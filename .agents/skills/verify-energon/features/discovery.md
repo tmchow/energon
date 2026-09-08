@@ -23,13 +23,11 @@ Preconditions:
 - Launch has printed `verify-energon launch ok`.
 - Doctor has passed for `$ORIGIN`. Doctor already proves `help`, `help-openapi`, `openapi`, and `health`.
 
-- **Help document.** `GET $ORIGIN/v1/help` is 200. `hub` and `content_origin` equal `$ORIGIN`. `openapi` is `$ORIGIN/v1/openapi.json`. `routes["GET /v1/openapi.json"]` mentions no auth. Save as `$EVIDENCE/discovery/help.json`.
-- **OpenAPI contract.** `GET $ORIGIN/v1/openapi.json` is 200. Body `openapi` is `3.1.0`. `servers[0].url` equals `$ORIGIN`. Header `access-control-allow-origin` is `*`. `paths["/v1/sites"].post.operationId` is `createSite`. Save as `$EVIDENCE/discovery/openapi.json`.
-- **HEAD.** `curl -sS -I "$ORIGIN/v1/openapi.json"` is 200.
-- **Wrong method.** `POST $ORIGIN/v1/openapi.json` is 405 with `error` `method_not_allowed`.
-- **llms.** `GET $ORIGIN/llms.txt` is 200 `text/markdown`. Body contains `$ORIGIN/v1/openapi.json`, `$ORIGIN/v1/help`, and `X-Energon-Write-Password`.
-- **Authentication.** `GET $ORIGIN/auth.md` is 200 `text/markdown`, CORS `*`, and names the token env and prefix from help. `HEAD` is 200 with no body; `POST` is 405. Help and llms link `$ORIGIN/auth.md`. `GET $ORIGIN/v1/whoami` without a credential is 401 with `auth_url=$ORIGIN/auth.md` and `tokens_url=$ORIGIN/tokens`. Save Markdown and rejection JSON.
-- **Proof.** Save help JSON, openapi excerpt (`openapi`, `servers`, path keys), HEAD headers, 405 body, and an llms excerpt that names the contract.
+- **Help / OpenAPI / health.** Doctor already proved these. Re-save only if this change is `helpBody`, `openapi/v1.json`, or `/v1/health`.
+- **Default — llms.** `GET $ORIGIN/llms.txt` is 200 `text/markdown`. Body contains `$ORIGIN/v1/openapi.json`, `$ORIGIN/v1/help`, and `X-Energon-Write-Password`.
+- **Default — Authentication.** `GET $ORIGIN/auth.md` is 200 `text/markdown`, CORS `*`, and names the token env and prefix from help. `HEAD` is 200 with no body; `POST` is 405. Help and llms link `$ORIGIN/auth.md`. `GET $ORIGIN/v1/whoami` without a credential is 401 with `auth_url=$ORIGIN/auth.md` and `tokens_url=$ORIGIN/tokens`.
+- **Extra (openapi errors) — HEAD / 405.** `curl -sS -I "$ORIGIN/v1/openapi.json"` is 200. `POST $ORIGIN/v1/openapi.json` is 405 `method_not_allowed`. Drive when the OpenAPI route or CORS changes.
+- **Proof.** Save llms excerpt and auth.md plus the 401 whoami JSON. Do not re-download help/openapi unless Extra.
 
 ## Gotchas
 

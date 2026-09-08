@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Save a curl into this run's evidence dir.
+# Usage: .agents/skills/verify-energon/bin/save [--expect CODE] FEATURE NAME METHOD URL [curl args...]
+# Writes $EVIDENCE/<feature>/<name>.{code,headers,body} and prints the status code.
+# --expect CODE exits 1 when the response status differs (body excerpt on stderr).
+
+set -euo pipefail
+_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$_script_dir/_lib.sh"
+
+load_state
+expect=""
+if [[ "${1:-}" == --expect ]]; then
+  expect="${2:-}"
+  shift 2
+elif [[ "${1:-}" == --expect=* ]]; then
+  expect="${1#--expect=}"
+  shift
+fi
+[[ $# -ge 4 ]] || die "usage: bin/save [--expect CODE] FEATURE NAME METHOD URL [curl args...]"
+feature="$1"
+name="$2"
+method="$3"
+url="$4"
+shift 4
+
+dir="$EVIDENCE/$feature"
+mkdir -p "$dir"
+code="$(curl -sS -D "$dir/$name.headers" -o "$dir/$name.body" -w '%{http_code}' -X "$method" "$url" "$@")"
+printf '%s\n' "$code" >"$dir/$name.code"
+printf '%s\n' "$code"
+if [[ -n "$expect" && "$code" != "$expect" ]]; then
+  die "$feature/$name expected $expect got $code $(head -c 240 "$dir/$name.body" 2>/dev/null || true)"
+fi

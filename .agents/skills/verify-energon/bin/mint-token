@@ -2,7 +2,8 @@
 # Mint a token on the verification instance via the same hub endpoint the Tokens page uses.
 # Usage: .agents/skills/verify-energon/bin/mint-token [label] [ttl]
 # ttl is a token preset (1d, 7d, 30d, 60d, 90d, 180d, 365d, never); omitted = instance default.
-# Prints the token on stdout. Saves it at $STATE_DIR/token and TOKEN_EXPIRES_AT in state.env.
+# Prints the token on stdout. When state.env has no TOKEN (or ENERGON_VERIFY_SAVE_TOKEN=1),
+# also writes TOKEN= and TOKEN_EXPIRES_AT= there. Extra labels must not clobber the session token.
 # Do not invent a token.
 
 set -euo pipefail
@@ -36,7 +37,8 @@ token="$(json_get "$body" "token")"
 expires_at="$(json_get "$body" "expires_at" || true)"
 
 printf '%s\n' "$token" >"$(state_dir)/token"
-python3 - "$(state_file)" "$token" "$expires_at" <<'PY'
+if [[ -z "${TOKEN:-}" || "${ENERGON_VERIFY_SAVE_TOKEN:-}" == "1" ]]; then
+  python3 - "$(state_file)" "$token" "$expires_at" <<'PY'
 from pathlib import Path
 import sys
 path, token, expires_at = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
@@ -45,5 +47,6 @@ lines.append(f"TOKEN={token}")
 lines.append(f"TOKEN_EXPIRES_AT={expires_at or 'never'}")
 path.write_text("\n".join(lines) + "\n")
 PY
+fi
 
 printf '%s\n' "$token"

@@ -7,16 +7,20 @@ description: Drive a local Energon hub and /v1 API the way a user does — publi
 
 Energon hosts company files and small sites. Humans open the hub. Agents publish through `/v1`. This skill drives a **local** `wrangler dev` you start, not production, and not a teammate's `npm run dev` on port 8787.
 
-Read `features/README.md` before driving. Use the matching feature file as the recipe. One convenient entry point is not a full proof when the map lists others.
+Read `features/README.md` before driving. Use the matching feature file as the recipe. Drive every **Default** bullet in that file. Drive an **Extra** bullet only when the change touches that sub-feature (named on the bullet). Do not replay the whole map. Skipping Extra is not a skipped entry point; report it as n/a with the reason.
 
 The skill lives in `.agents/skills/verify-energon/`; `.claude/skills/verify-energon` and `.cursor/skills/verify-energon` are symlinks to it, so Claude Code, Cursor, Codex, and any host that reads `.agents/skills` all see the same files. Helpers need only `bash`, `curl`, `python3`, and `npx`, and locate the repo root from their own path, so they work from any host. Invoke them from the repo root:
 
 ```
-.agents/skills/verify-energon/bin/launch
-.agents/skills/verify-energon/bin/doctor
-.agents/skills/verify-energon/bin/mint-token verify-run
+.agents/skills/verify-energon/bin/up
+# shellcheck source=/dev/null
+set -a; source "/tmp/energon-verify/$(cat /tmp/energon-verify/current)/state.env"; set +a
+.agents/skills/verify-energon/bin/save --expect 201 publish-site create POST "$ORIGIN/v1/sites" \
+  -H "Authorization: Bearer $TOKEN" -H "content-type: application/json" --data '{"slug":"verify-site"}'
 .agents/skills/verify-energon/bin/cleanup
 ```
+
+`bin/up` is launch + doctor + ready in one process. Do not run those three as separate agent turns. Hub POSTs under `/account` need `-H "origin: $ORIGIN"`.
 
 ## Launch
 
@@ -27,8 +31,10 @@ Never use the default `.wrangler/state` directory. Never attach to an already-ru
 ```
 export ENERGON_VERIFY_RUN=my-run          # optional; launch generates one
 export ENERGON_VERIFY_PORT=18787          # default; stays off 8787
-.agents/skills/verify-energon/bin/launch
+.agents/skills/verify-energon/bin/up      # usual start (launch + doctor + ready)
 ```
+
+`bin/launch` alone is for debugging a failed boot. After a successful `bin/up`, source `state.env` and drive.
 
 Launch applies D1 migrations with `--persist-to /tmp/energon-verify/$RUN/persist`, starts `npx wrangler dev --ip 127.0.0.1 --port $PORT --local --persist-to … --var PUBLIC_ORIGIN:$ORIGIN --var CONTENT_ORIGIN:$ORIGIN --show-interactive-dev-session false` in its own process group (`setsid` where available, bash job control on macOS), and waits until `GET $ORIGIN/health` returns `{"ok":true}` and `GET $ORIGIN/v1/help` echoes that same origin.
 
@@ -44,7 +50,7 @@ Teardown is `bin/cleanup` (kills the recorded pid / process group and the listen
 
 ## Doctor
 
-Run this first whenever anything looks off, and before the first drive of a session.
+`bin/up` already runs doctor. Run it alone when launch was separate or anything looks off.
 
 ```
 .agents/skills/verify-energon/bin/doctor
@@ -56,44 +62,41 @@ If doctor fails, stop. Do not drive a foreign run.
 
 ## Drive
 
+One `bin/up`, one token. Do not relaunch between features. Do not start a second wrangler unless an Extra bullet names `ENERGON_VERIFY_VARS` and a second port.
+
+If you already launched without `bin/up`, run `bin/doctor` then `bin/ready` once:
+
+```
+.agents/skills/verify-energon/bin/ready
+# shellcheck source=/dev/null
+set -a; source "/tmp/energon-verify/$(cat /tmp/energon-verify/current)/state.env"; set +a
+```
+
 Two surfaces, same data:
 
-1. **HTTP** — the agent path. `curl` against `$ORIGIN`. Mint with `bin/mint-token`; then `Authorization: Bearer $TOKEN` on `/v1`. Public content URLs need no token unless a share password is set (`X-Energon-Password`). Guest writes use `X-Energon-Write-Password` on the public URL with no token.
-2. **Browser** — the human path. Open `$ORIGIN/`. Stable handles: `#pick-files` (Choose files), `#pick-folder` (Choose folder), `#filepick` / `#folderpick` (hidden file inputs), `#stage-go` (Publish), `#stage-cancel` (Cancel), `#stage-slug` (`aria-label="Site slug"`), `#stage-filename` (`aria-label="Filename"`), `#stage-access` (Link access disclosure), `#stage-password`, `#stage-write-password`, `#q` (placeholder `Search slugs and filenames`), `#scope`, `#sort` (Updated / Name / Size / Oldest), `#catalog-filters` (`#catalog-expires` Any / Never expires, `#catalog-expires-before`, `#catalog-updated-before`, `#catalog-min-size`), `#catalog-select-matching`, row `#catalog-select-file-{id}` / `#catalog-select-site-{id}`, `#catalog-select-files` / `#catalog-select-sites`, `#catalog-cleanup` (`#catalog-cleanup-action`, `#catalog-cleanup-ttl`, `#catalog-cleanup-preview`, `#catalog-cleanup-sample`, `#catalog-cleanup-confirm`, `#catalog-cleanup-dlg`), nav `aria-label="Pages"` with Hub / Tokens / Setup / About / Stats, and Admin after Stats only when the signed-in email is on `ADMIN_EMAILS` (`/admin`, `#admin-filters`, `#admin-preview`, `#admin-sample`, `#admin-dlg`, `#admin-audit`, `#admin-tokens-owner`, `#admin-tokens-list`, `#admin-tokens-table`, `#admin-tokens-dlg`). Catalog marks (hover / `aria-label`): `View password`, `Write password`, `Org can write`, `Org cannot write`. Catalog row actions: `Copy URL`, `Set password` / `Change or remove password` (More menu), `Change expiration` (`#ttl-dlg` / `#ttl-dlg-select` / `#ttl-dlg-ok`), `Delete`, `More actions`, `Download zip` / `Download`. Hub card `#account-export` (`Download everything you own`) is `GET /account/export`. Unprotected rows have no password mark. Link access `#pw-dlg-share-door` / `#pw-dlg-write-door` Off/On per door; `#pw-dlg-input` / `#pw-dlg-write-input` show stored phrases when that door is On. Off and Save removes it. No Password chip. Catalog Expires is blank when the work does not expire. Last read is a floor (`No recorded read` when null; never "unread").
-
-Prefer HTTP for publish/read proofs; it is the documented agent user path, not a test-only API. Use the browser when the feature is hub-only (Tokens mint/revoke, drop/stage, catalog buttons, password dialogs).
+1. **HTTP** — prefer this. `bin/save` writes `$EVIDENCE/<feature>/<name>.{code,headers,body}`. Bearer `$TOKEN` on `/v1`. Public URLs need no token unless a share password is set (`X-Energon-Password`). Guest writes use `X-Energon-Write-Password`. Hub POSTs the page already uses (`/account/tokens`, `/account/connections/{id}/approve`, `/account/cleanup`) are HTTP twins — use them unless Extra is the page chrome.
+2. **Browser** — Extra, when the change is hub-only. Stable ids live in the matching feature file (`#pick-files`, `#q`, `#catalog-cleanup`, …). Screenshot with Energon and `#who` only for Extra browser drives.
 
 Do not invent a token. Do not default to `"overwrite": true`. Do not PUT to production origins.
-
-Load origin and token from the run state after launch/doctor:
-
-```
-# shellcheck source=/dev/null
-source /tmp/energon-verify/$ENERGON_VERIFY_RUN/state.env
-TOKEN=$(.agents/skills/verify-energon/bin/mint-token verify-run)
-```
-
-`state.env` has `ORIGIN`, `PORT`, `PID`, `PERSIST`, `EVIDENCE`, `EMAIL`, and after doctor `HANDLE`. After mint-token, `TOKEN`, `TOKEN_EXPIRES_AT`, and `$STATE_DIR/token`.
 
 ### HTTP recipe shape
 
 ```
-curl -sS -D /tmp/h -o /tmp/b -X POST "$ORIGIN/v1/sites" \
+.agents/skills/verify-energon/bin/save --expect 201 publish-site create POST "$ORIGIN/v1/sites" \
   -H "Authorization: Bearer $TOKEN" -H "content-type: application/json" \
   --data '{"slug":"verify-site"}'
-# expect 201, body.url = $ORIGIN/$HANDLE/s/verify-site/
+# body.url = $ORIGIN/$HANDLE/s/<id>/verify-site/
 ```
 
-Save request method+path, response status, and body into `$EVIDENCE/<feature>/`. Then GET the public URL (and a second view: hub catalog or `/v1/sites/{id}`) so persistence is not proven by the write response alone.
+Then GET the public URL (and catalog or `/v1/sites/{id}`) so persistence is not proven by the write response alone.
 
 ### Browser recipe shape
 
-Use the environment's browser tools. In an Orca worktree, read `orca skills get orca-cli` and drive its browser with snapshot, interaction, then another snapshot. Use `orca upload` on the hidden file inputs; pass a directory path for `#folderpick`, not a file inside it. Prefer role/name and the ids above over coordinates. Wait for the resulting state after asynchronous actions. For responsive checks, set the viewport after each navigation and verify `innerWidth`; scroll controls into view before clicking.
+Use the environment's browser tools only for Extra hub bullets. Prefer `#id` over coordinates. Wait for async results.
 
-- Choose files: click `Choose files`, then set files on `#filepick` (the click only opens a native picker).
-- One file selected with Choose files stages a loose file (`#stage-loose` visible, `#stage-filename` filled). A folder or zip stages a site (`#stage-slug`); even a folder containing only one file remains a site. Conditional stage sections are absent when inactive.
-- Nothing is written until `Publish`. After success, `#messages` contains a flash with the public URL and the catalog lists the slug or filename.
-- Tokens: go to `/tokens`. The `Tokens` list card comes first and the mint form sits in the `Mint a token by hand` card below it. Fill the `Label` textbox, choose a lifetime in `#mint-ttl` (`aria-label="Token lifetime"`, default `3 months`), click `Mint token`. `#new-token` shows `export ENERGON_TOKEN=ee_live_…`. The list has an `Expires` column; expired rows are greyed (`tr.row-expired`) and keep only `Revoke`; revoked rows (`tr.row-revoked`) have no action. The card head has `#tokens-show` (`aria-label="Show tokens"`, `Live (N)` default / `Stale (N)` / `All (N)`), `#revoke-stale`, and `#revoke-all`. A token unused for 30 days carries a `Stale` badge in `Last used` (`tr.row-stale`). Bulk buttons open `#bulk-dlg`, whose message lists the labels and whose confirm field wants `N tokens` (`1 token` for one).
+- Choose files: click `Choose files`, then set files on `#filepick`.
+- One file stages a loose file (`#stage-loose`). A folder or zip stages a site (`#stage-slug`).
+- Nothing is written until `Publish`. `#messages` then contains the public URL.
 
 ## Evidence
 
@@ -104,7 +107,7 @@ Proof standards:
 - Exercise the real user path: hub UI or `/v1` / public `/{handle}/…` URLs. Do not call `SELF.fetch`, Miniflare internals, or D1/R2 bindings directly and call it a user proof.
 - Capture the action and the resulting state: the write response **and** a later GET of the public URL (and catalog or `/v1` listing).
 - Verify side effects: bytes at the public URL, row in `GET /account/data` or `GET /v1/sites`, password gate status, token usable at `GET /v1/whoami`.
-- A screenshot of the hub with `#who` showing the email and the new row visible is required for browser drives. HTTP drives need saved status+body files.
+- A screenshot of the hub with `#who` showing the email is required for Extra browser drives. HTTP drives need saved status+body files (`bin/save`).
 - Record the feature id and entry point with every artifact (`publish-site` / `http` or `hub`).
 - Mocks: none. This is a local Worker with local D1 and R2. Do not stub `/v1`.
 
@@ -126,9 +129,12 @@ All executable, all from repo root:
 
 | Command | What it does |
 |---|---|
+| `bin/up` | Launch + doctor + ready in one shot. Usual session start. |
 | `bin/launch` | Isolated wrangler + migrations. Prints origin, pid, persist, evidence. |
-| `bin/doctor` | Read-only health/help/ownership check. Exit 1 → do not drive. |
-| `bin/mint-token [label] [ttl]` | `POST /account/tokens` with `Origin: $ORIGIN` (same path as the Tokens page). Optional `ttl` preset (`1d`…`365d`, `never`); omitted = this Energon's default (`90d`). Prints `ee_live_…`. Saves `$STATE_DIR/token` and `TOKEN_EXPIRES_AT` in `state.env`. |
+| `bin/doctor` | Read-only health/help/ownership check. Exit 1 → do not drive. Once per session. |
+| `bin/ready` | After doctor: mint a token if `state.env` has none. Prints origin/handle/evidence. Source `state.env` for `$TOKEN`. |
+| `bin/save [--expect CODE] FEATURE NAME METHOD URL …` | Curl into `$EVIDENCE/FEATURE/NAME.{code,headers,body}`. Prints the status. `--expect` fails the script on mismatch. |
+| `bin/mint-token [label] [ttl]` | `POST /account/tokens` (same path as the Tokens page). Optional `ttl`. Use `bin/ready` unless you need a second label. |
 | `bin/cleanup` | Kill this run, remove persist, keep evidence. |
 
 `bin/_lib.sh` is sourced by those scripts; do not invoke it directly.

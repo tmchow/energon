@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Load this run and mint a token if state.env has none.
+# Usage (from repo root): .agents/skills/verify-energon/bin/ready
+# Then: set -a; source "/tmp/energon-verify/$(cat /tmp/energon-verify/current)/state.env"; set +a
+# Does not print the token.
+
+set -euo pipefail
+_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$_script_dir/_lib.sh"
+
+load_state
+if [[ -z "${HANDLE:-}" ]]; then
+  die "HANDLE missing. Run bin/doctor first."
+fi
+
+if [[ -z "${TOKEN:-}" ]]; then
+  # mint-token writes TOKEN into state.env and prints the secret; capture it.
+  "$_script_dir/mint-token" verify-run >/dev/null
+  load_state
+fi
+
+printf 'verify-energon ready\n'
+printf '  origin   %s\n' "$ORIGIN"
+printf '  handle   %s\n' "$HANDLE"
+printf '  evidence %s\n' "$EVIDENCE"
+printf '  token    set in state.env (ee_live_…)\n'
+printf 'set -a; source %s; set +a\n' "$(state_file)"
