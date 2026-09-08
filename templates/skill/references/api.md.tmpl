@@ -83,12 +83,16 @@ Guest write on the public URL uses header `X-Energon-Write-Password` (not a `/v1
 A malformed filter is ignored in the URL form, never a 400.
 
 ```
-POST /v1/cleanup   { "target": …, "action": "delete"|"set_ttl"|"expire", "ttl"?: string, "confirm"?: string }
+POST /v1/cleanup         { "target": …, "action": "delete"|"set_ttl"|"expire", "ttl"?: string, "confirm"?: string }
+POST /v1/admin/cleanup   same body, without involvement; extra filters owner, read_before; no scope. 403 not_admin otherwise
+GET  /v1/admin/audit     operator log of those executes (metadata only)
 ```
 
 `target` is explicit ids `{ "sites": ["id"], "files": ["id"] }` **or** the filters above as JSON fields plus optional `"kind": "sites"|"files"` (`{}` = everything you are involved in). Mixing ids and filters is `400 bad_target`; a malformed filter value is `400 bad_query`.
 
 Without `confirm` the call is a **dry run**: `200 { action, executed: false, matched, eligible, bytes, skipped: { total, by_reason, sample }, sample, confirm }`. Nothing changes. Resend the identical body with that `confirm` to execute: `200 { action, executed: true, applied: { total, bytes, objects }, skipped, failed: { total, objects } }`. `set_ttl` needs `ttl` (same rules as PATCH). `expire` sets a 30m grace and skips objects already expiring sooner (`already_expiring`). Objects you cannot write are `skipped` with `not_writable`, never a batch 403. Cap is 100 eligible objects per call (`413 cleanup_too_many` with `matched`, `eligible`, `skipped`, `bytes`, `limit`). A stale `confirm` is `409 cleanup_drift` with a fresh preview in the body. No recycle bin.
+
+`POST /v1/admin/cleanup` is the same machinery across every account. Extra filters: `owner` (created_by) and `read_before` (no recorded read since; `last_read_at` is a floor). `scope` is `400`. The sample includes `owner`, `updated_at` (last written), and `last_read_at`. `expire` is `400 bad_action` when any eligible object is not yours. On someone else's content the safe default is `set_ttl` with `7d`. Execute is recorded at `GET /v1/admin/audit`. Needs an admin-scoped token whose owner is still on `ADMIN_EMAILS`.
 
 ## Retention
 

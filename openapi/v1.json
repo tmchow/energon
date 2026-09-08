@@ -1271,6 +1271,124 @@
         }
       }
     },
+    "/v1/admin/cleanup": {
+      "post": {
+        "operationId": "adminCleanup",
+        "tags": [
+          "admin"
+        ],
+        "summary": "Preview, then delete or re-expire sites and files across every account",
+        "description": "Same preview, confirm hash, skip reporting, and 100-item cap as POST /v1/cleanup, without the involvement scope. Extra filters: owner (created_by email) and read_before (last_read_at is null or before that instant). scope is not accepted (400 unknown key). last_read_at is a floor (hourly throttle plus up to about a day of edge-cache lag); the preview shows last written and last read side by side. Never treat a null last_read_at as proof nobody opened the object. expire is 400 bad_action when any eligible object is not the caller's. The safe action on someone else's content is set_ttl with 7d so their catalog shows Expires and they can push it back. delete is allowed when sent explicitly. Execute is recorded in GET /v1/admin/audit. Never returns bytes, share passwords, or write passwords. 403 not_admin unless this token is admin-scoped and the owner is still listed in ADMIN_EMAILS.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminCleanupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Preview (executed: false, with confirm) when confirm was omitted; result (executed: true) when it matched. Sample rows include owner, last written, and last read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/CleanupPreview"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CleanupResult"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad body, target, action, ttl, or confirm format. expire on someone else's content is bad_action. bad_query lists the malformed target filters in fields.",
+            "x-error-codes": [
+              "bad_json",
+              "bad_target",
+              "bad_query",
+              "bad_action",
+              "bad_confirm",
+              "ttl_required",
+              "bad_ttl",
+              "ttl_too_long"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Not an operator, or the token's account email is outside this Energon's allowed domains.",
+            "x-error-codes": [
+              "not_admin",
+              "forbidden_domain"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The eligible set differs from the preview that produced this confirm. Nothing was changed. The body is a fresh preview; show it and resend with its confirm.",
+            "x-error-codes": [
+              "cleanup_drift"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CleanupDriftError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "More than 100 eligible objects. Nothing was changed. Narrow the target.",
+            "x-error-codes": [
+              "cleanup_too_many"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CleanupTooManyError"
+                }
+              }
+            }
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/connections": {
       "post": {
         "operationId": "startConnection",
@@ -2463,6 +2581,95 @@
         },
         "additionalProperties": false
       },
+      "AdminCleanupRequest": {
+        "type": "object",
+        "required": [
+          "target",
+          "action"
+        ],
+        "properties": {
+          "target": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CleanupExplicitTarget"
+              },
+              {
+                "$ref": "#/components/schemas/AdminCleanupFilterTarget"
+              }
+            ],
+            "description": "Explicit ids, or filters. Mixing the two is 400 bad_target. {} selects every site and loose file on this Energon. scope is not accepted."
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "delete",
+              "set_ttl",
+              "expire"
+            ],
+            "description": "The safe default on someone else's content is set_ttl with 7d. expire is 400 when any eligible object is not the caller's. delete is the explicit choice."
+          },
+          "ttl": {
+            "$ref": "#/components/schemas/Ttl",
+            "description": "Required for set_ttl. Not accepted with delete or expire."
+          },
+          "confirm": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$",
+            "description": "Omit to preview. Send the confirm from the preview of this same body to execute."
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminCleanupFilterTarget": {
+        "type": "object",
+        "description": "List filters without involvement. owner is created_by. read_before matches last_read_at IS NULL OR last_read_at < that instant. scope is not a key.",
+        "properties": {
+          "q": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string",
+            "description": "created_by email. Same column as created_by; sending both with different values is 400."
+          },
+          "expires": {
+            "type": "string",
+            "enum": [
+              "never"
+            ]
+          },
+          "expires_before": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_before": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "read_before": {
+            "type": "string",
+            "format": "date-time",
+            "description": "No recorded read since this instant, including never recorded. last_read_at is a floor, not proof the object was not opened."
+          },
+          "min_size": {
+            "type": [
+              "string",
+              "integer"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "sites",
+              "files"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
       "CleanupExplicitTarget": {
         "type": "object",
         "description": "At least one of sites or files. No filter keys.",
@@ -2623,9 +2830,11 @@
           "kind",
           "ref",
           "name",
+          "owner",
           "bytes",
           "expires_at",
-          "updated_at"
+          "updated_at",
+          "last_read_at"
         ],
         "properties": {
           "kind": {
@@ -2637,6 +2846,10 @@
           "name": {
             "type": "string",
             "description": "Slug or filename."
+          },
+          "owner": {
+            "type": "string",
+            "description": "created_by email."
           },
           "bytes": {
             "type": "integer",
@@ -2651,7 +2864,16 @@
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Last written."
+          },
+          "last_read_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Last recorded read. A floor: hourly throttle plus up to about a day of edge-cache lag. Null means no recorded read, not that nobody has opened it."
           }
         }
       },

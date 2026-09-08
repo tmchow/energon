@@ -16,6 +16,7 @@ export type SelectionCriteria = {
   expires?: ExpiresFilter;
   updatedBefore?: string;
   minSize?: number;
+  readBefore?: string;
 };
 
 export type ListPresentation = {
@@ -35,7 +36,8 @@ export type ListPage<T> = {
 };
 
 export const CRITERIA_KEYS = ["scope", "q", "created_by", "expires", "expires_before", "updated_before", "min_size"] as const;
-export type CriteriaKey = (typeof CRITERIA_KEYS)[number];
+export type AdminCriteriaKey = "owner" | "read_before";
+export type CriteriaKey = (typeof CRITERIA_KEYS)[number] | AdminCriteriaKey;
 
 export type ParsedCriteria = { criteria: SelectionCriteria; malformed: CriteriaKey[] };
 
@@ -94,8 +96,9 @@ function sizeFrom(raw: string | undefined, malformed: CriteriaKey[]): number | u
  * One parser for the URL list query and the JSON cleanup target. It never throws;
  * the caller decides whether `malformed` keys are dropped (hub URL) or a 400 (cleanup).
  */
-export function criteriaFrom(input: Record<string, unknown>): ParsedCriteria {
+export function criteriaFrom(input: Record<string, unknown>, opts?: { admin?: boolean }): ParsedCriteria {
   const malformed: CriteriaKey[] = [];
+  const extra: AdminCriteriaKey[] = [];
   const read = (key: CriteriaKey): string | undefined => {
     const value = textValue(input[key]);
     if (value === null) {
@@ -113,7 +116,23 @@ export function criteriaFrom(input: Record<string, unknown>): ParsedCriteria {
   if (updatedBefore) criteria.updatedBefore = updatedBefore;
   const minSize = sizeFrom(typeof input.min_size === "number" ? String(input.min_size) : read("min_size"), malformed);
   if (minSize !== undefined) criteria.minSize = minSize;
-  return { criteria, malformed };
+  if (opts?.admin) {
+    const ownerRaw = textValue(input.owner);
+    if (ownerRaw === null) extra.push("owner");
+    else if (ownerRaw) {
+      const owner = ownerRaw.toLowerCase();
+      if (criteria.createdBy && criteria.createdBy !== owner) extra.push("owner");
+      else criteria.createdBy = owner;
+    }
+    const readBeforeRaw = textValue(input.read_before);
+    if (readBeforeRaw === null) extra.push("read_before");
+    else if (readBeforeRaw) {
+      const iso = isoTimestamp(readBeforeRaw);
+      if (iso === null) extra.push("read_before");
+      else criteria.readBefore = iso;
+    }
+  }
+  return { criteria, malformed: extra.length ? [...malformed, ...extra] : malformed };
 }
 
 export function parseSort(raw: string | null | undefined): CatalogSort {
@@ -207,6 +226,7 @@ type Columns = {
   name: string;
   updated: string;
   expires: string;
+  read: string;
   size: string;
   sizeClause: "where" | "having";
 };
@@ -220,6 +240,7 @@ const COLUMNS: Record<CatalogKind, Columns> = {
     name: "s.slug",
     updated: "s.updated_at",
     expires: "s.expires_at",
+    read: "s.last_read_at",
     size: SITE_SIZE_SQL,
     sizeClause: "having",
   },
@@ -230,6 +251,7 @@ const COLUMNS: Record<CatalogKind, Columns> = {
     name: "filename",
     updated: FILE_UPDATED_SQL,
     expires: "expires_at",
+    read: "last_read_at",
     size: "size",
     sizeClause: "where",
   },
@@ -248,13 +270,28 @@ function expiresPredicate(col: string, filter: ExpiresFilter): { sql: string; bi
   }
 }
 
-export function criteriaSql(kind: CatalogKind, criteria: SelectionCriteria, me: string, ownerId?: string): CriteriaSql {
+export function criteriaSql(
+  kind: CatalogKind,
+  criteria: SelectionCriteria,
+  me: string,
+  ownerId?: string,
+  opts?: { involved?: boolean },
+): CriteriaSql {
   const cols = COLUMNS[kind];
-  const involvement = involvementSql(cols.created, cols.written, me, criteria, ownerId ? { col: cols.owner, id: ownerId } : undefined);
-  const where = [involvement.sql];
-  const whereBinds: unknown[] = [...involvement.binds];
+  const where: string[] = [];
+  const whereBinds: unknown[] = [];
   const having: string[] = [];
   const havingBinds: unknown[] = [];
+  if (opts?.involved === false) {
+    if (criteria.createdBy) {
+      where.push(`${cols.created} = ?`);
+      whereBinds.push(criteria.createdBy);
+    }
+  } else {
+    const involvement = involvementSql(cols.created, cols.written, me, criteria, ownerId ? { col: cols.owner, id: ownerId } : undefined);
+    where.push(involvement.sql);
+    whereBinds.push(...involvement.binds);
+  }
   const needle = likeNeedle(criteria.q);
   if (needle) {
     where.push(`${cols.name} LIKE ?`);
@@ -269,13 +306,17 @@ export function criteriaSql(kind: CatalogKind, criteria: SelectionCriteria, me: 
     where.push(`${cols.updated} < ?`);
     whereBinds.push(criteria.updatedBefore);
   }
+  if (criteria.readBefore !== undefined) {
+    where.push(`(${cols.read} IS NULL OR ${cols.read} < ?)`);
+    whereBinds.push(criteria.readBefore);
+  }
   if (criteria.minSize !== undefined) {
     const clause = cols.sizeClause === "having" ? having : where;
     const binds = cols.sizeClause === "having" ? havingBinds : whereBinds;
     clause.push(`${cols.size} >= ?`);
     binds.push(criteria.minSize);
   }
-  return { where: where.join(" AND "), whereBinds, having: having.join(" AND "), havingBinds };
+  return { where: where.length ? where.join(" AND ") : "1=1", whereBinds, having: having.join(" AND "), havingBinds };
 }
 
 export function encodeCursor(parts: string[]): string {

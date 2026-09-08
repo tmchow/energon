@@ -465,6 +465,7 @@ export function helpBody(origin: string, env?: Env): unknown {
       `Make a copy: POST /v1/sites {"slug":"new-slug","duplicate_from":"existing-id"} or POST /v1/files {"duplicate_from":"id"} (optional filename). You become created_by. write_policy is this Energon's default. Fresh TTL. Password is not copied. Anyone who can read via /v1 can duplicate. If you already have replacement bytes this turn, POST/PUT those instead.`,
       `Give humans the /{handle}/s or /{handle}/f URL (and the password, if any). Agents can use that URL plus X-Energon-Password, or api_url with their token.`,
       `Clean up in bulk with POST /v1/cleanup: target ids or the list filters (expires=never, updated_before, min_size, q, created_by), action delete, set_ttl (with ttl), or expire (30m grace). Without confirm it is a dry run. Show the human the preview (matched, eligible, skipped, bytes, sample), then resend the same body with its confirm to execute. GET /v1/sites and GET /v1/files take the same filters plus sort=size|age to find candidates first.`,
+      `Operators: POST /v1/admin/cleanup is the same machinery without involvement, plus owner and read_before filters (read_before means no recorded read since that instant; last_read_at is a floor and must not be treated as unread). scope is not accepted. The sample shows owner, last written, and last read. expire is 400 when any eligible object is not yours; set_ttl 7d is the safe default on someone else's content so their catalog shows Expires. delete is explicit. Execute is recorded at GET /v1/admin/audit. 403 not_admin otherwise.`,
       ...helpGuestWriteSop(),
     ],
     routes: {
@@ -478,6 +479,8 @@ export function helpBody(origin: string, env?: Env): unknown {
       "GET /v1/whoami": "token label, owner email, expires_at (null = never), and admin (true only for an admin-scoped token whose owner is still on ADMIN_EMAILS)",
       "DELETE /v1/whoami": "revoke the calling token (self only); later calls with it are 401",
       "GET /v1/admin/audit": "operator log of admin actions that touched content metadata: who, token id if any, action, filters, counts, when. ?limit=&cursor=. Never bytes or secrets. 403 not_admin otherwise",
+      "POST /v1/admin/cleanup":
+        '{ "target": { "sites"?: [id], "files"?: [id] } or filters { "q"?, "created_by"?, "owner"?, "expires"?: "never", "expires_before"?, "updated_before"?, "read_before"?, "min_size"?, "kind"?: "sites"|"files" } (no scope), "action": "delete"|"set_ttl"|"expire", "ttl"?: string (set_ttl only), "confirm"?: string } — across every account. Sample includes owner, updated_at (last written), last_read_at (floor; null is no recorded read). expire is 400 if any eligible object is not yours. set_ttl 7d is the safe default on someone else\'s content. delete is explicit. Execute is audited. 403 not_admin otherwise.',
       "POST /v1/sites": '{ "slug", "password"?: string, "write_password"?: string, "ttl"?: string, "write_policy"?: "owner"|"org", "duplicate_from"?: id }',
       "PATCH /v1/sites/{id}": '{ "password"?: string, "write_password"?: string, "ttl"?: string, "write_policy"?: "owner"|"org" } — empty password or write_password clears. ttl resets expiry from now. write_policy and write_password are creator-only.',
       "GET /v1/sites/{id}/files/{path}": "raw file bytes (token)",

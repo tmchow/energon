@@ -117,6 +117,18 @@ describe("criteriaFrom", () => {
     expect(parsed.criteria.expires).toBeUndefined();
     expect(parsed.malformed).toEqual(["expires", "expires_before"]);
   });
+
+  it("maps admin owner onto createdBy and parses read_before", () => {
+    expect(criteriaFrom({ owner: "Ada@Esperlabs.app" }, { admin: true })).toEqual({
+      criteria: { scope: "involved", q: "", createdBy: "ada@esperlabs.app" },
+      malformed: [],
+    });
+    expect(criteriaFrom({ created_by: "ada@esperlabs.app", owner: "ada@esperlabs.app" }, { admin: true }).malformed).toEqual([]);
+    expect(criteriaFrom({ created_by: "ada@esperlabs.app", owner: "bob@esperlabs.app" }, { admin: true }).malformed).toEqual(["owner"]);
+    expect(criteriaFrom({ read_before: "2026-01-01" }, { admin: true }).criteria.readBefore).toBe("2026-01-01T00:00:00.000Z");
+    expect(criteriaFrom({ read_before: "not-a-date" }, { admin: true }).malformed).toEqual(["read_before"]);
+    expect(criteriaFrom({ owner: "ada@esperlabs.app" }).criteria.createdBy).toBeUndefined();
+  });
 });
 
 describe("criteriaSql", () => {
@@ -143,6 +155,18 @@ describe("criteriaSql", () => {
     expect(sql.whereBinds).toEqual([ME, ME, "2026-06-01T00:00:00.000Z"]);
     expect(sql.having).toBe("COALESCE(SUM(f.size), 0) >= ?");
     expect(sql.havingBinds).toEqual([500 * 1024 * 1024]);
+  });
+
+  it("drops involvement when asked and matches last_read_at as a floor", () => {
+    const empty = criteriaSql("files", { scope: "involved", q: "" }, ME, undefined, { involved: false });
+    expect(empty.where).toBe("1=1");
+    expect(empty.whereBinds).toEqual([]);
+    const owner = criteriaFrom({ owner: "ada@esperlabs.app", read_before: "2026-03-01T00:00:00Z" }, { admin: true }).criteria;
+    const sql = criteriaSql("files", owner, ME, undefined, { involved: false });
+    expect(sql.where).toBe("created_by = ? AND (last_read_at IS NULL OR last_read_at < ?)");
+    expect(sql.whereBinds).toEqual(["ada@esperlabs.app", "2026-03-01T00:00:00.000Z"]);
+    const sites = criteriaSql("sites", owner, ME, undefined, { involved: false });
+    expect(sites.where).toBe("s.created_by = ? AND (s.last_read_at IS NULL OR s.last_read_at < ?)");
   });
 });
 

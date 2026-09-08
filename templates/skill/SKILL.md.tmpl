@@ -291,6 +291,8 @@ curl -sS {{ORIGIN}}/v1/cleanup \
 
 Objects you cannot write (someone else's `owner` policy) are skipped, not an error. `expire` never moves an expiry later. Prefer `expire` over `delete` when the human is unsure; there is no recycle bin.
 
+Operators listed in `ADMIN_EMAILS` may mint an admin-scoped token at {{ORIGIN}}/tokens (the connect flow never grants it) and call `POST /v1/admin/cleanup`. Same preview, confirm, and cap as this scenario, without involvement, plus `owner` and `read_before`. `read_before` means no recorded read since that instant; `last_read_at` is a floor, never treat it as unread. `scope` is not accepted. `expire` is only for content you own. On someone else's content the safe default is `set_ttl` with `7d` so their catalog shows Expires. `delete` is explicit. Execute is recorded at `GET /v1/admin/audit`. Other callers get `403 not_admin`.
+
 ## Scenario K — Done with this token
 
 The task is finished, the token came from this session's connection (Scenario F), and nothing else stores it. Revoke it yourself so the human does not have to find it later on {{ORIGIN}}/tokens:

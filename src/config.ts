@@ -22,6 +22,8 @@ export const WRITTEN_VIA_WRITE_PASSWORD = "write_password";
 export const RESERVED_HANDLES = new Set(["v1", "account", "static", "health", "about", "stats", "setup", "tokens", "admin"]);
 /** Inserted after TOKEN_PREFIX so an admin secret is recognizable in a log without a second accepted prefix. */
 export const ADMIN_TOKEN_INFIX = "adm_";
+/** Safe default when an operator sets a TTL on content they do not own. */
+export const ADMIN_CLEANUP_DEFAULT_TTL = "7d";
 export const RESERVED_SLUGS = new Set<string>();
 
 export const SLUG_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;

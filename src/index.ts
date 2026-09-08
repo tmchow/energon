@@ -203,6 +203,12 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     return auditListResponse(env, url);
   }
 
+  if (path === "/account/admin/cleanup" && method === "POST") {
+    const actor = await requireHuman(request, env, ctx);
+    requireAdmin(actor);
+    return cleanupResponse(env, ctx, actor, await readJson(request), { admin: true });
+  }
+
   if (path === "/account/data" && method === "GET") {
     const actor = await actorFromAccess(request, env, ctx);
     if (actor) assertEmailAllowed(env, actor.email);
@@ -453,6 +459,12 @@ async function api(
     const actor = await requireToken(request, env);
     requireAdmin(actor);
     return auditListResponse(env, new URL(request.url));
+  }
+
+  if (path === "/v1/admin/cleanup" && method === "POST") {
+    const actor = await requireToken(request, env);
+    requireAdmin(actor);
+    return cleanupResponse(env, ctx, actor, await readJson(request), { admin: true });
   }
 
   const looseOne = path.match(/^\/v1\/files\/([^/]+)(?:\/[^/]+)?$/);

@@ -1,3 +1,4 @@
+import { recordAdminAudit } from "./audit";
 import { assertNever } from "./catalog";
 import { deleteLooseFile, patchLoose } from "./files";
 import { ApiError, json, publicOrigin, sha256Hex } from "./http";
@@ -20,7 +21,6 @@ import {
 import { deleteSite, patchSite } from "./sites";
 import type { Actor, Env } from "./types";
 
-/** Bump when the canonical confirm string changes shape so stale confirms drift instead of executing. */
 const CONFIRM_VERSION = "1";
 const EXPIRE_GRACE_SECONDS = 30 * 60;
 const CONFIRM_RE = /^[0-9a-f]{32}$/;
@@ -39,9 +39,11 @@ export type ObjectSummary = {
   kind: ObjectRef["kind"];
   ref: string;
   name: string;
+  owner: string;
   bytes: number;
   expires_at: string | null;
   updated_at: string;
+  last_read_at: string | null;
 };
 export type AppliedObject = { kind: ObjectRef["kind"]; ref: string; name: string; bytes: number; expires_at?: string | null };
 export type FailedObject = { kind: ObjectRef["kind"]; ref: string; error: string };
@@ -110,11 +112,17 @@ function parseConfirm(raw: unknown): string | null {
   return confirm;
 }
 
-export function parseCleanupRequest(env: Env, body: Record<string, unknown>): CleanupRequest {
+export function parseCleanupRequest(env: Env, body: Record<string, unknown>, opts?: { admin?: boolean }): CleanupRequest {
   if (!Object.prototype.hasOwnProperty.call(body, "target")) {
-    throw new ApiError(400, "bad_target", "target is required. Send { sites, files } ids or list filters; {} selects everything you are involved in.");
+    throw new ApiError(
+      400,
+      "bad_target",
+      opts?.admin
+        ? "target is required. Send { sites, files } ids or list filters; {} selects every site and loose file on this Energon."
+        : "target is required. Send { sites, files } ids or list filters; {} selects everything you are involved in.",
+    );
   }
-  return { selection: parseSelection(body.target), action: parseAction(env, body), confirm: parseConfirm(body.confirm) };
+  return { selection: parseSelection(body.target, { admin: opts?.admin }), action: parseAction(env, body), confirm: parseConfirm(body.confirm) };
 }
 
 function ttlLabel(action: CleanupAction): string | undefined {
@@ -138,9 +146,14 @@ function alreadyExpiring(cutoffIso: string | null): SkipPredicate | undefined {
   };
 }
 
-export async function planCleanup(env: Env, actor: Actor, request: CleanupRequest): Promise<CleanupPlan> {
+export async function planCleanup(
+  env: Env,
+  actor: Actor,
+  request: CleanupRequest,
+  opts?: { admin?: boolean },
+): Promise<CleanupPlan> {
   const skip = request.action.kind === "expire" ? alreadyExpiring(request.action.ttl.expiresAt) : undefined;
-  const resolved = await resolveSelection(env, actor, request.selection, skip);
+  const resolved = await resolveSelection(env, actor, request.selection, skip, { admin: opts?.admin });
   return { resolved, confirm: await confirmToken(request.action, resolved.eligible) };
 }
 
@@ -149,9 +162,11 @@ function summary(object: CleanupObject): ObjectSummary {
     kind: object.ref.kind,
     ref: refString(object.ref),
     name: object.name,
+    owner: object.created_by,
     bytes: object.bytes,
     expires_at: object.expires_at,
     updated_at: object.updated_at,
+    last_read_at: object.last_read_at,
   };
 }
 
@@ -182,6 +197,7 @@ async function applyOne(
   actor: Actor,
   action: CleanupAction,
   object: CleanupObject,
+  authority?: "admin",
 ): Promise<AppliedObject> {
   const ref = object.ref;
   const applied: AppliedObject = { kind: ref.kind, ref: refString(ref), name: object.name, bytes: object.bytes };
@@ -189,10 +205,10 @@ async function applyOne(
     case "delete":
       switch (ref.kind) {
         case "site":
-          await deleteSite(env, ctx, actor, ref.id);
+          await deleteSite(env, ctx, actor, ref.id, authority);
           return applied;
         case "file":
-          await deleteLooseFile(env, ctx, actor, ref.id);
+          await deleteLooseFile(env, ctx, actor, ref.id, authority);
           return applied;
         default:
           return assertNever(ref);
@@ -202,12 +218,12 @@ async function applyOne(
       const patch = { ttl: action.ttlInput, setTtl: true };
       switch (ref.kind) {
         case "site": {
-          const response = await patchSite(env, actor, ref.id, patch, ctx);
+          const response = await patchSite(env, actor, ref.id, patch, ctx, authority);
           applied.expires_at = await expiresFrom(response);
           return applied;
         }
         case "file": {
-          const response = await patchLoose(env, actor, ref.id, patch, ctx);
+          const response = await patchLoose(env, actor, ref.id, patch, ctx, authority);
           applied.expires_at = await expiresFrom(response);
           return applied;
         }
@@ -243,6 +259,7 @@ export async function executeCleanup(
   actor: Actor,
   request: CleanupRequest,
   plan: CleanupPlan,
+  authority?: "admin",
 ): Promise<CleanupResult> {
   const applied: AppliedObject[] = [];
   const failed: FailedObject[] = [];
@@ -250,7 +267,7 @@ export async function executeCleanup(
   let bytes = 0;
   for (const object of plan.resolved.eligible) {
     try {
-      applied.push(await applyOne(env, ctx, actor, request.action, object));
+      applied.push(await applyOne(env, ctx, actor, request.action, object, authority));
       bytes += object.bytes;
     } catch (err) {
       const failure = normalizeFailure(err);
@@ -271,17 +288,45 @@ export async function executeCleanup(
   return result;
 }
 
+function assertExpireOwn(actor: Actor, action: CleanupAction, eligible: CleanupObject[]): void {
+  if (action.kind !== "expire") return;
+  const me = actor.email.toLowerCase();
+  if (eligible.some((object) => object.created_by.toLowerCase() !== me)) {
+    throw new ApiError(
+      400,
+      "bad_action",
+      "expire is only for content you own. Use set_ttl to give someone else's content a deadline they can extend from the hub.",
+    );
+  }
+}
+
 export async function runCleanup(
   env: Env,
   ctx: ExecutionContext | undefined,
   actor: Actor,
   body: Record<string, unknown>,
+  opts?: { admin?: boolean },
 ): Promise<CleanupOutcome> {
-  const request = parseCleanupRequest(env, body);
-  const plan = await planCleanup(env, actor, request);
+  const request = parseCleanupRequest(env, body, opts);
+  const plan = await planCleanup(env, actor, request, opts);
+  assertExpireOwn(actor, request.action, plan.resolved.eligible);
   if (request.confirm === null) return { kind: "preview", preview: previewBody(request.action, plan) };
   if (request.confirm !== plan.confirm) return { kind: "drift", preview: previewBody(request.action, plan) };
-  return { kind: "executed", result: await executeCleanup(env, ctx, actor, request, plan) };
+  const authority = opts?.admin ? "admin" : undefined;
+  const result = await executeCleanup(env, ctx, actor, request, plan, authority);
+  if (opts?.admin) {
+    await recordAdminAudit(env, actor, {
+      action: "cleanup",
+      target: { action: request.action.kind, ttl: ttlLabel(request.action), target: body.target },
+      matched: plan.resolved.matched,
+      eligible: plan.resolved.eligible.length,
+      applied: result.applied.total,
+      skipped: result.skipped.total,
+      failed: result.failed.total,
+      confirm: request.confirm,
+    });
+  }
+  return { kind: "executed", result };
 }
 
 export async function cleanupResponse(
@@ -289,8 +334,9 @@ export async function cleanupResponse(
   ctx: ExecutionContext | undefined,
   actor: Actor,
   body: Record<string, unknown>,
+  opts?: { admin?: boolean },
 ): Promise<Response> {
-  const outcome = await runCleanup(env, ctx, actor, body);
+  const outcome = await runCleanup(env, ctx, actor, body, opts);
   switch (outcome.kind) {
     case "preview":
       return json(outcome.preview);

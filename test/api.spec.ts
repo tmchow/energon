@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import { unzipSync, zipSync, strToU8 } from "fflate";
 import { describe, expect, it } from "vitest";
+import { ADMIN_CLEANUP_DEFAULT_TTL } from "../src/config";
 import { GATE_COOKIE, hashSharePassword, unlockToken } from "../src/gate";
 import { auth, access, createSite, json, mint, req } from "./helpers";
 
@@ -1951,6 +1952,194 @@ describe("Energon", () => {
       expect(noAuth.status).toBe(401);
       const wrongMethod = await json("/v1/cleanup", { headers: auth(token) });
       expect(wrongMethod.status).toBe(404);
+    });
+  });
+
+  describe("admin cleanup", () => {
+    const ownerEmail = "adm-owner@esperlabs.app";
+    const post = (token: string, body: unknown) =>
+      json("/v1/admin/cleanup", { method: "POST", headers: auth(token, { "content-type": "application/json" }), body: JSON.stringify(body) });
+
+    async function mintAdmin(label: string): Promise<string> {
+      const created = await json("/account/tokens", {
+        method: "POST",
+        headers: access("admin@esperlabs.app", { "content-type": "application/json" }),
+        body: JSON.stringify({ label, scope: "admin" }),
+      });
+      expect(created.status).toBe(201);
+      expect(String(created.body.token)).toMatch(/^ee_live_adm_/);
+      return created.body.token as string;
+    }
+
+    it("refuses callers who are not operators and still acts as the account for ordinary /v1", async () => {
+      const outsider = await mint("adm-nope", ownerEmail);
+      const denied = await post(outsider, { target: {}, action: "delete" });
+      expect(denied.status).toBe(403);
+      expect(denied.body.error).toBe("not_admin");
+
+      const operatorAccount = await json("/account/tokens", {
+        method: "POST",
+        headers: access("admin@esperlabs.app", { "content-type": "application/json" }),
+        body: JSON.stringify({ label: "adm-plain" }),
+      });
+      expect(operatorAccount.status).toBe(201);
+      const stillDenied = await post(operatorAccount.body.token, { target: {}, action: "delete" });
+      expect(stillDenied.status).toBe(403);
+      expect(stillDenied.body.error).toBe("not_admin");
+
+      const noAuth = await json("/v1/admin/cleanup", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      expect(noAuth.status).toBe(401);
+
+      const hubDenied = await json("/account/admin/cleanup", {
+        method: "POST",
+        headers: access(ownerEmail, { "content-type": "application/json" }),
+        body: JSON.stringify({ target: {}, action: "delete" }),
+      });
+      expect(hubDenied.status).toBe(403);
+      expect(hubDenied.body.error).toBe("not_admin");
+
+      const admin = await mintAdmin("adm-who");
+      const me = await json("/v1/whoami", { headers: auth(admin) });
+      expect(me.body.admin).toBe(true);
+      expect(me.body.email).toBe("admin@esperlabs.app");
+    });
+
+    it("previews another account's work, sets a 7d TTL, and leaves last written alone", async () => {
+      const owner = await mint("adm-owner", ownerEmail);
+      const created = await json("/v1/sites", {
+        method: "POST",
+        headers: auth(owner, { "content-type": "application/json" }),
+        body: JSON.stringify({ slug: "adm-keep" }),
+      });
+      expect(created.status).toBe(201);
+      const id = created.body.id as string;
+      const put = await json(`/v1/sites/${id}/files/index.html`, { method: "PUT", headers: auth(owner), body: "<p>keep</p>" });
+      expect(put.status).toBe(201);
+      const before = await json(`/v1/sites/${id}`, { headers: auth(owner) });
+      expect(before.body.expires_at).toBeNull();
+      const updatedAt = before.body.updated_at as string;
+      const writtenBy = before.body.last_written_by as string;
+
+      const admin = await mintAdmin("adm-ttl");
+      const scoped = await post(admin, { target: { scope: "involved", owner: ownerEmail }, action: "set_ttl", ttl: ADMIN_CLEANUP_DEFAULT_TTL });
+      expect(scoped.status).toBe(400);
+      expect(scoped.body.error).toBe("bad_target");
+      expect(scoped.body.message).toMatch(/scope/);
+
+      const clash = await post(admin, { target: { owner: ownerEmail, created_by: "other@esperlabs.app" }, action: "set_ttl", ttl: ADMIN_CLEANUP_DEFAULT_TTL });
+      expect(clash.status).toBe(400);
+      expect(clash.body.error).toBe("bad_query");
+      expect(clash.body.fields).toContain("owner");
+
+      const expire = await post(admin, { target: { sites: [id] }, action: "expire" });
+      expect(expire.status).toBe(400);
+      expect(expire.body.error).toBe("bad_action");
+      expect(expire.body.message).toMatch(/set_ttl/);
+
+      const preview = await post(admin, { target: { owner: ownerEmail, kind: "sites", q: "adm-keep" }, action: "set_ttl", ttl: ADMIN_CLEANUP_DEFAULT_TTL });
+      expect(preview.status).toBe(200);
+      expect(preview.body.executed).toBe(false);
+      expect(preview.body.action).toBe("set_ttl");
+      expect(preview.body.ttl).toBe(ADMIN_CLEANUP_DEFAULT_TTL);
+      expect(preview.body.eligible).toBe(1);
+      expect(preview.body.sample[0]).toMatchObject({
+        kind: "site",
+        ref: id,
+        name: "adm-keep",
+        owner: ownerEmail,
+        expires_at: null,
+        last_read_at: null,
+      });
+      expect(preview.body.sample[0].updated_at).toBe(updatedAt);
+      expect(JSON.stringify(preview.body)).not.toMatch(/password/);
+      expect((await json(`/v1/sites/${id}`, { headers: auth(owner) })).body.expires_at).toBeNull();
+
+      const executed = await post(admin, {
+        target: { owner: ownerEmail, kind: "sites", q: "adm-keep" },
+        action: "set_ttl",
+        ttl: ADMIN_CLEANUP_DEFAULT_TTL,
+        confirm: preview.body.confirm,
+      });
+      expect(executed.status).toBe(200);
+      expect(executed.body.executed).toBe(true);
+      expect(executed.body.applied.total).toBe(1);
+      expect(executed.body.ttl).toBe(ADMIN_CLEANUP_DEFAULT_TTL);
+
+      const after = await json(`/v1/sites/${id}`, { headers: auth(owner) });
+      expect(after.status).toBe(200);
+      expect(after.body.last_written_by).toBe(writtenBy);
+      expect(after.body.updated_at).toBe(updatedAt);
+      const until = Date.parse(after.body.expires_at);
+      expect(until - Date.now()).toBeGreaterThan(6 * 86400 * 1000);
+      expect(until - Date.now()).toBeLessThan(8 * 86400 * 1000);
+
+      const listed = await json("/v1/sites?q=adm-keep", { headers: auth(owner) });
+      expect(listed.body.sites[0].expires_at).toBe(after.body.expires_at);
+
+      const log = await json("/v1/admin/audit", { headers: auth(admin) });
+      expect(log.status).toBe(200);
+      const event = log.body.events.find((row: { confirm: string | null }) => row.confirm === preview.body.confirm);
+      expect(event).toMatchObject({
+        actor_email: "admin@esperlabs.app",
+        action: "cleanup",
+        applied: 1,
+        eligible: 1,
+      });
+      expect(event.token_id).toBeTruthy();
+      expect(JSON.stringify(event.target)).not.toMatch(/password/);
+    });
+
+    it("filters by owner and recorded-read floor, and the hub POST is the same route", async () => {
+      const owner = await mint("adm-read", ownerEmail);
+      const quiet = await json("/v1/files", {
+        method: "POST",
+        headers: auth(owner, { "X-Filename": "adm-quiet.txt", "content-type": "text/plain" }),
+        body: "quiet",
+      });
+      const seen = await json("/v1/files", {
+        method: "POST",
+        headers: auth(owner, { "X-Filename": "adm-seen.txt", "content-type": "text/plain" }),
+        body: "seen",
+      });
+      expect(quiet.status).toBe(201);
+      expect(seen.status).toBe(201);
+      await env.DB.prepare(`UPDATE loose_files SET last_read_at = ? WHERE id = ?`).bind(new Date().toISOString(), seen.body.id).run();
+
+      const admin = await mintAdmin("adm-read-ops");
+      const past = new Date(Date.now() - 60_000).toISOString();
+      const preview = await post(admin, {
+        target: { owner: ownerEmail, kind: "files", q: "adm-", read_before: past },
+        action: "delete",
+      });
+      expect(preview.status).toBe(200);
+      expect(preview.body.sample.map((row: { name: string }) => row.name).sort()).toEqual(["adm-quiet.txt"]);
+      expect(preview.body.sample[0].last_read_at).toBeNull();
+      expect(preview.body.sample[0].owner).toBe(ownerEmail);
+
+      const future = await post(admin, {
+        target: { owner: ownerEmail, kind: "files", q: "adm-", read_before: new Date(Date.now() + 60_000).toISOString() },
+        action: "delete",
+      });
+      expect(future.body.sample.map((row: { name: string }) => row.name).sort()).toEqual(["adm-quiet.txt", "adm-seen.txt"]);
+
+      const hub = await json("/account/admin/cleanup", {
+        method: "POST",
+        headers: access("admin@esperlabs.app", { "content-type": "application/json" }),
+        body: JSON.stringify({ target: { files: [quiet.body.id] }, action: "delete" }),
+      });
+      expect(hub.status).toBe(200);
+      expect(hub.body.executed).toBe(false);
+      expect(hub.body.eligible).toBe(1);
+      expect(hub.body.sample[0].owner).toBe(ownerEmail);
+
+      const done = await json("/account/admin/cleanup", {
+        method: "POST",
+        headers: access("admin@esperlabs.app", { "content-type": "application/json" }),
+        body: JSON.stringify({ target: { files: [quiet.body.id] }, action: "delete", confirm: hub.body.confirm }),
+      });
+      expect(done.status).toBe(200);
+      expect(done.body.applied.total).toBe(1);
+      expect((await req(`/v1/files/${quiet.body.id}`, { headers: auth(owner) })).status).toBe(404);
     });
   });
 
