@@ -17,7 +17,8 @@ Fill Authorship. Name the model, not the product. Do not claim a human reviewed 
 
 ## Verify
 
-<!-- Commands you ran (`npm run test:unit -- test/unit/…`, `npx vitest run test/api.spec.ts`). For hub / `/v1` / gate / token / public URL changes, also the verify-energon feature you drove. Green CI is not enough for those. -->
+- **Tests:** <!-- Commands from the Tests table in AGENTS.md -->
+- **verify-energon:** <!-- Feature file you drove (`features/….md`). Read `.agents/skills/verify-energon/SKILL.md` first. `n/a` plus why only when there is no hub / `/v1` / gate / token / public URL path. Green CI is not enough. -->
 
 ## Risk
 

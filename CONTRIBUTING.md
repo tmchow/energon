@@ -51,8 +51,9 @@ they will likely squash on merge.
 
 Match the table in [AGENTS.md](./AGENTS.md). CI (`.github/workflows/ci.yml`) must stay green.
 
-For hub UI, `/v1`, gate, token, or public URL changes, green CI is not proof. Drive the matching
-recipe in `.agents/skills/verify-energon/`. Follow [DESIGN.md](./DESIGN.md) for UI.
+For hub UI, `/v1`, gate, token, or public URL changes, green CI is not proof. Read and follow
+the verify-energon skill ([`.agents/skills/verify-energon/SKILL.md`](./.agents/skills/verify-energon/SKILL.md))
+and name the feature file you drove in the PR. Follow [DESIGN.md](./DESIGN.md) for UI.
 
 Do not `wrangler deploy`, stamp `d1_migrations`, or execute D1 against production. New schema
 belongs in `migrations/` first, plus `src/db.ts` and `src/schema.sql` as [AGENTS.md](./AGENTS.md) describes.

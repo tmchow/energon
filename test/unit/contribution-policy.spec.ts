@@ -33,6 +33,9 @@ describe("contribution policy", () => {
     }
     expect(template).toContain("**Model:**");
     expect(template).toContain("**Human review:**");
+    expect(template).toContain("**Tests:**");
+    expect(template).toContain("**verify-energon:**");
+    expect(template).toContain(".agents/skills/verify-energon/SKILL.md");
     expect(template).toContain("No feat:/fix:/chore: prefix");
     expect(template).not.toMatch(/^Fork PRs are closed automatically/m);
   });
@@ -42,5 +45,12 @@ describe("contribution policy", () => {
     expect(contributing).toContain("Issues and pull requests are welcome");
     expect(contributing).not.toContain("Pull requests are not.");
     expect(contributing).toContain("Do **not** use conventional-commit prefixes");
+    expect(contributing).toContain("verify-energon skill");
+  });
+
+  it("tells agents to read and run the verify-energon skill", () => {
+    const agents = readFileSync(join(root, "AGENTS.md"), "utf8");
+    expect(agents).toContain(".agents/skills/verify-energon/SKILL.md");
+    expect(agents).toContain("name that file in Verify");
   });
 });
