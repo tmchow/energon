@@ -1,4 +1,4 @@
-import type { InstanceIdentity } from '../page-data';
+import type { AdminHealthSnapshot, InstanceIdentity } from '../page-data';
 import type { StatsPayload } from '../page-data';
 import type { BulkRevokePreview, BulkRevokeResult, BulkRevokeTarget, TokenStatus } from '../token-status';
 
@@ -76,7 +76,8 @@ export type AdminAuditEvent = {
   bytes: number | null;
   confirm: string | null;
 };
-export type AdminData = { email: string; handle: string; admin: boolean; policy: RetentionPolicy };
+export type { AdminHealthSnapshot };
+export type AdminData = { email: string; handle: string; admin: boolean; policy: RetentionPolicy; health: AdminHealthSnapshot };
 export type PageProps = (
   | { page: 'hub'; data: HubData }
   | { page: 'tokens'; data: TokensData }

@@ -1379,6 +1379,47 @@
         }
       }
     },
+    "/v1/admin/health": {
+      "get": {
+        "operationId": "getAdminHealth",
+        "tags": [
+          "admin"
+        ],
+        "summary": "Read platform storage health",
+        "description": "Needs an admin token (scope=admin and owner still on ADMIN_EMAILS). Returns quota used versus the cap, catalog SUM(size), expired objects awaiting purge, stale purge claims, locked share gates, and catalog counts. Never returns published bytes, share passwords, or write passwords. Account tokens and the connect flow get 403 forbidden_admin.",
+        "responses": {
+          "200": {
+            "description": "Health snapshot.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminHealth"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenAdmin"
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/connections": {
       "post": {
         "operationId": "startConnection",
@@ -4249,6 +4290,67 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "AdminHealth": {
+        "type": "object",
+        "required": [
+          "quota",
+          "expired_awaiting_purge",
+          "stale_purge_claims",
+          "locked_gates",
+          "locked_scopes",
+          "sites",
+          "files",
+          "people"
+        ],
+        "properties": {
+          "quota": {
+            "type": "object",
+            "required": [
+              "used_bytes",
+              "catalog_bytes",
+              "limit_bytes"
+            ],
+            "properties": {
+              "used_bytes": {
+                "type": "integer",
+                "description": "platform_quota.used ledger. This is the value that blocks publishes."
+              },
+              "catalog_bytes": {
+                "type": "integer",
+                "description": "SUM(size) over site_files and loose_files."
+              },
+              "limit_bytes": {
+                "type": "integer",
+                "description": "MAX_PLATFORM_BYTES for this Energon."
+              }
+            }
+          },
+          "expired_awaiting_purge": {
+            "type": "integer"
+          },
+          "stale_purge_claims": {
+            "type": "integer"
+          },
+          "locked_gates": {
+            "type": "integer"
+          },
+          "locked_scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sites": {
+            "type": "integer"
+          },
+          "files": {
+            "type": "integer"
+          },
+          "people": {
+            "type": "integer"
           }
         }
       },

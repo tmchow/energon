@@ -439,6 +439,10 @@ describe("hub account API", () => {
     expect(auditDenied.status).toBe(403);
     expect(auditDenied.body.error).toBe("forbidden_admin");
 
+    const healthDenied = await json("/account/admin/health", { headers: access("ada@esperlabs.app") });
+    expect(healthDenied.status).toBe(403);
+    expect(healthDenied.body.error).toBe("forbidden_admin");
+
     const preview = await json("/account/admin/cleanup", {
       method: "POST",
       headers: access("admin@esperlabs.app", { "content-type": "application/json" }),
@@ -451,5 +455,13 @@ describe("hub account API", () => {
     const listed = await json("/account/admin/audit", { headers: access("admin@esperlabs.app") });
     expect(listed.status).toBe(200);
     expect(listed.body.events.some((e: { action: string; executed: boolean }) => e.action === "cleanup" && !e.executed)).toBe(true);
+
+    const health = await json("/account/admin/health", { headers: access("admin@esperlabs.app") });
+    expect(health.status).toBe(200);
+    expect(health.body.quota.limit_bytes).toBe(20 * 1024 * 1024 * 1024);
+    expect(health.body.quota.used_bytes).toBeGreaterThanOrEqual(0);
+    expect(health.body.expired_awaiting_purge).toBeGreaterThanOrEqual(0);
+    expect(health.body.stale_purge_claims).toBeGreaterThanOrEqual(0);
+    expect(JSON.stringify(health.body)).not.toMatch(/password/i);
   });
 });

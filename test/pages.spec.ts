@@ -263,6 +263,10 @@ describe("signed-in pages", () => {
     expect(page.status).toBe(200);
     const html = await page.text();
     expect(html).toContain("Retire old work.");
+    expect(html).toContain('id="admin-health"');
+    expect(html).toContain("Quota used is the ledger");
+    expect(html).toContain("Expired awaiting purge");
+    expect(html).toContain("Stale purge claims");
     expect(html).toContain('id="admin-owner"');
     expect(html).toContain('id="admin-q"');
     expect(html).toContain('id="admin-last-read"');
@@ -281,6 +285,9 @@ describe("signed-in pages", () => {
     expect(bootstrap(html).page).toBe("admin");
     expect(bootstrap(html).data.admin).toBe(true);
     expect(bootstrap(html).data.handle).toBe("user-admin");
+    expect(bootstrap(html).data.health.quota.limit_bytes).toBe(20 * 1024 * 1024 * 1024);
+    expect(bootstrap(html).data.health.quota.used_bytes).toBeGreaterThanOrEqual(0);
+    expect(bootstrap(html).data.health.expired_awaiting_purge).toBeGreaterThanOrEqual(0);
     assertDomBindings(html);
   });
 

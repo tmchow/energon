@@ -27,6 +27,21 @@ export type PlatformHeadroom = {
   limit_bytes: number;
 };
 
+export type AdminHealthSnapshot = {
+  quota: {
+    used_bytes: number;
+    catalog_bytes: number;
+    limit_bytes: number;
+  };
+  expired_awaiting_purge: number;
+  stale_purge_claims: number;
+  locked_gates: number;
+  locked_scopes: string[];
+  sites: number;
+  files: number;
+  people: number;
+};
+
 export type StatsPayload = {
   email: string;
   admin?: boolean;

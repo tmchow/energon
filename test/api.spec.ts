@@ -1975,6 +1975,32 @@ describe("Energon", () => {
     });
   });
 
+  describe("admin health", () => {
+    it("returns quota and pending-purge counts for an admin token only", async () => {
+      const admin = await mintAdmin("health-ops");
+      const listed = await json("/v1/admin/health", { headers: auth(admin) });
+      expect(listed.status).toBe(200);
+      expect(listed.body.quota.limit_bytes).toBe(20 * 1024 * 1024 * 1024);
+      expect(listed.body.quota.used_bytes).toBeGreaterThanOrEqual(0);
+      expect(listed.body.quota.catalog_bytes).toBeGreaterThanOrEqual(0);
+      expect(listed.body.expired_awaiting_purge).toBeGreaterThanOrEqual(0);
+      expect(listed.body.stale_purge_claims).toBeGreaterThanOrEqual(0);
+      expect(listed.body.locked_gates).toBeGreaterThanOrEqual(0);
+      expect(Array.isArray(listed.body.locked_scopes)).toBe(true);
+      const raw = JSON.stringify(listed.body);
+      expect(raw).not.toContain(admin);
+      expect(raw).not.toMatch(/password/i);
+
+      const noAuth = await json("/v1/admin/health");
+      expect(noAuth.status).toBe(401);
+
+      const account = await mint("health-plain", "admin@esperlabs.app");
+      const asAccount = await json("/v1/admin/health", { headers: auth(account) });
+      expect(asAccount.status).toBe(403);
+      expect(asAccount.body.error).toBe("forbidden_admin");
+    });
+  });
+
   describe("admin audit", () => {
     it("records nothing until an admin action, and never leaks secrets", async () => {
       const admin = await mintAdmin("audit-empty");
