@@ -5,7 +5,6 @@ import {
   readTokenScope,
   requireAdmin,
   requireHuman,
-  requireToken,
   type BulkRevokeOutcome,
   type TokenListing,
 } from "./auth";
@@ -126,12 +125,6 @@ export async function listAdminTokens(env: Env, url: URL, now = Date.now()): Pro
     tokens: page.map((row) => toListing(row, now)),
     next_cursor: found.length > limit && last ? `${last.created_at}|${last.id}` : null,
   };
-}
-
-export async function adminTokensListResponse(request: Request, env: Env): Promise<Response> {
-  const actor = await requireToken(request, env);
-  requireAdmin(actor, publicOrigin(env));
-  return secretJson(await listAdminTokens(env, new URL(request.url)));
 }
 
 export async function hubAdminTokensListResponse(

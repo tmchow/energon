@@ -16,6 +16,11 @@ A standalone published file addressed independently rather than as a path within
 ### Site mutation
 An operation that changes one or more Site files or the Site itself. A mutation is complete only when its storage and catalog changes agree; a failed mutation must restore the prior state or report an explicit recovery failure.
 
+### Last read
+The most recent moment this Energon itself served a Site's or Loose file's bytes, kept as an inactivity signal for cleanup.
+
+It is a floor, not a view count: public reads answered from the edge cache never reach this Energon, and stamps are throttled, so the value can lag real reads by up to the public cache lifetime plus the throttle. An absent value means no recorded read, never "unread". Cleanup filters treat no recorded read as older than any cutoff.
+
 ### Purge claim
 A temporary catalog marker that gives expiration cleanup exclusive permission to remove an expired Site or loose file from storage and the catalog.
 

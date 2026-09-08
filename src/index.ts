@@ -1,16 +1,16 @@
 import { uiPage } from "./ui-render";
 import { connectResponse } from "./connect";
-import { decideConnection, exchangeConnection, purgeConnections, startConnection } from "./connections";
+import { CONNECTION_JSON_MAX_BYTES, decideConnection, purgeConnections } from "./connections";
 import { aboutResponse } from "./about";
 import { instanceFooter, PRIVATE_HTML_HEADERS } from "./chrome";
 import logoSvg from "./logo.svg";
-import { actorFromAccess, assertEmailAllowed, bulkRevokeResponse, helpBody, listTokens, mintToken, parseTokenScope, rejectWorkersDevForHumans, requireAdmin, requireHuman, requireToken, revokeToken, unauthorized } from "./auth";
+import { actorFromAccess, assertEmailAllowed, bulkRevokeResponse, helpBody, listTokens, mintToken, parseTokenScope, rejectWorkersDevForHumans, requireAdmin, requireHuman, revokeToken, unauthorized } from "./auth";
 import { setupResponse } from "./setup";
 import { statsResponse } from "./stats";
 import { parseListQuery } from "./catalog";
-import { adminAuditResponse, listAdminAudit, requireAdminActor } from "./audit";
-import { adminHealthResponse, hubAdminHealthResponse, adminRecomputeResponse, hubAdminRecomputeResponse, adminSweepResponse, hubAdminSweepResponse, adminUnlockResponse, hubAdminUnlockResponse } from "./admin-health";
-import { adminTokensListResponse, hubAdminTokensListResponse, revokeAdminTokens } from "./admin-tokens";
+import { listAdminAudit } from "./audit";
+import { hubAdminHealthResponse, hubAdminRecomputeResponse, hubAdminSweepResponse, hubAdminUnlockResponse } from "./admin-health";
+import { hubAdminTokensListResponse, revokeAdminTokens } from "./admin-tokens";
 import { adminResponse } from "./admin";
 import { cleanupResponse } from "./cleanup";
 import { llmsResponse } from "./llms";
@@ -26,29 +26,23 @@ import { CONTENT_ONLY_404_MESSAGE } from "./guest-write-protocol";
 import { ensureUser } from "./handles";
 import { identityFromEnv } from "./instance";
 import { MEMORABLE_WORDS } from "./memorable";
-import { deleteLooseFile, getLooseFile, hubLists, hubLooseLinkAccess, listLooseJson, patchLoose, postLooseFromRequest, putLooseFromRequest, serveLoose } from "./files";
-import { passwordField, writePasswordField } from "./gate";
-import { ApiError, accountOriginRequired, assertTrustedAccountOrigin, contentOrigin, dedicatedContentOrigin, isLocalHost, isMermaidAssetPath, isPublicContentPath, json, jsonMaybeSecret, publicOrigin, readBodyCapped, secretJson, serveMermaidAsset, wantsDownload } from "./http";
+import { deleteLooseFile, getLooseFile, hubLists, hubLooseLinkAccess, patchLoose, postLooseFromRequest, putLooseFromRequest, serveLoose } from "./files";
+import { contentPatch } from "./gate";
+import { ApiError, accountOriginRequired, assertTrustedAccountOrigin, contentOrigin, dedicatedContentOrigin, isLocalHost, isMermaidAssetPath, isPublicContentPath, json, jsonMaybeSecret, methodNotAllowed, publicOrigin, readBodyCapped, readJson, secretJson, serveMermaidAsset } from "./http";
 import { instancePolicy, policyPublic, tokenPolicy, tokenPolicyPublic, adminTokenPolicy, emailIsAdmin } from "./policy";
 import {
-  createSite,
   deleteSite,
-  deleteSiteFile,
-  duplicateSite,
   exportSiteZip,
-  getSiteFile,
   hubSiteLinkAccess,
   importSiteZip,
-  listSiteJson,
-  listSitesJson,
   patchSite,
+  postSite,
   putSiteFile,
   serveSite,
 } from "./sites";
 import { isSiteId, sitePublicUrl } from "./urls";
-import type { Actor, Env } from "./types";
-
-const CONNECTION_JSON_MAX_BYTES = 4096;
+import { dispatchV1 } from "./v1-routes";
+import type { Env } from "./types";
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -162,7 +156,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     return unauthorized(publicOrigin(env), undefined, env).toResponse(publicOrigin(env));
   }
 
-  if (path.startsWith("/v1/")) return api(request, env, ctx, path, method);
+  if (path.startsWith("/v1/")) return dispatchV1(request, env, ctx, path, method);
 
   if (accountOriginRequired(method, path)) {
     assertTrustedAccountOrigin(request);
@@ -434,180 +428,6 @@ function contentResponse(response: Response, env: Env, contentHost: boolean): Re
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
-async function api(
-  request: Request,
-  env: Env,
-  ctx: ExecutionContext,
-  path: string,
-  method: string,
-): Promise<Response> {
-  if (path === "/v1/connections") {
-    if (method === "POST") return startConnection(request, env, await readJson(request, CONNECTION_JSON_MAX_BYTES));
-    return methodNotAllowed();
-  }
-  const connectionToken = path.match(/^\/v1\/connections\/([^/]+)\/token$/);
-  if (connectionToken) {
-    if (method === "POST") return exchangeConnection(env, connectionToken[1], await readJson(request, CONNECTION_JSON_MAX_BYTES));
-    return methodNotAllowed();
-  }
-
-  if (path === "/v1/whoami" && method === "GET") {
-    const actor = await requireToken(request, env);
-    return secretJson({
-      email: actor.email,
-      label: actor.tokenLabel,
-      expires_at: actor.tokenExpiresAt ?? null,
-      scope: actor.tokenScope ?? "account",
-      admin: Boolean(actor.admin),
-    });
-  }
-
-  if (path === "/v1/whoami" && method === "DELETE") {
-    const actor = await requireToken(request, env);
-    await revokeToken(env, actor.email, actor.tokenId ?? "", actor.userId);
-    return secretJson({ ok: true, revoked: true, label: actor.tokenLabel });
-  }
-
-  if (path === "/v1/sites" && method === "GET") {
-    const actor = await requireToken(request, env);
-    return listSitesJson(env, actor.email, parseListQuery(new URL(request.url)), actor.userId);
-  }
-
-  if (path === "/v1/sites" && method === "POST") {
-    const actor = await requireToken(request, env);
-    const body = await readJson(request);
-    const result = await postSite(env, actor, body, ctx);
-    return jsonMaybeSecret(result.body, result.status);
-  }
-
-  if (path === "/v1/files" && method === "GET") {
-    const actor = await requireToken(request, env);
-    return listLooseJson(env, actor.email, parseListQuery(new URL(request.url)), actor.userId);
-  }
-
-  if (path === "/v1/files" && method === "POST") {
-    const actor = await requireToken(request, env);
-    return postLooseFromRequest(env, ctx, actor, request);
-  }
-
-  if (path === "/v1/export" && method === "GET") {
-    const actor = await requireToken(request, env);
-    return exportOwnedZip(env, ctx, actor);
-  }
-
-  if (path === "/v1/cleanup" && method === "POST") {
-    const actor = await requireToken(request, env);
-    return cleanupResponse(env, ctx, actor, await readJson(request));
-  }
-
-  if (path === "/v1/admin/audit" && method === "GET") {
-    return adminAuditResponse(request, env);
-  }
-
-  if (path === "/v1/admin/health" && method === "GET") {
-    return adminHealthResponse(request, env);
-  }
-
-  if (path === "/v1/admin/quota/recompute" && method === "POST") {
-    return adminRecomputeResponse(request, env);
-  }
-
-  if (path === "/v1/admin/sweep" && method === "POST") {
-    return adminSweepResponse(request, env, ctx);
-  }
-
-  if (path === "/v1/admin/gates/unlock" && method === "POST") {
-    return adminUnlockResponse(request, env, await readJson(request));
-  }
-
-  if (path === "/v1/admin/tokens" && method === "GET") {
-    return adminTokensListResponse(request, env);
-  }
-
-  if (path === "/v1/admin/tokens/revoke" && method === "POST") {
-    const actor = await requireAdminActor(request, env);
-    return revokeAdminTokens(env, actor, await readJson(request));
-  }
-
-  if (path === "/v1/admin/cleanup" && method === "POST") {
-    const actor = await requireAdminActor(request, env);
-    return cleanupResponse(env, ctx, actor, await readJson(request), { admin: true });
-  }
-
-  const looseOne = path.match(/^\/v1\/files\/([^/]+)(?:\/[^/]+)?$/);
-  if (looseOne && (method === "GET" || method === "PUT" || method === "PATCH" || method === "DELETE")) {
-    const actor = await requireToken(request, env);
-    const id = decodeURIComponent(looseOne[1]);
-    if (method === "GET") return getLooseFile(env, ctx, id, { attachment: wantsDownload(request) });
-    if (method === "DELETE") {
-      await deleteLooseFile(env, ctx, actor, id);
-      return json({ ok: true, deleted: id });
-    }
-    if (method === "PATCH") {
-      const body = await readJson(request);
-      return patchLoose(env, actor, id, contentPatch(body), ctx);
-    }
-    return putLooseFromRequest(env, ctx, actor, id, request);
-  }
-
-  const importMatch = path.match(/^\/v1\/sites\/([^/]+)\/import$/);
-  if (importMatch && method === "POST") {
-    const actor = await requireToken(request, env);
-    const bytes = await readBodyCapped(request, instancePolicy(env).fileBytes, publicOrigin(env));
-    const result = await importSiteZip(env, ctx, actor, decodeURIComponent(importMatch[1]), bytes);
-    return json(result);
-  }
-
-  const exportMatch = path.match(/^\/v1\/sites\/([^/]+)\/export$/);
-  if (exportMatch && method === "GET") {
-    const actor = await requireToken(request, env);
-    return exportSiteZip(env, ctx, actor, decodeURIComponent(exportMatch[1]));
-  }
-
-  const putMatch = path.match(/^\/v1\/sites\/([^/]+)\/files\/(.+)$/);
-  if (putMatch && (method === "GET" || method === "PUT" || method === "DELETE")) {
-    const actor = await requireToken(request, env);
-    const id = decodeURIComponent(putMatch[1]);
-    const filePath = putMatch[2];
-    if (method === "GET") return getSiteFile(env, ctx, actor, id, filePath);
-    if (method === "DELETE") {
-      await deleteSiteFile(env, ctx, actor, id, filePath);
-      return json({ ok: true, deleted: true, path: filePath });
-    }
-    const bytes = await readBodyCapped(request, instancePolicy(env).fileBytes, publicOrigin(env));
-    const result = await putSiteFile(env, ctx, actor, id, filePath, bytes, request.headers.get("content-type"));
-    return json(
-      { url: result.url, api_url: result.api_url, path: result.path, size: result.size, content_type: result.content_type },
-      result.created ? 201 : 200,
-    );
-  }
-
-  const siteMatch = path.match(/^\/v1\/sites\/([^/]+)$/);
-  if (siteMatch && (method === "GET" || method === "DELETE" || method === "PATCH")) {
-    const actor = await requireToken(request, env);
-    const id = decodeURIComponent(siteMatch[1]);
-    if (method === "DELETE") {
-      await deleteSite(env, ctx, actor, id);
-      return json({ ok: true, deleted: id });
-    }
-    if (method === "PATCH") {
-      const body = await readJson(request);
-      return patchSite(env, actor, id, contentPatch(body), ctx);
-    }
-    return listSiteJson(env, ctx, actor, id);
-  }
-
-  await requireToken(request, env);
-  return json(
-    {
-      error: "not_found",
-      message: `No API route for ${method} ${path}. See ${publicOrigin(env)}/v1/help.`,
-      hub: `${publicOrigin(env)}/account`,
-    },
-    404,
-  );
-}
-
 async function serveHub(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const actor = await actorFromAccess(request, env, ctx);
   if (actor) assertEmailAllowed(env, actor.email);
@@ -645,107 +465,6 @@ async function serveTokens(request: Request, env: Env, ctx: ExecutionContext): P
     admin_token_policy: tokenPolicyPublic(adminTokenPolicy(), publicOrigin(env)),
   };
   return new Response(uiPage(`Tokens — ${PRODUCT}`, { page: "tokens", data: { ...bootstrap, now: Date.now() }, footer: instanceFooter(env) }), { headers: PRIVATE_HTML_HEADERS });
-}
-
-async function postSite(
-  env: Env,
-  actor: Actor,
-  body: Record<string, unknown>,
-  ctx: ExecutionContext,
-): Promise<{ body: Record<string, unknown>; status: number }> {
-  const from = typeof body.duplicate_from === "string" ? body.duplicate_from.trim() : "";
-  if (from) {
-    if (overwriteFlag(body.overwrite)) {
-      throw new ApiError(
-        400,
-        "bad_duplicate",
-        "duplicate_from creates a new site. Omit overwrite and pick a new slug.",
-      );
-    }
-    return duplicateSite(
-      env,
-      actor,
-      from,
-      String(body.slug || ""),
-      ctx,
-      body.ttl,
-      body.write_policy,
-      passwordField(body),
-      writePasswordField(body),
-    );
-  }
-  return createSite(
-    env,
-    actor,
-    String(body.slug || ""),
-    passwordField(body),
-    ctx,
-    body.ttl,
-    body.write_policy,
-    writePasswordField(body),
-  );
-}
-
-/** Only JSON `true` counts. Strings like `"false"` must not. */
-function overwriteFlag(raw: unknown): boolean {
-  return raw === true;
-}
-
-function contentPatch(body: Record<string, unknown>): {
-  password?: string;
-  write_password?: string;
-  ttl?: unknown;
-  setTtl?: boolean;
-  write_policy?: unknown;
-} {
-  const patch: {
-    password?: string;
-    write_password?: string;
-    ttl?: unknown;
-    setTtl?: boolean;
-    write_policy?: unknown;
-  } = {
-    password: passwordField(body),
-    ttl: body.ttl,
-    setTtl: Object.prototype.hasOwnProperty.call(body, "ttl"),
-  };
-  if (Object.prototype.hasOwnProperty.call(body, "write_password")) {
-    patch.write_password = writePasswordField(body);
-  }
-  if (Object.prototype.hasOwnProperty.call(body, "write_policy")) {
-    patch.write_policy = body.write_policy;
-  }
-  return patch;
-}
-
-async function readJson(request: Request, maxBytes?: number): Promise<Record<string, unknown>> {
-  const ctype = request.headers.get("content-type") || "";
-  if (ctype.includes("application/x-www-form-urlencoded") || ctype.includes("multipart/form-data")) {
-    throw new ApiError(415, "bad_content_type", "Send a JSON object body.");
-  }
-  let received = 0;
-  const body = maxBytes && request.body
-    ? request.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        received += chunk.byteLength;
-        if (received > maxBytes) throw new ApiError(413, "too_large", `Connection requests must be at most ${maxBytes} bytes.`, { limit_bytes: maxBytes });
-        controller.enqueue(chunk);
-      },
-    }))
-    : request.body;
-  const text = maxBytes ? await new Response(body).text() : await request.text();
-  if (!text) return {};
-  try {
-    const parsed = JSON.parse(text) as unknown;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
-    throw new Error("not object");
-  } catch {
-    throw new ApiError(400, "bad_json", "Send a JSON object body.");
-  }
-}
-
-function methodNotAllowed(): Response {
-  return json({ error: "method_not_allowed", message: "Method not allowed." }, 405);
 }
 
 export type { Env };

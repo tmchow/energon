@@ -22,7 +22,7 @@ import {
   schedulePurgeExpiredSite,
 } from "./expire";
 import { isMarkdownName, respondMarkdown } from "./markdown";
-import { maybeUnlockWithWritePassword, passwordEcho, passwordHashFromInput, protectContent, assignPasswordStore, hubLinkAccessFields, storedPasswordSecret, writePasswordHashFromInput } from "./gate";
+import { maybeUnlockWithWritePassword, passwordEcho, passwordField, passwordHashFromInput, protectContent, assignPasswordStore, hubLinkAccessFields, storedPasswordSecret, writePasswordField, writePasswordHashFromInput } from "./gate";
 import { ensureUser } from "./handles";
 import { mintObjectId } from "./ids";
 import { ApiError, applyIsolation, assertStorageRoom, basename, contentDisposition, copyR2Object, deletePrefix, htmlPage, json, jsonMaybeSecret, nanoid, normalizeRelPath, publicOrigin, releaseStorage, secretJson, tooLarge, wantsDownload } from "./http";
@@ -335,6 +335,45 @@ export async function createSite(
       write_policy: storedWrite,
     },
   };
+}
+
+export async function postSite(
+  env: Env,
+  actor: Actor,
+  body: Record<string, unknown>,
+  ctx: ExecutionContext,
+): Promise<{ body: Record<string, unknown>; status: number }> {
+  const from = typeof body.duplicate_from === "string" ? body.duplicate_from.trim() : "";
+  if (from) {
+    if (body.overwrite === true) {
+      throw new ApiError(
+        400,
+        "bad_duplicate",
+        "duplicate_from creates a new site. Omit overwrite and pick a new slug.",
+      );
+    }
+    return duplicateSite(
+      env,
+      actor,
+      from,
+      String(body.slug || ""),
+      ctx,
+      body.ttl,
+      body.write_policy,
+      passwordField(body),
+      writePasswordField(body),
+    );
+  }
+  return createSite(
+    env,
+    actor,
+    String(body.slug || ""),
+    passwordField(body),
+    ctx,
+    body.ttl,
+    body.write_policy,
+    writePasswordField(body),
+  );
 }
 
 export async function duplicateSite(

@@ -44,6 +44,33 @@ export function writePasswordField(body: Record<string, unknown>): string | unde
   return String(body.write_password);
 }
 
+export function contentPatch(body: Record<string, unknown>): {
+  password?: string;
+  write_password?: string;
+  ttl?: unknown;
+  setTtl?: boolean;
+  write_policy?: unknown;
+} {
+  const patch: {
+    password?: string;
+    write_password?: string;
+    ttl?: unknown;
+    setTtl?: boolean;
+    write_policy?: unknown;
+  } = {
+    password: passwordField(body),
+    ttl: body.ttl,
+    setTtl: Object.prototype.hasOwnProperty.call(body, "ttl"),
+  };
+  if (Object.prototype.hasOwnProperty.call(body, "write_password")) {
+    patch.write_password = writePasswordField(body);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "write_policy")) {
+    patch.write_policy = body.write_policy;
+  }
+  return patch;
+}
+
 export async function writePasswordHashFromInput(raw: string | undefined): Promise<string | null | undefined> {
   if (raw === undefined) return undefined;
   if (raw.length > 128) {
