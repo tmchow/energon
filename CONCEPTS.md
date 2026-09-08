@@ -21,6 +21,11 @@ The most recent moment this Energon itself served a Site's or Loose file's bytes
 
 It is a floor, not a view count: public reads answered from the edge cache never reach this Energon, and stamps are throttled, so the value can lag real reads by up to the public cache lifetime plus the throttle. An absent value means no recorded read, never "unread". Cleanup filters treat no recorded read as older than any cutoff.
 
+### Platform quota
+The single running total of stored bytes that every publish reserves against before writing, so concurrent publishes cannot jointly pass this Energon's storage cap.
+
+The catalog's recorded sizes are the truth; the quota is a derived ledger. Failed or interrupted releases can only leave it too high, never too low, so a drifted quota refuses publishes that should succeed. Admins repair it by recomputing it from the catalog, which deletes nothing. Bytes in storage with no catalog row do not count toward it.
+
 ### Purge claim
 A temporary catalog marker that gives expiration cleanup exclusive permission to remove an expired Site or loose file from storage and the catalog.
 
