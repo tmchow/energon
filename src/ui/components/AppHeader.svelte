@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import Logo from './Logo.svelte';
-  let { active, email, end, publicPage = false }: { active?: string; email?: string | null; end?: Snippet; publicPage?: boolean } = $props();
-  const links = [['hub', '/', 'Hub'], ['tokens', '/tokens', 'Tokens'], ['setup', '/setup', 'Setup'], ['about', '/about', 'About'], ['stats', '/stats', 'Stats']];
+  let { active, email, end, publicPage = false, admin = false }: { active?: string; email?: string | null; end?: Snippet; publicPage?: boolean; admin?: boolean } = $props();
+  const links = $derived([['hub', '/', 'Hub'], ['tokens', '/tokens', 'Tokens'], ['setup', '/setup', 'Setup'], ['about', '/about', 'About'], ['stats', '/stats', 'Stats'], ...(admin ? [['admin', '/admin', 'Admin']] : [])]);
 </script>
 <header class="en-top" class:en-top--public={publicPage}><div class="en-top-inner">
   <Logo breathe />

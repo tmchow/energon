@@ -30,7 +30,7 @@ It is not a system of record. Code and anything that must be versioned and revie
 ## Boundaries
 
 - Not a repo or system of record. Code and anything that needs versioning and review stays in git. Copies are independent objects; there are no branches, merges, or revision history.
-- Not an org-wide catalog. Listing and search are scoped to what you created, edited, or were involved in; no one can dump another person's catalog.
+- Not an org-wide catalog. Listing and search are scoped to what you created, edited, or were involved in; no one can dump another person's catalog. One exception: operators listed in `ADMIN_EMAILS` may list metadata of others' content for maintenance (owner, name, size, last written, last read, expiry). Never bytes or secrets. Every such action is recorded.
 - Not a document editor. People edit in their own tools or through agents. Shared writes happen through in-place replacement under write policy, or through a per-object write password on the public URL; `curl` and `?raw=1` stay the source, last write wins, no merge. Referencing an artifact does not require permission to change it.
 - Not a hosted public service. `getenergon.com` explains the project but does not provide an Energon account or host files. This repo is what you fork; running Energon requires setup in your own Cloudflare account.
 - Not a general-purpose CDN or app platform. Files and small sites only, no server-side code.

@@ -121,6 +121,11 @@ span.en-scan.en-scan--on:hover { color: var(--fg-hot); }
   cursor: not-allowed;
 }
 .en-md-wrap { max-width: 46rem; }
+.en-admin-card { margin-top: 16px; }
+.en-admin-filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 12px; align-items: end; }
+.en-admin-actions { display: flex; flex-wrap: wrap; gap: 9px; align-items: end; margin-top: 14px; }
+.en-admin-kind { display: block; color: var(--fg-3); font: 400 12px/1.3 var(--font-mono); }
+.en-admin-target { font: 400 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
 @media (max-width: 719px) {
   .en-mint { grid-template-columns: 1fr; }
   .en-mint > .en-field { width: 100%; }

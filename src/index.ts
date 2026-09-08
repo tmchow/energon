@@ -5,7 +5,7 @@ import { aboutResponse } from "./about";
 import { instanceFooter, PRIVATE_HTML_HEADERS } from "./chrome";
 import logoSvg from "./logo.svg";
 import { actorFromAccess, assertEmailAllowed, bulkRevokeResponse, helpBody, listTokens, mintToken, rejectWorkersDevForHumans, requireAdmin, requireHuman, requireToken, revokeToken, unauthorized } from "./auth";
-import { auditListResponse } from "./audit";
+import { auditListResponse, listAdminAudit } from "./audit";
 import { setupResponse } from "./setup";
 import { statsResponse } from "./stats";
 import { parseListQuery } from "./catalog";
@@ -13,7 +13,7 @@ import { cleanupResponse } from "./cleanup";
 import { llmsResponse } from "./llms";
 import { authMarkdownResponse } from "./auth-doc";
 import { openapiResponse } from "./openapi";
-import { PRODUCT, RESERVED_HANDLES } from "./config";
+import { PRODUCT, RESERVED_HANDLES, ADMIN_CLEANUP_DEFAULT_TTL } from "./config";
 import { ensureSchema } from "./db";
 import { sweepExpired } from "./expire";
 import { remapLegacySiteR2 } from "./site-r2-migrate";
@@ -195,6 +195,10 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
 
   if (path === "/tokens" && method === "GET") {
     return serveTokens(request, env, ctx);
+  }
+
+  if (path === "/admin" && method === "GET") {
+    return serveAdmin(request, env, ctx);
   }
 
   if (path === "/account/admin/audit" && method === "GET") {
@@ -561,6 +565,7 @@ async function serveHub(request: Request, env: Env, ctx: ExecutionContext): Prom
     files_total: lists.files_total,
     sites_cursor: lists.sites_cursor,
     files_cursor: lists.files_cursor,
+    admin: Boolean(actor?.admin),
   };
   return new Response(uiPage(PRODUCT, { page: "hub", data: { ...bootstrap, words: MEMORABLE_WORDS, query: parseListQuery(new URL(request.url)) }, footer: instanceFooter(env) }), { headers: PRIVATE_HTML_HEADERS });
 }
@@ -577,6 +582,37 @@ async function serveTokens(request: Request, env: Env, ctx: ExecutionContext): P
     admin_token_policy: tokenPolicyPublic(adminTokenPolicy(), publicOrigin(env)),
   };
   return new Response(uiPage(`Tokens — ${PRODUCT}`, { page: "tokens", data: { ...bootstrap, now: Date.now() }, footer: instanceFooter(env) }), { headers: PRIVATE_HTML_HEADERS });
+}
+
+async function serveAdmin(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const actor = await requireHuman(request, env, ctx);
+  if (!actor.admin) {
+    return json(
+      {
+        error: "not_found",
+        message: `No route for GET /admin. See ${publicOrigin(env)}/v1/help.`,
+        hub: `${publicOrigin(env)}/account`,
+      },
+      404,
+    );
+  }
+  const listed = await listAdminAudit(env, new URL(request.url));
+  return new Response(
+    uiPage(`Admin — ${PRODUCT}`, {
+      page: "admin",
+      data: {
+        email: actor.email,
+        admin: true,
+        policy: policyPublic(instancePolicy(env)),
+        default_ttl: ADMIN_CLEANUP_DEFAULT_TTL,
+        audit: listed.events,
+        audit_total: listed.total,
+        audit_cursor: listed.next_cursor,
+      },
+      footer: instanceFooter(env),
+    }),
+    { headers: PRIVATE_HTML_HEADERS },
+  );
 }
 
 async function postSite(

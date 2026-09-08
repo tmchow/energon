@@ -64,6 +64,7 @@ describe("signed-in pages", () => {
     expect((await req(asset, { method: "POST" })).status).toBe(405);
     expect(html.indexOf('href="/tokens"')).toBeLessThan(html.indexOf('href="/setup"'));
     expect(html.indexOf('href="/setup"')).toBeLessThan(html.indexOf('href="/about"'));
+    expect(html).not.toContain('href="/admin"');
   });
 
   it("renders catalog rows and the next-page control from real account data", async () => {
@@ -174,6 +175,51 @@ describe("signed-in pages", () => {
     expect(bootstrap(adminHtml).data.admin_token_policy.default).toBe("1d");
     expect(bootstrap(adminHtml).data.admin_token_policy.allow_never).toBe(false);
     assertDomBindings(adminHtml);
+    expect(adminHtml).toContain('href="/admin"');
+  });
+
+  it("serves /admin only to operators and keeps last written beside last read", async () => {
+    const denied = await json("/admin", { headers: access("ada@esperlabs.app") });
+    expect(denied.status).toBe(404);
+    expect(denied.body.error).toBe("not_found");
+    expect(JSON.stringify(denied.body)).not.toMatch(/Retire old work/);
+
+    const admin = await req("/admin", { headers: access("admin@esperlabs.app") });
+    expect(admin.status).toBe(200);
+    const html = await admin.text();
+    expect(html).toContain("Retire old work.");
+    expect(html).toContain("Last written");
+    expect(html).toContain("Last read");
+    expect(html).not.toMatch(/\bunread\b/i);
+    for (const id of [
+      "admin-q",
+      "admin-owner",
+      "admin-kind",
+      "admin-expires",
+      "admin-updated-before",
+      "admin-read-before",
+      "admin-expires-before",
+      "admin-min-size",
+      "admin-action",
+      "admin-ttl",
+      "admin-preview",
+      "admin-preview-note",
+      "admin-sample",
+      "admin-audit",
+      "admin-action-note",
+      "admin-confirm-dlg",
+    ]) {
+      expect(html).toContain(`id="${id}"`);
+    }
+    expect(html).toContain('aria-label="Cleanup action"');
+    expect(html).toContain("No recorded read since");
+    expect(html).toContain("Audit log");
+    expect(html).toContain('href="/admin"');
+    expect(bootstrap(html).page).toBe("admin");
+    expect(bootstrap(html).data.admin).toBe(true);
+    expect(bootstrap(html).data.default_ttl).toBe("7d");
+    expect(bootstrap(html).data.audit).toEqual([]);
+    assertDomBindings(html);
   });
 
   it("serves the Energon cube mark", async () => {

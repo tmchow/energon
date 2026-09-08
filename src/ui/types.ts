@@ -16,7 +16,7 @@ export type CatalogData = {
   email: string | null; sites: CatalogItem[]; files: CatalogItem[]; sites_total: number; files_total: number;
   sites_cursor: string | null; files_cursor: string | null; tokens?: Token[];
 };
-export type HubData = CatalogData & { handle: string | null; origin: string; content_origin: string; policy: RetentionPolicy; words: readonly string[]; query?: { q: string; scope: string; sort: string } };
+export type HubData = CatalogData & { handle: string | null; origin: string; content_origin: string; policy: RetentionPolicy; words: readonly string[]; query?: { q: string; scope: string; sort: string }; admin?: boolean };
 export type LinkAccess = {
   password_protected: boolean;
   password?: string | null;
@@ -24,7 +24,30 @@ export type LinkAccess = {
   write_password?: string | null;
 };
 export type TokensData = { email: string; tokens: Token[]; token_env: string; token_policy: TokenPolicy; now: number; admin?: boolean; admin_token_policy?: TokenPolicy };
-export type SetupData = { email: string; identity: InstanceIdentity; install: string };
+export type AdminSample = {
+  kind: 'site' | 'file'; ref: string; name: string; owner: string; bytes: number;
+  expires_at: string | null; updated_at: string; last_read_at: string | null;
+};
+export type CleanupPreview = {
+  action: string; ttl?: string; executed: false; matched: number; eligible: number; bytes: number;
+  skipped: { total: number; by_reason: Record<string, number>; sample: { kind: string; ref: string; reason: string }[] };
+  sample: AdminSample[]; confirm: string;
+};
+export type CleanupResult = {
+  action: string; ttl?: string; executed: true;
+  applied: { total: number; bytes: number; objects: { kind: string; ref: string; name: string; bytes: number; expires_at?: string | null }[] };
+  skipped: { total: number; by_reason: Record<string, number>; sample: { kind: string; ref: string; reason: string }[] };
+  failed: { total: number; objects: { kind: string; ref: string; error: string }[] };
+};
+export type AdminAuditEvent = {
+  id: string; at: string; actor_email: string; token_id: string | null; action: string;
+  target: Record<string, unknown>; matched: number; eligible: number; applied: number; skipped: number; failed: number; confirm: string | null;
+};
+export type AdminData = {
+  email: string; admin: boolean; policy: RetentionPolicy; default_ttl: string;
+  audit: AdminAuditEvent[]; audit_total: number; audit_cursor: string | null;
+};
+export type SetupData = { email: string; identity: InstanceIdentity; install: string; admin?: boolean };
 export type ConnectData = { email: string; host: string; connection: { id: string; label: string; expires_at: string }; token_policy: TokenPolicy };
 export type GateData = { action: string; wrong: boolean; limited?: boolean; passwordHeader: string };
 export type MarkdownData = { filename: string; rawHref: string; html: string; size?: number; updatedAt?: string };
@@ -34,7 +57,8 @@ export type PageProps = (
   | { page: 'setup'; data: SetupData }
   | { page: 'connect'; data: ConnectData }
   | { page: 'stats'; data: StatsPayload }
-  | { page: 'about'; data: { email: string } }
+  | { page: 'about'; data: { email: string; admin?: boolean } }
+  | { page: 'admin'; data: AdminData }
   | { page: 'gate'; data: GateData }
   | { page: 'markdown'; data: MarkdownData }
 ) & { footer?: string };

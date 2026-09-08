@@ -357,4 +357,14 @@ describe("hub account API", () => {
     expect((await json("/v1/whoami", { headers: auth(secrets[0]) })).status).toBe(401);
     expect((await json("/v1/whoami", { headers: auth(secrets[count - 1]) })).status).toBe(401);
   });
+
+  it("hides /admin from non-operators", async () => {
+    const hidden = await json("/admin", { headers: access("ada@esperlabs.app") });
+    expect(hidden.status).toBe(404);
+    expect(hidden.body.error).toBe("not_found");
+    const page = await req("/admin", { headers: access("admin@esperlabs.app") });
+    expect(page.status).toBe(200);
+    expect(page.headers.get("content-type")).toMatch(/html/);
+    expect(await page.text()).toContain("Retire old work.");
+  });
 });

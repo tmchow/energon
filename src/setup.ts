@@ -17,12 +17,12 @@ function installBlock(id: InstanceIdentity): string {
 Then read ${id.origin}/auth.md. If ${id.tokenEnv} is already set, use it. Otherwise connect with a code: show me the link and code, wait for my approval, then save the delivered token as ${id.tokenEnv} where this environment keeps secrets, readable only by me. Do not invent a token.`;
 }
 
-export function setupResponse(actor: Actor, env: Env): Response {
-  return new Response(setupPage(actor.email, identityFromEnv(env), instanceFooter(env)), {
-    headers: PRIVATE_HTML_HEADERS,
-  });
+export function setupPage(email: string, id: InstanceIdentity, footer = "", admin = false): string {
+  return uiPage(`Setup — ${PRODUCT}`, { page: "setup", data: { email, identity: id, install: installBlock(id), admin }, footer });
 }
 
-export function setupPage(email: string, id: InstanceIdentity, footer = ""): string {
-  return uiPage(`Setup — ${PRODUCT}`, { page: "setup", data: { email, identity: id, install: installBlock(id) }, footer });
+export function setupResponse(actor: Actor, env: Env): Response {
+  return new Response(setupPage(actor.email, identityFromEnv(env), instanceFooter(env), Boolean(actor.admin)), {
+    headers: PRIVATE_HTML_HEADERS,
+  });
 }
