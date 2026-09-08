@@ -12,8 +12,10 @@ export type ReadTarget = {
  * Record that this object's bytes were served. Best effort, off the response
  * path, and skipped while the stored stamp is younger than READ_THROTTLE_MS so
  * a popular page does not turn every request into a D1 write. Public reads
- * answered from the edge cache never reach the Worker, so the stored value is a
- * floor.
+ * answered from the edge cache do not reach the Worker, so the stored value is
+ * a floor, not a view count. The edge cache holds public responses for at most
+ * a day (PUBLIC_CACHE_SECONDS), so the stamp lags real reads by at most about a
+ * day plus the hourly throttle.
  */
 export function noteRead(env: Env, ctx: ExecutionContext | undefined, target: ReadTarget): void {
   const now = Date.now();

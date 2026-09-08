@@ -104,7 +104,7 @@ describe("Energon", () => {
     expect(await page.text()).toContain("hello demo");
     expect(page.headers.get("content-type")).toMatch(/text\/html/);
     expect(page.headers.get("cache-control")).toMatch(/public/);
-    expect(page.headers.get("cache-control")).toMatch(/s-maxage=31536000/);
+    expect(page.headers.get("cache-control")).toMatch(/s-maxage=86400/);
     expect(page.headers.get("content-security-policy")).toContain("sandbox");
     expect(page.headers.get("content-security-policy")).not.toContain("allow-same-origin");
 
