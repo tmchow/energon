@@ -27,6 +27,7 @@ import {
   schedulePurgeExpiredFile,
   staleClaimCutoff,
   WRITE_CLAIM_LIKE,
+  d1Changed,
 } from "./expire";
 import { ensureHandle, ensureUser } from "./handles";
 import { listSitesFor } from "./sites";
@@ -45,9 +46,12 @@ import {
   publicOrigin,
   readBodyCapped,
   releaseStorage,
+  restoreR2Object,
   secretJson,
+  snapshotR2Object,
   tooLarge,
   wantsDownload,
+  type R2ObjectSnapshot,
 } from "./http";
 import { isMarkdownName, respondMarkdown } from "./markdown";
 import { contentTypeFor } from "./mime";
@@ -66,11 +70,13 @@ import {
 import { noteRead } from "./reads";
 import type { Actor, Env, LooseFileRow } from "./types";
 
-type R2Snapshot = {
-  bytes: Uint8Array;
-  httpMetadata: R2HTTPMetadata | undefined;
-  customMetadata: Record<string, string> | undefined;
-};
+function assertFilename(raw: string, fallback: string): string {
+  const filename = basename(raw).slice(0, 180) || fallback;
+  if (filename === "." || filename === ".." || filename.includes("/")) {
+    throw new ApiError(400, "bad_filename", "Give a simple filename, not a path.");
+  }
+  return filename;
+}
 
 export async function createLooseFile(
   env: Env,
@@ -86,10 +92,7 @@ export async function createLooseFile(
 ): Promise<Response> {
   const policy = instancePolicy(env);
   if (bytes.byteLength > policy.fileBytes) throw tooLarge(bytes.byteLength, "", policy.fileBytes);
-  const filename = basename(filenameRaw).slice(0, 180) || "file";
-  if (filename === "." || filename === ".." || filename.includes("/")) {
-    throw new ApiError(400, "bad_filename", "Give a simple filename, not a path.");
-  }
+  const filename = assertFilename(filenameRaw, "file");
   contentOrigin(env);
   const user = await ensureUser(env, actor.email, actor.idpSub);
   const handle = user.handle;
@@ -180,10 +183,7 @@ export async function duplicateLooseFile(
   }
   contentOrigin(env);
   const policy = instancePolicy(env);
-  const filename = basename(filenameRaw || source.filename).slice(0, 180) || source.filename;
-  if (filename === "." || filename === ".." || filename.includes("/")) {
-    throw new ApiError(400, "bad_filename", "Give a simple filename, not a path.");
-  }
+  const filename = assertFilename(filenameRaw || source.filename, source.filename);
   const user = await ensureUser(env, actor.email, actor.idpSub);
   const handle = user.handle;
   const id = await mintFileId(env);
@@ -242,14 +242,17 @@ function filenameHeader(request: Request): string | null {
   return request.headers.get("X-Filename") || request.headers.get("x-filename");
 }
 
+function formOrHeader(form: FormData, formKey: string, header: string | undefined): string | undefined {
+  const formPw = form.get(formKey);
+  return header ?? (typeof formPw === "string" ? formPw : undefined);
+}
+
 function formPassword(request: Request, form: FormData): string | undefined {
-  const formPw = form.get("password");
-  return readSetPasswordHeader(request) ?? (typeof formPw === "string" ? formPw : undefined);
+  return formOrHeader(form, "password", readSetPasswordHeader(request));
 }
 
 function formWritePassword(request: Request, form: FormData): string | undefined {
-  const formPw = form.get("write_password");
-  return readSetWritePasswordHeader(request) ?? (typeof formPw === "string" ? formPw : undefined);
+  return formOrHeader(form, "write_password", readSetWritePasswordHeader(request));
 }
 
 async function postLooseJson(
@@ -435,7 +438,7 @@ export async function putLooseFile(
   const policy = instancePolicy(env);
   if (bytes.byteLength > policy.fileBytes) throw tooLarge(bytes.byteLength, "", policy.fileBytes);
   const existing = await env.DB.prepare(
-    `SELECT id, handle, filename, size, expires_at, created_by, last_written_by, updated_at, write_policy, owner_id FROM loose_files WHERE id = ?`,
+    `SELECT id, handle, filename, size, expires_at, created_by, last_written_by, updated_at, write_policy, owner_id, password_hash FROM loose_files WHERE id = ?`,
   )
     .bind(id)
     .first<{
@@ -449,6 +452,7 @@ export async function putLooseFile(
       updated_at: string | null;
       write_policy: string | null;
       owner_id: string | null;
+      password_hash: string | null;
     }>();
   if (!existing) {
     throw new ApiError(
@@ -471,10 +475,7 @@ export async function putLooseFile(
   assertCanMutate(actor, existing);
   let filename = existing.filename;
   if (filenameRaw) {
-    filename = basename(filenameRaw).slice(0, 180) || existing.filename;
-    if (filename === "." || filename === ".." || filename.includes("/")) {
-      throw new ApiError(400, "bad_filename", "Give a simple filename, not a path.");
-    }
+    filename = assertFilename(filenameRaw, existing.filename);
   }
   contentOrigin(env);
   const contentType = contentTypeFor(filename, bytes, hintType);
@@ -505,7 +506,7 @@ export async function putLooseFile(
     throw new ApiError(409, "file_busy", "Another write is in progress; retry this replacement.");
   }
   let reserved = 0;
-  let previousState: R2Snapshot | null = null;
+  let previousState: R2ObjectSnapshot | null = null;
   let metadataCommitted = false;
   let wroteObject = false;
   try {
@@ -513,28 +514,23 @@ export async function putLooseFile(
     previousState = renamed ? null : await snapshotR2Object(env.BUCKET, oldKey);
     await env.BUCKET.put(newKey, bytes, { httpMetadata: { contentType } });
     wroteObject = true;
-    if (hash === undefined) {
-      const updated = await env.DB.prepare(
-        `UPDATE loose_files
-         SET handle = COALESCE(handle, ?), filename = ?, size = ?, content_type = ?, updated_at = ?, last_written_by = ?
-         WHERE id = ? AND last_written_by = ?`,
-      )
-        .bind(handle, filename, bytes.byteLength, contentType, ts, claim.token, id, claim.token)
-        .run();
-      if (!Number(updated.meta?.changes ?? 0)) {
-        throw new ApiError(409, "file_write_lost", "The file changed during replacement; retry.");
-      }
-    } else {
-      const updated = await env.DB.prepare(
-        `UPDATE loose_files
-         SET handle = COALESCE(handle, ?), filename = ?, size = ?, content_type = ?, updated_at = ?, last_written_by = ?, password_hash = ?, password_secret = ?
-         WHERE id = ? AND last_written_by = ?`,
-      )
-        .bind(handle, filename, bytes.byteLength, contentType, ts, claim.token, hash, storedPasswordSecret(hash, password), id, claim.token)
-        .run();
-      if (!Number(updated.meta?.changes ?? 0)) {
-        throw new ApiError(409, "file_write_lost", "The file changed during replacement; retry.");
-      }
+    const assignments = [
+      "handle = COALESCE(handle, ?)",
+      "filename = ?",
+      "size = ?",
+      "content_type = ?",
+      "updated_at = ?",
+      "last_written_by = ?",
+    ];
+    const values: unknown[] = [handle, filename, bytes.byteLength, contentType, ts, claim.token];
+    assignPasswordStore(assignments, values, hash, password, "password_hash", "password_secret");
+    const updated = await env.DB.prepare(
+      `UPDATE loose_files SET ${assignments.join(", ")} WHERE id = ? AND last_written_by = ?`,
+    )
+      .bind(...values, id, claim.token)
+      .run();
+    if (!d1Changed(updated)) {
+      throw new ApiError(409, "file_write_lost", "The file changed during replacement; retry.");
     }
     metadataCommitted = true;
     if (renamed) await env.BUCKET.delete(oldKey).catch(() => undefined);
@@ -553,9 +549,6 @@ export async function putLooseFile(
   const origin = publicOrigin(env);
   const url = filePublicUrl(env, handle, id, filename);
   await purgeContent(ctx, [filePrefix(handle, id)]);
-  const row = await env.DB.prepare(`SELECT password_hash FROM loose_files WHERE id = ?`)
-    .bind(id)
-    .first<{ password_hash: string | null }>();
   return json({
     url,
     api_url: `${origin}/v1/files/${id}`,
@@ -565,7 +558,7 @@ export async function putLooseFile(
     size: bytes.byteLength,
     content_type: contentType,
     replaced: true,
-    password_protected: Boolean(row?.password_hash),
+    password_protected: hash === undefined ? Boolean(existing.password_hash) : Boolean(hash),
     password: passwordEcho(password, hash) ?? null,
   });
 }
@@ -663,7 +656,7 @@ export async function patchLoose(
     )
       .bind(...values, id, ...claimGuards)
       .run();
-    if (!Number(updated.meta?.changes ?? 0)) await throwLooseFileMutationConflict(env, id);
+    if (!d1Changed(updated)) await throwLooseFileMutationConflict(env, id);
   }
   if (hash !== undefined || writeHash !== undefined || resolved) {
     await purgeContent(ctx, [filePrefix(handle, id)]);
@@ -879,7 +872,7 @@ export async function deleteLooseFile(
     throw new ApiError(409, "file_busy", "The file changed during deletion; retry.");
   }
   const key = fileKey(row.id, row.filename);
-  let previousState: R2Snapshot | null = null;
+  let previousState: R2ObjectSnapshot | null = null;
   let storageDeleted = false;
   try {
     previousState = await snapshotR2Object(env.BUCKET, key);
@@ -888,7 +881,7 @@ export async function deleteLooseFile(
     const dropped = await env.DB.prepare(`DELETE FROM loose_files WHERE id = ? AND last_written_by = ?`)
       .bind(id, claim.token)
       .run();
-    if (!Number(dropped.meta?.changes ?? 0)) {
+    if (!d1Changed(dropped)) {
       throw new ApiError(409, "file_delete_lost", "The file changed during deletion; retry.");
     }
   } catch (err) {
@@ -912,27 +905,6 @@ export async function deleteLooseFile(
   } finally {
     await releaseStorage(env.DB, row.size);
   }
-}
-
-async function snapshotR2Object(bucket: R2Bucket, key: string): Promise<R2Snapshot | null> {
-  const object = await bucket.get(key);
-  if (!object) return null;
-  return {
-    bytes: await object.bytes(),
-    httpMetadata: object.httpMetadata,
-    customMetadata: object.customMetadata,
-  };
-}
-
-async function restoreR2Object(bucket: R2Bucket, key: string, snapshot: R2Snapshot | null): Promise<void> {
-  if (!snapshot) {
-    await bucket.delete(key);
-    return;
-  }
-  await bucket.put(key, snapshot.bytes, {
-    httpMetadata: snapshot.httpMetadata,
-    customMetadata: snapshot.customMetadata,
-  });
 }
 
 export async function listLooseJson(env: Env, email: string, query: ListQuery, ownerId?: string): Promise<Response> {

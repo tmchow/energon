@@ -11,6 +11,7 @@ import {
 import { brandMark, documentShell, escapeHtml } from "./chrome";
 import { MAX_IMPORT_FILES, PRODUCT, RESERVED_SLUGS, SLUG_RE, formatBytes, siteKey } from "./config";
 import {
+  d1Changed,
   expiredError,
   expiredHtml,
   isExpired,
@@ -25,7 +26,7 @@ import { isMarkdownName, respondMarkdown } from "./markdown";
 import { maybeUnlockWithWritePassword, passwordEcho, passwordField, passwordHashFromInput, protectContent, assignPasswordStore, hubLinkAccessFields, storedPasswordSecret, writePasswordField, writePasswordHashFromInput } from "./gate";
 import { ensureUser } from "./handles";
 import { mintObjectId } from "./ids";
-import { ApiError, applyIsolation, assertStorageRoom, basename, contentDisposition, copyR2Object, deletePrefix, htmlPage, json, jsonMaybeSecret, nanoid, normalizeRelPath, publicOrigin, releaseStorage, secretJson, tooLarge, wantsDownload } from "./http";
+import { ApiError, applyIsolation, assertStorageRoom, basename, contentDisposition, copyR2Object, deletePrefix, htmlPage, json, jsonMaybeSecret, nanoid, normalizeRelPath, publicOrigin, releaseStorage, restoreR2Object, secretJson, snapshotR2Object, tooLarge, wantsDownload, type R2ObjectSnapshot } from "./http";
 import { contentTypeFor } from "./mime";
 import {
   OWNER_WRITE_SQL,
@@ -48,37 +49,13 @@ const SITE_SELECT =
   `id, handle, slug, owner_id, created_at, updated_at, created_by, last_written_by, password_hash, password_secret, expires_at, write_policy, write_password_hash, write_password_secret, written_via, last_read_at`;
 const D1_BATCH_MAX_STATEMENTS = 100;
 
-type R2Snapshot = {
-  key: string;
-  bytes: Uint8Array;
-  httpMetadata?: R2HTTPMetadata;
-  customMetadata?: Record<string, string>;
-};
-type R2State = { key: string; snapshot: R2Snapshot | null };
-
-async function snapshotR2Object(bucket: R2Bucket, key: string): Promise<R2Snapshot | null> {
-  const object = await bucket.get(key);
-  if (!object) return null;
-  return {
-    key,
-    bytes: await object.bytes(),
-    httpMetadata: object.httpMetadata,
-    customMetadata: object.customMetadata,
-  };
-}
+type R2State = { key: string; snapshot: R2ObjectSnapshot | null };
 
 async function restoreR2Snapshots(bucket: R2Bucket, states: R2State[]): Promise<void> {
   let failed = false;
   for (const { key, snapshot } of states) {
     try {
-      if (snapshot) {
-        await bucket.put(snapshot.key, snapshot.bytes, {
-          httpMetadata: snapshot.httpMetadata,
-          customMetadata: snapshot.customMetadata,
-        });
-      } else {
-        await bucket.delete(key);
-      }
+      await restoreR2Object(bucket, key, snapshot);
     } catch {
       failed = true;
     }
@@ -88,11 +65,11 @@ async function restoreR2Snapshots(bucket: R2Bucket, states: R2State[]): Promise<
   }
 }
 
-async function restoreR2State(bucket: R2Bucket, key: string, snapshot: R2Snapshot | null): Promise<void> {
+async function restoreR2State(bucket: R2Bucket, key: string, snapshot: R2ObjectSnapshot | null): Promise<void> {
   await restoreR2Snapshots(bucket, [{ key, snapshot }]);
 }
 
-function siteFileUpsert(
+export function siteFileUpsert(
   env: Env,
   siteId: string,
   path: string,
@@ -181,14 +158,10 @@ async function restoreSiteFileRows(
 async function rollbackSiteStorage(
   env: Env,
   key: string,
-  snapshot: R2Snapshot | null,
+  snapshot: R2ObjectSnapshot | null,
   originalError: unknown,
 ): Promise<never> {
-  try {
-    await restoreR2State(env.BUCKET, key, snapshot);
-  } catch {
-    throw new ApiError(500, "storage_rollback_failed", "The request failed and storage rollback also failed. Retry after storage recovers.");
-  }
+  await restoreR2State(env.BUCKET, key, snapshot);
   throw originalError;
 }
 
@@ -247,7 +220,7 @@ async function writeSite(
   )
     .bind(...values, id, PURGE_CLAIM_LIKE, ...ownerWriteBinds(actor))
     .run();
-  if (!Number(updated.meta?.changes ?? 0)) {
+  if (!d1Changed(updated)) {
     await throwSiteMutationConflict(env, id);
   }
 }
@@ -272,7 +245,7 @@ async function findSiteForActor(env: Env, id: string): Promise<SiteRow | null> {
   return getSiteById(env, id);
 }
 
-async function fileCount(env: Env, siteId: string): Promise<number> {
+export async function fileCount(env: Env, siteId: string): Promise<number> {
   const row = await env.DB.prepare(`SELECT COUNT(*) AS n FROM site_files WHERE site_id = ?`)
     .bind(siteId)
     .first<{ n: number }>();
@@ -520,15 +493,8 @@ export async function patchSite(
     )
       .bind(...values, site.id, PURGE_CLAIM_LIKE, ...writeGuard.binds)
       .run();
-    if (!Number(updated.meta?.changes ?? 0)) {
-      const still = await getSiteById(env, site.id);
-      if (!still || isPurgeClaimed(still.last_written_by) || isExpired(still.expires_at)) {
-        throw expiredError("site");
-      }
-      if (isWriteClaimed(still.last_written_by)) {
-        throw new ApiError(409, "site_busy", "Another write is in progress; retry this update.");
-      }
-      throw new ApiError(403, "forbidden_write", "Only the creator can write this.");
+    if (!d1Changed(updated)) {
+      await throwSiteMutationConflict(env, site.id);
     }
   }
   if (hash !== undefined || writeHash !== undefined || resolved) {
@@ -633,7 +599,7 @@ export async function putSiteFile(
         `UPDATE sites SET updated_at = ?, last_written_by = ?, written_via = NULL WHERE id = ? AND last_written_by NOT LIKE ? AND ${OWNER_WRITE_SQL}`,
       ).bind(ts, actor.email, site.id, PURGE_CLAIM_LIKE, ...ownerWriteBinds(actor)),
     ]);
-    if (!Number(wrote[1]?.meta?.changes ?? 0)) {
+    if (!d1Changed(wrote[1] ?? {})) {
       if (existing) {
         await siteFileUpsert(
           env,
@@ -650,15 +616,7 @@ export async function putSiteFile(
       await throwSiteMutationConflict(env, site.id);
     }
   } catch (err) {
-    try {
-      await restoreR2State(env.BUCKET, key, previous);
-    } catch {
-      throw new ApiError(
-        500,
-        "storage_rollback_failed",
-        "The request failed and storage rollback also failed. Retry after storage recovers.",
-      );
-    }
+    await restoreR2State(env.BUCKET, key, previous);
     await releaseStorage(env.DB, reserved);
     throw err;
   }
@@ -859,7 +817,7 @@ export async function deleteSite(env: Env, ctx: ExecutionContext | undefined, ac
         `DELETE FROM sites WHERE id = ? AND last_written_by NOT LIKE ? AND ${writeGuard.sql}`,
       ).bind(site.id, PURGE_CLAIM_LIKE, ...writeGuard.binds),
     ]);
-    siteDeleted = Number(wrote[1]?.meta?.changes ?? 0) > 0;
+    siteDeleted = d1Changed(wrote[1] ?? {});
     const still = await getSiteById(env, site.id);
     if (still) {
       if (isPurgeClaimed(still.last_written_by) || isExpired(still.expires_at)) {
@@ -917,10 +875,10 @@ export async function deleteSiteFile(
         `UPDATE sites SET updated_at = ?, last_written_by = ?, written_via = NULL WHERE id = ? AND last_written_by NOT LIKE ? AND ${OWNER_WRITE_SQL}`,
       ).bind(ts, actor.email, site.id, PURGE_CLAIM_LIKE, ...ownerWriteBinds(actor)),
     ]);
-    if (!Number(wrote[1]?.meta?.changes ?? 0)) {
+    if (!d1Changed(wrote[1] ?? {})) {
       await throwSiteMutationConflict(env, site.id);
     }
-    if (!Number(wrote[0]?.meta?.changes ?? 0)) return;
+    if (!d1Changed(wrote[0] ?? {})) return;
   } catch (err) {
     await rollbackSiteStorage(env, key, previous, err);
   }

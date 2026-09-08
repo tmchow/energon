@@ -19,29 +19,39 @@ export async function unlockToken(passwordHash: string): Promise<string> {
   return sha256Hex(`energon-gate:${passwordHash}`);
 }
 
+function optionalBodyString(body: Record<string, unknown>, key: "password" | "write_password"): string | undefined {
+  if (!Object.prototype.hasOwnProperty.call(body, key)) return undefined;
+  if (body[key] == null) return "";
+  return String(body[key]);
+}
+
 /** JSON `password` field: missing = leave unchanged; null/empty = clear. */
 export function passwordField(body: Record<string, unknown>): string | undefined {
-  if (!Object.prototype.hasOwnProperty.call(body, "password")) return undefined;
-  if (body.password == null) return "";
-  return String(body.password);
+  return optionalBodyString(body, "password");
+}
+
+async function hashPasswordFromInput(
+  raw: string | undefined,
+  hash: (password: string) => Promise<string>,
+  label: "Share password" | "Write password",
+): Promise<string | null | undefined> {
+  if (raw === undefined) return undefined;
+  if (raw.length > 128) {
+    throw new ApiError(400, "bad_password", `${label} is too long (max 128 characters).`);
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  return hash(trimmed);
 }
 
 /** undefined = leave unchanged; null = clear; string = set (empty string clears). */
 export async function passwordHashFromInput(raw: string | undefined): Promise<string | null | undefined> {
-  if (raw === undefined) return undefined;
-  if (raw.length > 128) {
-    throw new ApiError(400, "bad_password", "Share password is too long (max 128 characters).");
-  }
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  return hashSharePassword(trimmed);
+  return hashPasswordFromInput(raw, hashSharePassword, "Share password");
 }
 
 /** JSON `write_password` field: missing = leave unchanged; null/empty = clear. */
 export function writePasswordField(body: Record<string, unknown>): string | undefined {
-  if (!Object.prototype.hasOwnProperty.call(body, "write_password")) return undefined;
-  if (body.write_password == null) return "";
-  return String(body.write_password);
+  return optionalBodyString(body, "write_password");
 }
 
 export function contentPatch(body: Record<string, unknown>): {
@@ -72,13 +82,7 @@ export function contentPatch(body: Record<string, unknown>): {
 }
 
 export async function writePasswordHashFromInput(raw: string | undefined): Promise<string | null | undefined> {
-  if (raw === undefined) return undefined;
-  if (raw.length > 128) {
-    throw new ApiError(400, "bad_password", "Write password is too long (max 128 characters).");
-  }
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  return hashWritePassword(trimmed);
+  return hashPasswordFromInput(raw, hashWritePassword, "Write password");
 }
 
 /** Echo the phrase the caller just set. `/v1` GET never returns stored phrases. */
