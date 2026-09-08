@@ -344,7 +344,7 @@ describe("actorFromAccess", () => {
 
     await expect(
       actorFromAccess(new Request("https://energon.example.com/account"), env, { access }),
-    ).resolves.toEqual({ email: "ada@esperlabs.app", idpSub: "uuid-ada", via: "access" });
+    ).resolves.toEqual({ email: "ada@esperlabs.app", idpSub: "uuid-ada", via: "access", admin: false });
   });
 
   it("rejects production Access identity that has no subject", async () => {
@@ -372,6 +372,7 @@ describe("actorFromAccess", () => {
       email: "ada@esperlabs.app",
       idpSub: "uuid-ada",
       via: "access",
+      admin: false,
     });
   });
 
@@ -386,6 +387,7 @@ describe("actorFromAccess", () => {
       email: "ada@esperlabs.app",
       idpSub: "idp-ada",
       via: "access",
+      admin: false,
     });
 
     const jwt = `x.${btoa(JSON.stringify({ sub: "jwt-ada" }))}.x`;
@@ -400,7 +402,20 @@ describe("actorFromAccess", () => {
       email: "ada@esperlabs.app",
       idpSub: "jwt-ada",
       via: "access",
+      admin: false,
     });
+  });
+
+  it("marks Access actors on ADMIN_EMAILS as admin", async () => {
+    const request = new Request("http://127.0.0.1/account", {
+      headers: {
+        "Cf-Access-Authenticated-User-Email": "ada@esperlabs.app",
+        "Cf-Access-Authenticated-User-Sub": "idp-ada",
+      },
+    });
+    await expect(
+      actorFromAccess(request, { ...env, ADMIN_EMAILS: "ada@esperlabs.app" } as Env),
+    ).resolves.toMatchObject({ email: "ada@esperlabs.app", via: "access", admin: true });
   });
 });
 
