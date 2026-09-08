@@ -1,5 +1,5 @@
 <!--
-Read CONTRIBUTING.md. Required headings: What, Why, Verify, Risk, Authorship.
+Read CONTRIBUTING.md. Required headings: What, Why, Verify, How to test, Risk, Authorship.
 Keep those. Add extra ## headings when they help a reviewer.
 Do not replace the body with a commit dump. Do not paste tokens, Access JWTs,
 or other people's files. Do not include fork identity: wrangler.toml ids/origins,
@@ -21,7 +21,19 @@ Fill Authorship. Name the model, not the product.
 
 - **Tests:** <!-- Commands from the Tests table in AGENTS.md -->
 - **verify-energon:** <!-- Feature file you drove (`features/….md`). Read `.agents/skills/verify-energon/SKILL.md` first. `n/a` plus why only when there is no hub / `/v1` / gate / token / public URL path. Green CI is not enough. -->
-- **How:** <!-- Numbered steps a reviewer can follow. For bugs: reproduction + proof the fix works. -->
+
+## How to test
+
+<!--
+A triage agent will follow these steps without asking you.
+Each step: a command or URL, then the expected result.
+For bugs: how to see the failure, then proof this branch fixes it.
+Do not invent a token. Do not write "see Tests" or "CI is green".
+-->
+
+1.
+2.
+3.
 
 ## Risk
 

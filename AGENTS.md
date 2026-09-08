@@ -31,7 +31,7 @@ This file is how to **change this tree**. It is not a product README and not the
 
 When you open a PR:
 
-- Use [`.github/PULL_REQUEST_TEMPLATE.md`](./.github/PULL_REQUEST_TEMPLATE.md) as the body. Keep and fill the required headings (What, Why, Verify, Risk, Authorship). Verify needs Tests, verify-energon, and How. Add extra `##` sections when they help a reviewer. Do not delete required sections or replace the body with a commit dump. Do not paste secrets.
+- Use [`.github/PULL_REQUEST_TEMPLATE.md`](./.github/PULL_REQUEST_TEMPLATE.md) as the body. Keep and fill the required headings (What, Why, Verify, How to test, Risk, Authorship). Verify needs Tests **and** verify-energon. How to test is numbered steps a triage agent can run without asking you. Add extra `##` sections when they help a reviewer. Do not delete required sections or replace the body with a commit dump. Do not paste secrets.
 - Authorship: name the actual model (for example `Cursor Grok 4.6`, not `Cursor` or `an AI`). "None" is valid when a person wrote the patch.
 - Title and commit subjects are imperative sentences (`Cap public edge cache at one day`). Do not use conventional-commit prefixes (`feat:`, `fix:`, `chore:`). History is squash-merged; the PR title is the durable subject.
 - One concern per PR. Do not mix formatting or drive-by refactors with a behavior change.
@@ -39,6 +39,8 @@ When you open a PR:
 - Behavior, schema, or `/v1` changes: prefer an issue first unless the owner asked for the patch.
 - Match the Tests table. For hub, `/v1`, gate, token, or public URL changes, read [`.agents/skills/verify-energon/SKILL.md`](./.agents/skills/verify-energon/SKILL.md), drive the matching feature, and name that file in Verify. Green CI is not proof. `n/a` only when the change has no user path (say why). See [Verify like a user](#verify-like-a-user).
 - CI on a PR cannot deploy. Do not add `pull_request_target` jobs that check out the PR head.
+
+When you triage a PR, run **How to test** as written. If the steps are missing, or you need extra context to follow them, request changes. Green CI is not a substitute on hub / `/v1` / gate / token / public URL changes.
 
 ## Layout
 
@@ -103,7 +105,7 @@ Page tests cover server-rendered navigation, copy, catalog data, safe hydration,
 
 ## Verify like a user
 
-Green CI is not proof a feature works. Before you say a user-facing change is done (hub UI, `/v1` route, gate, token, public URL, or a bug fix a user reported), read [`.agents/skills/verify-energon/SKILL.md`](./.agents/skills/verify-energon/SKILL.md) and run it: Launch / Doctor / Drive the matching feature / Cleanup. Keep the evidence. Name that feature file in the PR Verify section.
+Green CI is not proof a feature works. Before you say a user-facing change is done (hub UI, `/v1` route, gate, token, public URL, or a bug fix a user reported), read [`.agents/skills/verify-energon/SKILL.md`](./.agents/skills/verify-energon/SKILL.md) and run it: Launch / Doctor / Drive the matching feature / Cleanup. Keep the evidence. Name that feature file in Verify. Write **How to test** so a triage agent can replay the same path.
 
 `.agents/skills/verify-energon/` is how an agent drives a **local** hub and `/v1` the way a user does (isolated `wrangler dev` via `bin/launch`, default port `18787`, persist under `/tmp/energon-verify/`). Do not invent a token. Do not attach to whatever is already on 8787 unless `bin/doctor` says that pid is this run.
 
