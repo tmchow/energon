@@ -20,6 +20,7 @@ import { PRODUCT, RESERVED_HANDLES } from "./config";
 import { ensureSchema } from "./db";
 import { sweepExpired } from "./expire";
 import { remapLegacySiteR2 } from "./site-r2-migrate";
+import { exportOwnedZip } from "./export";
 import { guestWrite } from "./guest-write";
 import { CONTENT_ONLY_404_MESSAGE } from "./guest-write-protocol";
 import { ensureUser } from "./handles";
@@ -331,6 +332,11 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     return exportSiteZip(env, ctx, actor, decodeURIComponent(accountExport[1]));
   }
 
+  if (path === "/account/export" && method === "GET") {
+    const actor = await requireHuman(request, env, ctx);
+    return exportOwnedZip(env, ctx, actor);
+  }
+
   if (path === "/account/files" && method === "POST") {
     const actor = await requireHuman(request, env, ctx);
     return postLooseFromRequest(env, ctx, actor, request);
@@ -477,6 +483,11 @@ async function api(
   if (path === "/v1/files" && method === "POST") {
     const actor = await requireToken(request, env);
     return postLooseFromRequest(env, ctx, actor, request);
+  }
+
+  if (path === "/v1/export" && method === "GET") {
+    const actor = await requireToken(request, env);
+    return exportOwnedZip(env, ctx, actor);
   }
 
   if (path === "/v1/cleanup" && method === "POST") {

@@ -140,15 +140,15 @@ export function unpackZip(buf: Uint8Array, maxBytes = MAX_FILE_BYTES): UnpackedF
   return out;
 }
 
-export function packZip(files: UnpackedFile[], maxBytes = MAX_FILE_BYTES): Uint8Array {
+export function packZip(files: UnpackedFile[], maxBytes = MAX_FILE_BYTES, maxFiles = MAX_IMPORT_FILES): Uint8Array {
   if (files.length === 0) {
     throw new ApiError(400, "empty_site", `That site has no files to zip.`);
   }
-  if (files.length > MAX_IMPORT_FILES) {
+  if (files.length > maxFiles) {
     throw new ApiError(
       400,
       "too_many_files",
-      `That site has ${files.length} files. ${PRODUCT} exports at most ${MAX_IMPORT_FILES} files per zip. Split the site, then retry.`,
+      `That site has ${files.length} files. ${PRODUCT} exports at most ${maxFiles} files per zip. Split the site, then retry.`,
     );
   }
   const rec: Zippable = {};

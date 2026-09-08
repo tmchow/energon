@@ -318,6 +318,12 @@
     <Card title="Files" hint={`${lists.files.length < lists.files_total ? `${lists.files.length} of ` : ''}${lists.files_total} ${lists.files_total === 1 ? 'file' : 'files'}`} tight>
       <div id="files"><Catalog kind="file" items={lists.files} cursor={lists.files_cursor} busy={loading} writePolicyDefault={data.policy.write_policy} onMore={item => openMore('file', item)} onPassword={item => editPassword('file', item)} onDelete={item => deleteItem('file', item)} onLoadMore={() => refresh('files')} /></div>
     </Card>
+    <Card className="en-hub-export" id="account-export" title="Download what you own">
+      <div class="en-stack">
+        <p class="en-lede">Sites and loose files keyed to this account, as one zip, before a bulk cleanup. Work you only edited is not included. Same size and file-count caps as a site export.</p>
+        <Button href="/account/export" size="md">Download everything you own</Button>
+      </div>
+    </Card>
   </div>
   <p class="en-lede">Your catalog includes work you created or last edited. To revise an existing file at the same link, ask your agent to update it; uploading it here creates a new file. Links show current contents until expiry or deletion.</p>
 </main>

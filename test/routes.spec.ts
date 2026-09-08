@@ -65,6 +65,7 @@ describe("host and route contracts", () => {
     const help = await json("/v1/help");
     expect(help.body.openapi).toBe("https://hub.energon.example.com/v1/openapi.json");
     expect(help.body.routes["GET /v1/openapi.json"]).toBe("OpenAPI 3.1 HTTP contract, no auth");
+    expect(help.body.routes["GET /v1/export"]).toContain("owner_id");
   });
 
   it("redirects a site URL without a trailing slash", async () => {

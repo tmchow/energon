@@ -24,7 +24,11 @@ describe("signed-in pages", () => {
     expect(res.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
     const html = await res.text();
     for (const text of ["Publish a document, prototype, or file.", "Choose files", "Choose folder", "No sites yet", "No files yet", "Drop to stage"]) expect(html).toContain(text);
-    for (const id of ["app", "pick-files", "pick-folder", "filepick", "folderpick", "q", "scope", "sort", "sites", "files", "drop-overlay", "pw-dlg", "write-dlg", "ttl-dlg"]) expect(html).toContain(`id="${id}"`);
+    for (const id of ["app", "pick-files", "pick-folder", "filepick", "folderpick", "q", "scope", "sort", "sites", "files", "account-export", "drop-overlay", "pw-dlg", "write-dlg", "ttl-dlg"]) expect(html).toContain(`id="${id}"`);
+    expect(html).toContain("Download what you own");
+    expect(html).toContain("Download everything you own");
+    expect(html).toContain('href="/account/export"');
+    expect(html).toContain("Work you only edited is not included");
     expect(html).not.toContain("scan-examples");
     expect(html).not.toContain("Catalog marks");
     expect(html).not.toContain("Set view password");

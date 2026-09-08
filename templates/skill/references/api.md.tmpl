@@ -19,7 +19,8 @@ This skill talks only to **{{ORIGIN}}**. Install a separately rendered skill for
 | 401 | `password_required` | Retry the human URL with `X-Energon-Password` to read, or `X-Energon-Write-Password` to write. Token `api_url` still skips the share password. |
 | 404 | `site_not_found` / `file_not_found` | Create the site first; never implicit-create. For files, check the path or id. |
 | 410 | `expired` | Content passed `expires_at`. It is gone or about to be purged. Do not retry the same URL. |
-| 413 | `too_large` / `storage_cap` | 25 MB file/zip, or 20 GB platform cap |
+| 400 | `empty_export` | `GET /v1/export` with no owned sites or files. This zip is ownership, not involvement. |
+| 413 | `too_large` / `storage_cap` | 25 MB file/zip, or 20 GB platform cap. Owned-content export over the cap names the totals and tells you to export per site. |
 | 409 | `cleanup_drift` | The cleanup selection changed since the preview. The body is a fresh preview; show it and resend with its `confirm`. |
 | 413 | `cleanup_too_many` | More than 100 eligible objects. Narrow the target (`q`, `created_by`, `expires_before`, `updated_before`, `min_size`, `kind`) or send explicit ids. |
 
@@ -32,6 +33,7 @@ GET    /v1/sites/{id}/files/{path}       raw bytes (token)
 PUT    /v1/sites/{id}/files/{path}       raw body (path may contain slashes). Does not extend expiry.
 POST   /v1/sites/{id}/import             application/zip
 GET    /v1/sites/{id}/export             zip of the site (token; skips share password)
+GET    /v1/export                        zip of every site and loose file you own (owner_id) plus manifest.json
 GET    /v1/sites                         your sites (`id`, `total`, `next_cursor`; filters below)
 GET    /v1/sites/{id}                    file listing (`id`, `url` + `api_url` per file)
 DELETE /v1/sites/{id}                    site + all objects (no recycle bin)
@@ -81,6 +83,8 @@ Guest write on the public URL uses header `X-Energon-Write-Password` (not a `/v1
 ```
 
 A malformed filter is ignored in the URL form, never a 400.
+
+`GET /v1/export` is the owned-content zip (sites under `sites/{id}/`, loose files under `files/{id}/`, plus `manifest.json`). It is not the involved catalog. Same size and file-count caps as a site export; over the cap, export per site. Share and write passwords are omitted. Empty ownership is `400 empty_export`.
 
 ```
 POST /v1/cleanup   { "target": …, "action": "delete"|"set_ttl"|"expire", "ttl"?: string, "confirm"?: string }
