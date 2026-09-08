@@ -6,6 +6,7 @@ import { identityFromEnv } from "./instance";
 import { resolveTokenExpiresAt, tokenPolicy } from "./policy";
 import type { Actor, Env } from "./types";
 
+export const CONNECTION_JSON_MAX_BYTES = 4096;
 const CONNECTION_SECONDS = 600;
 const POLL_SECONDS = 5;
 
