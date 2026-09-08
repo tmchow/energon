@@ -33,7 +33,7 @@ When you open a PR:
 
 - Use [`.github/PULL_REQUEST_TEMPLATE.md`](./.github/PULL_REQUEST_TEMPLATE.md) as the body. Keep and fill the required headings (What, Why, Verify, How to test, Risk, Authorship). Verify needs Tests **and** verify-energon. How to test is numbered steps a triage agent can run without asking you. Add extra `##` sections when they help a reviewer. Do not delete required sections or replace the body with a commit dump. Do not paste secrets.
 - Authorship: name the actual model (for example `Cursor Grok 4.6`, not `Cursor` or `an AI`). "None" is valid when a person wrote the patch.
-- Title and commit subjects are imperative sentences (`Cap public edge cache at one day`). Do not use conventional-commit prefixes (`feat:`, `fix:`, `chore:`). History is squash-merged; the PR title is the durable subject.
+- Title is a Conventional Commit (`feat(hub): show expiry on the catalog row`). Squash merge uses that title as the commit on `main`. CI (`.github/workflows/pr-title.yml`) checks it. Do not prefix every commit on the branch.
 - One concern per PR. Do not mix formatting or drive-by refactors with a behavior change.
 - Do not include fork identity: `wrangler.toml` database ids and origins, `.dev.vars`, `plugins/`, marketplace catalogs, or an `instance-skill.json` pointed at a real origin.
 - Behavior, schema, or `/v1` changes: prefer an issue first unless the owner asked for the patch.
@@ -88,6 +88,7 @@ Do not run the full suite after every edit. CI (`.github/workflows/ci.yml`) runs
 | Change | Run |
 | --- | --- |
 | Pure helper under `src/` | `npm run test:unit -- test/unit/<name>.spec.ts` |
+| `scripts/check-pr-title.mjs`, PR template, CONTRIBUTING | `npm run test:unit -- test/unit/pr-title.spec.ts test/unit/contribution-policy.spec.ts` |
 | `helpBody`, `llms.txt`, markdown HTML | `npm run test:unit -- test/unit/golden.spec.ts` (`UPDATE_GOLDENS=1` to regenerate; review `git diff test/golden/`) |
 | `openapi/v1.json`, a `/v1` route, or an `ApiError` code | `npm run test:unit -- test/unit/openapi-drift.spec.ts` |
 | `templates/`, `scripts/render-skill.mjs`, `instance-skill.json` | `npm run test:unit -- test/unit/skill-render.spec.ts` |

@@ -26,7 +26,7 @@ describe("contribution policy", () => {
     }
   });
 
-  it("keeps a PR template agents can fill without conventional-commit prefixes", () => {
+  it("keeps a PR template agents can fill with conventional-commit titles", () => {
     const template = readFileSync(join(root, ".github/PULL_REQUEST_TEMPLATE.md"), "utf8");
     for (const heading of [
       "## What",
@@ -55,7 +55,8 @@ describe("contribution policy", () => {
     expect(template).toContain("A triage agent will follow these steps");
     expect(template).toMatch(/^1\.\s*$/m);
     expect(template).toContain(".agents/skills/verify-energon/SKILL.md");
-    expect(template).toContain("No feat:/fix:/chore: prefix");
+    expect(template).toContain("Conventional Commits");
+    expect(template).not.toContain("No feat:/fix:/chore: prefix");
     expect(template).not.toMatch(/^Fork PRs are closed automatically/m);
   });
 
@@ -63,7 +64,9 @@ describe("contribution policy", () => {
     const contributing = readFileSync(join(root, "CONTRIBUTING.md"), "utf8");
     expect(contributing).toContain("Issues and pull requests are welcome");
     expect(contributing).not.toContain("Pull requests are not.");
-    expect(contributing).toContain("Do **not** use conventional-commit prefixes");
+    expect(contributing).toContain("Conventional Commits");
+    expect(contributing).toContain("Pull request title");
+    expect(contributing).not.toContain("Do **not** use conventional-commit prefixes");
     expect(contributing).toContain("verify-energon skill");
     expect(contributing).toContain("Keep the required headings");
     expect(contributing).toContain("Add extra `##` sections when they help a reviewer");
@@ -79,5 +82,16 @@ describe("contribution policy", () => {
     expect(agents).toContain("name that file in Verify");
     expect(agents).toContain("Add extra `##` sections when they help a reviewer");
     expect(agents).toContain("When you triage a PR, run **How to test** as written");
+    expect(agents).toContain("Conventional Commit");
+  });
+
+  it("lints PR titles as conventional commits without pull_request_target", () => {
+    const workflow = readFileSync(join(workflowsDir, "pr-title.yml"), "utf8");
+    expect(workflow).toContain("edited");
+    expect(workflow).toContain("scripts/check-pr-title.mjs");
+    expect(workflow).toContain("github.event.pull_request.title");
+    expect(workflow).toMatch(/^permissions:\n  contents: read$/m);
+    expect(/^[ \t]*pull_request_target[ \t]*:/m.test(workflow)).toBe(false);
+    expect(readFileSync(join(root, "test/tsconfig.json"), "utf8")).toContain("pr-title.spec.ts");
   });
 });

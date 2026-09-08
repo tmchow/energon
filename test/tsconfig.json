@@ -15,6 +15,7 @@
   ],
   "exclude": [
     "./unit/skill-render.spec.ts",
+    "./unit/pr-title.spec.ts",
     "./unit/markdown.spec.ts",
     "./unit/schema-drift.spec.ts",
     "./unit/openapi-drift.spec.ts",
