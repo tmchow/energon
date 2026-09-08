@@ -3,6 +3,7 @@ import { isExpired, isPurgeClaimed } from "./expire";
 import { getUser, getUserById } from "./handles";
 import { ApiError, contentDisposition } from "./http";
 import { instancePolicy, resolveWritePolicy, type WritePolicy } from "./policy";
+import { noteRead } from "./reads";
 import type { Actor, Env } from "./types";
 import { filePublicUrl, sitePublicUrl } from "./urls";
 import { packZip, type UnpackedFile } from "./zip";
@@ -50,6 +51,7 @@ type SiteRow = {
   expires_at: string | null;
   write_policy: string | null;
   last_written_by: string | null;
+  last_read_at: string | null;
   path: string | null;
   size: number | null;
 };
@@ -62,6 +64,7 @@ type LooseRow = {
   expires_at: string | null;
   write_policy: string | null;
   last_written_by: string | null;
+  last_read_at: string | null;
 };
 
 type SitePlan = {
@@ -69,6 +72,7 @@ type SitePlan = {
   handle: string;
   slug: string;
   expires_at: string | null;
+  last_read_at: string | null;
   write_policy: WritePolicy;
   files: { path: string; size: number }[];
 };
@@ -122,6 +126,7 @@ function groupSites(rows: SiteRow[]): SitePlan[] {
         handle: row.handle,
         slug: row.slug,
         expires_at: row.expires_at,
+        last_read_at: row.last_read_at,
         write_policy: resolveWritePolicy(row.write_policy),
         files: [],
       };
@@ -133,7 +138,11 @@ function groupSites(rows: SiteRow[]): SitePlan[] {
   return order.map((id) => byId.get(id)!);
 }
 
-export async function exportOwnedZip(env: Env, actor: Actor): Promise<Response> {
+export async function exportOwnedZip(
+  env: Env,
+  ctx: ExecutionContext | undefined,
+  actor: Actor,
+): Promise<Response> {
   const user = actor.userId ? await getUserById(env, actor.userId) : await getUser(env, actor.email);
   if (!user) {
     throw new ApiError(
@@ -144,7 +153,7 @@ export async function exportOwnedZip(env: Env, actor: Actor): Promise<Response> 
   }
 
   const siteRows = await env.DB.prepare(
-    `SELECT s.id, s.handle, s.slug, s.expires_at, s.write_policy, s.last_written_by, f.path, f.size
+    `SELECT s.id, s.handle, s.slug, s.expires_at, s.write_policy, s.last_written_by, s.last_read_at, f.path, f.size
      FROM sites s
      LEFT JOIN site_files f ON s.id = f.site_id
      WHERE s.owner_id = ?
@@ -155,7 +164,7 @@ export async function exportOwnedZip(env: Env, actor: Actor): Promise<Response> 
   const sites = groupSites(siteRows.results || []);
 
   const looseRows = await env.DB.prepare(
-    `SELECT id, handle, filename, size, expires_at, write_policy, last_written_by
+    `SELECT id, handle, filename, size, expires_at, write_policy, last_written_by, last_read_at
      FROM loose_files
      WHERE owner_id = ?
      ORDER BY filename, id`,
@@ -236,6 +245,12 @@ export async function exportOwnedZip(env: Env, actor: Actor): Promise<Response> 
   }
 
   const zip = packZip(entries, policy.fileBytes + manifestBytes.byteLength, MAX_IMPORT_FILES + 1);
+  for (const site of sites) {
+    noteRead(env, ctx, { table: "sites", id: site.id, last_read_at: site.last_read_at });
+  }
+  for (const file of files) {
+    noteRead(env, ctx, { table: "loose_files", id: file.id, last_read_at: file.last_read_at });
+  }
   const headers = new Headers();
   headers.set("content-type", "application/zip");
   headers.set("x-content-type-options", "nosniff");

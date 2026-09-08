@@ -2118,6 +2118,30 @@ describe("Energon", () => {
       const hub = await json("/account/data?q=read.txt", { headers: access(email) });
       expect(hub.body.files.find((f: { id: string }) => f.id === id).last_read_at).toBe(first);
     });
+
+    it("stamps an owned zip the same way a site zip does", async () => {
+      const token = await mint("reader-owned-zip", email);
+      const created = await createSite(token, "owned-read-zip");
+      await json(`/v1/sites/${created.id}/files/index.html`, {
+        method: "PUT",
+        headers: auth(token, { "content-type": "text/html" }),
+        body: "<h1>owned zip</h1>",
+      });
+      const posted = await json("/v1/files", {
+        method: "POST",
+        headers: auth(token, { "X-Filename": "owned-read.zip.md", "content-type": "text/plain" }),
+        body: "owned",
+      });
+      expect(posted.status).toBe(201);
+      const fileId = String(posted.body.id);
+      expect(await lastRead("sites", created.id)).toBeNull();
+      expect(await lastRead("loose_files", fileId)).toBeNull();
+
+      const exported = await req("/v1/export", { headers: auth(token) });
+      expect(exported.status).toBe(200);
+      await settledLastRead("sites", created.id);
+      await settledLastRead("loose_files", fileId);
+    });
   });
 
   describe("admin health", () => {

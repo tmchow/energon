@@ -334,7 +334,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
 
   if (path === "/account/export" && method === "GET") {
     const actor = await requireHuman(request, env, ctx);
-    return exportOwnedZip(env, actor);
+    return exportOwnedZip(env, ctx, actor);
   }
 
   if (path === "/account/files" && method === "POST") {
@@ -487,7 +487,7 @@ async function api(
 
   if (path === "/v1/export" && method === "GET") {
     const actor = await requireToken(request, env);
-    return exportOwnedZip(env, actor);
+    return exportOwnedZip(env, ctx, actor);
   }
 
   if (path === "/v1/cleanup" && method === "POST") {
