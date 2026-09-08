@@ -448,9 +448,7 @@ Published HTML can be active content. Serving it from a separate hostname preven
 
 ## About contributions
 
-> *About Contributions:* Please don't take this the wrong way, but I do not accept outside contributions for any of my projects. I simply don't have the mental bandwidth to review anything, and it's my name on the thing, so I'm responsible for any problems it causes; thus, the risk-reward is highly asymmetric from my perspective. I'd also have to worry about other "stakeholders," which seems unwise for tools I mostly make for myself for free. Feel free to submit issues, and even PRs if you want to illustrate a proposed fix, but know I won't merge them directly. Instead, I'll have Claude or Codex review submissions via `gh` and independently decide whether and how to address them. Bug reports in particular are welcome. Sorry if this offends, but I want to avoid wasted time and hurt feelings. I understand this isn't in sync with the prevailing open-source ethos that seeks community contributions, but it's the only way I can move at this velocity and keep my sanity.
-
-For Energon specifically, [issues are welcome](https://github.com/tmchow/energon/issues/new/choose), but do not open a pull request against `tmchow/energon` unless the owner asked for it. A workflow closes pull requests from forks. Keep your fork's changes on your fork. See [CONTRIBUTING.md](./CONTRIBUTING.md).
+[Issues](https://github.com/tmchow/energon/issues/new/choose) and pull requests are welcome against `tmchow/energon`. Small, focused patches that follow [CONTRIBUTING.md](./CONTRIBUTING.md) are the ones that land. The maintainer may squash, edit, or reimplement rather than merge as-is. Keep your deployed Energon's identity on your fork.
 
 Report vulnerabilities privately; do not put secrets or customer content in a public issue. Follow [SECURITY.md](./SECURITY.md) for the current reporting channel.
 

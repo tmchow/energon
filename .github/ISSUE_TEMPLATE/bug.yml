@@ -8,7 +8,7 @@ body:
       value: |
         This tracker is for the **software in this repo**, not a hosted Energon service.
         Do not paste tokens, Access credentials, or other people’s files.
-        Pull requests are not merged — see [CONTRIBUTING.md](https://github.com/tmchow/energon/blob/main/CONTRIBUTING.md).
+        A fix PR is welcome when it includes a reproduction or a failing test — see [CONTRIBUTING.md](https://github.com/tmchow/energon/blob/main/CONTRIBUTING.md).
   - type: dropdown
     id: where
     attributes:
