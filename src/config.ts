@@ -11,8 +11,8 @@ export const FILE_ID_RE = /^[A-Za-z0-9]{6,12}$/;
 /** Sites use the same capability-id shape as loose files. */
 export const SITE_ID_LEN = FILE_ID_LEN;
 export const SITE_ID_RE = FILE_ID_RE;
-/** Shared cache keeps public bytes until we purge on write or delete. HTTP has no infinite TTL. */
-export const CACHE_UNTIL_PURGE_SECONDS = 31536000;
+/** Edge hits skip the Worker, so this TTL bounds how far last_read_at can lag real public reads. Writes and deletes still purge early. */
+export const PUBLIC_CACHE_SECONDS = 86400;
 export const PASSWORD_HEADER = "X-Energon-Password";
 export const SET_PASSWORD_HEADER = "X-Energon-Set-Password";
 export const WRITE_PASSWORD_HEADER = "X-Energon-Write-Password";

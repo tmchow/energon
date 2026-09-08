@@ -1,10 +1,8 @@
-import { CACHE_UNTIL_PURGE_SECONDS } from "./config";
+import { PUBLIC_CACHE_SECONDS } from "./config";
 
 export function publicCacheControl(remainingSeconds?: number | null): string {
   const sMax =
-    remainingSeconds == null
-      ? CACHE_UNTIL_PURGE_SECONDS
-      : Math.min(CACHE_UNTIL_PURGE_SECONDS, Math.max(1, remainingSeconds));
+    remainingSeconds == null ? PUBLIC_CACHE_SECONDS : Math.min(PUBLIC_CACHE_SECONDS, Math.max(1, remainingSeconds));
   return `public, max-age=0, must-revalidate, s-maxage=${sMax}`;
 }
 
