@@ -43,7 +43,12 @@ describe("signed-in pages", () => {
     expect(html).toContain("The new timer starts now, not from when this was published.");
     expect(html).toContain('id="ttl-dlg-select"');
     expect(html).toContain('id="ttl-dlg-ok"');
-    expect(html).toContain('aria-label="When this expires"');
+    expect(html).toContain('for="ttl-dlg-select"');
+    expect(html).not.toContain('aria-label="When this expires"');
+    expect(html).toContain('id="catalog-status"');
+    expect(html).toContain('tabindex="-1" aria-hidden="true"');
+    expect(html).toContain("A date, 2026-01-01, or an ISO timestamp.");
+    expect(html).toContain("Bytes, or a size like 500kb, 1mb, or 2gb.");
     expect(html).toContain('aria-label="Expiry filter"');
     expect(html).toContain("Never expires");
     expect(html).not.toContain('id="catalog-last-read"');
