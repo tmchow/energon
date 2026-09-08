@@ -3158,6 +3158,7 @@
           "last_written_by",
           "password_protected",
           "expires_at",
+          "last_read_at",
           "write_policy",
           "write_password_protected",
           "files"
@@ -3207,6 +3208,14 @@
             "format": "date-time",
             "description": "ISO timestamp, or null for never."
           },
+          "last_read_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the Worker last served this object's bytes (public URL or /v1), or null if never since the column existed. Throttled to about one write per hour and a floor: public reads answered from the edge cache do not reach the Worker and are not counted."
+          },
           "write_policy": {
             "$ref": "#/components/schemas/WritePolicy"
           },
@@ -3235,6 +3244,7 @@
           "password_protected",
           "write_password_protected",
           "expires_at",
+          "last_read_at",
           "write_policy"
         ],
         "properties": {
@@ -3288,6 +3298,14 @@
             ],
             "format": "date-time",
             "description": "ISO timestamp, or null for never."
+          },
+          "last_read_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the Worker last served this object's bytes (public URL or /v1), or null if never since the column existed. Throttled to about one write per hour and a floor: public reads answered from the edge cache do not reach the Worker and are not counted."
           },
           "write_policy": {
             "$ref": "#/components/schemas/WritePolicy"
@@ -3753,6 +3771,7 @@
           "password_protected",
           "write_password_protected",
           "expires_at",
+          "last_read_at",
           "write_policy"
         ],
         "properties": {
@@ -3817,6 +3836,14 @@
             ],
             "format": "date-time",
             "description": "ISO timestamp, or null for never."
+          },
+          "last_read_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the Worker last served this object's bytes (public URL or /v1), or null if never since the column existed. Throttled to about one write per hour and a floor: public reads answered from the edge cache do not reach the Worker and are not counted."
           },
           "write_policy": {
             "$ref": "#/components/schemas/WritePolicy"
