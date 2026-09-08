@@ -33,8 +33,13 @@ describe("contribution policy", () => {
     }
     expect(template).toContain("Required headings:");
     expect(template).toContain("Add extra ## headings when they help a reviewer.");
-    expect(template).toContain("## Root cause");
-    expect(template).toContain("## Approach");
+    expect([...template.matchAll(/^## .+$/gm)].map((match) => match[0])).toEqual([
+      "## What",
+      "## Why",
+      "## Verify",
+      "## Risk",
+      "## Authorship",
+    ]);
     expect(template).toContain("**Model:**");
     expect(template).toContain("**Human review:**");
     expect(template).toContain("**Tests:**");
