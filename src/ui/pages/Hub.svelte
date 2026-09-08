@@ -4,6 +4,7 @@
   import { api, jsonBody, errorMessage, RequestError } from '../api';
   import { stageFiles, publish, slugify, type StagedUpload, type PublishResult } from '../uploads';
   import { nextNumberedSlug } from "../../slugs";
+  import { hubCleanupTarget } from '../hub-cleanup-target';
   import { registerHubTools } from '../model-context';
   import PageTitle from '../components/PageTitle.svelte';
   import Card from '../components/Card.svelte';
@@ -146,10 +147,16 @@
     clearCleanupSelection();
     refresh();
   }
+  function dropCleanupPreview() {
+    cleanupPreview = null;
+    cleanupConfirmOpen = false;
+    cleanupConfirmError = '';
+  }
   function clearCleanupSelection() {
     selectedSites = [];
     selectedFiles = [];
     matching = false;
+    dropCleanupPreview();
   }
   function siteSelected(id: string) { return matching || selectedSites.includes(id); }
   function fileSelected(id: string) { return matching || selectedFiles.includes(id); }
@@ -166,6 +173,7 @@
     } else {
       selectedFiles = on ? (selectedFiles.includes(item.id) ? selectedFiles : [...selectedFiles, item.id]) : selectedFiles.filter((id) => id !== item.id);
     }
+    if (!matching && selectedSites.length + selectedFiles.length === 0) dropCleanupPreview();
   }
   function toggleVisible(kind: 'site' | 'file', on: boolean) {
     materializeMatching();
@@ -175,48 +183,46 @@
     } else {
       selectedFiles = on ? [...new Set([...selectedFiles, ...visible])] : selectedFiles.filter((id) => !visible.includes(id));
     }
+    if (!matching && selectedSites.length + selectedFiles.length === 0) dropCleanupPreview();
   }
   function selectMatching() {
     matching = true;
     selectedSites = [];
     selectedFiles = [];
   }
-  function cleanupTarget(): Record<string, unknown> {
-    if (matching) {
-      const target: Record<string, unknown> = {};
-      if (q.trim()) target.q = q.trim();
-      if (scope !== 'involved') target.scope = scope;
-      if (expires === 'never') target.expires = 'never';
-      else if (expiresBefore.trim()) target.expires_before = expiresBefore.trim();
-      if (updatedBefore.trim()) target.updated_before = updatedBefore.trim();
-      if (lastReadBefore.trim()) target.last_read_before = lastReadBefore.trim();
-      if (minSize.trim()) target.min_size = minSize.trim();
-      return target;
-    }
-    const target: Record<string, unknown> = {};
-    if (selectedSites.length) target.sites = selectedSites;
-    if (selectedFiles.length) target.files = selectedFiles;
-    return target;
+  function cleanupTarget(): Record<string, unknown> | null {
+    return hubCleanupTarget(
+      matching ? { matching: true } : { matching: false, sites: selectedSites, files: selectedFiles },
+      { q, scope, expires, expiresBefore, updatedBefore, lastReadBefore, minSize },
+    );
   }
-  function cleanupBody(confirm?: string): Record<string, unknown> {
-    const body: Record<string, unknown> = { target: cleanupTarget(), action: cleanupAction };
+  function cleanupBody(confirm?: string): Record<string, unknown> | null {
+    const target = cleanupTarget();
+    if (!target) return null;
+    const body: Record<string, unknown> = { target, action: cleanupAction };
     if (cleanupAction === 'set_ttl') body.ttl = cleanupTtl;
     if (confirm) body.confirm = confirm;
     return body;
   }
   async function previewCleanup() {
-    if (!hasSelection || cleanupBusy) return;
+    const body = cleanupBody();
+    if (!body || cleanupBusy) return;
     cleanupBusy = true; cleanupConfirmError = '';
     try {
-      cleanupPreview = await api<AdminCleanupPreview>('/account/cleanup', jsonBody('POST', cleanupBody()));
+      cleanupPreview = await api<AdminCleanupPreview>('/account/cleanup', jsonBody('POST', body));
     } catch (error) { cleanupPreview = null; message(errorMessage(error), 'err'); }
     finally { cleanupBusy = false; }
   }
   async function confirmCleanup() {
     if (!cleanupPreview || cleanupBusy) return;
+    const body = cleanupBody(cleanupPreview.confirm);
+    if (!body) {
+      dropCleanupPreview();
+      return;
+    }
     cleanupBusy = true; cleanupConfirmError = '';
     try {
-      const result = await api<AdminCleanupResult>('/account/cleanup', jsonBody('POST', cleanupBody(cleanupPreview.confirm)));
+      const result = await api<AdminCleanupResult>('/account/cleanup', jsonBody('POST', body));
       cleanupConfirmOpen = false;
       cleanupPreview = null;
       clearCleanupSelection();
@@ -226,8 +232,12 @@
       await refresh();
     } catch (error) {
       if (error instanceof RequestError && error.status === 409) {
-        cleanupPreview = await api<AdminCleanupPreview>('/account/cleanup', jsonBody('POST', cleanupBody())).catch(() => cleanupPreview);
-        cleanupConfirmError = 'The selection changed since this preview. Review the new count and confirm again.';
+        const next = cleanupBody();
+        if (!next) dropCleanupPreview();
+        else {
+          cleanupPreview = await api<AdminCleanupPreview>('/account/cleanup', jsonBody('POST', next)).catch(() => cleanupPreview);
+          cleanupConfirmError = 'The selection changed since this preview. Review the new count and confirm again.';
+        }
       } else cleanupConfirmError = errorMessage(error);
     } finally { cleanupBusy = false; }
   }

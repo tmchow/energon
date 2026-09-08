@@ -48,7 +48,7 @@ Preconditions:
 - Hub `set_ttl` always sends `ttl`. Do not copy the admin omit-ttl 7-day default.
 - `#catalog-cleanup` is in the HTML even when hidden. Drive it after a selection so it is visible.
 - Matching follows the current filters, including rows not yet loaded. Unchecking one row after matching keeps only the remaining *visible* ids.
-- Changing search, scope, or filters clears the selection. Sort does not.
+- Changing search, scope, or filters clears the selection and drops the preview. Sort does not. A cleared row selection never posts `target: {}` (that would mean every involved object). Only Select all matching these filters may send `{}`.
 - `last_read_at` is a floor that can lag about a day. Never label it unread.
 - Per-item Change expiration and `/admin` are unchanged. Do not drive `#ttl-dlg` or `/admin` for this recipe.
 - `expire` keeps a 30-minute grace. Finish the recipe before those objects 410, or skip Expire soon if the clock is tight.
