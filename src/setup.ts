@@ -18,11 +18,11 @@ Then read ${id.origin}/auth.md. If ${id.tokenEnv} is already set, use it. Otherw
 }
 
 export function setupResponse(actor: Actor, env: Env): Response {
-  return new Response(setupPage(actor.email, identityFromEnv(env), instanceFooter(env)), {
+  return new Response(setupPage(actor.email, identityFromEnv(env), instanceFooter(env), Boolean(actor.admin)), {
     headers: PRIVATE_HTML_HEADERS,
   });
 }
 
-export function setupPage(email: string, id: InstanceIdentity, footer = ""): string {
-  return uiPage(`Setup — ${PRODUCT}`, { page: "setup", data: { email, identity: id, install: installBlock(id) }, footer });
+export function setupPage(email: string, id: InstanceIdentity, footer = "", admin = false): string {
+  return uiPage(`Setup — ${PRODUCT}`, { page: "setup", data: { email, admin, identity: id, install: installBlock(id) }, footer });
 }

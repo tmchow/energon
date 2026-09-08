@@ -4,7 +4,7 @@ import type { Env } from "./types";
 
 export { chromeCss };
 
-export type HubPage = "hub" | "about" | "stats" | "setup" | "tokens";
+export type HubPage = "hub" | "about" | "stats" | "setup" | "tokens" | "admin";
 
 const FONT_HREF =
   "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=optional";

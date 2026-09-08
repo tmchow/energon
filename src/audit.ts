@@ -1,4 +1,4 @@
-import { ApiError, json, nanoid, publicOrigin } from "./http";
+import { json, nanoid, publicOrigin } from "./http";
 import { requireAdmin, requireToken } from "./auth";
 import type { Actor, Env } from "./types";
 

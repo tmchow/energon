@@ -4,11 +4,12 @@ import { decideConnection, exchangeConnection, purgeConnections, startConnection
 import { aboutResponse } from "./about";
 import { instanceFooter, PRIVATE_HTML_HEADERS } from "./chrome";
 import logoSvg from "./logo.svg";
-import { actorFromAccess, assertEmailAllowed, bulkRevokeResponse, helpBody, listTokens, mintToken, parseTokenScope, rejectWorkersDevForHumans, requireHuman, requireToken, revokeToken, unauthorized } from "./auth";
+import { actorFromAccess, assertEmailAllowed, bulkRevokeResponse, helpBody, listTokens, mintToken, parseTokenScope, rejectWorkersDevForHumans, requireAdmin, requireHuman, requireToken, revokeToken, unauthorized } from "./auth";
 import { setupResponse } from "./setup";
 import { statsResponse } from "./stats";
 import { parseListQuery } from "./catalog";
-import { adminAuditResponse, requireAdminActor } from "./audit";
+import { adminAuditResponse, listAdminAudit, requireAdminActor } from "./audit";
+import { adminResponse } from "./admin";
 import { cleanupResponse } from "./cleanup";
 import { llmsResponse } from "./llms";
 import { authMarkdownResponse } from "./auth-doc";
@@ -179,6 +180,12 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     return statsResponse(env, await requireHuman(request, env, ctx));
   }
 
+  if (path === "/admin" && method === "GET") {
+    const actor = await requireHuman(request, env, ctx);
+    requireAdmin(actor, publicOrigin(env));
+    return adminResponse(actor, env);
+  }
+
   if (path === "/setup" && method === "GET") {
     return setupResponse(await requireHuman(request, env, ctx), env);
   }
@@ -207,6 +214,18 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
       : { sites: [], files: [], sites_total: 0, files_total: 0, sites_cursor: null, files_cursor: null };
     const tokens = user ? await listTokens(env, user.email, user.id) : [];
     return secretJson({ email: actor?.email ?? null, admin: actor ? emailIsAdmin(env, actor.email) : false, ...lists, tokens });
+  }
+
+  if (path === "/account/admin/audit" && method === "GET") {
+    const actor = await requireHuman(request, env, ctx);
+    requireAdmin(actor, publicOrigin(env));
+    return json(await listAdminAudit(env, url));
+  }
+
+  if (path === "/account/admin/cleanup" && method === "POST") {
+    const actor = await requireHuman(request, env, ctx);
+    requireAdmin(actor, publicOrigin(env));
+    return cleanupResponse(env, ctx, actor, await readJson(request), { admin: true });
   }
 
   if (path === "/account/tokens" && method === "POST") {
@@ -529,6 +548,7 @@ async function serveHub(request: Request, env: Env, ctx: ExecutionContext): Prom
     : { sites: [], files: [], sites_total: 0, files_total: 0, sites_cursor: null, files_cursor: null };
   const bootstrap = {
     email: actor?.email ?? null,
+    admin: Boolean(actor?.admin),
     handle: user?.handle ?? null,
     origin: publicOrigin(env),
     content_origin: contentOrigin(env),

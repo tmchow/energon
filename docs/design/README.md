@@ -12,7 +12,7 @@ The marketing site is maintained separately in the private `tmchow/energon-marke
 | `docs/design/DESIGN_SYSTEM.md` | Original visual and content guide from the handoff |
 | `src/ui/styles.css` | Application layouts and accessibility adaptations layered over the supplied CSS |
 | `src/ui/components/` | Shared Svelte controls, layout, tables, feedback, and brand motifs |
-| `src/ui/pages/` | Hub, Tokens, Setup, Connect, About, Stats, Gate, and Markdown |
+| `src/ui/pages/` | Hub, Tokens, Setup, Connect, About, Stats, Admin, Gate, and Markdown |
 | `src/ui/types.ts`, `src/page-data.ts` | Typed page payloads; no credentials are embedded in token-page data |
 | `src/ui-render.ts` | Server markup, escaped hydration JSON, and hashed browser asset reference |
 | `scripts/build-ui.mjs` | Svelte compiler and esbuild pipeline |

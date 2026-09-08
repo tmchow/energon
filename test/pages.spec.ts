@@ -64,6 +64,10 @@ describe("signed-in pages", () => {
     expect((await req(asset, { method: "POST" })).status).toBe(405);
     expect(html.indexOf('href="/tokens"')).toBeLessThan(html.indexOf('href="/setup"'));
     expect(html.indexOf('href="/setup"')).toBeLessThan(html.indexOf('href="/about"'));
+    expect(html).not.toContain('href="/admin"');
+    const adminHub = await (await req("/", { headers: access("admin@esperlabs.app") })).text();
+    expect(adminHub).toContain('href="/admin"');
+    expect(adminHub.indexOf('href="/stats"')).toBeLessThan(adminHub.indexOf('href="/admin"'));
   });
 
   it("renders catalog rows and the next-page control from real account data", async () => {
@@ -165,8 +169,10 @@ describe("signed-in pages", () => {
     const adminHtml = await (await req("/tokens", { headers: access("admin@esperlabs.app") })).text();
     expect(adminHtml).toContain('id="mint-scope"');
     expect(adminHtml).toContain('aria-label="Token authority"');
+    expect(adminHtml).toContain('href="/admin"');
     expect(bootstrap(adminHtml).data.admin).toBe(true);
     expect(tokensHtml).not.toContain('id="mint-scope"');
+    expect(tokensHtml).not.toContain('href="/admin"');
   });
 
   it("serves the Energon cube mark", async () => {
@@ -239,6 +245,30 @@ describe("signed-in pages", () => {
     expect(statsHtml).not.toContain("20 GB");
     expect(statsHtml).not.toContain('class="app-footer"');
     assertDomBindings(statsHtml);
+  });
+
+  it("admin cleanup page is only for operators on ADMIN_EMAILS", async () => {
+    const refused = await json("/admin", { headers: access("ada@esperlabs.app") });
+    expect(refused.status).toBe(403);
+    expect(refused.body.error).toBe("forbidden_admin");
+    expect(JSON.stringify(refused.body)).not.toContain("admin-preview");
+
+    const page = await req("/admin", { headers: access("admin@esperlabs.app") });
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).toContain("Retire old work.");
+    expect(html).toContain('id="admin-owner"');
+    expect(html).toContain('id="admin-q"');
+    expect(html).toContain('id="admin-last-read"');
+    expect(html).toContain('id="admin-preview"');
+    expect(html).toContain('id="admin-audit"');
+    expect(html).toContain('id="admin-dlg"');
+    expect(html).toContain('aria-label="Cleanup action"');
+    expect(html).toContain("The owner sees Expires");
+    expect(html).toContain('href="/admin"');
+    expect(bootstrap(html).page).toBe("admin");
+    expect(bootstrap(html).data.admin).toBe(true);
+    assertDomBindings(html);
   });
 
   it("FOOTER_TEXT becomes an escaped chrome footer; empty omits it", () => {

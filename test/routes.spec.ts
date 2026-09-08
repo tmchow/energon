@@ -425,4 +425,31 @@ describe("hub account API", () => {
     expect(refused.status).toBe(403);
     expect(refused.body.error).toBe("forbidden_admin");
   });
+
+  it("hub admin cleanup uses Access and refuses non-operators", async () => {
+    const denied = await json("/account/admin/cleanup", {
+      method: "POST",
+      headers: access("ada@esperlabs.app", { "content-type": "application/json" }),
+      body: JSON.stringify({ target: {}, action: "set_ttl" }),
+    });
+    expect(denied.status).toBe(403);
+    expect(denied.body.error).toBe("forbidden_admin");
+
+    const auditDenied = await json("/account/admin/audit", { headers: access("ada@esperlabs.app") });
+    expect(auditDenied.status).toBe(403);
+    expect(auditDenied.body.error).toBe("forbidden_admin");
+
+    const preview = await json("/account/admin/cleanup", {
+      method: "POST",
+      headers: access("admin@esperlabs.app", { "content-type": "application/json" }),
+      body: JSON.stringify({ target: { q: "no-such-admin-hub-item" }, action: "set_ttl" }),
+    });
+    expect(preview.status).toBe(200);
+    expect(preview.body).toMatchObject({ executed: false, action: "set_ttl", ttl: "7d" });
+    expect(JSON.stringify(preview.body)).not.toMatch(/password/i);
+
+    const listed = await json("/account/admin/audit", { headers: access("admin@esperlabs.app") });
+    expect(listed.status).toBe(200);
+    expect(listed.body.events.some((e: { action: string; executed: boolean }) => e.action === "cleanup" && !e.executed)).toBe(true);
+  });
 });

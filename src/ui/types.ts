@@ -24,17 +24,67 @@ export type LinkAccess = {
   write_password?: string | null;
 };
 export type TokensData = { email: string; tokens: Token[]; token_env: string; token_policy: TokenPolicy; now: number; admin: boolean; admin_token_policy: TokenPolicy };
-export type SetupData = { email: string; identity: InstanceIdentity; install: string };
+export type SetupData = { email: string; admin?: boolean; identity: InstanceIdentity; install: string };
 export type ConnectData = { email: string; host: string; connection: { id: string; label: string; expires_at: string }; token_policy: TokenPolicy };
 export type GateData = { action: string; wrong: boolean; limited?: boolean; passwordHeader: string };
 export type MarkdownData = { filename: string; rawHref: string; html: string; size?: number; updatedAt?: string };
+export type AdminCleanupObject = {
+  kind: 'site' | 'file';
+  ref: string;
+  name: string;
+  owner: string;
+  bytes: number;
+  expires_at: string | null;
+  updated_at: string;
+  last_read_at: string | null;
+};
+export type AdminCleanupPreview = {
+  action: 'delete' | 'set_ttl' | 'expire';
+  ttl?: string;
+  executed: false;
+  matched: number;
+  eligible: number;
+  bytes: number;
+  skipped: { total: number; by_reason?: Record<string, number> };
+  sample: AdminCleanupObject[];
+  confirm: string;
+};
+export type AdminCleanupResult = {
+  action: 'delete' | 'set_ttl' | 'expire';
+  ttl?: string;
+  executed: true;
+  applied: { total: number; bytes: number };
+  skipped: { total: number };
+  failed: { total: number };
+};
+export type AdminAuditEvent = {
+  id: string;
+  created_at: string;
+  actor_email: string;
+  token_id: string | null;
+  token_hint: string | null;
+  action: string;
+  executed: boolean;
+  action_kind: string | null;
+  ttl: string | null;
+  target: unknown;
+  matched: number | null;
+  eligible: number | null;
+  applied: number | null;
+  skipped: number | null;
+  failed: number | null;
+  bytes: number | null;
+  confirm: string | null;
+};
+export type AdminData = { email: string; admin: boolean; policy: RetentionPolicy };
 export type PageProps = (
   | { page: 'hub'; data: HubData }
   | { page: 'tokens'; data: TokensData }
   | { page: 'setup'; data: SetupData }
   | { page: 'connect'; data: ConnectData }
   | { page: 'stats'; data: StatsPayload }
-  | { page: 'about'; data: { email: string } }
+  | { page: 'about'; data: { email: string; admin?: boolean } }
+  | { page: 'admin'; data: AdminData }
   | { page: 'gate'; data: GateData }
   | { page: 'markdown'; data: MarkdownData }
 ) & { footer?: string };

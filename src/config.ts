@@ -19,7 +19,7 @@ export const WRITE_PASSWORD_HEADER = "X-Energon-Write-Password";
 export const SET_WRITE_PASSWORD_HEADER = "X-Energon-Set-Write-Password";
 export const WRITTEN_VIA_WRITE_PASSWORD = "write_password";
 
-export const RESERVED_HANDLES = new Set(["v1", "account", "static", "health", "about", "stats", "setup", "tokens"]);
+export const RESERVED_HANDLES = new Set(["v1", "account", "static", "health", "about", "stats", "setup", "tokens", "admin"]);
 export const RESERVED_SLUGS = new Set<string>();
 
 export const SLUG_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;

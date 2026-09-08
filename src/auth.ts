@@ -172,7 +172,7 @@ export async function actorFromAccess(
       .trim()
       .toLowerCase();
     const idpSub = identitySubFromRequest(request, email);
-    return { email, idpSub, via: "access" };
+    return { email, idpSub, via: "access", admin: emailIsAdmin(env, email) };
   }
 
   if (!ctx?.access?.aud) return null;
@@ -182,7 +182,7 @@ export async function actorFromAccess(
     if (!email.includes("@")) return null;
     const idpSub = identitySubFromAccess(identity);
     if (!idpSub) return null;
-    return { email, idpSub, via: "access" };
+    return { email, idpSub, via: "access", admin: emailIsAdmin(env, email) };
   } catch {
     return null;
   }
@@ -229,7 +229,9 @@ export function requireAdmin(actor: Actor, origin: string): void {
   throw new ApiError(
     403,
     "forbidden_admin",
-    `That request needs an admin token minted at ${origin}/tokens by someone on ADMIN_EMAILS. Account tokens and the connect flow cannot do this.`,
+    actor.via === "token"
+      ? `That request needs an admin token minted at ${origin}/tokens by someone on ADMIN_EMAILS. Account tokens and the connect flow cannot do this.`
+      : "That page is only for operators listed on ADMIN_EMAILS.",
   );
 }
 

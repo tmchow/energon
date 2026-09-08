@@ -34,6 +34,12 @@
 .en-setup-next { margin-top: 28px; }
 .en-hub-messages { margin-top: 20px; }
 .en-tokens-card { margin-top: 28px; }
+.en-admin-card { margin-top: 28px; }
+.en-admin-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 16px; }
+.en-admin-run { display: flex; flex-wrap: wrap; align-items: end; gap: 16px; }
+.en-admin-confirm { padding: 16px var(--pad-card) 16px; }
+.en-admin-metrics { padding: 4px var(--pad-card) 16px; }
+.en-admin-note { padding: 12px var(--pad-card) 0; }
 .en-tokens-tools { justify-content: flex-end; }
 .en-tokens-tools .en-seg button { height: var(--control-h-sm); }
 .en-tokens-note { padding: 12px var(--pad-card) 0; }
