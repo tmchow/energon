@@ -29,10 +29,11 @@ Those files are how a fork becomes *your* Energon. Upstream stays a template.
 
 ## Before you open a PR
 
-1. [Open an issue](https://github.com/tmchow/energon/issues/new/choose) first when the change is a new `/v1` surface, a schema migration, or a hub flow that is not an obvious bug. A short "should this exist?" issue saves a large patch that will not merge.
-2. Skip the issue for typos, test-only fixes, and bugs that already have a reproduction in the PR.
-3. One concern per PR. Do not mix formatting or drive-by refactors with a behavior change.
-4. Fill [`.github/PULL_REQUEST_TEMPLATE.md`](./.github/PULL_REQUEST_TEMPLATE.md). Keep the required headings (What, Why, Verify, Risk, Authorship). Add extra `##` sections when they help a reviewer. Agents: do not delete required sections or replace the body with a commit dump. Name the model in Authorship (not "Cursor" or "an AI") and whether a human reviewed the diff. "None" and "fully agent-created" are valid answers. Do not claim review you did not get.
+1. Search [issues](https://github.com/tmchow/energon/issues) and [pull requests](https://github.com/tmchow/energon/pulls?q=is%3Apr) (open and merged) before you build. Review or extend an open PR instead of duplicating it.
+2. [Open an issue](https://github.com/tmchow/energon/issues/new/choose) first when the change is a new `/v1` surface, a schema migration, or a hub flow that is not an obvious bug. A short "should this exist?" issue saves a large patch that will not merge.
+3. Skip the issue for typos, test-only fixes, and bugs that already have a reproduction in the PR.
+4. One concern per PR. Do not mix formatting or drive-by refactors with a behavior change.
+5. Fill [`.github/PULL_REQUEST_TEMPLATE.md`](./.github/PULL_REQUEST_TEMPLATE.md). Keep the required headings (What, Why, Verify, How to test, Risk, Authorship). Add extra `##` sections when they help a reviewer. Agents: do not delete required sections or replace the body with a commit dump. Name the model in Authorship (not "Cursor" or "an AI"). "None" is valid when a person wrote the patch.
 
 ## Commits and titles
 
@@ -53,7 +54,9 @@ Match the table in [AGENTS.md](./AGENTS.md). CI (`.github/workflows/ci.yml`) mus
 
 For hub UI, `/v1`, gate, token, or public URL changes, green CI is not proof. Read and follow
 the verify-energon skill ([`.agents/skills/verify-energon/SKILL.md`](./.agents/skills/verify-energon/SKILL.md))
-and name the feature file you drove in the PR. Follow [DESIGN.md](./DESIGN.md) for UI.
+and name the feature file you drove in Verify. Fill **How to test** with numbered steps a
+triage agent can run without asking you (command or URL, then the expected result).
+Follow [DESIGN.md](./DESIGN.md) for UI.
 
 Do not `wrangler deploy`, stamp `d1_migrations`, or execute D1 against production. New schema
 belongs in `migrations/` first, plus `src/db.ts` and `src/schema.sql` as [AGENTS.md](./AGENTS.md) describes.
