@@ -40,7 +40,8 @@ const TABLE_STATEMENTS = [
     write_policy TEXT NOT NULL DEFAULT 'org',
     write_password_hash TEXT,
     write_password_secret TEXT,
-    written_via TEXT
+    written_via TEXT,
+    last_read_at TEXT
   )`,
   `CREATE TABLE IF NOT EXISTS site_files (
     site_id TEXT NOT NULL,
@@ -68,7 +69,8 @@ const TABLE_STATEMENTS = [
     write_policy TEXT NOT NULL DEFAULT 'org',
     write_password_hash TEXT,
     write_password_secret TEXT,
-    written_via TEXT
+    written_via TEXT,
+    last_read_at TEXT
   )`,
   `CREATE TABLE IF NOT EXISTS tokens (
     id TEXT PRIMARY KEY,
@@ -136,8 +138,8 @@ export async function ensureSchema(db: D1Database): Promise<void> {
     await db.prepare(sql).run();
   }
   if (existing) {
-    await ensureColumns(db, "loose_files", ["updated_at", "last_written_by", "password_hash", "password_secret", "handle", "owner_id", "expires_at", "write_policy", "write_password_hash", "write_password_secret", "written_via"]);
-    await ensureColumns(db, "sites", ["id", "password_hash", "password_secret", "handle", "owner_id", "expires_at", "write_policy", "write_password_hash", "write_password_secret", "written_via"]);
+    await ensureColumns(db, "loose_files", ["updated_at", "last_written_by", "password_hash", "password_secret", "handle", "owner_id", "expires_at", "write_policy", "write_password_hash", "write_password_secret", "written_via", "last_read_at"]);
+    await ensureColumns(db, "sites", ["id", "password_hash", "password_secret", "handle", "owner_id", "expires_at", "write_policy", "write_password_hash", "write_password_secret", "written_via", "last_read_at"]);
     await ensureColumns(db, "site_files", ["site_id"]);
     await backfillSiteIds(db);
     await ensureColumns(db, "tokens", ["token_secret", "token_hint", "user_id", "expires_at"]);

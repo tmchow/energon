@@ -66,11 +66,11 @@ describe("schema upgrades", () => {
     await expect(ensureSchema(db as unknown as D1Database)).resolves.toBeUndefined();
 
     expect([...db.tables.get("sites") || []]).toEqual(
-      expect.arrayContaining(["id", "password_hash", "handle", "owner_id", "expires_at", "write_policy"]),
+      expect.arrayContaining(["id", "password_hash", "handle", "owner_id", "expires_at", "write_policy", "last_read_at"]),
     );
     expect([...db.tables.get("site_files") || []]).toEqual(expect.arrayContaining(["site_id"]));
     expect([...db.tables.get("loose_files") || []]).toEqual(
-      expect.arrayContaining(["updated_at", "last_written_by", "password_hash", "handle", "owner_id", "expires_at", "write_policy"]),
+      expect.arrayContaining(["updated_at", "last_written_by", "password_hash", "handle", "owner_id", "expires_at", "write_policy", "last_read_at"]),
     );
     expect([...db.tables.get("tokens") || []]).toEqual(expect.arrayContaining(["token_secret", "token_hint", "user_id", "expires_at"]));
     expect([...db.tables.get("users") || []]).toEqual(expect.arrayContaining(["idp_sub"]));
@@ -108,6 +108,16 @@ describe("schema upgrades", () => {
     await ensureSchema(db as unknown as D1Database);
 
     expect([...db.tables.get("tokens") || []]).toContain("expires_at");
+    expect(db.executed.filter((sql) => /ALTER TABLE/.test(sql))).toHaveLength(0);
+  });
+
+  it("gives a fresh database last_read_at from the table statements alone", async () => {
+    const db = new SchemaDb(true);
+
+    await ensureSchema(db as unknown as D1Database);
+
+    expect([...db.tables.get("sites") || []]).toContain("last_read_at");
+    expect([...db.tables.get("loose_files") || []]).toContain("last_read_at");
     expect(db.executed.filter((sql) => /ALTER TABLE/.test(sql))).toHaveLength(0);
   });
 });
