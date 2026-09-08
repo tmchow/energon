@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import { unzipSync, zipSync, strToU8 } from "fflate";
 import { describe, expect, it } from "vitest";
+import { MAX_IMPORT_FILES } from "../src/config";
 import { GATE_COOKIE, hashSharePassword, unlockToken } from "../src/gate";
 import { auth, access, createSite, json, mint, mintAdmin, req } from "./helpers";
 
@@ -1233,6 +1234,150 @@ describe("Energon", () => {
     const unpacked = unzipSync(new Uint8Array(await exported.arrayBuffer()));
     expect(new TextDecoder().decode(unpacked["secret.txt"])).toBe("hidden");
   });
+
+  it("exports owned sites and loose files as one zip with a manifest", async () => {
+    const ada = await mint("owned-export-ada", "export-ada@esperlabs.app");
+    const bob = await mint("owned-export-bob", "export-bob@esperlabs.app");
+    const empty = await mint("owned-export-empty", "export-empty@esperlabs.app");
+
+    const siteAlpha = await createSite(ada, "owned-alpha", { password: "ada-share-secret" });
+    await json(`/v1/sites/${siteAlpha.id}/files/index.html`, {
+      method: "PUT",
+      headers: auth(ada, { "content-type": "text/html" }),
+      body: "<h1>alpha</h1>",
+    });
+    await json(`/v1/sites/${siteAlpha.id}/files/css/app.css`, {
+      method: "PUT",
+      headers: auth(ada, { "content-type": "text/css" }),
+      body: "body{color:navy}",
+    });
+    const siteBeta = await createSite(ada, "owned-beta");
+    await json(`/v1/sites/${siteBeta.id}/files/notes.md`, {
+      method: "PUT",
+      headers: auth(ada, { "content-type": "text/markdown" }),
+      body: "# beta",
+    });
+
+    const one = await json("/v1/files", {
+      method: "POST",
+      headers: auth(ada, { "X-Filename": "owned-one.md", "content-type": "text/markdown" }),
+      body: "one",
+    });
+    const two = await json("/v1/files", {
+      method: "POST",
+      headers: auth(ada, { "X-Filename": "owned-two.md", "content-type": "text/markdown" }),
+      body: "two",
+    });
+    const three = await json("/v1/files", {
+      method: "POST",
+      headers: auth(ada, { "X-Filename": "owned-three.md", "content-type": "text/markdown" }),
+      body: "three",
+    });
+    expect(one.status).toBe(201);
+    expect(two.status).toBe(201);
+    expect(three.status).toBe(201);
+
+    const bobSite = await createSite(bob, "owned-bob-site");
+    await json(`/v1/sites/${bobSite.id}/files/index.html`, {
+      method: "PUT",
+      headers: auth(bob, { "content-type": "text/html" }),
+      body: "<h1>bob</h1>",
+    });
+    await json(`/v1/sites/${bobSite.id}/files/guest.md`, {
+      method: "PUT",
+      headers: auth(ada, { "content-type": "text/markdown" }),
+      body: "ada edited this",
+    });
+    const bobFile = await json("/v1/files", {
+      method: "POST",
+      headers: auth(bob, { "X-Filename": "owned-bob.md", "content-type": "text/plain" }),
+      body: "bob-only",
+    });
+    expect(bobFile.status).toBe(201);
+
+    const noAuth = await json("/v1/export");
+    expect(noAuth.status).toBe(401);
+
+    const vacant = await json("/v1/export", { headers: auth(empty) });
+    expect(vacant.status).toBe(400);
+    expect(vacant.body.error).toBe("empty_export");
+    expect(vacant.body.message).toContain("own");
+
+    const exported = await req("/v1/export", { headers: auth(ada) });
+    expect(exported.status).toBe(200);
+    expect(exported.headers.get("content-type")).toMatch(/zip/);
+    expect(exported.headers.get("content-disposition")).toContain("export-ada-owned.zip");
+    expect(exported.headers.get("content-disposition")).toMatch(/attachment/i);
+    const unpacked = unzipSync(new Uint8Array(await exported.arrayBuffer()));
+    const names = Object.keys(unpacked).sort();
+    expect(names).toContain("manifest.json");
+    expect(names).toContain(`sites/${siteAlpha.id}/index.html`);
+    expect(names).toContain(`sites/${siteAlpha.id}/css/app.css`);
+    expect(names).toContain(`sites/${siteBeta.id}/notes.md`);
+    expect(names).toContain(`files/${one.body.id}/owned-one.md`);
+    expect(names).toContain(`files/${two.body.id}/owned-two.md`);
+    expect(names).toContain(`files/${three.body.id}/owned-three.md`);
+    expect(names.some((name) => name.includes(bobSite.id))).toBe(false);
+    expect(names.some((name) => name.includes(String(bobFile.body.id)))).toBe(false);
+    expect(new TextDecoder().decode(unpacked[`sites/${siteAlpha.id}/index.html`])).toContain("alpha");
+    expect(new TextDecoder().decode(unpacked[`files/${one.body.id}/owned-one.md`])).toBe("one");
+
+    const manifest = JSON.parse(new TextDecoder().decode(unpacked["manifest.json"]));
+    expect(manifest.scope).toBe("owned");
+    expect(manifest.owner).toEqual({ email: "export-ada@esperlabs.app", handle: "export-ada" });
+    expect(manifest.sites.map((site: { id: string }) => site.id).sort()).toEqual([siteAlpha.id, siteBeta.id].sort());
+    expect(manifest.files.map((file: { filename: string }) => file.filename).sort()).toEqual([
+      "owned-one.md",
+      "owned-three.md",
+      "owned-two.md",
+    ]);
+    expect(JSON.stringify(manifest)).not.toContain("ada-share-secret");
+    expect(manifest).not.toHaveProperty("password");
+    const alpha = manifest.sites.find((site: { id: string }) => site.id === siteAlpha.id);
+    expect(alpha.slug).toBe("owned-alpha");
+    expect(alpha.url).toContain(`/export-ada/s/${siteAlpha.id}/owned-alpha/`);
+    expect(alpha.size).toBeGreaterThan(0);
+    expect(alpha.file_count).toBe(2);
+    expect(alpha.write_policy).toBe("org");
+    expect(alpha.archive_path).toBe(`sites/${siteAlpha.id}/`);
+    expect(alpha.expires_at === null || typeof alpha.expires_at === "string").toBe(true);
+
+    const hubZip = await req("/account/export", { headers: access("export-ada@esperlabs.app") });
+    expect(hubZip.status).toBe(200);
+    expect(hubZip.headers.get("content-disposition")).toContain("export-ada-owned.zip");
+    const hubNames = Object.keys(unzipSync(new Uint8Array(await hubZip.arrayBuffer()))).sort();
+    expect(hubNames).toEqual(names);
+  });
+
+  it("refuses an owned-content zip over the file-count cap", async () => {
+    const token = await mint("owned-export-cap", "export-cap@esperlabs.app");
+    const site = await createSite(token, "owned-cap");
+    const entries: Record<string, Uint8Array> = {};
+    for (let i = 0; i < MAX_IMPORT_FILES; i += 1) {
+      entries[`f${i}.txt`] = strToU8("x");
+    }
+    const imported = await json(`/v1/sites/${site.id}/import`, {
+      method: "POST",
+      headers: auth(token, { "content-type": "application/zip" }),
+      body: zipSync(entries),
+    });
+    expect(imported.status).toBe(200);
+    const extra = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "X-Filename": "owned-cap-extra.md", "content-type": "text/plain" }),
+      body: "x",
+    });
+    expect(extra.status).toBe(201);
+
+    const exported = await json("/v1/export", { headers: auth(token) });
+    expect(exported.status).toBe(400);
+    expect(exported.body.error).toBe("too_many_files");
+    expect(exported.body.limit_files).toBe(MAX_IMPORT_FILES);
+    expect(exported.body.actual_files).toBe(MAX_IMPORT_FILES + 1);
+    expect(exported.body.sites).toBe(1);
+    expect(exported.body.files).toBe(1);
+    expect(exported.body.message).toContain("GET /v1/sites/{id}/export");
+  }, 30_000);
 
   it("create accepts ttl and expired public URLs are 410", async () => {
     const { env } = await import("cloudflare:test");

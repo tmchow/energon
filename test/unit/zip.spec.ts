@@ -130,4 +130,16 @@ describe("packZip", () => {
     expect(compressed[8] | (compressed[9] << 8)).toBe(8);
     expect(unpackZip(stored)).toEqual([{ path: "image.PNG", bytes: image }]);
   });
+
+  it("accepts one extra entry when maxFiles is raised for a manifest", () => {
+    const files = [
+      { path: "manifest.json", bytes: strToU8("{}") },
+      { path: "sites/abc/index.html", bytes: strToU8("ok") },
+    ];
+    expect(() => packZip(files, 1024, 1)).toThrow(ApiError);
+    expect(unpackZip(packZip(files, 1024, 2)).map((file) => file.path).sort()).toEqual([
+      "manifest.json",
+      "sites/abc/index.html",
+    ]);
+  });
 });

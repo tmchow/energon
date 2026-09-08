@@ -1103,6 +1103,84 @@
         }
       }
     },
+    "/v1/export": {
+      "get": {
+        "operationId": "exportOwned",
+        "tags": [
+          "cleanup"
+        ],
+        "summary": "Download everything you own as a zip",
+        "description": "Token read. Zips every site and loose file keyed to the caller's owner_id, not everything they created or last wrote. Each site is under sites/{id}/ with its original paths. Loose files are under files/{id}/{filename}. manifest.json lists ids, names, public URLs, sizes, expiry, and write_policy. Share and write passwords are omitted. Same size and file-count caps as a site export; over the cap is 400 or 413 with the totals, and the message tells the caller to GET /v1/sites/{id}/export per site. Empty ownership is 400 empty_export. Do this before POST /v1/cleanup {} or retiring an account.",
+        "responses": {
+          "200": {
+            "description": "The archive, as an attachment named {handle}-owned.zip.",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "attachment; filename=\"{handle}-owned.zip\""
+              }
+            },
+            "content": {
+              "application/zip": {}
+            }
+          },
+          "400": {
+            "description": "Nothing owned, too many files, or a stored path that cannot be zipped. too_many_files includes sites, files, actual_files, actual_bytes, and limit_files.",
+            "x-error-codes": [
+              "empty_export",
+              "too_many_files",
+              "bad_zip_path"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenDomain"
+          },
+          "413": {
+            "description": "Owned files add up to more than the zip cap. Extra fields: sites, files, actual_files, actual_bytes, limit_bytes. Export each site instead.",
+            "x-error-codes": [
+              "too_large"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A stored file is missing or the zip could not be assembled.",
+            "x-error-codes": [
+              "export_failed",
+              "handle_failed",
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/ContentOriginNotConfigured"
+          }
+        }
+      }
+    },
     "/v1/cleanup": {
       "post": {
         "operationId": "cleanup",
@@ -2742,7 +2820,7 @@
     "schemas": {
       "Error": {
         "type": "object",
-        "description": "Every non-2xx JSON body. Some codes add fields: token_expired, cleanup_drift, and cleanup_too_many are typed below; too_large and storage_cap add limit_bytes plus actual_bytes or used_bytes; bad_ttl, ttl_required, and ttl_too_long add presets and default_ttl or max_ttl; forbidden_domain adds allowed_email_domains; site_not_found adds hint; bad_query adds fields (the malformed cleanup target filters). bad_target comes from POST /v1/cleanup and POST /v1/admin/gates/unlock. bad_action and bad_confirm come only from POST /v1/cleanup. password_required (401) and rate_limited (429) come from the public content gate, not /v1. bad_label, bad_origin, and token_not_found come from the hub /account API. not_found is any unknown route. bad_path is also returned for a URL that is not valid percent-encoding. connection_bad_code and connection_decided come from the human /account/connections API.",
+        "description": "Every non-2xx JSON body. Some codes add fields: token_expired, cleanup_drift, and cleanup_too_many are typed below; too_large and storage_cap add limit_bytes plus actual_bytes or used_bytes; GET /v1/export too_many_files and too_large also add sites, files, and actual_files; bad_ttl, ttl_required, and ttl_too_long add presets and default_ttl or max_ttl; forbidden_domain adds allowed_email_domains; site_not_found adds hint; bad_query adds fields (the malformed cleanup target filters). bad_target comes from POST /v1/cleanup and POST /v1/admin/gates/unlock. bad_action and bad_confirm come only from POST /v1/cleanup. empty_export is GET /v1/export with no owned sites or files. password_required (401) and rate_limited (429) come from the public content gate, not /v1. bad_label, bad_origin, and token_not_found come from the hub /account API. not_found is any unknown route. bad_path is also returned for a URL that is not valid percent-encoding. connection_bad_code and connection_decided come from the human /account/connections API.",
         "required": [
           "error",
           "message"
@@ -2781,6 +2859,7 @@
               "connection_slow_down",
               "content_origin_not_configured",
               "copy_failed",
+              "empty_export",
               "empty_site",
               "empty_zip",
               "expired",

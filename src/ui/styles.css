@@ -35,6 +35,8 @@
 .en-setup-stack { margin-top: 28px; max-width: 42rem; }
 .en-setup-next { margin-top: 28px; }
 .en-hub-messages { margin-top: 20px; }
+.en-hub-export .en-lede { margin: 0; }
+.en-hub-export .en-btn { width: fit-content; }
 .en-tokens-card { margin-top: 28px; }
 .en-admin-card { margin-top: 28px; }
 .en-admin-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 16px; }

@@ -23,7 +23,7 @@ This skill is bound to **{{ORIGIN}}**. Do not send traffic to another Energon. A
 6. If you are confused, `GET {{ORIGIN}}/v1/help` or `GET {{ORIGIN}}/llms.txt` (no auth). Trust that document for this Energon's retention presets and skill name. For exact request and response schemas, status codes, and error codes, `GET {{ORIGIN}}/v1/openapi.json` (OpenAPI 3.1, no auth).
 7. `GET /v1/sites` and `GET /v1/files` list only what **you** created or last wrote. To find something Bob created that you edited: `?created_by=bob@example.com&scope=edited`. Do not expect a company-wide catalog. You can still GET a known `/{handle}/s/{id}/{slug}` or `/{handle}/f/{id}` URL.
 8. Pass `ttl` on create unless the human wants this Energon's default. `GET /v1/help` → `retention` is the source of truth. `PUT` does not extend expiry. `PATCH { "ttl": "7d" }` resets from now. Expired URLs are `410`.
-9. Bulk cleanup (`POST /v1/cleanup`) is a **dry run** unless you send the `confirm` from its own preview. Always show the human the preview first (Scenario J). Delete has no recycle bin.
+9. Bulk cleanup (`POST /v1/cleanup`) is a **dry run** unless you send the `confirm` from its own preview. Always show the human the preview first (Scenario J). Delete has no recycle bin. `GET /v1/export` first if they need a copy of what they own; cleanup `{}` is involvement, which is wider than ownership.
 10. When your task is done and the token was connected for this session only (Scenario F delivered it and nothing else stores it), `DELETE /v1/whoami` revokes it so it does not linger. Self only: `/v1` cannot list or revoke other tokens. Never revoke a token the human provisioned for reuse (CI, scheduled jobs, `{{TOKEN_ENV}}` in a secret store) unless they ask.
 
 Auth on every `/v1` call except `/v1/help`, `/v1/health`, `/v1/openapi.json`, and the connection request/poll endpoints documented in `/auth.md`:
@@ -270,12 +270,18 @@ curl -sS "$PUBLIC_URL" \
 
 They want to delete or let expire a batch of their own sites and files (“get rid of everything that never expires”, “drop my drafts older than March”, “what is taking up space”).
 
-1. Find candidates with the list filters: `GET /v1/sites?expires=never&sort=size`, `GET /v1/files?updated_before=2026-03-01T00:00:00Z&sort=age`, `?min_size=50mb`, `?q=draft`. Both lists stay scoped to what you created or last wrote.
-2. `POST /v1/cleanup` **without** `confirm`. `target` is the same filters (plus optional `kind: sites|files`) or explicit `{"sites": [...], "files": [...]}`; `action` is `delete`, `set_ttl` (with `ttl`), or `expire` (30m grace). That call is a dry run: read back `matched`, `eligible`, `skipped.by_reason`, `bytes`, and the `sample` to the human.
-3. Only when they agree, resend the **same body** with the returned `confirm`. The response lists `applied`, `skipped`, and `failed` per object.
-4. `409 cleanup_drift` means the selection changed under you; the body is a fresh preview — show it and confirm again. `413 cleanup_too_many` means more than 100 eligible objects; narrow the target and repeat.
+1. If they may need the bytes later, `GET /v1/export` first. That zip is only what they **own** (`owner_id`), with `manifest.json` (ids, names, public URLs, sizes, expiry, write policy). Share and write passwords are omitted. Over the zip cap, export each site with `GET /v1/sites/{id}/export` instead. Cleanup `{}` is involvement, which is wider than this archive.
+2. Find candidates with the list filters: `GET /v1/sites?expires=never&sort=size`, `GET /v1/files?updated_before=2026-03-01T00:00:00Z&sort=age`, `?min_size=50mb`, `?q=draft`. Both lists stay scoped to what you created or last wrote.
+3. `POST /v1/cleanup` **without** `confirm`. `target` is the same filters (plus optional `kind: sites|files`) or explicit `{"sites": [...], "files": [...]}`; `action` is `delete`, `set_ttl` (with `ttl`), or `expire` (30m grace). That call is a dry run: read back `matched`, `eligible`, `skipped.by_reason`, `bytes`, and the `sample` to the human.
+4. Only when they agree, resend the **same body** with the returned `confirm`. The response lists `applied`, `skipped`, and `failed` per object.
+5. `409 cleanup_drift` means the selection changed under you; the body is a fresh preview — show it and confirm again. `413 cleanup_too_many` means more than 100 eligible objects; narrow the target and repeat.
 
 ```bash
+# copy of what they own (before a large cleanup)
+curl -sS {{ORIGIN}}/v1/export \
+  -H "Authorization: Bearer ${{TOKEN_ENV}}" \
+  -o owned.zip
+
 # dry run
 curl -sS {{ORIGIN}}/v1/cleanup \
   -H "Authorization: Bearer ${{TOKEN_ENV}}" \

@@ -49,7 +49,7 @@ Preconditions:
 - `expire` uses a fixed grace: sending `ttl` with `expire` or `delete` is `400 bad_action`. Use `set_ttl` for a chosen `ttl`.
 - After execute-expire the fixtures turn `410` about 30 minutes later and are then purged. Finish the recipe, including the explicit delete, well inside that window, or re-create fixtures.
 - On an Energon that requires a TTL (`retention.allow_unlimited` false) `expires=never` matches nothing. Filter with `expires_before` or `updated_before` instead; do not report the empty match as a bug.
-- Cleanup never returns `403` for someone else's owner-locked object; it appears under `skipped.by_reason.not_writable`. Lists stay scoped to what the token's account created or last wrote, so `{}` as the target means "everything I am involved in on this Energon", not the whole host.
+- Cleanup never returns `403` for someone else's owner-locked object; it appears under `skipped.by_reason.not_writable`. Lists stay scoped to what the token's account created or last wrote, so `{}` as the target means "everything I am involved in on this Energon", not the whole host. `GET /v1/export` is the owned-content zip before that call; it is narrower than `{}`.
 - `matched` counts unresolved explicit ids too, so `matched` can exceed `eligible + writable skips`. A site that is already gone during execute-delete still counts as `applied`.
 - Site `min_size` sums the site's files, so an empty site never matches `min_size=1`. Keep the site PUT in the fixtures step.
 - The `413` for an oversized explicit list happens before any lookup: `eligible`, `skipped`, and `bytes` are absent from that body. A filter that matches too many objects returns them.
