@@ -183,7 +183,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   if (path === "/admin" && method === "GET") {
     const actor = await requireHuman(request, env, ctx);
     requireAdmin(actor, publicOrigin(env));
-    return adminResponse(actor, env);
+    return await adminResponse(actor, env);
   }
 
   if (path === "/setup" && method === "GET") {

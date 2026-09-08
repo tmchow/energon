@@ -265,9 +265,16 @@ describe("signed-in pages", () => {
     expect(html).toContain('id="admin-dlg"');
     expect(html).toContain('aria-label="Cleanup action"');
     expect(html).toContain("The owner sees Expires");
+    expect(html).toContain("Set expiry is the safe default");
+    expect(html).toContain("Defaults to 7 days.");
+    expect(html).toContain("Matches work with no recorded read too.");
+    expect(html).not.toContain("Never-read");
+    expect(html).not.toContain("set_ttl is the safe default");
+    expect(html).not.toContain("Expire soon");
     expect(html).toContain('href="/admin"');
     expect(bootstrap(html).page).toBe("admin");
     expect(bootstrap(html).data.admin).toBe(true);
+    expect(bootstrap(html).data.handle).toBe("user-admin");
     assertDomBindings(html);
   });
 
