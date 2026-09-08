@@ -131,9 +131,10 @@
   const minSizeError = $derived(validSize(minSize) ? '' : 'Enter bytes or a size like 500kb, 1mb, or 2gb.');
   const filtersValid = $derived(!expiresBeforeError && !updatedBeforeError && !minSizeError);
   async function refresh(only?: 'sites' | 'files') {
-    if (!filtersValid) return;
     const sequence = ++requestSequence;
-    controller?.abort(); controller = new AbortController(); loading = true;
+    controller?.abort();
+    if (!filtersValid) { loading = false; return; }
+    controller = new AbortController(); loading = true;
     const query = new URLSearchParams({ q: q.trim(), scope, sort });
     if (expires === 'never') query.set('expires', 'never');
     else if (expiresBefore.trim()) query.set('expires_before', expiresBefore.trim());
@@ -445,7 +446,7 @@
 
 <main class="en-wrap">
   <PageTitle wide title="Publish a document, prototype, or file."><p class="en-lede">Upload here and get a link. Or <a href="/setup">connect your agent</a> to publish for you.</p></PageTitle>
-  <div id="messages" class="en-hub-messages">{#each messages as item (item.id)}<Flash tone={item.tone} password={item.password} writePassword={item.writePassword} onDismiss={() => dismiss(item.id)}>{item.text}{#if item.url} <a href={item.url}>{item.name}</a>{/if}{#snippet action()}{#if item.retry}<Button variant="outline" size="sm" onclick={() => { dismiss(item.id); item.retry?.(); }}>Try again</Button>{/if}{/snippet}</Flash>{/each}</div>
+  <div id="messages" class="en-hub-messages">{#each messages as item (item.id)}<Flash tone={item.tone} password={item.password} writePassword={item.writePassword} onDismiss={() => dismiss(item.id)} action={item.retry ? { label: 'Try again', onclick: () => { dismiss(item.id); item.retry?.(); } } : undefined}>{item.text}{#if item.url} <a href={item.url}>{item.name}</a>{/if}</Flash>{/each}</div>
   <div class="en-space-after"><Card charged tight>
     <DropZone over={dragDepth > 0} {busy} onFiles={() => filepick.click()} onFolder={() => folderpick.click()} children={staged ? stage : undefined} />
     <input bind:this={filepick} id="filepick" class="en-sr-only" type="file" multiple tabindex="-1" aria-hidden="true" onchange={e => picked(e)} />
