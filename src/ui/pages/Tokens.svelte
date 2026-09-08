@@ -32,6 +32,7 @@
   let error = $state('');
   let mintError = $state('');
   let notice = $state('');
+  let pageError = $state('');
   let busy = $state(false);
   let target = $state<Token | null>(null);
   let confirmOpen = $state(false);
@@ -86,16 +87,16 @@
   }
   async function preview(which: BulkRevokeTarget) {
     if (busy) return;
-    busy = true; error = ''; notice = '';
+    busy = true; error = ''; notice = ''; pageError = '';
     try {
       bulk = await api<BulkRevokePreview>('/account/tokens/revoke', jsonBody('POST', { target: which }));
       bulkOpen = true;
-    } catch (err) { notice = errorMessage(err); }
+    } catch (err) { pageError = errorMessage(err); }
     finally { busy = false; }
   }
   async function revokeBulk() {
     if (!bulk || busy) return;
-    busy = true; error = '';
+    busy = true; error = ''; pageError = '';
     try {
       const result = await api<BulkRevokeResult>('/account/tokens/revoke', jsonBody('POST', { target: bulk.target, confirm: bulk.confirm }));
       minted = ''; bulkOpen = false;
@@ -129,7 +130,7 @@
     <p class="en-lede">Each token is an agent acting as you: it can publish, read, reference, or update work, including password-protected links, subject to each file or site's write policy. Revoke one here to cut that agent off. Expiry stops the agent, not the links it published.</p>
     <p class="en-lede">You usually do not mint tokens here. <a href="/setup">Set up your agent</a> and it provisions its own token when you approve its code. Mint one by hand only for CI, scheduled jobs, or a hosted sandbox with a secret store.</p>
   </PageTitle>
-  <div id="messages">{#if mintError}<Flash tone="err">{mintError}</Flash>{/if}{#if notice}<Flash tone="ok">{notice}</Flash>{/if}</div>
+  <div id="messages">{#if mintError}<Flash tone="err">{mintError}</Flash>{/if}{#if pageError}<Flash tone="err">{pageError}</Flash>{/if}{#if notice}<Flash tone="ok">{notice}</Flash>{/if}</div>
   <Card title="Tokens" headEnd={tools} tight className="en-tokens-card">
     <p class="en-muted-copy en-tokens-note">Stale means unused for 30 days. Live hides expired and revoked tokens; All shows every token you have minted. Last four characters shown.</p>
     <div id="tokens">

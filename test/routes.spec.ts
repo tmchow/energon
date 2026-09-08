@@ -337,4 +337,24 @@ describe("hub account API", () => {
     const again = await json("/account/tokens/revoke", { method: "POST", headers, body: JSON.stringify({ target: "all" }) });
     expect(again.body.matched).toBe(0);
   });
+
+  it("bulk revoke handles more tokens than one D1 statement can bind", async () => {
+    const email = "bulk-many@esperlabs.app";
+    const headers = access(email, { "content-type": "application/json" });
+    const count = 105;
+    const secrets = [];
+    for (let i = 0; i < count; i++) secrets.push(await mint(`many-${i}`, email));
+
+    const preview = await json("/account/tokens/revoke", { method: "POST", headers, body: JSON.stringify({ target: "all" }) });
+    expect(preview.body.matched).toBe(count);
+    const done = await json("/account/tokens/revoke", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ target: "all", confirm: preview.body.confirm }),
+    });
+    expect(done.status).toBe(200);
+    expect(done.body).toEqual({ ok: true, target: "all", executed: true, revoked: count });
+    expect((await json("/v1/whoami", { headers: auth(secrets[0]) })).status).toBe(401);
+    expect((await json("/v1/whoami", { headers: auth(secrets[count - 1]) })).status).toBe(401);
+  });
 });

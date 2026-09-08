@@ -287,6 +287,8 @@ const BULK_REVOKE_SAMPLE = 10;
 /** Bump when the canonical confirm string changes shape so stale confirms drift instead of executing. */
 const BULK_REVOKE_CONFIRM_VERSION = "1";
 const BULK_REVOKE_CONFIRM_RE = /^[0-9a-f]{32}$/;
+/** D1 caps a statement at 100 bound parameters; one slot goes to revoked_at. */
+const BULK_REVOKE_BATCH = 90;
 
 type BulkRevokeOutcome =
   | { kind: "preview"; preview: BulkRevokePreview }
@@ -328,10 +330,16 @@ export async function bulkRevokeTokens(
   if (confirm === null) return { kind: "preview", preview };
   if (confirm !== expected) return { kind: "drift", preview };
   if (eligible.length) {
-    const marks = eligible.map(() => "?").join(", ");
-    await env.DB.prepare(`UPDATE tokens SET revoked_at = ? WHERE revoked_at IS NULL AND id IN (${marks})`)
-      .bind(new Date().toISOString(), ...eligible.map((token) => token.id))
-      .run();
+    const revokedAt = new Date().toISOString();
+    const statements = [];
+    for (let i = 0; i < eligible.length; i += BULK_REVOKE_BATCH) {
+      const ids = eligible.slice(i, i + BULK_REVOKE_BATCH).map((token) => token.id);
+      const marks = ids.map(() => "?").join(", ");
+      statements.push(
+        env.DB.prepare(`UPDATE tokens SET revoked_at = ? WHERE revoked_at IS NULL AND id IN (${marks})`).bind(revokedAt, ...ids),
+      );
+    }
+    await env.DB.batch(statements);
   }
   return { kind: "executed", result: { ok: true, target, executed: true, revoked: eligible.length } };
 }
