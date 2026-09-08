@@ -36,6 +36,6 @@ Preconditions:
 
 - One file is never treated as a zip, even if the name ends in `.zip`. A zip on the hub with a single zip file stages a site, not a loose file.
 - `POST /v1/files` without `X-Filename` or multipart `file` fails. The header name is `X-Filename`, not `Content-Disposition`.
-- The public path includes the filename. After a rename (PATCH filename if exposed) the id stays; this recipe does not rename.
+- The public path includes the filename. PATCH does not take `filename`. Optional `X-Filename` on PUT renames and moves the public URL; the id stays. This recipe does not rename.
 - `GET /v1/files/{id}` skips a share password. The public `/{handle}/f/…` URL does not. Proof of “anyone with the link” must hit the public URL, not `/v1`.
 - Replace must keep `url` and `id`. A new id means mint-on-PUT, which is a bug.

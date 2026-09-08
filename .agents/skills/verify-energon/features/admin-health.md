@@ -13,7 +13,7 @@ Operators listed on `ADMIN_EMAILS` see storage health on `/admin` and can repair
 
 ## How to get to it (user POV)
 
-- Operator, hub: open `/admin`. `#admin-health` is above Find work. Recompute and sweep confirm in dialogs. Unlock takes a scope such as `obj:/handle/f/id/name`.
+- Operator, hub: open `/admin`. `#admin-health` is above Find work. Recompute and sweep confirm in dialogs. Unlock takes a scope such as `obj:/{handle}/f/{id}/` (trailing slash, no filename) or `ip:…`.
 - Operator, agent: mint `scope: admin` at `/tokens`, then `GET /v1/admin/health`, `POST /v1/admin/quota/recompute`, `POST /v1/admin/sweep`, `POST /v1/admin/gates/unlock`.
 - `GET $ORIGIN/v1/openapi.json` documents the health GET and three POSTs; `GET $ORIGIN/v1/help` `routes` names them.
 
