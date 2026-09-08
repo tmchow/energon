@@ -67,7 +67,7 @@ Never put tokens, share passwords, or write passwords in published files, source
 - \`401 token_expired\`: stop using the token. Tokens cannot be extended or refreshed; connect again with a code or ask the human to provision a replacement. \`expires_at: null\` means no scheduled expiry, not immunity from revocation.
 - \`403\`: access or write policy denied the action. Do not retry with broader access automatically.
 
-Humans list and revoke tokens at ${origin}/tokens. Revocation prevents further use of that credential.
+Humans list and revoke tokens at ${origin}/tokens. Revocation prevents further use of that credential. An agent can revoke only its own token, with DELETE ${origin}/v1/whoami, once its task is done and nothing else stores that token; there is no API to list or revoke other tokens.
 
 ## Continue
 

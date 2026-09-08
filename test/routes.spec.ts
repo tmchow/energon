@@ -1,3 +1,4 @@
+import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { access, auth, createSite, json, mint, req } from "./helpers";
 
@@ -245,5 +246,115 @@ describe("hub account API", () => {
     });
     expect(minted.status).toBe(201);
     expect(minted.headers.get("cache-control")).toMatch(/no-store/);
+  });
+
+  it("DELETE /v1/whoami revokes only the calling token", async () => {
+    const email = "self@esperlabs.app";
+    const mine = await mint("self-done", email);
+    const other = await mint("self-keep", email);
+    expect((await json("/v1/whoami", { method: "DELETE" })).status).toBe(401);
+
+    const revoked = await req("/v1/whoami", { method: "DELETE", headers: auth(mine) });
+    expect(revoked.status).toBe(200);
+    expect(revoked.headers.get("cache-control")).toMatch(/no-store/);
+    expect(await revoked.json()).toEqual({ ok: true, revoked: true, label: "self-done" });
+
+    const dead = await json("/v1/whoami", { headers: auth(mine) });
+    expect(dead.status).toBe(401);
+    expect(dead.body.error).toBe("unauthorized");
+    expect((await json("/v1/whoami", { method: "DELETE", headers: auth(mine) })).status).toBe(401);
+    expect((await json("/v1/whoami", { headers: auth(other) })).body.label).toBe("self-keep");
+
+    const listed = await json("/account/data", { headers: access(email) });
+    const byLabel = Object.fromEntries(listed.body.tokens.map((t: { label: string; status: string }) => [t.label, t.status]));
+    expect(byLabel).toMatchObject({ "self-done": "revoked", "self-keep": "live" });
+    expect((await json("/v1/help")).body.routes["DELETE /v1/whoami"]).toContain("self only");
+  });
+
+  it("bulk revokes stale or all tokens only after a matching preview confirm", async () => {
+    const email = "bulk@esperlabs.app";
+    const headers = access(email, { "content-type": "application/json" });
+    const fresh = await mint("bulk-fresh", email);
+    const idle = await mint("bulk-idle", email);
+    const expired = await mint("bulk-expired", email, undefined, "1d");
+    await env.DB.prepare(`UPDATE tokens SET created_at = ? WHERE label = ? AND user_email = ?`)
+      .bind("2000-01-01T00:00:00.000Z", "bulk-idle", email)
+      .run();
+    await env.DB.prepare(`UPDATE tokens SET expires_at = ? WHERE label = ? AND user_email = ?`)
+      .bind("2000-01-02T00:00:00.000Z", "bulk-expired", email)
+      .run();
+
+    expect((await json("/v1/whoami", { headers: auth(idle) })).status).toBe(200);
+    await env.DB.prepare(`UPDATE tokens SET last_used_at = created_at WHERE label = ? AND user_email = ?`).bind("bulk-idle", email).run();
+
+    const listed = await json("/account/data", { headers: access(email) });
+    const byLabel = Object.fromEntries(listed.body.tokens.map((t: { label: string; status: string }) => [t.label, t.status]));
+    expect(byLabel).toMatchObject({ "bulk-fresh": "live", "bulk-idle": "stale", "bulk-expired": "expired" });
+
+    const badTarget = await json("/account/tokens/revoke", { method: "POST", headers, body: JSON.stringify({ target: "some" }) });
+    expect(badTarget.status).toBe(400);
+    expect(badTarget.body.error).toBe("bad_target");
+
+    const stalePreview = await json("/account/tokens/revoke", { method: "POST", headers, body: JSON.stringify({ target: "stale" }) });
+    expect(stalePreview.status).toBe(200);
+    expect(stalePreview.body).toMatchObject({ target: "stale", executed: false, matched: 1 });
+    expect(stalePreview.body.sample.map((t: { label: string }) => t.label)).toEqual(["bulk-idle"]);
+    expect(stalePreview.body.confirm).toMatch(/^[0-9a-f]{32}$/);
+
+    const drift = await json("/account/tokens/revoke", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ target: "all", confirm: stalePreview.body.confirm }),
+    });
+    expect(drift.status).toBe(409);
+    expect(drift.body.error).toBe("token_revoke_drift");
+    expect(drift.body.matched).toBe(3);
+    expect((await json("/v1/whoami", { headers: auth(fresh) })).status).toBe(200);
+
+    const staleDone = await json("/account/tokens/revoke", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ target: "stale", confirm: stalePreview.body.confirm }),
+    });
+    expect(staleDone.status).toBe(200);
+    expect(staleDone.body).toEqual({ ok: true, target: "stale", executed: true, revoked: 1 });
+    expect((await json("/v1/whoami", { headers: auth(idle) })).status).toBe(401);
+    expect((await json("/v1/whoami", { headers: auth(fresh) })).status).toBe(200);
+
+    const allPreview = await json("/account/tokens/revoke", { method: "POST", headers, body: JSON.stringify({ target: "all" }) });
+    expect(allPreview.body.matched).toBe(2);
+    const allDone = await json("/account/tokens/revoke", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ target: "all", confirm: allPreview.body.confirm }),
+    });
+    expect(allDone.body).toEqual({ ok: true, target: "all", executed: true, revoked: 2 });
+    expect((await json("/v1/whoami", { headers: auth(fresh) })).status).toBe(401);
+    expect((await json("/v1/whoami", { headers: auth(expired) })).body.error).toBe("unauthorized");
+    const after = await json("/account/data", { headers: access(email) });
+    expect(after.body.tokens.every((t: { status: string }) => t.status === "revoked")).toBe(true);
+
+    const again = await json("/account/tokens/revoke", { method: "POST", headers, body: JSON.stringify({ target: "all" }) });
+    expect(again.body.matched).toBe(0);
+  });
+
+  it("bulk revoke handles more tokens than one D1 statement can bind", async () => {
+    const email = "bulk-many@esperlabs.app";
+    const headers = access(email, { "content-type": "application/json" });
+    const count = 105;
+    const secrets = [];
+    for (let i = 0; i < count; i++) secrets.push(await mint(`many-${i}`, email));
+
+    const preview = await json("/account/tokens/revoke", { method: "POST", headers, body: JSON.stringify({ target: "all" }) });
+    expect(preview.body.matched).toBe(count);
+    const done = await json("/account/tokens/revoke", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ target: "all", confirm: preview.body.confirm }),
+    });
+    expect(done.status).toBe(200);
+    expect(done.body).toEqual({ ok: true, target: "all", executed: true, revoked: count });
+    expect((await json("/v1/whoami", { headers: auth(secrets[0]) })).status).toBe(401);
+    expect((await json("/v1/whoami", { headers: auth(secrets[count - 1]) })).status).toBe(401);
   });
 });

@@ -151,10 +151,15 @@ describe("signed-in pages", () => {
     expect(tokensHtml).not.toContain('class="app-footer"');
     expect(tokensHtml).not.toContain("__FOOTER__");
     expect(tokensHtml.indexOf('href="/tokens"')).toBeLessThan(tokensHtml.indexOf('href="/setup"'));
-    expect(tokensHtml.indexOf("Active tokens")).toBeLessThan(tokensHtml.indexOf("Mint a token by hand"));
+    expect(tokensHtml.indexOf(">Tokens</h2>")).toBeLessThan(tokensHtml.indexOf("Mint a token by hand"));
+    expect(tokensHtml).toContain('id="tokens-show"');
+    expect(tokensHtml).toContain('aria-label="Show tokens"');
+    expect(tokensHtml).toContain('id="revoke-stale"');
+    expect(tokensHtml).toContain('id="revoke-all"');
+    expect(tokensHtml).toContain("Stale means unused for 30 days.");
     assertDomBindings(tokensHtml);
     const emptyHtml = await (await req("/tokens", { headers: access("notokens@esperlabs.app") })).text();
-    expect(emptyHtml).toContain("No active tokens");
+    expect(emptyHtml).toContain("No live tokens");
     expect(emptyHtml).toContain("Set up your agent and approve its code");
   });
 

@@ -34,6 +34,14 @@
 .en-setup-next { margin-top: 28px; }
 .en-hub-messages { margin-top: 20px; }
 .en-tokens-card { margin-top: 28px; }
+.en-tokens-tools { justify-content: flex-end; }
+.en-tokens-tools .en-seg button { height: var(--control-h-sm); }
+.en-tokens-note { padding: 12px var(--pad-card) 0; }
+.en-table tr.row-stale td.when { color: var(--warn-fg-strong); }
+@media (max-width: 720px) {
+  .en-card-head:has(.en-tokens-tools) { flex-direction: column; align-items: stretch; }
+  .en-tokens-tools { justify-content: flex-start; }
+}
 .en-mint { display: grid; grid-template-columns: 1fr minmax(9rem, auto) auto; align-items: end; gap: 9px; }
 .en-mint > .en-field { min-width: 0; }
 .en-token-reveal { margin: 16px 0 0; }

@@ -4,7 +4,7 @@ import { decideConnection, exchangeConnection, purgeConnections, startConnection
 import { aboutResponse } from "./about";
 import { instanceFooter, PRIVATE_HTML_HEADERS } from "./chrome";
 import logoSvg from "./logo.svg";
-import { actorFromAccess, assertEmailAllowed, helpBody, listTokens, mintToken, rejectWorkersDevForHumans, requireHuman, requireToken, revokeToken, unauthorized } from "./auth";
+import { actorFromAccess, assertEmailAllowed, bulkRevokeResponse, helpBody, listTokens, mintToken, rejectWorkersDevForHumans, requireHuman, requireToken, revokeToken, unauthorized } from "./auth";
 import { setupResponse } from "./setup";
 import { statsResponse } from "./stats";
 import { parseListQuery } from "./catalog";
@@ -218,6 +218,11 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     );
   }
 
+  if (path === "/account/tokens/revoke" && method === "POST") {
+    const actor = await requireHuman(request, env, ctx);
+    return bulkRevokeResponse(env, actor, await readJson(request));
+  }
+
   const revokeMatch = path.match(/^\/account\/tokens\/([^/]+)\/revoke$/);
   if (revokeMatch && method === "POST") {
     const actor = await requireHuman(request, env, ctx);
@@ -390,6 +395,12 @@ async function api(
   if (path === "/v1/whoami" && method === "GET") {
     const actor = await requireToken(request, env);
     return secretJson({ email: actor.email, label: actor.tokenLabel, expires_at: actor.tokenExpiresAt ?? null });
+  }
+
+  if (path === "/v1/whoami" && method === "DELETE") {
+    const actor = await requireToken(request, env);
+    await revokeToken(env, actor.email, actor.tokenId ?? "", actor.userId);
+    return secretJson({ ok: true, revoked: true, label: actor.tokenLabel });
   }
 
   if (path === "/v1/sites" && method === "GET") {

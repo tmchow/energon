@@ -6,7 +6,8 @@ import {
   formatBytes,
 } from "./config";
 import { helpGuestWriteSop } from "./guest-write-protocol";
-import { ApiError, decodeJwtPayload, isLocalHost, isWorkersDev, nanoid, publicOrigin, sha256Hex } from "./http";
+import { assertNever } from "./catalog";
+import { ApiError, decodeJwtPayload, isLocalHost, isWorkersDev, json, nanoid, publicOrigin, sha256Hex } from "./http";
 import { identityFromEnv, installLine } from "./instance";
 import {
   emailAllowed,
@@ -18,6 +19,15 @@ import {
   tokenPolicy,
   tokenPolicyPublic,
 } from "./policy";
+import {
+  BULK_REVOKE_TARGETS,
+  bulkRevokeEligible,
+  tokenStatus,
+  type BulkRevokePreview,
+  type BulkRevokeResult,
+  type BulkRevokeTarget,
+  type TokenSummary,
+} from "./token-status";
 import { ensureUser, getUser, getUserById } from "./handles";
 import type { Actor, Env, TokenRow } from "./types";
 
@@ -244,19 +254,9 @@ type TokenListRow = {
   expires_at: string | null;
 };
 
-export async function listTokens(env: Env, email: string, userId?: string): Promise<
-  {
-    id: string;
-    label: string;
-    hint: string | null;
-    created_at: string;
-    last_used_at: string | null;
-    expires_at: string | null;
-    expired: boolean;
-    revoked: boolean;
-    recoverable: boolean;
-  }[]
-> {
+export type TokenListing = TokenSummary & { expired: boolean; revoked: boolean; recoverable: boolean };
+
+export async function listTokens(env: Env, email: string, userId?: string, now = Date.now()): Promise<TokenListing[]> {
   const columns = `id, label, created_at, last_used_at, revoked_at, token_hint, expires_at`;
   const rows = userId
     ? await env.DB.prepare(
@@ -266,17 +266,101 @@ export async function listTokens(env: Env, email: string, userId?: string): Prom
     : await env.DB.prepare(`SELECT ${columns} FROM tokens WHERE user_email = ? ORDER BY created_at DESC`)
         .bind(email)
         .all<TokenListRow>();
-  return (rows.results || []).map((r) => ({
-    id: r.id,
-    label: r.label,
-    hint: r.token_hint,
-    created_at: r.created_at,
-    last_used_at: r.last_used_at,
-    expires_at: r.expires_at ?? null,
-    expired: tokenExpired(r.expires_at),
-    revoked: Boolean(r.revoked_at),
-    recoverable: false,
-  }));
+  return (rows.results || []).map((r) => {
+    const status = tokenStatus(r, now);
+    return {
+      id: r.id,
+      label: r.label,
+      hint: r.token_hint,
+      created_at: r.created_at,
+      last_used_at: r.last_used_at,
+      expires_at: r.expires_at ?? null,
+      status,
+      expired: status === "expired",
+      revoked: status === "revoked",
+      recoverable: false,
+    };
+  });
+}
+
+const BULK_REVOKE_SAMPLE = 10;
+/** Bump when the canonical confirm string changes shape so stale confirms drift instead of executing. */
+const BULK_REVOKE_CONFIRM_VERSION = "1";
+const BULK_REVOKE_CONFIRM_RE = /^[0-9a-f]{32}$/;
+/** D1 caps a statement at 100 bound parameters; one slot goes to revoked_at. */
+const BULK_REVOKE_BATCH = 90;
+
+type BulkRevokeOutcome =
+  | { kind: "preview"; preview: BulkRevokePreview }
+  | { kind: "drift"; preview: BulkRevokePreview }
+  | { kind: "executed"; result: BulkRevokeResult };
+
+function isBulkRevokeTarget(value: unknown): value is BulkRevokeTarget {
+  return typeof value === "string" && (BULK_REVOKE_TARGETS as readonly string[]).includes(value);
+}
+
+async function bulkRevokeConfirm(target: BulkRevokeTarget, eligible: TokenListing[]): Promise<string> {
+  const ids = eligible.map((token) => token.id).sort();
+  return (await sha256Hex([BULK_REVOKE_CONFIRM_VERSION, "tokens", target, ...ids].join("\n"))).slice(0, 32);
+}
+
+export async function bulkRevokeTokens(
+  env: Env,
+  email: string,
+  userId: string | undefined,
+  body: Record<string, unknown>,
+): Promise<BulkRevokeOutcome> {
+  const target = body.target;
+  if (!isBulkRevokeTarget(target)) {
+    throw new ApiError(400, "bad_target", `target must be one of: ${BULK_REVOKE_TARGETS.join(", ")}.`);
+  }
+  const confirm = body.confirm === undefined || body.confirm === null ? null : String(body.confirm).trim().toLowerCase();
+  if (confirm !== null && !BULK_REVOKE_CONFIRM_RE.test(confirm)) {
+    throw new ApiError(400, "bad_confirm", "confirm must be the confirm string from a preview of this same request. Omit it to preview.");
+  }
+  const eligible = (await listTokens(env, email, userId)).filter((token) => bulkRevokeEligible(target, token.status));
+  const expected = await bulkRevokeConfirm(target, eligible);
+  const preview: BulkRevokePreview = {
+    target,
+    executed: false,
+    matched: eligible.length,
+    sample: eligible.slice(0, BULK_REVOKE_SAMPLE).map(({ id, label, hint, status, last_used_at }) => ({ id, label, hint, status, last_used_at })),
+    confirm: expected,
+  };
+  if (confirm === null) return { kind: "preview", preview };
+  if (confirm !== expected) return { kind: "drift", preview };
+  if (eligible.length) {
+    const revokedAt = new Date().toISOString();
+    const statements = [];
+    for (let i = 0; i < eligible.length; i += BULK_REVOKE_BATCH) {
+      const ids = eligible.slice(i, i + BULK_REVOKE_BATCH).map((token) => token.id);
+      const marks = ids.map(() => "?").join(", ");
+      statements.push(
+        env.DB.prepare(`UPDATE tokens SET revoked_at = ? WHERE revoked_at IS NULL AND id IN (${marks})`).bind(revokedAt, ...ids),
+      );
+    }
+    await env.DB.batch(statements);
+  }
+  return { kind: "executed", result: { ok: true, target, executed: true, revoked: eligible.length } };
+}
+
+export async function bulkRevokeResponse(env: Env, actor: Actor, body: Record<string, unknown>): Promise<Response> {
+  const outcome = await bulkRevokeTokens(env, actor.email, actor.userId, body);
+  switch (outcome.kind) {
+    case "preview":
+      return json(outcome.preview);
+    case "executed":
+      return json(outcome.result);
+    case "drift":
+      return new ApiError(
+        409,
+        "token_revoke_drift",
+        "Your tokens changed since that preview. Review this fresh preview and resend with its confirm.",
+        outcome.preview,
+      ).toResponse(publicOrigin(env));
+    default:
+      return assertNever(outcome);
+  }
 }
 
 export async function revokeToken(env: Env, email: string, id: string, userId?: string): Promise<void> {
@@ -326,6 +410,7 @@ export function helpBody(origin: string, env?: Env): unknown {
     sop: [
       `Look for env ${id.tokenEnv}. If missing and a human can respond, follow ${origin}/auth.md to connect with a code and save the delivered token as ${id.tokenEnv} where this environment keeps secrets. If no human can respond, stop and ask for a token provisioned at ${origin}/tokens. The secret is delivered once. Do not invent a token.`,
       `Tokens expire after the lifetime the human picked at mint (default 90 days; see tokens.presets). A 401 with error token_expired is terminal: stop using it, connect again with a code or ask the human to provision a replacement at ${origin}/tokens, and do not retry the expired token. Tokens cannot be extended. GET /v1/whoami shows your token's expires_at.`,
+      `When your task is done and nothing else will use this token, DELETE /v1/whoami revokes it (self only: it cannot list or revoke other tokens). Later calls with it are 401. Do not do this to a token the human stored for reuse, such as CI.`,
       `This Energon's skill is ${id.skill} (install ${installLine(id)}). The origin is ${origin}. Do not guess another Energon.`,
       `The HTTP schema (paths, request and response bodies, status codes, error codes) is ${origin}/v1/openapi.json. This document describes this Energon: origins, token env, retention presets, token lifetimes, limits.`,
       `Decide: a site (named folder of files) vs a file (one file, short id). Public URLs are /{handle}/s/{id}/{slug}/ and /{handle}/f/{id}/{filename}. Both stay put when you PUT again.`,
@@ -353,6 +438,7 @@ export function helpBody(origin: string, env?: Env): unknown {
       "GET /v1/health": "liveness, no auth",
       "GET /v1/openapi.json": "OpenAPI 3.1 HTTP contract, no auth",
       "GET /v1/whoami": "token label, owner email, and expires_at (null = never)",
+      "DELETE /v1/whoami": "revoke the calling token (self only); later calls with it are 401",
       "POST /v1/sites": '{ "slug", "password"?: string, "write_password"?: string, "ttl"?: string, "write_policy"?: "owner"|"org", "duplicate_from"?: id }',
       "PATCH /v1/sites/{id}": '{ "password"?: string, "write_password"?: string, "ttl"?: string, "write_policy"?: "owner"|"org" } — empty password or write_password clears. ttl resets expiry from now. write_policy and write_password are creator-only.',
       "GET /v1/sites/{id}/files/{path}": "raw file bytes (token)",

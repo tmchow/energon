@@ -1,10 +1,12 @@
 import type { InstanceIdentity } from '../page-data';
 import type { StatsPayload } from '../page-data';
+import type { BulkRevokePreview, BulkRevokeResult, BulkRevokeTarget, TokenStatus } from '../token-status';
 
 export type Preset = { id: string; label: string };
 export type RetentionPolicy = { presets: Preset[]; default_ttl: string; allow_unlimited: boolean; write_policy: string; file_bytes?: number };
 export type TokenPolicy = { presets: Preset[]; default: string; allow_never: boolean };
-export type Token = { id: string; label: string; hint: string | null; recoverable?: boolean; revoked: boolean; expired: boolean; created_at: string; last_used_at: string | null; expires_at: string | null };
+export type Token = { id: string; label: string; hint: string | null; recoverable?: boolean; status: TokenStatus; revoked: boolean; expired: boolean; created_at: string; last_used_at: string | null; expires_at: string | null };
+export type { BulkRevokePreview, BulkRevokeResult, BulkRevokeTarget, TokenStatus };
 export type CatalogItem = {
   url: string; created_by: string; last_written_by: string | null;
   created_at: string; updated_at: string | null; expires_at: string | null; size: number;
