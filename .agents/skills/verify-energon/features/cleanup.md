@@ -19,7 +19,7 @@ Cleanup lets a user find their own stale work with list filters (`expires=never`
 - Agent: `GET /v1/files?q=…&expires=never&sort=size` or `GET /v1/sites?updated_before=<iso>&sort=age` with a token to find candidates.
 - Agent: `POST /v1/cleanup` with `{ "target", "action" }` for the preview, then the same body plus `confirm` to execute. `target` is list filters (optional `kind`) or `{ "sites", "files" }` ids.
 - `GET $ORIGIN/v1/openapi.json` documents the request and response shapes under `/v1/cleanup`; `GET $ORIGIN/v1/help` `routes["POST /v1/cleanup"]` and `/llms.txt` name the dry-run default.
-- There is no hub control for bulk cleanup. The hub catalog is the human's read-only second view of what changed.
+- A person at the hub uses [Hub cleanup](./hub-cleanup.md) (`POST /account/cleanup`). This file is the agent `/v1` path.
 
 ## Driving it with energon-verify
 

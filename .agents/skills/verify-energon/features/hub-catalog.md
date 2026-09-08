@@ -1,22 +1,27 @@
 # Hub catalog
 
-Hub catalog lets a signed-in human see sites and files they created or last wrote, search slugs and filenames, filter created vs edited, open the public URL, change expiration, and delete an object after typing its name.
+Hub catalog lets a signed-in human see sites and files they created or last wrote, search slugs and filenames, filter created vs edited, never-expiring / oldest / largest, open the public URL, change expiration, and delete an object after typing its name.
 
 ## Sub-features
 
-- `catalog-list` shows Sites and Files cards with counts, last writer, updated time, and expires when a date is set.
-- `catalog-empty` shows `No sites yet` / `No files yet` when the signed-in user has none.
+- `catalog-list` shows Sites and Files cards with counts, last writer, updated time, last read (floor; empty cell `No recorded read`, never "unread"), and expires when a date is set.
+- `catalog-empty` shows `No sites yet` / `No files yet` when the signed-in user has none, and `No matching sites` / `No matching files` when search or filters match nothing.
 - `catalog-search` filters by slug or filename through `#q`.
 - `catalog-scope` switches Your work / Created by you / Last edited by you.
+- `catalog-sort` orders by Updated, Name, Size, or Oldest (`#sort`).
+- `catalog-filters` narrows through `#catalog-filters`: `#catalog-expires` Any / Never expires, `#catalog-expires-before`, `#catalog-updated-before`, `#catalog-min-size`. The same query string drives `GET /account/data` and hub SSR (`?expires=never&sort=size`). Last read is a column only; `last_read_before` stays on `/admin`.
 - `catalog-open` follows the slug or filename link to the public URL.
 - `catalog-delete` removes the object after typing the exact name.
 - `catalog-expire` lets a mutator change expiration from More → Change expiration; the new timer starts now; catalog Expires and listing `expires_at` update.
+- `catalog-select` is row checkboxes (`#catalog-select-file-{id}`, `#catalog-select-site-{id}`) plus `#catalog-select-matching`. Bulk actions are [Hub cleanup](./hub-cleanup.md).
 
 ## How to get to it (user POV)
 
 - Open `$ORIGIN/` (Hub).
 - Type in `Search slugs and filenames`.
 - Choose `Your work`, `Created by you`, or `Last edited by you` in the scope control.
+- Choose Updated / Name / Size / Oldest in `#sort`.
+- Narrow with `#catalog-expires` (`Never expires`), last written before, or minimum size.
 - Choose the slug/filename link, `Copy URL`, `Delete`, or `More actions` (`Change expiration` for mutators).
 
 ## Driving it with energon-verify
@@ -30,6 +35,8 @@ Preconditions:
 - **List after publish.** Open `$ORIGIN/`. Sites table has a row whose name link text is `verify-site` and whose Last writer cell matches the email. There is no Created by column. Unlimited rows do not show Never in the slug cell. If the site expires, the Expires cell has a date. The Sites card heading includes a non-empty count.
 - **Search.** Fill `#q` with `verify-site`. Wait for the 200ms debounce and a new `/account/data?q=verify-site` request. The Sites table contains `verify-site` and does not contain a slug that does not match. Clear `#q` to restore the full list.
 - **Scope.** Choose `Created by you`. The `verify-site` you minted stays visible. Choose `Last edited by you` only if a second actor exists; on a single-user local run this may be empty — record that, do not treat it as a missing site.
+- **Never expires.** Publish a file without a TTL. Choose `Never expires` in `#catalog-expires`. Wait for `/account/data?expires=never`. That file stays listed. A file published with `X-Energon-TTL: 1h` does not. Last read cells read `No recorded read` (never "unread"). There is no `#catalog-last-read` control.
+- **Size and oldest.** Choose `Size` in `#sort`. The larger file is first. Choose `Oldest`. The earlier-written file is first. Open `/?expires=never&sort=size`: `#catalog-expires` has `Never expires` pressed and `#sort` is Size.
 - **Open public URL.** Choose the `verify-site` link. The next document is `$ORIGIN/$HANDLE/s/<id>/verify-site/` and contains the published homepage.
 - **Copy URL.** Choose `Copy URL` on that row. Clipboard (or the button `aria-label` flipping to `Copied`) holds `$ORIGIN/$HANDLE/s/<id>/verify-site/` (id from the create/list JSON).
 - **HTTP list.** `GET $ORIGIN/v1/sites?q=verify-site` with Bearer token returns the same slug and `id`. `GET $ORIGIN/account/data?q=verify-site` returns it without a token header on localhost.

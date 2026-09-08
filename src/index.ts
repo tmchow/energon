@@ -7,7 +7,7 @@ import logoSvg from "./logo.svg";
 import { actorFromAccess, assertEmailAllowed, bulkRevokeResponse, helpBody, listTokens, mintToken, parseTokenScope, rejectWorkersDevForHumans, requireAdmin, requireHuman, revokeToken, unauthorized } from "./auth";
 import { setupResponse } from "./setup";
 import { statsResponse } from "./stats";
-import { parseListQuery } from "./catalog";
+import { parseHubListQuery } from "./catalog";
 import { listAdminAudit } from "./audit";
 import { hubAdminHealthResponse, hubAdminRecomputeResponse, hubAdminSweepResponse, hubAdminUnlockResponse } from "./admin-health";
 import { hubAdminTokensListResponse, revokeAdminTokens } from "./admin-tokens";
@@ -204,7 +204,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   if (path === "/account/data" && method === "GET") {
     const actor = await actorFromAccess(request, env, ctx);
     if (actor) assertEmailAllowed(env, actor.email);
-    const query = parseListQuery(url);
+    const query = parseHubListQuery(url);
     const user = actor ? await ensureUser(env, actor.email, actor.idpSub) : null;
     const lists = actor
       ? await hubLists(env, actor.email, query, user?.id)
@@ -249,6 +249,11 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     const actor = await requireHuman(request, env, ctx);
     requireAdmin(actor, publicOrigin(env));
     return cleanupResponse(env, ctx, actor, await readJson(request), { admin: true });
+  }
+
+  if (path === "/account/cleanup" && method === "POST") {
+    const actor = await requireHuman(request, env, ctx);
+    return cleanupResponse(env, ctx, actor, await readJson(request));
   }
 
   if (path === "/account/tokens" && method === "POST") {
@@ -428,7 +433,7 @@ async function serveHub(request: Request, env: Env, ctx: ExecutionContext): Prom
   if (actor) assertEmailAllowed(env, actor.email);
   const user = actor ? await ensureUser(env, actor.email, actor.idpSub) : null;
   const lists = actor
-    ? await hubLists(env, actor.email, parseListQuery(new URL(request.url)), user?.id)
+    ? await hubLists(env, actor.email, parseHubListQuery(new URL(request.url)), user?.id)
     : { sites: [], files: [], sites_total: 0, files_total: 0, sites_cursor: null, files_cursor: null };
   const bootstrap = {
     email: actor?.email ?? null,
@@ -445,7 +450,7 @@ async function serveHub(request: Request, env: Env, ctx: ExecutionContext): Prom
     sites_cursor: lists.sites_cursor,
     files_cursor: lists.files_cursor,
   };
-  return new Response(uiPage(PRODUCT, { page: "hub", data: { ...bootstrap, words: MEMORABLE_WORDS, query: parseListQuery(new URL(request.url)) }, footer: instanceFooter(env) }), { headers: PRIVATE_HTML_HEADERS });
+  return new Response(uiPage(PRODUCT, { page: "hub", data: { ...bootstrap, words: MEMORABLE_WORDS, query: parseHubListQuery(new URL(request.url)) }, footer: instanceFooter(env) }), { headers: PRIVATE_HTML_HEADERS });
 }
 
 async function serveTokens(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

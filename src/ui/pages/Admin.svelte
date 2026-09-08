@@ -15,10 +15,9 @@
   import Table from '../components/Table.svelte';
   import Flash from '../components/Flash.svelte';
   import EmptyState from '../components/EmptyState.svelte';
-  import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import Timestamp from '../components/Timestamp.svelte';
-  import Metric from '../components/Metric.svelte';
   import AdminHealth from '../components/AdminHealth.svelte';
+  import CleanupReview from '../components/CleanupReview.svelte';
   type Action = 'set_ttl' | 'delete' | 'expire';
   type Kind = 'both' | 'sites' | 'files';
   type Expires = 'any' | 'never';
@@ -52,13 +51,6 @@
     ? 'Set expiry is the safe default: the owner sees Expires and can push it back. Expire soon is only for your own work.'
     : 'Set expiry is the safe default: the owner sees Expires and can push it back.');
   $effect(() => { if (!ownFilter && action === 'expire') action = 'set_ttl'; });
-  const eligibleLabel = $derived(preview ? `${preview.eligible} ${preview.eligible === 1 ? 'object' : 'objects'}` : '');
-  const confirmAction = $derived(action === 'delete' ? 'Delete' : action === 'expire' ? 'Expire' : 'Set expiry');
-  const confirmMessage = $derived(action === 'delete'
-    ? `There is no recycle bin. ${eligibleLabel} will be removed. Type the count to confirm.`
-    : action === 'expire'
-      ? `${eligibleLabel} you own will get a 30-minute grace. Type the count to confirm.`
-      : `${eligibleLabel} will expire in ${preview?.ttl || '7d'}. The owner sees Expires and can push it back. Type the count to confirm.`);
   function targetBody(): Record<string, unknown> {
     const target: Record<string, unknown> = {};
     if (q.trim()) target.q = q.trim();
@@ -110,12 +102,6 @@
   }
 </script>
 
-{#snippet sampleOwner(row: AdminCleanupPreview['sample'][number])}{row.owner || '—'}{/snippet}
-{#snippet sampleName(row: AdminCleanupPreview['sample'][number])}{row.name}{/snippet}
-{#snippet sampleSize(row: AdminCleanupPreview['sample'][number])}{formatBytes(row.bytes)}{/snippet}
-{#snippet sampleWritten(row: AdminCleanupPreview['sample'][number])}<Timestamp value={row.updated_at} />{/snippet}
-{#snippet sampleRead(row: AdminCleanupPreview['sample'][number])}<Timestamp value={row.last_read_at} empty="No recorded read" />{/snippet}
-{#snippet sampleExpiry(row: AdminCleanupPreview['sample'][number])}<Timestamp value={row.expires_at} dateOnly empty="" />{/snippet}
 {#snippet auditWhen(event: AdminAuditEvent)}<Timestamp value={event.created_at} />{/snippet}
 {#snippet auditWho(event: AdminAuditEvent)}{event.actor_email}{/snippet}
 {#snippet auditToken(event: AdminAuditEvent)}<code>{event.token_hint || '—'}</code>{/snippet}
@@ -152,31 +138,7 @@
       <div class="en-admin-run"><Button id="admin-preview" type="submit" variant="primary" disabled={busy}>{busy && !confirmOpen ? 'Previewing…' : 'Preview'}</Button></div>
     </form>
   </Card>
-  {#if preview}
-    <Card title="Preview" className="en-admin-card" tight>
-      <div class="en-metrics en-admin-metrics">
-        <Metric label="Matched" value={preview.matched} />
-        <Metric label="Eligible" value={preview.eligible} />
-        <Metric label="Storage" value={formatBytes(preview.bytes)} />
-        {#if preview.skipped.total}<Metric label="Skipped" value={preview.skipped.total} />{/if}
-      </div>
-      <div id="admin-sample">
-        {#if preview.sample.length}
-          <Table rows={preview.sample} rowKey={(row) => `${row.kind}:${row.ref}`} columns={[
-            { header: 'Owner', cell: sampleOwner },
-            { header: 'Name', cell: sampleName, className: 'name' },
-            { header: 'Size', cell: sampleSize },
-            { header: 'Last written', cell: sampleWritten },
-            { header: 'Last read', cell: sampleRead },
-            { header: 'Expiry', cell: sampleExpiry, className: 'when' },
-          ]} />
-        {:else}<EmptyState title="Nothing eligible">Narrow or widen the filters, then preview again.</EmptyState>{/if}
-      </div>
-      {#if preview.eligible > 0}
-        <div class="en-admin-run en-admin-confirm"><Button id="admin-confirm" variant={action === 'delete' ? 'danger' : 'primary'} disabled={busy} onclick={() => { confirmError = ''; confirmOpen = true; }}>{confirmAction}</Button></div>
-      {/if}
-    </Card>
-  {/if}
+  <CleanupReview {preview} {action} bind:confirmOpen bind:confirmError {busy} showOwner className="en-admin-card" sampleId="admin-sample" confirmId="admin-dlg" confirmButtonId="admin-confirm" onConfirm={() => { void runConfirm(); }} />
   <AdminTokens />
   <Card title="Audit" className="en-admin-card" tight>
     <p class="en-muted-copy en-admin-note">Who, which token, what, which filters, how many, when. Metadata only.</p>
@@ -194,4 +156,3 @@
     </div>
   </Card>
 </main>
-<ConfirmDialog id="admin-dlg" bind:open={confirmOpen} title={confirmAction} message={confirmMessage} label={`Type “${eligibleLabel}” to ${confirmAction.toLowerCase()}`} match={eligibleLabel} noun="count" action={confirmAction} danger={action === 'delete'} {busy} onConfirm={runConfirm} error={confirmError} />
