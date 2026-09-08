@@ -24,7 +24,7 @@ describe("signed-in pages", () => {
     expect(res.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
     const html = await res.text();
     for (const text of ["Publish a document, prototype, or file.", "Choose files", "Choose folder", "No sites yet", "No files yet", "Drop to stage"]) expect(html).toContain(text);
-    for (const id of ["app", "pick-files", "pick-folder", "filepick", "folderpick", "q", "scope", "sort", "sites", "files", "account-export", "drop-overlay", "pw-dlg", "write-dlg", "ttl-dlg"]) expect(html).toContain(`id="${id}"`);
+    for (const id of ["app", "pick-files", "pick-folder", "filepick", "folderpick", "q", "scope", "sort", "catalog-filters", "catalog-expires", "catalog-expires-before", "catalog-updated-before", "catalog-last-read", "catalog-min-size", "sites", "files", "account-export", "drop-overlay", "pw-dlg", "write-dlg", "ttl-dlg"]) expect(html).toContain(`id="${id}"`);
     expect(html).toContain("Download what you own");
     expect(html).toContain("Download everything you own");
     expect(html).toContain('href="/account/export"');
@@ -44,6 +44,13 @@ describe("signed-in pages", () => {
     expect(html).toContain('id="ttl-dlg-select"');
     expect(html).toContain('id="ttl-dlg-ok"');
     expect(html).toContain('aria-label="When this expires"');
+    expect(html).toContain('aria-label="Expiry filter"');
+    expect(html).toContain("Never expires");
+    expect(html).toContain("Last read before");
+    expect(html).toContain("Reads lag up to about a day.");
+    expect(html).toContain(">Oldest<");
+    expect(html).not.toContain("unread");
+    expect(html).not.toContain("Unread");
     expect(html).toContain('aria-label="Energon"');
     expect(html).toContain('aria-label="Pages"');
     expect(html).toMatch(/class="en-card[^"]*en-card--charged/);
@@ -89,11 +96,23 @@ describe("signed-in pages", () => {
     expect(html).toContain("Load more");
     expect(html).toContain(">Expires<");
     expect(html).toContain(">Last writer<");
+    expect(html).toContain(">Last read<");
+    expect(html).toContain("No recorded read");
+    expect(html).not.toContain("unread");
     expect(html).not.toMatch(/<th[^>]*>Created by<\/th>/);
     expect(html).not.toMatch(/<span class="en-badge[^"]*">password<\/span>/i);
     for (const label of ["Copy URL", "Delete", "More actions", "Download"]) expect(html).toContain(`aria-label="${label}"`);
     expect(html).not.toContain("Set view password");
     expect(html).not.toContain("Catalog marks");
+  });
+
+  it("hydrates never-expires and size sort from the hub URL", async () => {
+    const html = await (await req("/?expires=never&sort=size")).text();
+    const boot = bootstrap(html);
+    expect(boot.data.query).toMatchObject({ sort: "size", expires: { kind: "never" } });
+    expect(html).toContain('id="catalog-expires"');
+    expect(html).toContain('aria-pressed="true" class="on">Never expires</button>');
+    expect(html).toContain('<option value="size" selected="">Size</option>');
   });
 
   it("catalog password marks appear only when a hash is set", async () => {

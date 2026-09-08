@@ -17,7 +17,16 @@ export type CatalogData = {
   email: string | null; admin?: boolean; sites: CatalogItem[]; files: CatalogItem[]; sites_total: number; files_total: number;
   sites_cursor: string | null; files_cursor: string | null; tokens?: Token[];
 };
-export type HubData = CatalogData & { handle: string | null; origin: string; content_origin: string; policy: RetentionPolicy; words: readonly string[]; query?: { q: string; scope: string; sort: string } };
+export type HubQuery = {
+  q: string;
+  scope: string;
+  sort: string;
+  expires?: { kind: 'never' } | { kind: 'before'; at: string };
+  updatedBefore?: string;
+  lastReadBefore?: string;
+  minSize?: number;
+};
+export type HubData = CatalogData & { handle: string | null; origin: string; content_origin: string; policy: RetentionPolicy; words: readonly string[]; query?: HubQuery };
 export type LinkAccess = {
   password_protected: boolean;
   password?: string | null;

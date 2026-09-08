@@ -49,7 +49,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Connect an agent](./connect-agent.md) covers request, human code approval/denial, one-time delivery, and revocation.
 - [Mint a token](./mint-token.md) covers mint with a lifetime, whoami with `expires_at`, `DELETE /v1/whoami` self-revoke, the expired-token `401 token_expired`, revoke on the Tokens page and hub API, the `Stale` badge and `Live`/`Stale`/`All` filter, and bulk revoke with preview-then-confirm.
 - [Share password](./share-password.md) covers setting a password, the public gate, header unlock, and clearing.
-- [Hub catalog](./hub-catalog.md) covers listing, search, scope, opening a public URL, and delete.
+- [Hub catalog](./hub-catalog.md) covers listing, search, scope, never-expires / size / oldest / last-read filters, opening a public URL, and delete.
 - [Guest write password](./guest-write-password.md) covers setting a write password, guest PUT/DELETE on the public URL, Hub Link access, and catalog lockup.
 - [Cleanup](./cleanup.md) covers the list filters and sorts (`expires`, `expires_before`, `updated_before`, `min_size`, `sort=size|age`), the `POST /v1/cleanup` dry run, confirm-to-execute, drift, skip reasons, the 100-object cap, and body validation.
 - [Account export](./account-export.md) covers `GET /v1/export` and Hub `#account-export`, the owned zip layout and `manifest.json`, a second identity's absence, empty ownership, and the file-count cap.

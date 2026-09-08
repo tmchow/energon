@@ -159,6 +159,29 @@ export function parseListQuery(url: URL): ListQuery {
   };
 }
 
+/** Canonical catalog filter query string. Keep keys aligned with `parseListQuery`. */
+export function catalogSearchParams(input: {
+  q: string;
+  scope: ListScope;
+  sort: CatalogSort;
+  expires?: ExpiresFilter;
+  updatedBefore?: string;
+  lastReadBefore?: string;
+  minSize?: string;
+  sitesCursor?: string | null;
+  filesCursor?: string | null;
+}): URLSearchParams {
+  const params = new URLSearchParams({ q: input.q.trim(), scope: input.scope, sort: input.sort });
+  if (input.expires?.kind === "never") params.set("expires", "never");
+  else if (input.expires?.kind === "before") params.set("expires_before", input.expires.at);
+  if (input.updatedBefore) params.set("updated_before", input.updatedBefore);
+  if (input.lastReadBefore) params.set("last_read_before", input.lastReadBefore);
+  if (input.minSize) params.set("min_size", input.minSize);
+  if (input.sitesCursor) params.set("sites_cursor", input.sitesCursor);
+  if (input.filesCursor) params.set("files_cursor", input.filesCursor);
+  return params;
+}
+
 export function involvementSql(
   createdCol: string,
   writtenCol: string,

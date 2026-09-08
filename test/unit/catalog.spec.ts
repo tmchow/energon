@@ -12,6 +12,7 @@ import {
   nextSiteCursor,
   parseListQuery,
   parseSort,
+  catalogSearchParams,
   siteCursorSql,
   takePage,
 } from "../../src/catalog";
@@ -84,6 +85,46 @@ describe("parseListQuery", () => {
     expect(q("?expires_before=not-a-date").expires).toBeUndefined();
     expect(q("?min_size=0").minSize).toBeUndefined();
     expect(q("?min_size=-5").minSize).toBeUndefined();
+  });
+
+  it("round-trips hub catalog filters through catalogSearchParams", () => {
+    const params = catalogSearchParams({
+      q: "notes",
+      scope: "created",
+      sort: "size",
+      expires: { kind: "never" },
+      updatedBefore: "2026-03-01T00:00:00.000Z",
+      lastReadBefore: "2026-01-01T00:00:00.000Z",
+      minSize: "1mb",
+    });
+    expect(params.get("q")).toBe("notes");
+    expect(params.get("scope")).toBe("created");
+    expect(params.get("sort")).toBe("size");
+    expect(params.get("expires")).toBe("never");
+    expect(params.get("expires_before")).toBeNull();
+    expect(params.get("updated_before")).toBe("2026-03-01T00:00:00.000Z");
+    expect(params.get("last_read_before")).toBe("2026-01-01T00:00:00.000Z");
+    expect(params.get("min_size")).toBe("1mb");
+    const parsed = parseListQuery(new URL(`https://energon.example.com/?${params}`));
+    expect(parsed.q).toBe("notes");
+    expect(parsed.scope).toBe("created");
+    expect(parsed.sort).toBe("size");
+    expect(parsed.expires).toEqual({ kind: "never" });
+    expect(parsed.updatedBefore).toBe("2026-03-01T00:00:00.000Z");
+    expect(parsed.lastReadBefore).toBe("2026-01-01T00:00:00.000Z");
+    expect(parsed.minSize).toBe(1024 * 1024);
+  });
+
+  it("sends expires_before only when expiry is a cutoff, not never", () => {
+    const before = catalogSearchParams({
+      q: "",
+      scope: "involved",
+      sort: "age",
+      expires: { kind: "before", at: "2026-06-01T00:00:00.000Z" },
+    });
+    expect(before.get("expires")).toBeNull();
+    expect(before.get("expires_before")).toBe("2026-06-01T00:00:00.000Z");
+    expect(before.get("sort")).toBe("age");
   });
 
   it("omits both expiry filters when expires and expires_before are both present", () => {

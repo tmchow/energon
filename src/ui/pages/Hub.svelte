@@ -27,6 +27,11 @@
   let q = $state(untrack(() => data.query?.q || ''));
   let scope = $state(untrack(() => data.query?.scope || 'involved'));
   let sort = $state(untrack(() => data.query?.sort || 'updated'));
+  let expires = $state<'any' | 'never'>(untrack(() => data.query?.expires?.kind === 'never' ? 'never' : 'any'));
+  let expiresBefore = $state(untrack(() => data.query?.expires?.kind === 'before' ? data.query.expires.at : ''));
+  let updatedBefore = $state(untrack(() => data.query?.updatedBefore || ''));
+  let lastReadBefore = $state(untrack(() => data.query?.lastReadBefore || ''));
+  let minSize = $state(untrack(() => data.query?.minSize != null ? String(data.query.minSize) : ''));
   let loading = $state(false);
   let staged = $state<StagedUpload | null>(null);
   let busy = $state(false);
@@ -89,6 +94,7 @@
   const writePhraseOk = $derived(!isTargetCreator || writeDoor === 'off' || !!writePassword.trim() || (writeUnrecovered && writeDoor === 'on'));
   const linkAccessReady = $derived(linkAccessLoaded && !passwordLoading && (shareDirty || writeDirty) && sharePhraseOk && writePhraseOk);
   const linkAccessBusy = $derived(mutationBusy || passwordLoading || !linkAccessLoaded);
+  const filtered = $derived(!!(q.trim() || scope !== 'involved' || sort !== 'updated' || expires === 'never' || expiresBefore.trim() || updatedBefore.trim() || lastReadBefore.trim() || minSize.trim()));
 
   function message(text: string, tone: 'ok' | 'err' = 'ok', result?: PublishResult) {
     messages = [{ tone, text, url: result?.url, name: result?.slug || result?.filename, password: result?.password, writePassword: result?.write_password }, ...messages];
@@ -97,6 +103,11 @@
     const sequence = ++requestSequence;
     controller?.abort(); controller = new AbortController(); loading = true;
     const query = new URLSearchParams({ q: q.trim(), scope, sort });
+    if (expires === 'never') query.set('expires', 'never');
+    else if (expiresBefore.trim()) query.set('expires_before', expiresBefore.trim());
+    if (updatedBefore.trim()) query.set('updated_before', updatedBefore.trim());
+    if (lastReadBefore.trim()) query.set('last_read_before', lastReadBefore.trim());
+    if (minSize.trim()) query.set('min_size', minSize.trim());
     if (only && lists[`${only}_cursor`]) query.set(`${only}_cursor`, lists[`${only}_cursor`]!);
     try {
       const next = await api<CatalogData>('/account/data?' + query, { signal: controller.signal });
@@ -111,6 +122,10 @@
     clearTimeout(timer);
     requestSequence++; controller?.abort();
     timer = setTimeout(() => refresh(), 200);
+  }
+  function applyFilters() {
+    clearTimeout(timer);
+    refresh();
   }
   function resetStage() {
     stageSequence++; staged = null; stagePassword = ''; stageWritePassword = ''; stageAccessOpen = false;
@@ -311,12 +326,19 @@
     <Card title="Sites" hint={`${lists.sites.length < lists.sites_total ? `${lists.sites.length} of ` : ''}${lists.sites_total} ${lists.sites_total === 1 ? 'site' : 'sites'}`} tight>
       <div class="en-card-body en-toolbar"><Input size="md" id="q" class="en-search" type="search" placeholder="Search slugs and filenames" aria-label="Search slugs and filenames" bind:value={q} oninput={search} />
         <SegmentedControl id="scope" bind:value={scope} ariaLabel="Catalog scope" onChange={() => refresh()} options={[{ value: 'involved', label: 'Your work' }, { value: 'created', label: 'Created by you' }, { value: 'edited', label: 'Last edited by you' }]} />
-        <Select id="sort" aria-label="Sort" bind:value={sort} onchange={() => refresh()} options={[{ value: 'updated', label: 'Updated' }, { value: 'name', label: 'Name' }]} />
+        <Select id="sort" aria-label="Sort" bind:value={sort} onchange={() => refresh()} options={[{ value: 'updated', label: 'Updated' }, { value: 'name', label: 'Name' }, { value: 'size', label: 'Size' }, { value: 'age', label: 'Oldest' }]} />
       </div>
-      <div id="sites"><Catalog kind="site" items={lists.sites} cursor={lists.sites_cursor} busy={loading} writePolicyDefault={data.policy.write_policy} onMore={item => openMore('site', item)} onPassword={item => editPassword('site', item)} onDelete={item => deleteItem('site', item)} onLoadMore={() => refresh('sites')} /></div>
+      <div id="catalog-filters" class="en-card-body en-catalog-filters">
+        <Field label="Expiry"><SegmentedControl id="catalog-expires" ariaLabel="Expiry filter" options={[{ value: 'any', label: 'Any' }, { value: 'never', label: 'Never expires' }]} bind:value={expires} onChange={() => { expiresBefore = ''; applyFilters(); }} /></Field>
+        <Field label="Expires before" htmlFor="catalog-expires-before"><Input id="catalog-expires-before" bind:value={expiresBefore} mono placeholder="2026-01-01" disabled={expires === 'never'} onchange={applyFilters} /></Field>
+        <Field label="Last written before" htmlFor="catalog-updated-before"><Input id="catalog-updated-before" bind:value={updatedBefore} mono placeholder="2026-01-01" onchange={applyFilters} /></Field>
+        <Field label="Last read before" htmlFor="catalog-last-read" note="ISO timestamp. Matches work with no recorded read too. Reads lag up to about a day."><Input id="catalog-last-read" bind:value={lastReadBefore} mono placeholder="2026-01-01" onchange={applyFilters} /></Field>
+        <Field label="Minimum size" htmlFor="catalog-min-size"><Input id="catalog-min-size" bind:value={minSize} placeholder="1mb" onchange={applyFilters} /></Field>
+      </div>
+      <div id="sites"><Catalog kind="site" items={lists.sites} cursor={lists.sites_cursor} busy={loading} filtered={filtered} writePolicyDefault={data.policy.write_policy} onMore={item => openMore('site', item)} onPassword={item => editPassword('site', item)} onDelete={item => deleteItem('site', item)} onLoadMore={() => refresh('sites')} /></div>
     </Card>
     <Card title="Files" hint={`${lists.files.length < lists.files_total ? `${lists.files.length} of ` : ''}${lists.files_total} ${lists.files_total === 1 ? 'file' : 'files'}`} tight>
-      <div id="files"><Catalog kind="file" items={lists.files} cursor={lists.files_cursor} busy={loading} writePolicyDefault={data.policy.write_policy} onMore={item => openMore('file', item)} onPassword={item => editPassword('file', item)} onDelete={item => deleteItem('file', item)} onLoadMore={() => refresh('files')} /></div>
+      <div id="files"><Catalog kind="file" items={lists.files} cursor={lists.files_cursor} busy={loading} filtered={filtered} writePolicyDefault={data.policy.write_policy} onMore={item => openMore('file', item)} onPassword={item => editPassword('file', item)} onDelete={item => deleteItem('file', item)} onLoadMore={() => refresh('files')} /></div>
     </Card>
     <Card className="en-hub-export" id="account-export" title="Download what you own">
       <div class="en-stack">
