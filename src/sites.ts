@@ -1081,16 +1081,23 @@ export async function serveSite(
   if (request.method === "POST") {
     return json({ error: "method_not_allowed", message: "Method not allowed." }, 405);
   }
-  noteRead(env, ctx, { table: "sites", id: site.id, last_read_at: site.last_read_at });
+  // Stamp only when stored bytes are served; 404s and the generated listing do not count.
+  const read = () => noteRead(env, ctx, { table: "sites", id: site.id, last_read_at: site.last_read_at });
 
   const remaining = remainingCacheSeconds(site.expires_at);
   const cacheable = !site.password_hash && unlocked !== "unlocked";
   const wantsIndex = pathRaw === "" || pathRaw === "/";
   if (wantsIndex) {
     const index = await env.BUCKET.get(siteKey(handle, site.id, "index.html"));
-    if (index) return serveObject(index, "text/html; charset=utf-8", cacheable, siteCacheTag(handle, site.id), remaining);
+    if (index) {
+      read();
+      return serveObject(index, "text/html; charset=utf-8", cacheable, siteCacheTag(handle, site.id), remaining);
+    }
     const indexMd = await env.BUCKET.get(siteKey(handle, site.id, "index.md"));
-    if (indexMd) return respondMarkdown(request, indexMd, "index.md");
+    if (indexMd) {
+      read();
+      return respondMarkdown(request, indexMd, "index.md");
+    }
     return htmlPage(await fileListHtml(env, site), 200, {
       "cache-control": cacheable ? publicCacheControl(remaining) : privateCacheControl(),
       "cache-tag": siteCacheTag(handle, site.id),
@@ -1113,6 +1120,7 @@ export async function serveSite(
       { "cache-control": "no-store" },
     );
   }
+  read();
   if (isMarkdownName(path)) return respondMarkdown(request, obj, path);
   const type = obj.httpMetadata?.contentType || "application/octet-stream";
   return serveObject(obj, type, cacheable, siteCacheTag(handle, site.id), remaining, {

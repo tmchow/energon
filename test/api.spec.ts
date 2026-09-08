@@ -1904,6 +1904,29 @@ describe("Energon", () => {
       expect(hub.body.sites.find((s: { id: string }) => s.id === created.id).last_read_at).toBe(first);
     });
 
+    it("ignores 404s and the generated listing on a public site", async () => {
+      const token = await mint("reader-miss", email);
+      const created = await createSite(token, "missing-read");
+      await req(`/v1/sites/${created.id}/files/about.html`, {
+        method: "PUT",
+        headers: auth(token, { "content-type": "text/html" }),
+        body: "<h1>about</h1>",
+      });
+
+      const listing = await req(`/${created.handle}/s/${created.id}/missing-read/`);
+      expect(listing.status).toBe(200);
+      const missing = await req(`/${created.handle}/s/${created.id}/missing-read/nope.html`);
+      expect(missing.status).toBe(404);
+      const badPath = await req(`/${created.handle}/s/${created.id}/missing-read/..%2Fx`);
+      expect(badPath.status).toBe(404);
+      await new Promise((r) => setTimeout(r, 100));
+      expect(await lastRead("sites", created.id)).toBeNull();
+
+      const hit = await req(`/${created.handle}/s/${created.id}/missing-read/about.html`);
+      expect(hit.status).toBe(200);
+      await settledLastRead("sites", created.id);
+    });
+
     it("rewrites once the stored stamp is older than the throttle window", async () => {
       const token = await mint("reader-stale", email);
       const created = await createSite(token, "stale-read");
