@@ -51,5 +51,5 @@ Preconditions:
 - Changing search, scope, or filters clears the selection and drops the preview. Sort does not. A cleared row selection never posts `target: {}` (that would mean every involved object). Only Select all matching these filters may send `{}`.
 - `last_read_at` is a floor that can lag about a day. Never label it unread. The Last read column still shows that floor. Hub filters and `POST /account/cleanup` do not take `last_read_before`; that cutoff stays on `/admin`.
 - Per-item Change expiration and `/admin` are unchanged. Do not drive `#ttl-dlg` or `/admin` for this recipe.
-- `expire` keeps a 30-minute grace. Finish the recipe before those objects 410, or skip Expire soon if the clock is tight.
+- `expire` keeps a 30-minute grace. After confirm, `#messages` reads `Set a 30-minute grace on N objects.` not `Set expiry`. Finish the recipe before those objects 410, or skip Expire soon if the clock is tight.
 - `/v1/cleanup` behavior does not change. If `openapi-drift` fails, a `/v1` surface landed by mistake.

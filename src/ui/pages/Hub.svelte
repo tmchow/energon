@@ -4,7 +4,7 @@
   import { api, jsonBody, errorMessage, RequestError } from '../api';
   import { stageFiles, publish, slugify, type StagedUpload, type PublishResult } from '../uploads';
   import { nextNumberedSlug } from "../../slugs";
-  import { hubCleanupTarget } from '../hub-cleanup-target';
+  import { hubCleanupDoneMessage, hubCleanupTarget } from '../hub-cleanup-target';
   import { registerHubTools } from '../model-context';
   import PageTitle from '../components/PageTitle.svelte';
   import Card from '../components/Card.svelte';
@@ -224,9 +224,7 @@
       cleanupConfirmOpen = false;
       cleanupPreview = null;
       clearCleanupSelection();
-      message(result.action === 'delete'
-        ? `Deleted ${result.applied.total} ${result.applied.total === 1 ? 'object' : 'objects'}.`
-        : `Set expiry on ${result.applied.total} ${result.applied.total === 1 ? 'object' : 'objects'}.`);
+      message(hubCleanupDoneMessage(result.action, result.applied.total));
       await refresh();
     } catch (error) {
       if (error instanceof RequestError && error.status === 409) {

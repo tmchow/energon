@@ -28,3 +28,21 @@ export function hubCleanupTarget(pick: HubCleanupPick, find: HubCleanupFind): Re
   if (pick.files.length) target.files = [...pick.files];
   return target;
 }
+
+export type HubCleanupAction = 'delete' | 'set_ttl' | 'expire';
+
+export function hubCleanupDoneMessage(action: HubCleanupAction, total: number): string {
+  const noun = total === 1 ? 'object' : 'objects';
+  switch (action) {
+    case 'delete':
+      return `Deleted ${total} ${noun}.`;
+    case 'expire':
+      return `Set a 30-minute grace on ${total} ${noun}.`;
+    case 'set_ttl':
+      return `Set expiry on ${total} ${noun}.`;
+    default: {
+      const _exhaustive: never = action;
+      return _exhaustive;
+    }
+  }
+}
