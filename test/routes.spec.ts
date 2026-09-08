@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { access, auth, createSite, json, mint, req } from "./helpers";
+import { access, auth, createSite, json, mint, mintAdmin, req } from "./helpers";
 
 describe("host and route contracts", () => {
   it("serves authentication instructions before login and links them from discovery and token errors", async () => {
@@ -356,5 +356,100 @@ describe("hub account API", () => {
     expect(done.body).toEqual({ ok: true, target: "all", executed: true, revoked: count });
     expect((await json("/v1/whoami", { headers: auth(secrets[0]) })).status).toBe(401);
     expect((await json("/v1/whoami", { headers: auth(secrets[count - 1]) })).status).toBe(401);
+  });
+
+  it("mints admin tokens only for ADMIN_EMAILS and keeps connect at account scope", async () => {
+    const refused = await json("/account/tokens", {
+      method: "POST",
+      headers: access("ada@esperlabs.app", { "content-type": "application/json" }),
+      body: JSON.stringify({ label: "nope", scope: "admin", ttl: "1d" }),
+    });
+    expect(refused.status).toBe(403);
+    expect(refused.body.error).toBe("forbidden_admin");
+
+    const minted = await json("/account/tokens", {
+      method: "POST",
+      headers: access("admin@esperlabs.app", { "content-type": "application/json" }),
+      body: JSON.stringify({ label: "ops", scope: "admin" }),
+    });
+    expect(minted.status).toBe(201);
+    expect(minted.body.scope).toBe("admin");
+    expect(minted.body.token).toMatch(/^ee_live_/);
+    expect(Date.parse(minted.body.expires_at) - Date.now()).toBeLessThan(2 * 86400 * 1000);
+    const who = await json("/v1/whoami", { headers: auth(minted.body.token) });
+    expect(who.body).toMatchObject({
+      email: "admin@esperlabs.app",
+      label: "ops",
+      scope: "admin",
+      admin: true,
+    });
+    const listed = await json("/account/data", { headers: access("admin@esperlabs.app") });
+    const row = listed.body.tokens.find((t: { label: string }) => t.label === "ops");
+    expect(row.scope).toBe("admin");
+    expect(row.hint).toMatch(/^ee_live_admin…/);
+
+    const never = await json("/account/tokens", {
+      method: "POST",
+      headers: access("admin@esperlabs.app", { "content-type": "application/json" }),
+      body: JSON.stringify({ label: "forever", scope: "admin", ttl: "never" }),
+    });
+    expect(never.status).toBe(400);
+    expect(never.body.error).toBe("bad_ttl");
+
+    const account = await json("/account/tokens", {
+      method: "POST",
+      headers: access("admin@esperlabs.app", { "content-type": "application/json" }),
+      body: JSON.stringify({ label: "plain" }),
+    });
+    expect(account.status).toBe(201);
+    expect(account.body.scope).toBe("account");
+    const plain = await json("/v1/whoami", { headers: auth(account.body.token) });
+    expect(plain.body.admin).toBe(false);
+    expect(plain.body.scope).toBe("account");
+  });
+
+  it("lists admin audit only for an admin token whose owner is still on the list", async () => {
+    const admin = await mintAdmin("audit-ops");
+    const empty = await json("/v1/admin/audit", { headers: auth(admin) });
+    expect(empty.status).toBe(200);
+    expect(empty.body.events).toEqual([]);
+    expect(empty.body.next_cursor).toBeNull();
+
+    const account = await mint("audit-plain", "admin@esperlabs.app");
+    const asAccount = await json("/v1/admin/audit", { headers: auth(account) });
+    expect(asAccount.status).toBe(403);
+    expect(asAccount.body.error).toBe("forbidden_admin");
+
+    const outsider = await mint("audit-ada", "ada@esperlabs.app");
+    const refused = await json("/v1/admin/audit", { headers: auth(outsider) });
+    expect(refused.status).toBe(403);
+    expect(refused.body.error).toBe("forbidden_admin");
+  });
+
+  it("hub admin cleanup uses Access and refuses non-operators", async () => {
+    const denied = await json("/account/admin/cleanup", {
+      method: "POST",
+      headers: access("ada@esperlabs.app", { "content-type": "application/json" }),
+      body: JSON.stringify({ target: {}, action: "set_ttl" }),
+    });
+    expect(denied.status).toBe(403);
+    expect(denied.body.error).toBe("forbidden_admin");
+
+    const auditDenied = await json("/account/admin/audit", { headers: access("ada@esperlabs.app") });
+    expect(auditDenied.status).toBe(403);
+    expect(auditDenied.body.error).toBe("forbidden_admin");
+
+    const preview = await json("/account/admin/cleanup", {
+      method: "POST",
+      headers: access("admin@esperlabs.app", { "content-type": "application/json" }),
+      body: JSON.stringify({ target: { q: "no-such-admin-hub-item" }, action: "set_ttl" }),
+    });
+    expect(preview.status).toBe(200);
+    expect(preview.body).toMatchObject({ executed: false, action: "set_ttl", ttl: "7d" });
+    expect(JSON.stringify(preview.body)).not.toMatch(/password/i);
+
+    const listed = await json("/account/admin/audit", { headers: access("admin@esperlabs.app") });
+    expect(listed.status).toBe(200);
+    expect(listed.body.events.some((e: { action: string; executed: boolean }) => e.action === "cleanup" && !e.executed)).toBe(true);
   });
 });

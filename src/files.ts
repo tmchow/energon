@@ -576,6 +576,7 @@ export async function patchLoose(
   id: string,
   patch: { password?: string; write_password?: string; ttl?: unknown; setTtl?: boolean; write_policy?: unknown },
   ctx?: ExecutionContext,
+  asAdmin = false,
 ): Promise<Response> {
   if (!isFileId(id)) {
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
@@ -615,7 +616,7 @@ export async function patchLoose(
   const wantsWritePassword = Object.prototype.hasOwnProperty.call(patch, "write_password");
   const wantsSharePassword = patch.password !== undefined;
   const wantsOther = wantsSharePassword || Boolean(patch.setTtl);
-  if (wantsOther) assertCanMutate(actor, existing);
+  if (wantsOther && !asAdmin) assertCanMutate(actor, existing);
   let nextWrite = resolveWritePolicy(existing.write_policy);
   if (wantsWrite) {
     assertCanSetWritePolicy(actor, existing.created_by, existing.owner_id);
@@ -635,9 +636,14 @@ export async function patchLoose(
   const resolved = patch.setTtl ? resolveExpiresAt(instancePolicy(env), patch.ttl) : null;
   const notClaimed = `ifnull(last_written_by, '') NOT LIKE ? AND (ifnull(last_written_by, '') NOT LIKE ? OR updated_at IS NULL OR updated_at <= ?)`;
   const claimGuards = [PURGE_CLAIM_LIKE, WRITE_CLAIM_LIKE, staleClaimCutoff()] as const;
+  const ttlOnlyAdmin = asAdmin && Boolean(patch.setTtl) && hash === undefined && writeHash === undefined && !wantsWrite;
   if (hash !== undefined || writeHash !== undefined || resolved || wantsWrite) {
-    const assignments = ["updated_at = ?", "last_written_by = ?", "written_via = NULL"];
-    const values: unknown[] = [ts, actor.email];
+    const assignments: string[] = [];
+    const values: unknown[] = [];
+    if (!ttlOnlyAdmin) {
+      assignments.push("updated_at = ?", "last_written_by = ?", "written_via = NULL");
+      values.push(ts, actor.email);
+    }
     if (hash !== undefined) {
       assignPasswordStore(assignments, values, hash, patch.password, "password_hash", "password_secret");
     }
@@ -828,6 +834,7 @@ export async function deleteLooseFile(
   ctx: ExecutionContext | undefined,
   actor: Actor,
   id: string,
+  asAdmin = false,
 ): Promise<void> {
   if (!isFileId(id)) {
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
@@ -851,7 +858,7 @@ export async function deleteLooseFile(
   if (!row) {
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
-  assertCanMutate(actor, row);
+  if (!asAdmin) assertCanMutate(actor, row);
   if (isWriteClaimed(row.last_written_by) && !isStaleClaim(row.updated_at)) {
     throw new ApiError(409, "file_busy", "Another write is in progress; retry this deletion.");
   }
@@ -861,6 +868,7 @@ export async function deleteLooseFile(
     id,
     row,
     actor,
+    asAdmin,
   );
   if (!claim) {
     const current = await env.DB.prepare(`SELECT last_written_by FROM loose_files WHERE id = ?`)

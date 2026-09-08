@@ -128,6 +128,18 @@ describe("criteriaSql", () => {
     expect(sql.havingBinds).toEqual([]);
   });
 
+  it("omits involvement for admin selection and adds owner plus last_read_before", () => {
+    const sql = criteriaSql(
+      "files",
+      { scope: "involved", q: "", owner: "ada", lastReadBefore: "2026-01-01T00:00:00.000Z" },
+      ME,
+      undefined,
+      { involve: false },
+    );
+    expect(sql.where).toBe("handle = ? AND (last_read_at IS NULL OR last_read_at < ?)");
+    expect(sql.whereBinds).toEqual(["ada", "2026-01-01T00:00:00.000Z"]);
+  });
+
   it("puts file filters in WHERE", () => {
     const sql = criteriaSql("files", q("?q=notes&expires=never&updated_before=2026-01-01&min_size=1kb"), ME, "u-ada");
     expect(sql.where).toBe(

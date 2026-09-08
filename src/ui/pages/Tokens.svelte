@@ -27,6 +27,7 @@
   let tokens = $state(untrack(() => data.tokens));
   let show = $state<Show>('live');
   let label = $state('');
+  let scope = $state<'account' | 'admin'>('account');
   let ttl = $state(untrack(() => data.token_policy.default));
   let minted = $state('');
   let error = $state('');
@@ -38,7 +39,14 @@
   let confirmOpen = $state(false);
   let bulk = $state<BulkRevokePreview | null>(null);
   let bulkOpen = $state(false);
-  const options = $derived(data.token_policy.presets.map(p => ({ value: p.id, label: p.label })));
+  const policy = $derived(scope === 'admin' ? data.admin_token_policy : data.token_policy);
+  const options = $derived(policy.presets.map(p => ({ value: p.id, label: p.label })));
+  function setScope(next: string) {
+    const resolved: 'account' | 'admin' = next === 'admin' ? 'admin' : 'account';
+    scope = resolved;
+    const nextPolicy = resolved === 'admin' ? data.admin_token_policy : data.token_policy;
+    if (!nextPolicy.presets.some(p => p.id === ttl)) ttl = nextPolicy.default;
+  }
   function count(status: TokenStatus) { return tokens.filter(t => t.status === status).length; }
   const staleCount = $derived(count('stale'));
   const liveCount = $derived(count('live') + staleCount);
@@ -69,8 +77,8 @@
     if (busy) return;
     busy = true; mintError = ''; minted = ''; notice = '';
     try {
-      const result = await api<{ token: string }>('/account/tokens', jsonBody('POST', { label, ttl }));
-      minted = result.token; label = ''; ttl = data.token_policy.default;
+      const result = await api<{ token: string }>('/account/tokens', jsonBody('POST', { label, ttl, scope }));
+      minted = result.token; label = ''; ttl = policy.default;
       await refresh();
     } catch (err) { mintError = errorMessage(err); }
     finally { busy = false; }
@@ -112,6 +120,7 @@
   }
 </script>
 
+{#snippet tokenLabel(token: Token)}{token.label}{#if token.scope === 'admin'}{' '}<Badge tone="warn">Admin</Badge>{/if}{/snippet}
 {#snippet tokenHint(token: Token)}<code>{token.hint || '—'}</code>{/snippet}
 {#snippet created(token: Token)}<Timestamp value={token.created_at} />{/snippet}
 {#snippet lastUsed(token: Token)}<Timestamp value={token.last_used_at} empty="never" />{#if token.status === 'stale'}{' '}<Badge tone="warn">Stale</Badge>{/if}{/snippet}
@@ -135,18 +144,23 @@
     <p class="en-muted-copy en-tokens-note">Stale means unused for 30 days. Live hides expired and revoked tokens; All shows every token you have minted. Last four characters shown.</p>
     <div id="tokens">
       {#if visible.length}<Table rows={visible} rowKey={t => t.id} rowClassName={t => ROW_CLASS[t.status]}
-        columns={[{ header: 'Label', key: 'label', className: 'name' }, { header: 'Key', cell: tokenHint }, { header: 'Created', cell: created }, { header: 'Last used', cell: lastUsed }, { header: 'Expires', cell: expires, className: 'when' }, { className: 'meta', cell: meta }, { cell: actions, className: 'actions' }]} />
+        columns={[{ header: 'Label', cell: tokenLabel, className: 'name' }, { header: 'Key', cell: tokenHint }, { header: 'Created', cell: created }, { header: 'Last used', cell: lastUsed }, { header: 'Expires', cell: expires, className: 'when' }, { className: 'meta', cell: meta }, { cell: actions, className: 'actions' }]} />
       {:else}<EmptyState title={SHOWS[show].empty}>{SHOWS[show].hint}</EmptyState>{/if}
     </div>
   </Card>
   <Card title="Mint a token by hand" hint="For CI and unattended runs" className="en-tokens-card">
     <p class="en-muted-copy">Store the secret as <code>{data.token_env}</code> in that environment's secret store. It is shown once.</p>
+    {#if data.admin}
+      <Field label="Authority" note="Admin tokens can run operator routes. They last at most 7 days and cannot be never. Ordinary /v1 calls still act as your account.">
+        <SegmentedControl id="mint-scope" ariaLabel="Token authority" options={[{ value: 'account', label: 'Account' }, { value: 'admin', label: 'Admin' }]} value={scope} onChange={setScope} disabled={busy} />
+      </Field>
+    {/if}
     <form id="mint" class="en-mint" onsubmit={mint}>
       <Field label="Label" htmlFor="mint-label"><Input id="mint-label" name="label" bind:value={label} placeholder="ci" required maxlength={64} disabled={busy} /></Field>
       <Field label="Lifetime" htmlFor="mint-ttl"><Select id="mint-ttl" name="ttl" aria-label="Token lifetime" bind:value={ttl} {options} disabled={busy} /></Field>
       <Button type="submit" variant="primary" disabled={busy}>{busy ? 'Minting…' : 'Mint token'}</Button>
     </form>
-    <p class="en-note" id="mint-ttl-note" hidden={data.token_policy.allow_never}>This Energon does not allow never-expiring tokens.</p>
+    <p class="en-note" id="mint-ttl-note" hidden={policy.allow_never}>This Energon does not allow never-expiring tokens.</p>
     <div id="new-token">{#if minted}<TokenReveal token={minted} tokenEnv={data.token_env} />{/if}</div>
   </Card>
 </main>

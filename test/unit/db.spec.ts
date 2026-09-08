@@ -72,11 +72,14 @@ describe("schema upgrades", () => {
     expect([...db.tables.get("loose_files") || []]).toEqual(
       expect.arrayContaining(["updated_at", "last_written_by", "password_hash", "handle", "owner_id", "expires_at", "write_policy", "last_read_at"]),
     );
-    expect([...db.tables.get("tokens") || []]).toEqual(expect.arrayContaining(["token_secret", "token_hint", "user_id", "expires_at"]));
+    expect([...db.tables.get("tokens") || []]).toEqual(expect.arrayContaining(["token_secret", "token_hint", "user_id", "expires_at", "scope"]));
     expect([...db.tables.get("users") || []]).toEqual(expect.arrayContaining(["idp_sub"]));
     expect([...db.tables.get("gate_attempts") || []]).toEqual(expect.arrayContaining(["scope", "fails", "window_start"]));
     expect([...db.tables.get("agent_connections") || []]).toEqual(expect.arrayContaining(["id", "poll_hash", "code_hash", "status", "expires_at", "user_id"]));
     expect([...db.tables.get("platform_quota") || []]).toEqual(expect.arrayContaining(["id", "used"]));
+    expect([...db.tables.get("admin_audit") || []]).toEqual(
+      expect.arrayContaining(["id", "created_at", "actor_email", "token_id", "action", "executed", "target_json"]),
+    );
     expect([...db.indexes]).toEqual(
       expect.arrayContaining([
         "idx_site_files_site",
@@ -89,6 +92,7 @@ describe("schema upgrades", () => {
         "idx_loose_expires_at",
         "idx_tokens_user_id",
         "idx_users_idp_sub",
+        "idx_admin_audit_created",
       ]),
     );
   });
@@ -119,5 +123,14 @@ describe("schema upgrades", () => {
     expect([...db.tables.get("sites") || []]).toContain("last_read_at");
     expect([...db.tables.get("loose_files") || []]).toContain("last_read_at");
     expect(db.executed.filter((sql) => /ALTER TABLE/.test(sql))).toHaveLength(0);
+  });
+
+  it("gives a fresh database the tokens scope column from the table statement alone", async () => {
+    const db = new SchemaDb(true);
+
+    await ensureSchema(db as unknown as D1Database);
+
+    expect([...db.tables.get("tokens") || []]).toContain("scope");
+    expect(db.executed.filter((sql) => /ALTER TABLE tokens ADD COLUMN scope/.test(sql))).toHaveLength(0);
   });
 });

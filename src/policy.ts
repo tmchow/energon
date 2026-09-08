@@ -184,6 +184,8 @@ export function instancePolicy(
 /** Token lifetimes are their own catalog. Content retention vars never apply to tokens. */
 export const TOKEN_TTL_CATALOG = ["1d", "7d", "30d", "60d", "90d", "180d", "365d"] as const;
 export const TOKEN_DEFAULT_TTL = "90d";
+export const ADMIN_TOKEN_TTL_CATALOG = ["1d", "7d"] as const;
+export const ADMIN_TOKEN_DEFAULT_TTL = "1d";
 
 export type TokenPolicy = {
   allowUnlimited: boolean;
@@ -214,6 +216,28 @@ export function tokenPolicyPublic(policy: TokenPolicy, origin: string) {
     allow_never: policy.allowUnlimited,
     tokens_url: `${origin}/tokens`,
   };
+}
+
+export function adminTokenPolicy(): TokenPolicy {
+  return {
+    allowUnlimited: false,
+    defaultTtl: ADMIN_TOKEN_DEFAULT_TTL,
+    presets: ADMIN_TOKEN_TTL_CATALOG.map((id) => ({
+      id,
+      seconds: parseDuration(id),
+      label: formatTtlLabel(id),
+    })),
+  };
+}
+
+export function adminEmails(env: Pick<Env, "ADMIN_EMAILS">): string[] {
+  return csv(env.ADMIN_EMAILS);
+}
+
+export function emailIsAdmin(env: Pick<Env, "ADMIN_EMAILS">, email: string): boolean {
+  const listed = adminEmails(env);
+  if (!listed.length) return false;
+  return listed.includes(String(email || "").trim().toLowerCase());
 }
 
 /** Mint-time lifetime. Omitted or empty means the default; anything not in the preset list is 400. */

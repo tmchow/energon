@@ -90,8 +90,9 @@ export async function claimLooseFileForDelete(
   id: string,
   state: LooseFileClaimState,
   actor: Actor,
+  asAdmin = false,
 ): Promise<LooseFileWriteClaim | null> {
-  return claimLooseFile(env, id, state, true, actor);
+  return claimLooseFile(env, id, state, true, actor, asAdmin);
 }
 
 async function claimLooseFile(
@@ -100,10 +101,12 @@ async function claimLooseFile(
   state: LooseFileClaimState,
   allowExpired: boolean,
   actor: Actor,
+  asAdmin = false,
 ): Promise<LooseFileWriteClaim | null> {
   const now = new Date().toISOString();
   const staleBefore = staleClaimCutoff();
   const token = newWriteToken();
+  const writeGuard = asAdmin ? { sql: "1 = 1", binds: [] as unknown[] } : { sql: OWNER_WRITE_SQL, binds: [...ownerWriteBinds(actor)] };
   const claimed = await env.DB.prepare(
     `UPDATE loose_files SET last_written_by = ?, updated_at = ?
      WHERE id = ? AND (? = 1 OR expires_at IS NULL OR expires_at > ?)
@@ -111,7 +114,7 @@ async function claimLooseFile(
        AND ifnull(last_written_by, '') = ?
        AND ifnull(last_written_by, '') NOT LIKE ?
        AND (ifnull(last_written_by, '') NOT LIKE ? OR updated_at IS NULL OR updated_at <= ?)
-       AND ${OWNER_WRITE_SQL}`,
+       AND ${writeGuard.sql}`,
   )
     .bind(
       token,
@@ -125,7 +128,7 @@ async function claimLooseFile(
       PURGE_CLAIM_LIKE,
       WRITE_CLAIM_LIKE,
       staleBefore,
-      ...ownerWriteBinds(actor),
+      ...writeGuard.binds,
     )
     .run();
   if (!d1Changed(claimed)) return null;

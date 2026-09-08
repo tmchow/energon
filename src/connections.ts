@@ -116,8 +116,8 @@ export async function exchangeConnection(env: Env, id: string, body: Record<stri
   // The batch consumes approval and inserts its token atomically; only one concurrent poll can receive a secret.
   const [inserted] = await env.DB.batch([
     env.DB.prepare(
-      `INSERT INTO tokens (id, user_email, user_id, label, token_hash, token_hint, created_at, expires_at)
-       SELECT ?, ?, user_id, label, ?, ?, ?, token_expires_at FROM agent_connections
+      `INSERT INTO tokens (id, user_email, user_id, label, token_hash, token_hint, created_at, expires_at, scope)
+       SELECT ?, ?, user_id, label, ?, ?, ?, token_expires_at, 'account' FROM agent_connections
        WHERE id = ? AND poll_hash = ? AND status = 'approved' AND expires_at > ?`,
     ).bind(tokenId, user.email, tokenHash, maskToken(token, env), timestamp, id, pollHash, timestamp),
     env.DB.prepare(

@@ -36,6 +36,10 @@
     {
       "name": "cleanup",
       "description": "Bulk delete or re-expire the sites and files you can write. Dry run by default; execute with the confirm string from the preview."
+    },
+    {
+      "name": "admin",
+      "description": "Operator routes. Need a token minted with scope=admin by someone still on ADMIN_EMAILS. They never return published bytes, share passwords, or write passwords. Every action that lists or changes others' content is recorded."
     }
   ],
   "paths": {
@@ -180,7 +184,7 @@
         "summary": "Who this token is",
         "responses": {
           "200": {
-            "description": "Token owner, label, and expiry.",
+            "description": "Token owner, label, expiry, scope, and whether this token is currently admin.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1176,6 +1180,175 @@
           },
           "413": {
             "description": "More than 100 eligible objects, more than 100 explicit ids, or a filter that matched more than the scan bound before eligibility was known. Nothing was changed. Narrow the target.",
+            "x-error-codes": [
+              "cleanup_too_many"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CleanupTooManyError"
+                }
+              }
+            }
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/audit": {
+      "get": {
+        "operationId": "listAdminAudit",
+        "tags": [
+          "admin"
+        ],
+        "summary": "List recorded admin actions",
+        "description": "Needs an admin token (scope=admin and owner still on ADMIN_EMAILS). Newest first. Each row is who, which token if any, what, which filters, how many, and when. Never includes published bytes, share passwords, or write passwords. Account tokens and the connect flow get 403 forbidden_admin.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 25
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque cursor from a previous next_cursor."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Audit events, newest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAuditList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenAdmin"
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/cleanup": {
+      "post": {
+        "operationId": "adminCleanup",
+        "tags": [
+          "admin"
+        ],
+        "summary": "Preview, then delete or re-expire sites and files across this Energon",
+        "description": "Needs an admin token. Same preview, confirm hash, skip reporting, and 100-eligible cap as POST /v1/cleanup, without involvement. target.scope is 400. owner is a handle; last_read_before matches never-read or older last_read_at. set_ttl without ttl defaults to 7d so the owner sees Expires in their catalog. expire on content the caller does not own is 400 expire_not_own. delete is the explicit choice. Sample includes owner and last_read_at. Never returns published bytes, share passwords, or write passwords. Preview and execute are recorded on GET /v1/admin/audit.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CleanupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Preview (executed: false, with confirm) when confirm was omitted; result (executed: true) when it matched.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/CleanupPreview"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CleanupResult"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad body, target, action, ttl, confirm, or expire on someone else's content.",
+            "x-error-codes": [
+              "bad_json",
+              "bad_target",
+              "bad_query",
+              "bad_action",
+              "bad_confirm",
+              "ttl_required",
+              "bad_ttl",
+              "ttl_too_long",
+              "expire_not_own"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenAdmin"
+          },
+          "409": {
+            "description": "The eligible set differs from the preview that produced this confirm. Nothing was changed. The body is a fresh preview; show it and resend with its confirm.",
+            "x-error-codes": [
+              "cleanup_drift"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CleanupDriftError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "More than 100 eligible objects. Nothing was changed. Narrow the target.",
             "x-error-codes": [
               "cleanup_too_many"
             ],
@@ -2235,6 +2408,7 @@
               "bad_query",
               "bad_request",
               "bad_slug",
+              "bad_scope",
               "bad_target",
               "bad_ttl",
               "bad_write_policy",
@@ -2253,12 +2427,14 @@
               "empty_site",
               "empty_zip",
               "expired",
+              "expire_not_own",
               "export_failed",
               "file_busy",
               "file_delete_lost",
               "file_delete_rollback_failed",
               "file_not_found",
               "file_write_lost",
+              "forbidden_admin",
               "forbidden_domain",
               "forbidden_write",
               "forbidden_write_policy",
@@ -2470,6 +2646,15 @@
             ],
             "description": "Bytes or a unit suffix (500kb, 5mb, 1gb)."
           },
+          "owner": {
+            "type": "string",
+            "description": "Public handle. On /v1/cleanup this is still intersected with involvement. On /v1/admin/cleanup it selects that account's catalog."
+          },
+          "last_read_before": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Never-read objects and those whose last_read_at is older than this timestamp."
+          },
           "kind": {
             "type": "string",
             "enum": [
@@ -2571,6 +2756,10 @@
             "type": "string",
             "description": "Slug or filename."
           },
+          "owner": {
+            "type": "string",
+            "description": "Public handle of the owning account."
+          },
           "bytes": {
             "type": "integer",
             "description": "File size, or the sum of a site's files."
@@ -2584,6 +2773,13 @@
           },
           "updated_at": {
             "type": "string",
+            "format": "date-time"
+          },
+          "last_read_at": {
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           }
         }
@@ -3897,7 +4093,9 @@
         "required": [
           "email",
           "label",
-          "expires_at"
+          "expires_at",
+          "scope",
+          "admin"
         ],
         "properties": {
           "email": {
@@ -3915,6 +4113,142 @@
             ],
             "format": "date-time",
             "description": "When this token stops working; null means never. Warn the human before it passes."
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "account",
+              "admin"
+            ],
+            "description": "account is an ordinary token. admin was minted with operator scope; admin routes still require the owner to be on ADMIN_EMAILS."
+          },
+          "admin": {
+            "type": "boolean",
+            "description": "True only when scope is admin and the owner is still on ADMIN_EMAILS. Ordinary /v1 calls still act as this account."
+          }
+        }
+      },
+      "AdminAuditEvent": {
+        "type": "object",
+        "description": "One recorded admin action. Metadata only: never published bytes or secrets.",
+        "required": [
+          "id",
+          "created_at",
+          "actor_email",
+          "action",
+          "executed"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "actor_email": {
+            "type": "string"
+          },
+          "token_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "token_hint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Redacted token. Admin tokens insert admin after the token prefix, then an ellipsis and the last four."
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "cleanup"
+            ]
+          },
+          "executed": {
+            "type": "boolean"
+          },
+          "action_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ttl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target": {
+            "description": "The filters or ids sent with the action."
+          },
+          "matched": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "eligible": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "applied": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "skipped": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "failed": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Sum of eligible or applied object sizes, not file contents."
+          },
+          "confirm": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AdminAuditList": {
+        "type": "object",
+        "required": [
+          "events",
+          "next_cursor"
+        ],
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminAuditEvent"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -4313,6 +4647,20 @@
       "ForbiddenDomain": {
         "description": "The token's account email is outside this Energon's allowed domains.",
         "x-error-codes": [
+          "forbidden_domain"
+        ],
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "ForbiddenAdmin": {
+        "description": "Needs an admin token minted at /tokens by someone still on ADMIN_EMAILS. Account tokens, the connect flow, and a stripped email all refuse.",
+        "x-error-codes": [
+          "forbidden_admin",
           "forbidden_domain"
         ],
         "content": {

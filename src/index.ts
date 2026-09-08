@@ -4,10 +4,12 @@ import { decideConnection, exchangeConnection, purgeConnections, startConnection
 import { aboutResponse } from "./about";
 import { instanceFooter, PRIVATE_HTML_HEADERS } from "./chrome";
 import logoSvg from "./logo.svg";
-import { actorFromAccess, assertEmailAllowed, bulkRevokeResponse, helpBody, listTokens, mintToken, rejectWorkersDevForHumans, requireHuman, requireToken, revokeToken, unauthorized } from "./auth";
+import { actorFromAccess, assertEmailAllowed, bulkRevokeResponse, helpBody, listTokens, mintToken, parseTokenScope, rejectWorkersDevForHumans, requireAdmin, requireHuman, requireToken, revokeToken, unauthorized } from "./auth";
 import { setupResponse } from "./setup";
 import { statsResponse } from "./stats";
 import { parseListQuery } from "./catalog";
+import { adminAuditResponse, listAdminAudit, requireAdminActor } from "./audit";
+import { adminResponse } from "./admin";
 import { cleanupResponse } from "./cleanup";
 import { llmsResponse } from "./llms";
 import { authMarkdownResponse } from "./auth-doc";
@@ -24,7 +26,7 @@ import { MEMORABLE_WORDS } from "./memorable";
 import { deleteLooseFile, getLooseFile, hubLists, hubLooseLinkAccess, listLooseJson, patchLoose, postLooseFromRequest, putLooseFromRequest, serveLoose } from "./files";
 import { passwordField, writePasswordField } from "./gate";
 import { ApiError, accountOriginRequired, assertTrustedAccountOrigin, contentOrigin, dedicatedContentOrigin, isLocalHost, isMermaidAssetPath, isPublicContentPath, json, jsonMaybeSecret, publicOrigin, readBodyCapped, secretJson, serveMermaidAsset, wantsDownload } from "./http";
-import { instancePolicy, policyPublic, tokenPolicy, tokenPolicyPublic } from "./policy";
+import { instancePolicy, policyPublic, tokenPolicy, tokenPolicyPublic, adminTokenPolicy, emailIsAdmin } from "./policy";
 import {
   createSite,
   deleteSite,
@@ -178,6 +180,12 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     return statsResponse(env, await requireHuman(request, env, ctx));
   }
 
+  if (path === "/admin" && method === "GET") {
+    const actor = await requireHuman(request, env, ctx);
+    requireAdmin(actor, publicOrigin(env));
+    return adminResponse(actor, env);
+  }
+
   if (path === "/setup" && method === "GET") {
     return setupResponse(await requireHuman(request, env, ctx), env);
   }
@@ -205,15 +213,27 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
       ? await hubLists(env, actor.email, query, user?.id)
       : { sites: [], files: [], sites_total: 0, files_total: 0, sites_cursor: null, files_cursor: null };
     const tokens = user ? await listTokens(env, user.email, user.id) : [];
-    return secretJson({ email: actor?.email ?? null, ...lists, tokens });
+    return secretJson({ email: actor?.email ?? null, admin: actor ? emailIsAdmin(env, actor.email) : false, ...lists, tokens });
+  }
+
+  if (path === "/account/admin/audit" && method === "GET") {
+    const actor = await requireHuman(request, env, ctx);
+    requireAdmin(actor, publicOrigin(env));
+    return json(await listAdminAudit(env, url));
+  }
+
+  if (path === "/account/admin/cleanup" && method === "POST") {
+    const actor = await requireHuman(request, env, ctx);
+    requireAdmin(actor, publicOrigin(env));
+    return cleanupResponse(env, ctx, actor, await readJson(request), { admin: true });
   }
 
   if (path === "/account/tokens" && method === "POST") {
     const actor = await requireHuman(request, env, ctx);
     const body = await readJson(request);
-    const minted = await mintToken(env, actor.email, String(body.label ?? ""), actor.userId, body.ttl);
+    const minted = await mintToken(env, actor.email, String(body.label ?? ""), actor.userId, body.ttl, parseTokenScope(body.scope));
     return secretJson(
-      { id: minted.id, label: minted.label, token: minted.token, expires_at: minted.expires_at, recoverable: false },
+      { id: minted.id, label: minted.label, token: minted.token, expires_at: minted.expires_at, scope: minted.scope, recoverable: false },
       201,
     );
   }
@@ -394,7 +414,13 @@ async function api(
 
   if (path === "/v1/whoami" && method === "GET") {
     const actor = await requireToken(request, env);
-    return secretJson({ email: actor.email, label: actor.tokenLabel, expires_at: actor.tokenExpiresAt ?? null });
+    return secretJson({
+      email: actor.email,
+      label: actor.tokenLabel,
+      expires_at: actor.tokenExpiresAt ?? null,
+      scope: actor.tokenScope ?? "account",
+      admin: Boolean(actor.admin),
+    });
   }
 
   if (path === "/v1/whoami" && method === "DELETE") {
@@ -428,6 +454,15 @@ async function api(
   if (path === "/v1/cleanup" && method === "POST") {
     const actor = await requireToken(request, env);
     return cleanupResponse(env, ctx, actor, await readJson(request));
+  }
+
+  if (path === "/v1/admin/audit" && method === "GET") {
+    return adminAuditResponse(request, env);
+  }
+
+  if (path === "/v1/admin/cleanup" && method === "POST") {
+    const actor = await requireAdminActor(request, env);
+    return cleanupResponse(env, ctx, actor, await readJson(request), { admin: true });
   }
 
   const looseOne = path.match(/^\/v1\/files\/([^/]+)(?:\/[^/]+)?$/);
@@ -513,6 +548,7 @@ async function serveHub(request: Request, env: Env, ctx: ExecutionContext): Prom
     : { sites: [], files: [], sites_total: 0, files_total: 0, sites_cursor: null, files_cursor: null };
   const bootstrap = {
     email: actor?.email ?? null,
+    admin: Boolean(actor?.admin),
     handle: user?.handle ?? null,
     origin: publicOrigin(env),
     content_origin: contentOrigin(env),
@@ -536,6 +572,8 @@ async function serveTokens(request: Request, env: Env, ctx: ExecutionContext): P
     tokens,
     token_env: identityFromEnv(env).tokenEnv,
     token_policy: tokenPolicyPublic(tokenPolicy(env), publicOrigin(env)),
+    admin: Boolean(actor.admin),
+    admin_token_policy: tokenPolicyPublic(adminTokenPolicy(), publicOrigin(env)),
   };
   return new Response(uiPage(`Tokens — ${PRODUCT}`, { page: "tokens", data: { ...bootstrap, now: Date.now() }, footer: instanceFooter(env) }), { headers: PRIVATE_HTML_HEADERS });
 }

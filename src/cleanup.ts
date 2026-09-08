@@ -1,4 +1,5 @@
 import { assertNever } from "./catalog";
+import { recordAdminAudit } from "./audit";
 import { deleteLooseFile, patchLoose } from "./files";
 import { ApiError, json, publicOrigin, sha256Hex } from "./http";
 import { instancePolicy, resolveExpiresAt, type InstancePolicy, type ResolvedTtl } from "./policy";
@@ -24,6 +25,7 @@ import type { Actor, Env } from "./types";
 const CONFIRM_VERSION = "1";
 const EXPIRE_GRACE_SECONDS = 30 * 60;
 const CONFIRM_RE = /^[0-9a-f]{32}$/;
+export const ADMIN_SET_TTL_DEFAULT = "7d";
 
 export type CleanupActionKind = "delete" | "set_ttl" | "expire";
 
@@ -39,9 +41,11 @@ export type ObjectSummary = {
   kind: ObjectRef["kind"];
   ref: string;
   name: string;
+  owner: string;
   bytes: number;
   expires_at: string | null;
   updated_at: string;
+  last_read_at: string | null;
 };
 export type AppliedObject = { kind: ObjectRef["kind"]; ref: string; name: string; bytes: number; expires_at?: string | null };
 export type FailedObject = { kind: ObjectRef["kind"]; ref: string; error: string };
@@ -76,7 +80,7 @@ function expireGrace(policy: InstancePolicy): number {
   return policy.maxSeconds != null && policy.maxSeconds < EXPIRE_GRACE_SECONDS ? policy.maxSeconds : EXPIRE_GRACE_SECONDS;
 }
 
-function parseAction(env: Env, body: Record<string, unknown>): CleanupAction {
+function parseAction(env: Env, body: Record<string, unknown>, opts?: { defaultSetTtl?: string }): CleanupAction {
   const hasTtl = Object.prototype.hasOwnProperty.call(body, "ttl");
   const policy = instancePolicy(env);
   switch (body.action) {
@@ -85,6 +89,9 @@ function parseAction(env: Env, body: Record<string, unknown>): CleanupAction {
       return { kind: "delete" };
     case "set_ttl":
       if (!hasTtl) {
+        if (opts?.defaultSetTtl) {
+          return { kind: "set_ttl", ttlInput: opts.defaultSetTtl, ttl: resolveExpiresAt(policy, opts.defaultSetTtl) };
+        }
         throw new ApiError(400, "ttl_required", "set_ttl needs ttl: a preset like 7d, or never where this Energon allows it.", {
           presets: policy.presets.map((p) => p.id),
           default_ttl: policy.defaultTtl,
@@ -110,11 +117,21 @@ function parseConfirm(raw: unknown): string | null {
   return confirm;
 }
 
-export function parseCleanupRequest(env: Env, body: Record<string, unknown>): CleanupRequest {
+export function parseCleanupRequest(env: Env, body: Record<string, unknown>, opts?: { admin?: boolean }): CleanupRequest {
   if (!Object.prototype.hasOwnProperty.call(body, "target")) {
-    throw new ApiError(400, "bad_target", "target is required. Send { sites, files } ids or list filters; {} selects everything you are involved in.");
+    throw new ApiError(
+      400,
+      "bad_target",
+      opts?.admin
+        ? "target is required. Send { sites, files } ids or list filters; {} selects every site and file on this Energon."
+        : "target is required. Send { sites, files } ids or list filters; {} selects everything you are involved in.",
+    );
   }
-  return { selection: parseSelection(body.target), action: parseAction(env, body), confirm: parseConfirm(body.confirm) };
+  return {
+    selection: parseSelection(body.target, { admin: opts?.admin }),
+    action: parseAction(env, body, opts?.admin ? { defaultSetTtl: ADMIN_SET_TTL_DEFAULT } : undefined),
+    confirm: parseConfirm(body.confirm),
+  };
 }
 
 function ttlLabel(action: CleanupAction): string | undefined {
@@ -138,10 +155,25 @@ function alreadyExpiring(cutoffIso: string | null): SkipPredicate | undefined {
   };
 }
 
-export async function planCleanup(env: Env, actor: Actor, request: CleanupRequest): Promise<CleanupPlan> {
+export async function planCleanup(env: Env, actor: Actor, request: CleanupRequest, admin = false): Promise<CleanupPlan> {
   const skip = request.action.kind === "expire" ? alreadyExpiring(request.action.ttl.expiresAt) : undefined;
-  const resolved = await resolveSelection(env, actor, request.selection, skip);
+  const resolved = await resolveSelection(env, actor, request.selection, skip, { admin });
+  if (admin && request.action.kind === "expire") {
+    const foreign = resolved.eligible.find((object) => !ownedBy(actor, object));
+    if (foreign) {
+      throw new ApiError(
+        400,
+        "expire_not_own",
+        "expire is a 30m grace on content you own. For someone else's work use set_ttl (default 7d) so they see Expires in their catalog, or delete if that is the intent.",
+      );
+    }
+  }
   return { resolved, confirm: await confirmToken(request.action, resolved.eligible) };
+}
+
+function ownedBy(actor: Actor, object: CleanupObject): boolean {
+  if (actor.userId && object.ownerId) return actor.userId === object.ownerId;
+  return actor.email.toLowerCase() === object.createdBy.toLowerCase();
 }
 
 function summary(object: CleanupObject): ObjectSummary {
@@ -149,9 +181,11 @@ function summary(object: CleanupObject): ObjectSummary {
     kind: object.ref.kind,
     ref: refString(object.ref),
     name: object.name,
+    owner: object.owner,
     bytes: object.bytes,
     expires_at: object.expires_at,
     updated_at: object.updated_at,
+    last_read_at: object.last_read_at,
   };
 }
 
@@ -182,6 +216,7 @@ async function applyOne(
   actor: Actor,
   action: CleanupAction,
   object: CleanupObject,
+  asAdmin = false,
 ): Promise<AppliedObject> {
   const ref = object.ref;
   const applied: AppliedObject = { kind: ref.kind, ref: refString(ref), name: object.name, bytes: object.bytes };
@@ -189,10 +224,10 @@ async function applyOne(
     case "delete":
       switch (ref.kind) {
         case "site":
-          await deleteSite(env, ctx, actor, ref.id);
+          await deleteSite(env, ctx, actor, ref.id, asAdmin);
           return applied;
         case "file":
-          await deleteLooseFile(env, ctx, actor, ref.id);
+          await deleteLooseFile(env, ctx, actor, ref.id, asAdmin);
           return applied;
         default:
           return assertNever(ref);
@@ -202,12 +237,12 @@ async function applyOne(
       const patch = { ttl: action.ttlInput, setTtl: true };
       switch (ref.kind) {
         case "site": {
-          const response = await patchSite(env, actor, ref.id, patch, ctx);
+          const response = await patchSite(env, actor, ref.id, patch, ctx, asAdmin);
           applied.expires_at = await expiresFrom(response);
           return applied;
         }
         case "file": {
-          const response = await patchLoose(env, actor, ref.id, patch, ctx);
+          const response = await patchLoose(env, actor, ref.id, patch, ctx, asAdmin);
           applied.expires_at = await expiresFrom(response);
           return applied;
         }
@@ -243,6 +278,7 @@ export async function executeCleanup(
   actor: Actor,
   request: CleanupRequest,
   plan: CleanupPlan,
+  asAdmin = false,
 ): Promise<CleanupResult> {
   const applied: AppliedObject[] = [];
   const failed: FailedObject[] = [];
@@ -250,7 +286,7 @@ export async function executeCleanup(
   let bytes = 0;
   for (const object of plan.resolved.eligible) {
     try {
-      applied.push(await applyOne(env, ctx, actor, request.action, object));
+      applied.push(await applyOne(env, ctx, actor, request.action, object, asAdmin));
       bytes += object.bytes;
     } catch (err) {
       const failure = normalizeFailure(err);
@@ -276,12 +312,37 @@ export async function runCleanup(
   ctx: ExecutionContext | undefined,
   actor: Actor,
   body: Record<string, unknown>,
+  opts?: { admin?: boolean },
 ): Promise<CleanupOutcome> {
-  const request = parseCleanupRequest(env, body);
-  const plan = await planCleanup(env, actor, request);
+  const request = parseCleanupRequest(env, body, opts);
+  const plan = await planCleanup(env, actor, request, Boolean(opts?.admin));
   if (request.confirm === null) return { kind: "preview", preview: previewBody(request.action, plan) };
   if (request.confirm !== plan.confirm) return { kind: "drift", preview: previewBody(request.action, plan) };
-  return { kind: "executed", result: await executeCleanup(env, ctx, actor, request, plan) };
+  return { kind: "executed", result: await executeCleanup(env, ctx, actor, request, plan, Boolean(opts?.admin)) };
+}
+
+async function recordCleanupAudit(
+  env: Env,
+  actor: Actor,
+  body: Record<string, unknown>,
+  outcome: CleanupOutcome,
+): Promise<void> {
+  const preview = outcome.kind === "executed" ? null : outcome.preview;
+  const result = outcome.kind === "executed" ? outcome.result : null;
+  await recordAdminAudit(env, actor, {
+    action: "cleanup",
+    executed: outcome.kind === "executed",
+    actionKind: (preview ?? result)?.action,
+    ttl: (preview ?? result)?.ttl,
+    target: body.target ?? {},
+    matched: preview?.matched ?? null,
+    eligible: preview?.eligible ?? result?.applied.total ?? null,
+    applied: result?.applied.total ?? null,
+    skipped: (preview ?? result)?.skipped.total ?? null,
+    failed: result?.failed.total ?? null,
+    bytes: preview?.bytes ?? result?.applied.bytes ?? null,
+    confirm: preview?.confirm ?? (typeof body.confirm === "string" ? body.confirm : null),
+  });
 }
 
 export async function cleanupResponse(
@@ -289,8 +350,10 @@ export async function cleanupResponse(
   ctx: ExecutionContext | undefined,
   actor: Actor,
   body: Record<string, unknown>,
+  opts?: { admin?: boolean },
 ): Promise<Response> {
-  const outcome = await runCleanup(env, ctx, actor, body);
+  const outcome = await runCleanup(env, ctx, actor, body, opts);
+  if (opts?.admin) await recordCleanupAudit(env, actor, body, outcome);
   switch (outcome.kind) {
     case "preview":
       return json(outcome.preview);

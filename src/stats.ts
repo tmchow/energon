@@ -107,7 +107,7 @@ async function listPeople(env: Env): Promise<PersonStats[]> {
 
 export async function statsResponse(env: Env, actor: Actor): Promise<Response> {
   const stats = await loadStats(env, actor.email);
-  return new Response(statsPage(stats, instanceFooter(env)), {
+  return new Response(statsPage({ ...stats, admin: Boolean(actor.admin) }, instanceFooter(env)), {
     headers: PRIVATE_HTML_HEADERS,
   });
 }

@@ -15,6 +15,7 @@ export default defineConfig({
           DEV_ACCESS_EMAIL: "dev@esperlabs.app",
           // Fixture emails in the worker suite. Production wrangler leaves this unset.
           ALLOWED_EMAIL_DOMAINS: "esperlabs.app,esperlabs.ai",
+          ADMIN_EMAILS: "admin@esperlabs.app",
         },
       },
     }),

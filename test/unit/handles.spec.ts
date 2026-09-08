@@ -23,6 +23,7 @@ describe("assertHandle", () => {
     expect(assertHandle(" Ada ")).toBe("ada");
     expect(assertHandle("about")).toBeNull();
     expect(assertHandle("tokens")).toBeNull();
+    expect(assertHandle("admin")).toBeNull();
     expect(assertHandle("-nope")).toBeNull();
     expect(assertHandle("")).toBeNull();
   });

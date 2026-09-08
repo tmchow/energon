@@ -31,6 +31,12 @@ If a mutation fails before catalog commit, claim rollback restores the observed 
 ### API Token
 A credential this Energon issues that authorizes an agent to use the authenticated API as its owning account.
 
+### Admin
+An account whose email is on `ADMIN_EMAILS` for this Energon. Admins mint Admin Tokens at `/tokens`. Removing the email from the list strips admin from every token they already minted.
+
+### Admin Token
+An API Token minted with admin scope by an Admin at `/tokens`. The connect flow never grants that scope. It still acts as the owning account for ordinary `/v1` calls. Admin routes also require the owner to still be on `ADMIN_EMAILS`. Lifetime is at most 7 days and cannot be never. The stored hint uses `admin` after the Token Prefix so a human reading a catalog or audit row can tell it from an account token.
+
 ### Token Prefix
 The marker at the beginning of an API Token that identifies which token format this Energon accepts. It must stay consistent when tokens are minted, authenticated, masked, or described to agents.
 

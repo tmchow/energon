@@ -24,6 +24,7 @@ export type PersonStats = {
 
 export type StatsPayload = {
   email: string;
+  admin?: boolean;
   you: Bucket;
   system: Bucket & { people: number };
   people: PersonStats[];

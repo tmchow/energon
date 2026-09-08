@@ -8,7 +8,7 @@ The visual idea is a dark instrument lit from within. Violet charge marks activi
 
 ## Where this guide applies
 
-Use this file when adding or changing the Hub, Tokens, Setup, Connect, About, Stats, password gate, or Markdown viewer. It governs Energon's interface, including the wrapper around published Markdown. It does not prescribe the design of uploaded sites or rewrite the author's document content.
+Use this file when adding or changing the Hub, Tokens, Setup, Connect, About, Stats, Admin, password gate, or Markdown viewer. It governs Energon's interface, including the wrapper around published Markdown. It does not prescribe the design of uploaded sites or rewrite the author's document content.
 
 This is design guidance, not the publishing SOP or build manual. Follow [AGENTS.md](AGENTS.md) for repository changes, [STRATEGY.md](STRATEGY.md) for positioning and product boundaries, and [docs/design/README.md](docs/design/README.md) for implementation and verification.
 
@@ -24,6 +24,7 @@ Before choosing components, identify what someone came to do, what they need to 
 | Connect | Identify the requesting agent and enter its code | Expiry, scope, explicit approve and deny actions |
 | About | A concrete publishing or reference workflow | What people and agents can do with the same work |
 | Stats | Storage and usage with clear units | Scope, totals, and comparable per-person values |
+| Admin | Preview a host-wide retirement, then confirm | Owner, name, size, last written, last read, expiry, and the recorded audit |
 | Password gate | Enter the shared password | The result of a failed attempt and guidance from the sender |
 | Markdown | Read the author's document | Raw access, download, readable code and tables |
 

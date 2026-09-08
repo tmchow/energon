@@ -31,6 +31,7 @@ export type TokenSummary = {
   last_used_at: string | null;
   expires_at: string | null;
   status: TokenStatus;
+  scope: "account" | "admin";
 };
 
 export const BULK_REVOKE_TARGETS = ["stale", "all"] as const;

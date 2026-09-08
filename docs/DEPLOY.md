@@ -13,6 +13,7 @@ This tree is meant to be forked and run inside a company. There is no hosted pub
 | Cloudflare account | Your org | — |
 | Access | Workspace / Okta, locked to your domain | any Access email |
 | `ALLOWED_EMAIL_DOMAINS` | `your.co,your.com` | empty |
+| `ADMIN_EMAILS` | operator emails | empty (no admins) |
 | `ALLOW_UNLIMITED_RETENTION` | `true` (committed) | `false` |
 | `DEFAULT_TTL` / `MAX_TTL` | `never` / `never` | `7d` / `30d` |
 | `WRITE_POLICY` | `org` (committed) | `owner` |
@@ -45,6 +46,8 @@ Two paths, on purpose:
 R2 lifecycle rules cannot do per-object `expires_at`. The Worker owns the clock.
 
 API tokens expire on their own clock, separate from content. A human picks a lifetime on `/tokens` when minting (`1d`, `7d`, `30d`, `60d`, `90d`, `180d`, `365d`; default `90d`; `never` only when `ALLOW_UNLIMITED_TOKENS` allows it). Auth rejects an expired token with `401 token_expired`; the row stays listed on `/tokens` as expired so the owner can see why an agent stopped, and can still revoke it. There is no renew: the human mints a new token. Tokens minted before this column existed have no expiry.
+
+`ADMIN_EMAILS` is a comma list of operator addresses. Only those people can mint an **admin** token from `/tokens` (`scope: admin`). Connect never grants that scope. Admin tokens last at most 7 days (default 1 day) and cannot be never. Admin routes also check that the owner is still on the list, so removing an email strips admin from every token at once. Ordinary `/v1` calls with an admin token still act as that account.
 
 ## Skill: init writes the installable package; forks commit it
 
@@ -100,6 +103,7 @@ Strings only (Wrangler).
 | `TTL_PRESETS` | omit (full catalog) | code catalog ∩ `MAX_TTL` |
 | `ALLOW_UNLIMITED_TOKENS` | `true` | `true` (Never on the token lifetime menu; `false` removes it). Only affects future mints — tokens minted before, and Never tokens minted before you flip it, keep working until revoked on `/tokens`. |
 | `ALLOWED_EMAIL_DOMAINS` | `your.co,your.com` | empty (any Access email) |
+| `ADMIN_EMAILS` | `you@your.co` | empty (no one is admin; admin tokens and `/v1/admin` refuse) |
 | `TOKEN_ENV` | match the rendered skill | `ENERGON_TOKEN` |
 | `TOKEN_PREFIX` | `ee_live_` | `ee_live_` |
 | `SKILL_NAME` | `yourco-energon` | `energon` |
@@ -157,7 +161,7 @@ The Worker reads `Cf-Access-Authenticated-User-Email`. It does not implement sig
 
 **Paths**
 
-- **Allow** (signed-in): `/`, `/account*`, `/about`, `/stats`, `/setup`, `/tokens`, `/connect`
+- **Allow** (signed-in): `/`, `/account*`, `/about`, `/stats`, `/admin`, `/setup`, `/tokens`, `/connect`
 - **Bypass** (default): `/v1*`, `/health`, `/llms.txt`, `/auth.md`, `/favicon.svg`, `/static*` on the hub, and `/{handle}/s/*`, `/{handle}/f/*` on the content hostname
 
 Published `/{handle}/s/*` and `/{handle}/f/*` are served from `CONTENT_ORIGIN` and stay on the open internet by default so a share link just opens. Do not put Access on the content hostname; the Worker rejects hub routes there and the separate origin prevents active uploads from reading authenticated hub responses. Leave `/v1*` on Bypass on the hub. There is no `PUBLISH_VISIBILITY` var.

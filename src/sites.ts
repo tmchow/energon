@@ -422,6 +422,7 @@ export async function patchSite(
   idRaw: string,
   patch: { password?: string; write_password?: string; ttl?: unknown; setTtl?: boolean; write_policy?: unknown },
   ctx?: ExecutionContext,
+  asAdmin = false,
 ): Promise<Response> {
   const wantsWrite = Object.prototype.hasOwnProperty.call(patch, "write_policy");
   const wantsWritePassword = Object.prototype.hasOwnProperty.call(patch, "write_password");
@@ -431,6 +432,7 @@ export async function patchSite(
     allowExpired: Boolean(patch.setTtl),
     ctx,
     mutate: wantsOther,
+    asAdmin,
   });
   let nextWrite = resolveWritePolicy(site.write_policy);
   if (wantsWrite) {
@@ -449,9 +451,14 @@ export async function patchSite(
   const ts = new Date().toISOString();
   const resolved = patch.setTtl ? resolveExpiresAt(instancePolicy(env), patch.ttl) : null;
   const notClaimed = `last_written_by NOT LIKE ?`;
+  const ttlOnlyAdmin = asAdmin && Boolean(patch.setTtl) && hash === undefined && writeHash === undefined && !wantsWrite;
   if (hash !== undefined || writeHash !== undefined || resolved || wantsWrite) {
-    const assignments = ["updated_at = ?", "last_written_by = ?", "written_via = NULL"];
-    const values: unknown[] = [ts, actor.email];
+    const assignments: string[] = [];
+    const values: unknown[] = [];
+    if (!ttlOnlyAdmin) {
+      assignments.push("updated_at = ?", "last_written_by = ?", "written_via = NULL");
+      values.push(ts, actor.email);
+    }
     if (hash !== undefined) {
       assignPasswordStore(assignments, values, hash, patch.password, "password_hash", "password_secret");
     }
@@ -466,10 +473,13 @@ export async function patchSite(
       assignments.push("write_policy = ?");
       values.push(nextWrite);
     }
+    const writeGuard = asAdmin
+      ? { sql: "1 = 1", binds: [] as unknown[] }
+      : { sql: OWNER_WRITE_SQL, binds: [...ownerWriteBinds(actor)] };
     const updated = await env.DB.prepare(
-      `UPDATE sites SET ${assignments.join(", ")} WHERE id = ? AND ${notClaimed} AND ${OWNER_WRITE_SQL}`,
+      `UPDATE sites SET ${assignments.join(", ")} WHERE id = ? AND ${notClaimed} AND ${writeGuard.sql}`,
     )
-      .bind(...values, site.id, PURGE_CLAIM_LIKE, ...ownerWriteBinds(actor))
+      .bind(...values, site.id, PURGE_CLAIM_LIKE, ...writeGuard.binds)
       .run();
     if (!Number(updated.meta?.changes ?? 0)) {
       const still = await getSiteById(env, site.id);
@@ -507,7 +517,7 @@ export async function requireSite(
   env: Env,
   actor: Actor,
   id: string,
-  opts?: { allowExpired?: boolean; ctx?: ExecutionContext; mutate?: boolean },
+  opts?: { allowExpired?: boolean; ctx?: ExecutionContext; mutate?: boolean; asAdmin?: boolean },
 ): Promise<SiteRow> {
   const origin = publicOrigin(env);
   const site = await findSiteForActor(env, id);
@@ -528,7 +538,7 @@ export async function requireSite(
     if (!opts?.allowExpired) throw expiredError("site");
     const still = await findSiteForActor(env, id);
     if (!still) throw expiredError("site");
-    if (opts.mutate) assertCanMutate(actor, still);
+    if (opts.mutate && !opts.asAdmin) assertCanMutate(actor, still);
     return still;
   }
   if (isExpired(site.expires_at) && !opts?.allowExpired) {
@@ -539,7 +549,7 @@ export async function requireSite(
     }
     throw expiredError("site");
   }
-  if (opts?.mutate) assertCanMutate(actor, site);
+  if (opts?.mutate && !opts.asAdmin) assertCanMutate(actor, site);
   return site;
 }
 
@@ -766,10 +776,10 @@ export async function exportSiteZip(
   return new Response(zip, { headers });
 }
 
-export async function deleteSite(env: Env, ctx: ExecutionContext | undefined, actor: Actor, idRaw: string): Promise<void> {
+export async function deleteSite(env: Env, ctx: ExecutionContext | undefined, actor: Actor, idRaw: string, asAdmin = false): Promise<void> {
   let site: SiteRow;
   try {
-    site = await requireSite(env, actor, idRaw, { allowExpired: true, mutate: true, ctx });
+    site = await requireSite(env, actor, idRaw, { allowExpired: true, mutate: true, ctx, asAdmin });
   } catch (err) {
     if (err instanceof ApiError && (err.status === 404 || err.status === 410)) return;
     throw err;
@@ -799,13 +809,16 @@ export async function deleteSite(env: Env, ctx: ExecutionContext | undefined, ac
       backups.push({ sourceKey, backupKey });
     }
     await deletePrefix(env.BUCKET, `sites/${site.handle}/${site.id}/`);
+    const writeGuard = asAdmin
+      ? { sql: "1 = 1", binds: [] as unknown[] }
+      : { sql: OWNER_WRITE_SQL, binds: [...ownerWriteBinds(actor)] };
     const wrote = await env.DB.batch([
       env.DB.prepare(
-        `DELETE FROM site_files WHERE site_id = ? AND EXISTS (SELECT 1 FROM sites WHERE id = ? AND last_written_by NOT LIKE ? AND ${OWNER_WRITE_SQL})`,
-      ).bind(site.id, site.id, PURGE_CLAIM_LIKE, ...ownerWriteBinds(actor)),
+        `DELETE FROM site_files WHERE site_id = ? AND EXISTS (SELECT 1 FROM sites WHERE id = ? AND last_written_by NOT LIKE ? AND ${writeGuard.sql})`,
+      ).bind(site.id, site.id, PURGE_CLAIM_LIKE, ...writeGuard.binds),
       env.DB.prepare(
-        `DELETE FROM sites WHERE id = ? AND last_written_by NOT LIKE ? AND ${OWNER_WRITE_SQL}`,
-      ).bind(site.id, PURGE_CLAIM_LIKE, ...ownerWriteBinds(actor)),
+        `DELETE FROM sites WHERE id = ? AND last_written_by NOT LIKE ? AND ${writeGuard.sql}`,
+      ).bind(site.id, PURGE_CLAIM_LIKE, ...writeGuard.binds),
     ]);
     siteDeleted = Number(wrote[1]?.meta?.changes ?? 0) > 0;
     const still = await getSiteById(env, site.id);

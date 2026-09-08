@@ -4,7 +4,7 @@ Mint a token lets a signed-in human create an `ee_live_` secret for agents with 
 
 ## Sub-features
 
-- `token-mint` creates a labeled token and shows `export ENERGON_TOKEN=ee_live_…`.
+- `token-admin` lets an address on `ADMIN_EMAILS` mint `scope: admin` from `#mint-scope` (1 or 7 days, no never). The secret still starts with `ee_live_`; the hint is `ee_live_admin…` plus last four. Connect never grants admin. `GET /v1/whoami` has `scope` and `admin`. A person not on the list gets `403 forbidden_admin`.
 - `token-lifetime` offers presets in `#mint-ttl` (`1 day` … `1 year`, default `3 months`, `Never` only when this Energon allows it).
 - `token-whoami` accepts the secret and returns the owner email, label, and `expires_at` (`null` = never).
 - `token-self-revoke` lets an agent revoke its own token with `DELETE /v1/whoami`; the same secret is `401 unauthorized` afterwards, other tokens are untouched, and `/v1` has no route to list or revoke another token.
@@ -17,13 +17,13 @@ Mint a token lets a signed-in human create an `ee_live_` secret for agents with 
 
 ## How to get to it (user POV)
 
-- Open `/tokens`. The `Tokens` card lists tokens first; the `Mint a token by hand` card below it holds the form. Fill `Label`, pick a lifetime in `#mint-ttl`, choose `Mint token`.
+- Open `/tokens`. The `Tokens` card lists tokens first; the `Mint a token by hand` card below it holds the form. Fill `Label`, pick a lifetime in `#mint-ttl`, choose `Mint token`. Admins also see `#mint-scope` (`aria-label="Token authority"`) with Account (default) and Admin.
 - Choose `Revoke`, type the exact label, confirm.
 - Switch `#tokens-show` to `Stale` or `All`; choose `Revoke stale` or `Revoke all`, read the listed labels, type `N tokens`, confirm.
 - `POST /account/tokens/revoke` with `{ "target": "stale" | "all" }` to preview, then again with `"confirm"` from that preview — the same endpoint the buttons use.
 - Agent: send `Authorization: Bearer ee_live_…` to `/v1/whoami`.
 - Agent, when its task is done: `DELETE /v1/whoami` with the same header.
-- `POST /account/tokens` with `{ "label": "…", "ttl": "7d" }` — the same endpoint the form uses; omit `ttl` for the default.
+- `POST /account/tokens` with `{ "label": "…", "ttl": "7d" }` — the same endpoint the form uses; omit `ttl` for the default. Admins may send `"scope": "admin"`.
 
 ## Driving it with energon-verify
 
