@@ -53,4 +53,5 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Guest write password](./guest-write-password.md) covers setting a write password, guest PUT/DELETE on the public URL, Hub Link access, and catalog lockup.
 - [Cleanup](./cleanup.md) covers the list filters and sorts (`expires`, `expires_before`, `updated_before`, `min_size`, `sort=size|age`), the `POST /v1/cleanup` dry run, confirm-to-execute, drift, skip reasons, the 100-object cap, and body validation.
 - [Admin cleanup](./admin-cleanup.md) covers `/admin` for operators on `ADMIN_EMAILS`, `POST /v1/admin/cleanup` with an admin token, owner and `last_read_before` filters, the 7-day `set_ttl` default, `expire_not_own`, and the audit log.
+- [Admin health](./admin-health.md) covers the `/admin` health readout, `GET /v1/admin/health`, and the repair POSTs for quota recompute, sweep now, and unlocking a share gate.
 - [Admin tokens](./admin-tokens.md) covers listing and revoking token metadata across accounts on `/admin`, `GET /v1/admin/tokens`, `POST /v1/admin/tokens/revoke`, owner filter, preview-then-confirm, audit, and `403 forbidden_admin` for account tokens.

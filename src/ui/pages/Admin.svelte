@@ -18,6 +18,7 @@
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import Timestamp from '../components/Timestamp.svelte';
   import Metric from '../components/Metric.svelte';
+  import AdminHealth from '../components/AdminHealth.svelte';
   type Action = 'set_ttl' | 'delete' | 'expire';
   type Kind = 'both' | 'sites' | 'files';
   type Expires = 'any' | 'never';
@@ -127,6 +128,7 @@
     <p class="en-lede">Set a short expiry on sites and files nobody marked, across every account. The owner sees Expires in their catalog and can push it back. Deleting is an explicit choice. Every preview and execute is recorded.</p>
   </PageTitle>
   <div id="admin-messages">{#if error}<Flash tone="err">{error}</Flash>{/if}{#if notice}<Flash tone="ok">{notice}</Flash>{/if}</div>
+  <AdminHealth health={data.health} />
   <Card title="Find work" className="en-admin-card" charged>
     <form id="admin-filters" class="en-form-stack" onsubmit={(event) => { event.preventDefault(); runPreview(); }}>
       <div class="en-admin-filters">

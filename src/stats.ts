@@ -1,6 +1,8 @@
 import { uiPage } from "./ui-render";
 import { instanceFooter, PRIVATE_HTML_HEADERS } from "./chrome";
 import { PRODUCT } from "./config";
+import { usedStorage } from "./http";
+import { instancePolicy } from "./policy";
 import type { Actor, Env } from "./types";
 
 export type { StatsPayload, PersonStats } from "./page-data";
@@ -21,6 +23,7 @@ export async function loadStats(env: Env, email: string): Promise<StatsPayload> 
     systemLooseBytes,
     peopleCount,
     people,
+    usedBytes,
   ] = await Promise.all([
     scalar(env, `SELECT COUNT(*) AS n FROM sites WHERE ${involved}`, email, email),
     scalar(env, `SELECT COUNT(*) AS n FROM loose_files WHERE ${involved}`, email, email),
@@ -48,6 +51,7 @@ export async function loadStats(env: Env, email: string): Promise<StatsPayload> 
     scalar(env, `SELECT COALESCE(SUM(size), 0) AS n FROM loose_files`),
     scalar(env, `SELECT COUNT(*) AS n FROM users`),
     listPeople(env),
+    usedStorage(env.DB),
   ]);
 
   return {
@@ -62,6 +66,10 @@ export async function loadStats(env: Env, email: string): Promise<StatsPayload> 
       files: systemLoose + systemSiteFiles,
       bytes: systemSiteBytes + systemLooseBytes,
       people: peopleCount,
+    },
+    platform: {
+      used_bytes: usedBytes,
+      limit_bytes: instancePolicy(env).platformBytes,
     },
     people,
   };

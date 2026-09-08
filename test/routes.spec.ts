@@ -619,6 +619,10 @@ describe("hub account API", () => {
     expect(auditDenied.status).toBe(403);
     expect(auditDenied.body.error).toBe("forbidden_admin");
 
+    const healthDenied = await json("/account/admin/health", { headers: access("ada@esperlabs.app") });
+    expect(healthDenied.status).toBe(403);
+    expect(healthDenied.body.error).toBe("forbidden_admin");
+
     const preview = await json("/account/admin/cleanup", {
       method: "POST",
       headers: access("admin@esperlabs.app", { "content-type": "application/json" }),
@@ -631,5 +635,71 @@ describe("hub account API", () => {
     const listed = await json("/account/admin/audit", { headers: access("admin@esperlabs.app") });
     expect(listed.status).toBe(200);
     expect(listed.body.events.some((e: { action: string; executed: boolean }) => e.action === "cleanup" && !e.executed)).toBe(true);
+
+    const health = await json("/account/admin/health", { headers: access("admin@esperlabs.app") });
+    expect(health.status).toBe(200);
+    expect(health.body.quota.limit_bytes).toBe(20 * 1024 * 1024 * 1024);
+    expect(health.body.quota.used_bytes).toBeGreaterThanOrEqual(0);
+    expect(health.body.expired_awaiting_purge).toBeGreaterThanOrEqual(0);
+    expect(health.body.stale_purge_claims).toBeGreaterThanOrEqual(0);
+    expect(JSON.stringify(health.body)).not.toMatch(/password/i);
+  });
+
+  it("hub admin repairs refuse non-operators and run for operators", async () => {
+    const deniedRecompute = await json("/account/admin/quota/recompute", {
+      method: "POST",
+      headers: access("ada@esperlabs.app", { "content-type": "application/json" }),
+      body: "{}",
+    });
+    expect(deniedRecompute.status).toBe(403);
+    expect(deniedRecompute.body.error).toBe("forbidden_admin");
+
+    const deniedSweep = await json("/account/admin/sweep", {
+      method: "POST",
+      headers: access("ada@esperlabs.app", { "content-type": "application/json" }),
+      body: "{}",
+    });
+    expect(deniedSweep.status).toBe(403);
+    expect(deniedSweep.body.error).toBe("forbidden_admin");
+
+    const deniedUnlock = await json("/account/admin/gates/unlock", {
+      method: "POST",
+      headers: access("ada@esperlabs.app", { "content-type": "application/json" }),
+      body: JSON.stringify({ scope: "obj:/ada/f/x/name" }),
+    });
+    expect(deniedUnlock.status).toBe(403);
+    expect(deniedUnlock.body.error).toBe("forbidden_admin");
+
+    const recomputed = await json("/account/admin/quota/recompute", {
+      method: "POST",
+      headers: access("admin@esperlabs.app", { "content-type": "application/json" }),
+      body: "{}",
+    });
+    expect(recomputed.status).toBe(200);
+    expect(recomputed.body.used_after).toBeGreaterThanOrEqual(0);
+    expect(recomputed.body.used_before).toBeGreaterThanOrEqual(0);
+    expect(JSON.stringify(recomputed.body)).not.toMatch(/password/i);
+
+    const swept = await json("/account/admin/sweep", {
+      method: "POST",
+      headers: access("admin@esperlabs.app", { "content-type": "application/json" }),
+      body: "{}",
+    });
+    expect(swept.status).toBe(200);
+    expect(swept.body.swept).toMatchObject({ sites: expect.any(Number), files: expect.any(Number) });
+    expect(swept.body.expired_remaining).toBeGreaterThanOrEqual(0);
+
+    const unlocked = await json("/account/admin/gates/unlock", {
+      method: "POST",
+      headers: access("admin@esperlabs.app", { "content-type": "application/json" }),
+      body: JSON.stringify({ scope: "obj:/nobody/f/missing/name" }),
+    });
+    expect(unlocked.status).toBe(200);
+    expect(unlocked.body).toEqual({ scope: "obj:/nobody/f/missing/name", unlocked: false });
+
+    const audit = await json("/account/admin/audit", { headers: access("admin@esperlabs.app") });
+    expect(audit.status).toBe(200);
+    const actions = (audit.body.events as { action: string }[]).map((e) => e.action);
+    expect(actions).toEqual(expect.arrayContaining(["quota_recompute", "sweep", "gate_unlock"]));
   });
 });

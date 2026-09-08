@@ -1975,6 +1975,32 @@ describe("Energon", () => {
     });
   });
 
+  describe("admin health", () => {
+    it("returns quota and pending-purge counts for an admin token only", async () => {
+      const admin = await mintAdmin("health-ops");
+      const listed = await json("/v1/admin/health", { headers: auth(admin) });
+      expect(listed.status).toBe(200);
+      expect(listed.body.quota.limit_bytes).toBe(20 * 1024 * 1024 * 1024);
+      expect(listed.body.quota.used_bytes).toBeGreaterThanOrEqual(0);
+      expect(listed.body.quota.catalog_bytes).toBeGreaterThanOrEqual(0);
+      expect(listed.body.expired_awaiting_purge).toBeGreaterThanOrEqual(0);
+      expect(listed.body.stale_purge_claims).toBeGreaterThanOrEqual(0);
+      expect(listed.body.locked_gates).toBeGreaterThanOrEqual(0);
+      expect(Array.isArray(listed.body.locked_scopes)).toBe(true);
+      const raw = JSON.stringify(listed.body);
+      expect(raw).not.toContain(admin);
+      expect(raw).not.toMatch(/password/i);
+
+      const noAuth = await json("/v1/admin/health");
+      expect(noAuth.status).toBe(401);
+
+      const account = await mint("health-plain", "admin@esperlabs.app");
+      const asAccount = await json("/v1/admin/health", { headers: auth(account) });
+      expect(asAccount.status).toBe(403);
+      expect(asAccount.body.error).toBe("forbidden_admin");
+    });
+  });
+
   describe("admin audit", () => {
     it("records nothing until an admin action, and never leaks secrets", async () => {
       const admin = await mintAdmin("audit-empty");
@@ -1987,6 +2013,142 @@ describe("Energon", () => {
 
       const noAuth = await json("/v1/admin/audit");
       expect(noAuth.status).toBe(401);
+    });
+  });
+
+  describe("admin repairs", () => {
+    const post = (path: string, token: string, body?: unknown) =>
+      json(path, {
+        method: "POST",
+        headers: auth(token, body === undefined ? undefined : { "content-type": "application/json" }),
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+
+    it("recomputes platform_quota.used from catalog SUM(size)", async () => {
+      const owner = await mint("repair-quota-owner");
+      const created = await json("/v1/files", {
+        method: "POST",
+        headers: auth(owner, { "X-Filename": "vhealth-quota.md", "content-type": "text/plain" }),
+        body: "quota-bytes",
+      });
+      expect(created.status).toBe(201);
+      const catalog = await env.DB.prepare(
+        `SELECT
+          (SELECT COALESCE(SUM(size), 0) FROM site_files) +
+          (SELECT COALESCE(SUM(size), 0) FROM loose_files) AS total`,
+      ).first<{ total: number }>();
+      const catalogBytes = Number(catalog?.total ?? 0);
+      await env.DB.prepare(`UPDATE platform_quota SET used = ? WHERE id = 1`).bind(9_001_000_000).run();
+
+      const outsider = await mint("repair-quota-ada", "ada@esperlabs.app");
+      const refused = await post("/v1/admin/quota/recompute", outsider);
+      expect(refused.status).toBe(403);
+      expect(refused.body.error).toBe("forbidden_admin");
+
+      const admin = await mintAdmin("repair-quota-ops");
+      const result = await post("/v1/admin/quota/recompute", admin);
+      expect(result.status).toBe(200);
+      expect(result.body.used_before).toBe(9_001_000_000);
+      expect(result.body.used_after).toBe(catalogBytes);
+      expect(JSON.stringify(result.body)).not.toContain(admin);
+      expect(JSON.stringify(result.body)).not.toContain("quota-bytes");
+
+      const ledger = await env.DB.prepare(`SELECT used FROM platform_quota WHERE id = 1`).first<{ used: number }>();
+      expect(Number(ledger?.used)).toBe(catalogBytes);
+      const health = await json("/v1/admin/health", { headers: auth(admin) });
+      expect(health.body.quota.used_bytes).toBe(catalogBytes);
+      expect(health.body.quota.catalog_bytes).toBe(catalogBytes);
+
+      const audit = await json("/v1/admin/audit", { headers: auth(admin) });
+      expect(audit.body.events.some((e: { action: string; executed: boolean }) => e.action === "quota_recompute" && e.executed)).toBe(true);
+    });
+
+    it("sweeps expired rows once and reports how many remain", async () => {
+      const owner = await mint("repair-sweep-owner");
+      const created = await json("/v1/files", {
+        method: "POST",
+        headers: auth(owner, { "X-Filename": "vhealth-sweep.md", "content-type": "text/plain" }),
+        body: "sweep-me",
+      });
+      expect(created.status).toBe(201);
+      const fileId = created.body.id as string;
+      await env.DB.prepare(`UPDATE loose_files SET expires_at = ? WHERE id = ?`)
+        .bind("2000-01-01T00:00:00.000Z", fileId)
+        .run();
+      const waiting = await env.DB.prepare(`SELECT id FROM loose_files WHERE id = ?`).bind(fileId).first();
+      expect(waiting).not.toBeNull();
+
+      const outsider = await mint("repair-sweep-ada", "ada@esperlabs.app");
+      const refused = await post("/v1/admin/sweep", outsider);
+      expect(refused.status).toBe(403);
+      expect(refused.body.error).toBe("forbidden_admin");
+
+      const admin = await mintAdmin("repair-sweep-ops");
+      let remaining = Number.POSITIVE_INFINITY;
+      let last: { status: number; body: { swept?: { sites: number; files: number }; expired_remaining?: number } } | undefined;
+      for (let i = 0; i < 4 && remaining > 0; i++) {
+        last = await post("/v1/admin/sweep", admin);
+        expect(last.status).toBe(200);
+        expect(last.body.swept).toMatchObject({ sites: expect.any(Number), files: expect.any(Number) });
+        remaining = Number(last.body.expired_remaining);
+        const gone = await env.DB.prepare(`SELECT id FROM loose_files WHERE id = ?`).bind(fileId).first();
+        if (!gone) break;
+      }
+      expect(last?.body.swept).toBeDefined();
+      expect(JSON.stringify(last?.body)).not.toContain("sweep-me");
+      expect(JSON.stringify(last?.body)).not.toContain(admin);
+      const gone = await env.DB.prepare(`SELECT id FROM loose_files WHERE id = ?`).bind(fileId).first();
+      expect(gone).toBeNull();
+      expect(remaining).toBeGreaterThanOrEqual(0);
+
+      const audit = await json("/v1/admin/audit", { headers: auth(admin) });
+      expect(audit.body.events.some((e: { action: string; executed: boolean }) => e.action === "sweep" && e.executed)).toBe(true);
+    });
+
+    it("unlocks a locked share gate by scope", async () => {
+      const scope = "obj:/ada/f/vhealth-lock/vhealth-gate.md";
+      await env.DB.prepare(`INSERT OR REPLACE INTO gate_attempts (scope, fails, window_start) VALUES (?, ?, ?)`)
+        .bind(scope, 20, new Date().toISOString())
+        .run();
+
+      const admin = await mintAdmin("repair-unlock-ops");
+      const listed = await json("/v1/admin/health", { headers: auth(admin) });
+      expect(listed.body.locked_scopes).toContain(scope);
+
+      const empty = await post("/v1/admin/gates/unlock", admin, { scope: "  " });
+      expect(empty.status).toBe(400);
+      expect(empty.body.error).toBe("bad_target");
+
+      const notObject = await json("/v1/admin/gates/unlock", {
+        method: "POST",
+        headers: auth(admin, { "content-type": "application/json" }),
+        body: "[]",
+      });
+      expect(notObject.status).toBe(400);
+      expect(notObject.body.error).toBe("bad_json");
+
+      const outsider = await mint("repair-unlock-ada", "ada@esperlabs.app");
+      const refused = await post("/v1/admin/gates/unlock", outsider, { scope });
+      expect(refused.status).toBe(403);
+      expect(refused.body.error).toBe("forbidden_admin");
+
+      const unlocked = await post("/v1/admin/gates/unlock", admin, { scope });
+      expect(unlocked.status).toBe(200);
+      expect(unlocked.body).toEqual({ scope, unlocked: true });
+      expect(JSON.stringify(unlocked.body)).not.toContain(admin);
+
+      const row = await env.DB.prepare(`SELECT scope FROM gate_attempts WHERE scope = ?`).bind(scope).first();
+      expect(row).toBeNull();
+      const after = await json("/v1/admin/health", { headers: auth(admin) });
+      expect(after.body.locked_scopes).not.toContain(scope);
+
+      const again = await post("/v1/admin/gates/unlock", admin, { scope });
+      expect(again.status).toBe(200);
+      expect(again.body).toEqual({ scope, unlocked: false });
+
+      const audit = await json("/v1/admin/audit", { headers: auth(admin) });
+      expect(audit.body.events.some((e: { action: string }) => e.action === "gate_unlock")).toBe(true);
+      expect(JSON.stringify(audit.body)).not.toContain(admin);
     });
   });
 

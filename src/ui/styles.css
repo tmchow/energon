@@ -20,8 +20,10 @@
 @keyframes en-travel-y { from { top: 0; opacity: 0; } 10%, 90% { opacity: 1; } to { top: 100%; opacity: 0; } }
 .en-scene-flow { padding: 18px 0; }
 .en-stats-pane h2, .en-people-heading h2 { font: 550 23px/1.2 var(--font-sans); }
-.en-stats-grid { margin-top: 26px; align-items: stretch; }
+.en-stats-grid { margin-top: 16px; align-items: stretch; }
 .en-stats-pane { padding: 20px 19px 21px; }
+.en-stats-platform { margin-top: 26px; }
+.en-stats-platform .en-bar { margin-top: 18px; }
 .en-people-card { margin-top: 16px; padding: 20px 19px 19px; }
 .en-stats-sub { margin: 4px 0 0; color: var(--fg-3); font: 400 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
 .en-people-heading { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 14px 16px; }
@@ -40,6 +42,13 @@
 .en-admin-confirm { padding: 16px var(--pad-card) 16px; }
 .en-admin-metrics { padding: 4px var(--pad-card) 16px; }
 .en-admin-note { padding: 12px var(--pad-card) 0; }
+.en-admin-health .en-bar { margin: 8px 0 18px; }
+.en-admin-health-scopes { margin: 12px 0 0; padding: 0; list-style: none; font: 400 12px/1.4 var(--font-mono); color: var(--fg-3); }
+.en-admin-health-scopes li { overflow-wrap: anywhere; }
+.en-admin-health-scope { background: none; border: 0; padding: 0; color: inherit; font: inherit; cursor: pointer; text-align: left; }
+.en-admin-health-run { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 18px; }
+.en-admin-health-unlock { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-top: 18px; }
+.en-admin-health-unlock .en-field { flex: 1; min-width: 16rem; }
 .en-tokens-tools { justify-content: flex-end; }
 .en-tokens-tools .en-seg button { height: var(--control-h-sm); }
 .en-tokens-note { padding: 12px var(--pad-card) 0; }
