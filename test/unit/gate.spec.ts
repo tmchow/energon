@@ -8,8 +8,12 @@ import {
   hashSharePassword,
   hashWritePassword,
   parseFormPassword,
+  passwordField,
+  passwordHashFromInput,
   recordGateFailures,
   writeGateScopes,
+  writePasswordField,
+  writePasswordHashFromInput,
 } from "../../src/gate";
 import type { Env } from "../../src/types";
 
@@ -121,5 +125,32 @@ describe("write password hashes", () => {
     expect(share).not.toBe(write);
     expect(share).not.toContain("energon-pw:");
     expect(write).not.toContain("energon-wpw:");
+  });
+});
+
+describe("password body fields", () => {
+  it("treats missing as unchanged, null as clear, and strings as set", () => {
+    expect(passwordField({})).toBeUndefined();
+    expect(passwordField({ password: null })).toBe("");
+    expect(passwordField({ password: " secret " })).toBe(" secret ");
+    expect(writePasswordField({})).toBeUndefined();
+    expect(writePasswordField({ write_password: null })).toBe("");
+    expect(writePasswordField({ write_password: "w" })).toBe("w");
+  });
+
+  it("keeps share and write length errors distinct", async () => {
+    const tooLong = "x".repeat(129);
+    await expect(passwordHashFromInput(tooLong)).rejects.toMatchObject({
+      status: 400,
+      code: "bad_password",
+      message: "Share password is too long (max 128 characters).",
+    });
+    await expect(writePasswordHashFromInput(tooLong)).rejects.toMatchObject({
+      status: 400,
+      code: "bad_password",
+      message: "Write password is too long (max 128 characters).",
+    });
+    await expect(passwordHashFromInput("  ")).resolves.toBeNull();
+    await expect(writePasswordHashFromInput("  ")).resolves.toBeNull();
   });
 });

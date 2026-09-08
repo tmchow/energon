@@ -15,6 +15,8 @@ import {
   isWorkersDev,
   normalizeRelPath,
   releaseStorage,
+  restoreR2Object,
+  snapshotR2Object,
   tooLarge,
   wantsDownload,
 } from "../../src/http";
@@ -190,5 +192,68 @@ describe("storage ledger", () => {
       code: "storage_cap",
     });
     expect(db.used()).toBe(90);
+  });
+});
+
+describe("R2 snapshot restore", () => {
+  type Stored = {
+    bytes: Uint8Array;
+    httpMetadata?: R2HTTPMetadata;
+    customMetadata?: Record<string, string>;
+  };
+
+  function memoryBucket() {
+    const objects = new Map<string, Stored>();
+    return {
+      objects,
+      async get(key: string) {
+        const stored = objects.get(key);
+        if (!stored) return null;
+        return {
+          httpMetadata: stored.httpMetadata,
+          customMetadata: stored.customMetadata,
+          bytes: async () => stored.bytes.slice(),
+        };
+      },
+      async put(
+        key: string,
+        value: Uint8Array,
+        options?: { httpMetadata?: R2HTTPMetadata; customMetadata?: Record<string, string> },
+      ) {
+        objects.set(key, {
+          bytes: value instanceof Uint8Array ? value.slice() : new Uint8Array(value),
+          httpMetadata: options?.httpMetadata,
+          customMetadata: options?.customMetadata,
+        });
+      },
+      async delete(key: string) {
+        objects.delete(key);
+      },
+    };
+  }
+
+  it("snapshots missing keys as null and restores by deleting", async () => {
+    const bucket = memoryBucket();
+    await bucket.put("k", new Uint8Array([1, 2]), { httpMetadata: { contentType: "text/plain" } });
+    expect(await snapshotR2Object(bucket as unknown as R2Bucket, "missing")).toBeNull();
+    await restoreR2Object(bucket as unknown as R2Bucket, "k", null);
+    expect(bucket.objects.has("k")).toBe(false);
+  });
+
+  it("round-trips bytes and metadata", async () => {
+    const bucket = memoryBucket();
+    await bucket.put("k", new Uint8Array([9, 8, 7]), {
+      httpMetadata: { contentType: "application/octet-stream" },
+      customMetadata: { via: "test" },
+    });
+    const snapshot = await snapshotR2Object(bucket as unknown as R2Bucket, "k");
+    expect(snapshot?.httpMetadata?.contentType).toBe("application/octet-stream");
+    expect(snapshot?.customMetadata).toEqual({ via: "test" });
+    await bucket.put("k", new Uint8Array([0]), { httpMetadata: { contentType: "text/plain" } });
+    await restoreR2Object(bucket as unknown as R2Bucket, "k", snapshot);
+    const restored = bucket.objects.get("k");
+    expect(Array.from(restored?.bytes ?? [])).toEqual([9, 8, 7]);
+    expect(restored?.httpMetadata?.contentType).toBe("application/octet-stream");
+    expect(restored?.customMetadata).toEqual({ via: "test" });
   });
 });

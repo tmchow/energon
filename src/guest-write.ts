@@ -37,11 +37,14 @@ import {
   contentOrigin,
   readBodyCapped,
   releaseStorage,
+  restoreR2Object,
+  snapshotR2Object,
   tooLarge,
+  type R2ObjectSnapshot,
 } from "./http";
 import { contentTypeFor } from "./mime";
 import { instancePolicy } from "./policy";
-import { assertFilePath, assertSlug, getSiteById } from "./sites";
+import { assertFilePath, assertSlug, fileCount, getSiteById, siteFileUpsert } from "./sites";
 import type { Env, SiteRow, WriteAuthority } from "./types";
 import { filePublicUrl, isFileId, isSiteId, sitePublicUrl, urlFilename } from "./urls";
 
@@ -53,12 +56,6 @@ const FORBIDDEN_PUT_HEADERS = [
   "x-energon-ttl",
   "x-energon-write-policy",
 ];
-
-type R2Snapshot = {
-  bytes: Uint8Array;
-  httpMetadata: R2HTTPMetadata | undefined;
-  customMetadata: Record<string, string> | undefined;
-};
 
 export type LooseTarget = {
   kind: "loose";
@@ -177,7 +174,7 @@ async function guestLoose(
 
   const key = fileKey(row.id, row.filename);
   let reserved = 0;
-  let previousState: R2Snapshot | null = null;
+  let previousState: R2ObjectSnapshot | null = null;
   let metadataCommitted = false;
   let wroteObject = false;
   const ts = new Date().toISOString();
@@ -291,10 +288,8 @@ async function guestPutSitePath(
     .bind(site.id, path)
     .first<{ size: number; content_type: string; updated_at: string; last_written_by: string }>();
   if (!existing) {
-    const count = await env.DB.prepare(`SELECT COUNT(*) AS n FROM site_files WHERE site_id = ?`)
-      .bind(site.id)
-      .first<{ n: number }>();
-    if (Number(count?.n ?? 0) >= MAX_IMPORT_FILES) {
+    const count = await fileCount(env, site.id);
+    if (count >= MAX_IMPORT_FILES) {
       throw new ApiError(
         400,
         "too_many_files",
@@ -313,32 +308,22 @@ async function guestPutSitePath(
   try {
     await env.BUCKET.put(key, bytes, { httpMetadata: { contentType } });
     const wrote = await env.DB.batch([
-      env.DB.prepare(
-        `INSERT INTO site_files (site_id, path, size, content_type, updated_at, last_written_by)
-         VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(site_id, path) DO UPDATE SET
-           size = excluded.size,
-           content_type = excluded.content_type,
-           updated_at = excluded.updated_at,
-           last_written_by = excluded.last_written_by`,
-      ).bind(site.id, path, bytes.byteLength, contentType, ts, writer),
+      siteFileUpsert(env, site.id, path, bytes.byteLength, contentType, ts, writer),
       env.DB.prepare(
         `UPDATE sites SET updated_at = ?, written_via = ? WHERE id = ? AND write_password_hash = ? AND last_written_by NOT LIKE ?`,
       ).bind(ts, WRITTEN_VIA_WRITE_PASSWORD, site.id, authority.hash, PURGE_CLAIM_LIKE),
     ]);
     if (!d1Changed(wrote[1]!)) {
       if (existing) {
-        await env.DB.prepare(
-          `INSERT INTO site_files (site_id, path, size, content_type, updated_at, last_written_by)
-           VALUES (?, ?, ?, ?, ?, ?)
-           ON CONFLICT(site_id, path) DO UPDATE SET
-             size = excluded.size,
-             content_type = excluded.content_type,
-             updated_at = excluded.updated_at,
-             last_written_by = excluded.last_written_by`,
-        )
-          .bind(site.id, path, existing.size, existing.content_type, existing.updated_at, existing.last_written_by)
-          .run();
+        await siteFileUpsert(
+          env,
+          site.id,
+          path,
+          existing.size,
+          existing.content_type,
+          existing.updated_at,
+          existing.last_written_by,
+        ).run();
       } else {
         await env.DB.prepare(`DELETE FROM site_files WHERE site_id = ? AND path = ?`)
           .bind(site.id, path)
@@ -517,26 +502,5 @@ function guestJson(data: unknown, status: number, extra?: HeadersInit): Response
   return Response.json(data, {
     status,
     headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...extra },
-  });
-}
-
-async function snapshotR2Object(bucket: R2Bucket, key: string): Promise<R2Snapshot | null> {
-  const object = await bucket.get(key);
-  if (!object) return null;
-  return {
-    bytes: await object.bytes(),
-    httpMetadata: object.httpMetadata,
-    customMetadata: object.customMetadata,
-  };
-}
-
-async function restoreR2Object(bucket: R2Bucket, key: string, snapshot: R2Snapshot | null): Promise<void> {
-  if (!snapshot) {
-    await bucket.delete(key);
-    return;
-  }
-  await bucket.put(key, snapshot.bytes, {
-    httpMetadata: snapshot.httpMetadata,
-    customMetadata: snapshot.customMetadata,
   });
 }

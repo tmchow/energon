@@ -323,6 +323,38 @@ export async function assertStorageRoom(
   return 0;
 }
 
+export type R2ObjectSnapshot = {
+  bytes: Uint8Array;
+  httpMetadata?: R2HTTPMetadata;
+  customMetadata?: Record<string, string>;
+};
+
+export async function snapshotR2Object(bucket: R2Bucket, key: string): Promise<R2ObjectSnapshot | null> {
+  const object = await bucket.get(key);
+  if (!object) return null;
+  return {
+    bytes: await object.bytes(),
+    httpMetadata: object.httpMetadata,
+    customMetadata: object.customMetadata,
+  };
+}
+
+/** Put the snapshot back, or delete the key when the prior object was missing. */
+export async function restoreR2Object(
+  bucket: R2Bucket,
+  key: string,
+  snapshot: R2ObjectSnapshot | null,
+): Promise<void> {
+  if (!snapshot) {
+    await bucket.delete(key);
+    return;
+  }
+  await bucket.put(key, snapshot.bytes, {
+    httpMetadata: snapshot.httpMetadata,
+    customMetadata: snapshot.customMetadata,
+  });
+}
+
 /** Same-bucket copy. Streams through the Worker once; does not go through the agent. */
 export async function copyR2Object(bucket: R2Bucket, fromKey: string, toKey: string): Promise<number> {
   const obj = await bucket.get(fromKey);
