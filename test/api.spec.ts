@@ -2001,6 +2001,21 @@ describe("Energon", () => {
     });
   });
 
+  describe("admin audit", () => {
+    it("records nothing until an admin action, and never leaks secrets", async () => {
+      const admin = await mintAdmin("audit-empty");
+      const listed = await json("/v1/admin/audit", { headers: auth(admin) });
+      expect(listed.status).toBe(200);
+      expect(listed.body.events).toEqual([]);
+      const raw = JSON.stringify(listed.body);
+      expect(raw).not.toContain("password");
+      expect(raw).not.toContain(admin);
+
+      const noAuth = await json("/v1/admin/audit");
+      expect(noAuth.status).toBe(401);
+    });
+  });
+
   describe("admin repairs", () => {
     const post = (path: string, token: string, body?: unknown) =>
       json(path, {
@@ -2134,21 +2149,6 @@ describe("Energon", () => {
       const audit = await json("/v1/admin/audit", { headers: auth(admin) });
       expect(audit.body.events.some((e: { action: string }) => e.action === "gate_unlock")).toBe(true);
       expect(JSON.stringify(audit.body)).not.toContain(admin);
-    });
-  });
-
-  describe("admin audit", () => {
-    it("records nothing until an admin action, and never leaks secrets", async () => {
-      const admin = await mintAdmin("audit-empty");
-      const listed = await json("/v1/admin/audit", { headers: auth(admin) });
-      expect(listed.status).toBe(200);
-      expect(listed.body.events).toEqual([]);
-      const raw = JSON.stringify(listed.body);
-      expect(raw).not.toContain("password");
-      expect(raw).not.toContain(admin);
-
-      const noAuth = await json("/v1/admin/audit");
-      expect(noAuth.status).toBe(401);
     });
   });
 
