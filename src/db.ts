@@ -86,6 +86,25 @@ const TABLE_STATEMENTS = [
     expires_at TEXT,
     scope TEXT NOT NULL DEFAULT 'account'
   )`,
+  `CREATE TABLE IF NOT EXISTS admin_audit (
+    id TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL,
+    actor_email TEXT NOT NULL,
+    token_id TEXT,
+    token_hint TEXT,
+    action TEXT NOT NULL,
+    executed INTEGER NOT NULL,
+    action_kind TEXT,
+    ttl TEXT,
+    target_json TEXT NOT NULL,
+    matched INTEGER,
+    eligible INTEGER,
+    applied INTEGER,
+    skipped INTEGER,
+    failed INTEGER,
+    bytes INTEGER,
+    confirm TEXT
+  )`,
   `CREATE TABLE IF NOT EXISTS gate_attempts (
     scope TEXT PRIMARY KEY,
     fails INTEGER NOT NULL,
@@ -124,6 +143,7 @@ const INDEX_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_loose_filename ON loose_files(filename)`,
   `CREATE INDEX IF NOT EXISTS idx_sites_expires_at ON sites(expires_at)`,
   `CREATE INDEX IF NOT EXISTS idx_loose_expires_at ON loose_files(expires_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_admin_audit_created ON admin_audit(created_at DESC)`,
 ];
 
 let columnsReady = false;

@@ -2,7 +2,7 @@ import { env } from "cloudflare:test";
 import { unzipSync, zipSync, strToU8 } from "fflate";
 import { describe, expect, it } from "vitest";
 import { GATE_COOKIE, hashSharePassword, unlockToken } from "../src/gate";
-import { auth, access, createSite, json, mint, req } from "./helpers";
+import { auth, access, createSite, json, mint, mintAdmin, req } from "./helpers";
 
 describe("Energon", () => {
   it("GET /v1/health is unauthenticated", async () => {
@@ -1972,6 +1972,21 @@ describe("Energon", () => {
       expect(listed.body.files.find((f: { id: string }) => f.id === id).last_read_at).toBe(first);
       const hub = await json("/account/data?q=read.txt", { headers: access(email) });
       expect(hub.body.files.find((f: { id: string }) => f.id === id).last_read_at).toBe(first);
+    });
+  });
+
+  describe("admin audit", () => {
+    it("records nothing until an admin action, and never leaks secrets", async () => {
+      const admin = await mintAdmin("audit-empty");
+      const listed = await json("/v1/admin/audit", { headers: auth(admin) });
+      expect(listed.status).toBe(200);
+      expect(listed.body.events).toEqual([]);
+      const raw = JSON.stringify(listed.body);
+      expect(raw).not.toContain("password");
+      expect(raw).not.toContain(admin);
+
+      const noAuth = await json("/v1/admin/audit");
+      expect(noAuth.status).toBe(401);
     });
   });
 });

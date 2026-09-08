@@ -36,6 +36,10 @@
     {
       "name": "cleanup",
       "description": "Bulk delete or re-expire the sites and files you can write. Dry run by default; execute with the confirm string from the preview."
+    },
+    {
+      "name": "admin",
+      "description": "Operator routes. Need a token minted with scope=admin by someone still on ADMIN_EMAILS. They never return published bytes, share passwords, or write passwords. Every action that lists or changes others' content is recorded."
     }
   ],
   "paths": {
@@ -1189,6 +1193,67 @@
           },
           "415": {
             "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/audit": {
+      "get": {
+        "operationId": "listAdminAudit",
+        "tags": [
+          "admin"
+        ],
+        "summary": "List recorded admin actions",
+        "description": "Needs an admin token (scope=admin and owner still on ADMIN_EMAILS). Newest first. Each row is who, which token if any, what, which filters, how many, and when. Never includes published bytes, share passwords, or write passwords. Account tokens and the connect flow get 403 forbidden_admin.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 25
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque cursor from a previous next_cursor."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Audit events, newest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAuditList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenAdmin"
           },
           "500": {
             "description": "Server error.",
@@ -3934,6 +3999,130 @@
           }
         }
       },
+      "AdminAuditEvent": {
+        "type": "object",
+        "description": "One recorded admin action. Metadata only: never published bytes or secrets.",
+        "required": [
+          "id",
+          "created_at",
+          "actor_email",
+          "action",
+          "executed"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "actor_email": {
+            "type": "string"
+          },
+          "token_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "token_hint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Redacted token, ee_live_admin… plus last four when this was an admin token."
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "cleanup"
+            ]
+          },
+          "executed": {
+            "type": "boolean"
+          },
+          "action_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ttl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target": {
+            "description": "The filters or ids sent with the action."
+          },
+          "matched": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "eligible": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "applied": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "skipped": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "failed": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Sum of eligible or applied object sizes, not file contents."
+          },
+          "confirm": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AdminAuditList": {
+        "type": "object",
+        "required": [
+          "events",
+          "next_cursor"
+        ],
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminAuditEvent"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "WhoamiRevoked": {
         "type": "object",
         "required": [
@@ -4329,6 +4518,20 @@
       "ForbiddenDomain": {
         "description": "The token's account email is outside this Energon's allowed domains.",
         "x-error-codes": [
+          "forbidden_domain"
+        ],
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "ForbiddenAdmin": {
+        "description": "Needs an admin token minted at /tokens by someone still on ADMIN_EMAILS. Account tokens, the connect flow, and a stripped email all refuse.",
+        "x-error-codes": [
+          "forbidden_admin",
           "forbidden_domain"
         ],
         "content": {

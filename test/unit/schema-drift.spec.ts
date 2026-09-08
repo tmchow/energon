@@ -80,4 +80,10 @@ describe("schema representations", () => {
       "ALTER TABLE loose_files ADD COLUMN last_read_at TEXT;",
     ]);
   });
+
+  it("ships admin_audit as a single additive migration", () => {
+    const migration = readFileSync("migrations/0021_admin_audit.sql", "utf8");
+    expect(migration).toMatch(/CREATE TABLE IF NOT EXISTS admin_audit/);
+    expect(migration).toMatch(/CREATE INDEX IF NOT EXISTS idx_admin_audit_created/);
+  });
 });

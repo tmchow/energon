@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { access, auth, createSite, json, mint, req } from "./helpers";
+import { access, auth, createSite, json, mint, mintAdmin, req } from "./helpers";
 
 describe("host and route contracts", () => {
   it("serves authentication instructions before login and links them from discovery and token errors", async () => {
@@ -406,5 +406,23 @@ describe("hub account API", () => {
     const plain = await json("/v1/whoami", { headers: auth(account.body.token) });
     expect(plain.body.admin).toBe(false);
     expect(plain.body.scope).toBe("account");
+  });
+
+  it("lists admin audit only for an admin token whose owner is still on the list", async () => {
+    const admin = await mintAdmin("audit-ops");
+    const empty = await json("/v1/admin/audit", { headers: auth(admin) });
+    expect(empty.status).toBe(200);
+    expect(empty.body.events).toEqual([]);
+    expect(empty.body.next_cursor).toBeNull();
+
+    const account = await mint("audit-plain", "admin@esperlabs.app");
+    const asAccount = await json("/v1/admin/audit", { headers: auth(account) });
+    expect(asAccount.status).toBe(403);
+    expect(asAccount.body.error).toBe("forbidden_admin");
+
+    const outsider = await mint("audit-ada", "ada@esperlabs.app");
+    const refused = await json("/v1/admin/audit", { headers: auth(outsider) });
+    expect(refused.status).toBe(403);
+    expect(refused.body.error).toBe("forbidden_admin");
   });
 });

@@ -18,6 +18,7 @@ export async function mint(
   email = "ada@esperlabs.app",
   extra?: HeadersInit,
   ttl?: string,
+  scope?: "account" | "admin",
 ): Promise<string> {
   const { status, body } = await json("/account/tokens", {
     method: "POST",
@@ -27,11 +28,19 @@ export async function mint(
       origin,
       ...extra,
     },
-    body: JSON.stringify(ttl === undefined ? { label } : { label, ttl }),
+    body: JSON.stringify({
+      label,
+      ...(ttl === undefined ? {} : { ttl }),
+      ...(scope ? { scope } : {}),
+    }),
   });
   expect(status).toBe(201);
   expect(String(body.token)).toMatch(/^ee_live_/);
   return body.token as string;
+}
+
+export async function mintAdmin(label: string, email = "admin@esperlabs.app"): Promise<string> {
+  return mint(label, email, undefined, "1d", "admin");
 }
 
 export function auth(token: string, extra?: HeadersInit): HeadersInit {
