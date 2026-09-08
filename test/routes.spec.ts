@@ -471,6 +471,141 @@ describe("hub account API", () => {
     expect(hub.body.tokens.some((t: { label: string }) => t.label === "admin-list-ada")).toBe(true);
   });
 
+  it("revokes another account's tokens after a matching preview confirm", async () => {
+    const ownerEmail = "tok-ada@esperlabs.app";
+    const ownerSecret = await mint("admin-revoke-ada", ownerEmail);
+    const idle = await mint("admin-revoke-idle", ownerEmail);
+    await env.DB.prepare(`UPDATE tokens SET created_at = ? WHERE label = ? AND user_email = ?`)
+      .bind("2000-01-01T00:00:00.000Z", "admin-revoke-idle", ownerEmail)
+      .run();
+    await env.DB.prepare(`UPDATE tokens SET last_used_at = created_at WHERE label = ? AND user_email = ?`)
+      .bind("admin-revoke-idle", ownerEmail)
+      .run();
+
+    const admin = await mintAdmin("admin-revoke-ops");
+    const asAccount = await json("/v1/admin/tokens/revoke", {
+      method: "POST",
+      headers: auth(await mint("admin-revoke-plain", "admin@esperlabs.app"), { "content-type": "application/json" }),
+      body: JSON.stringify({ owner: "tok-ada", target: "all" }),
+    });
+    expect(asAccount.status).toBe(403);
+    expect(asAccount.body.error).toBe("forbidden_admin");
+
+    const outsider = await json("/v1/admin/tokens/revoke", {
+      method: "POST",
+      headers: auth(ownerSecret, { "content-type": "application/json" }),
+      body: JSON.stringify({ owner: "tok-ada", target: "all" }),
+    });
+    expect(outsider.status).toBe(403);
+    expect(outsider.body.error).toBe("forbidden_admin");
+
+    const hubDenied = await json("/account/admin/tokens/revoke", {
+      method: "POST",
+      headers: access("ada@esperlabs.app", { "content-type": "application/json" }),
+      body: JSON.stringify({ owner: "tok-ada", target: "all" }),
+    });
+    expect(hubDenied.status).toBe(403);
+    expect(hubDenied.body.error).toBe("forbidden_admin");
+
+    const missing = await json("/v1/admin/tokens/revoke", {
+      method: "POST",
+      headers: auth(admin, { "content-type": "application/json" }),
+      body: JSON.stringify({ target: "all" }),
+    });
+    expect(missing.status).toBe(400);
+    expect(missing.body.error).toBe("bad_owner");
+
+    const unknown = await json("/v1/admin/tokens/revoke", {
+      method: "POST",
+      headers: auth(admin, { "content-type": "application/json" }),
+      body: JSON.stringify({ owner: "no-such-handle", target: "all" }),
+    });
+    expect(unknown.status).toBe(400);
+    expect(unknown.body.error).toBe("bad_owner");
+
+    const stalePreview = await json("/v1/admin/tokens/revoke", {
+      method: "POST",
+      headers: auth(admin, { "content-type": "application/json" }),
+      body: JSON.stringify({ owner: "tok-ada", target: "stale" }),
+    });
+    expect(stalePreview.status).toBe(200);
+    expect(stalePreview.body).toMatchObject({ target: "stale", executed: false, matched: 1 });
+    expect(stalePreview.body.sample.map((t: { label: string }) => t.label)).toEqual(["admin-revoke-idle"]);
+    expect(stalePreview.body.confirm).toMatch(/^[0-9a-f]{32}$/);
+    expect(JSON.stringify(stalePreview.body)).not.toContain(ownerSecret);
+    expect(JSON.stringify(stalePreview.body)).not.toContain("token_hash");
+
+    const drift = await json("/v1/admin/tokens/revoke", {
+      method: "POST",
+      headers: auth(admin, { "content-type": "application/json" }),
+      body: JSON.stringify({ owner: "tok-ada", target: "all", confirm: stalePreview.body.confirm }),
+    });
+    expect(drift.status).toBe(409);
+    expect(drift.body.error).toBe("token_revoke_drift");
+    expect((await json("/v1/whoami", { headers: auth(ownerSecret) })).status).toBe(200);
+
+    const staleDone = await json("/v1/admin/tokens/revoke", {
+      method: "POST",
+      headers: auth(admin, { "content-type": "application/json" }),
+      body: JSON.stringify({ owner: "tok-ada", target: "stale", confirm: stalePreview.body.confirm }),
+    });
+    expect(staleDone.status).toBe(200);
+    expect(staleDone.body).toEqual({ ok: true, target: "stale", executed: true, revoked: 1 });
+    expect((await json("/v1/whoami", { headers: auth(idle) })).status).toBe(401);
+    expect((await json("/v1/whoami", { headers: auth(ownerSecret) })).status).toBe(200);
+
+    const allPreview = await json("/v1/admin/tokens/revoke", {
+      method: "POST",
+      headers: auth(admin, { "content-type": "application/json" }),
+      body: JSON.stringify({ owner: ownerEmail, target: "all" }),
+    });
+    expect(allPreview.body.matched).toBe(1);
+    const allDone = await json("/v1/admin/tokens/revoke", {
+      method: "POST",
+      headers: auth(admin, { "content-type": "application/json" }),
+      body: JSON.stringify({ owner: ownerEmail, target: "all", confirm: allPreview.body.confirm }),
+    });
+    expect(allDone.body).toEqual({ ok: true, target: "all", executed: true, revoked: 1 });
+    expect((await json("/v1/whoami", { headers: auth(ownerSecret) })).status).toBe(401);
+
+    const audit = await json("/v1/admin/audit", { headers: auth(admin) });
+    expect(audit.status).toBe(200);
+    const tokenEvents = audit.body.events.filter((e: { action: string }) => e.action === "tokens");
+    expect(tokenEvents.some((e: { executed: boolean; action_kind: string }) => !e.executed && e.action_kind === "stale")).toBe(true);
+    expect(tokenEvents.some((e: { executed: boolean; action_kind: string }) => e.executed && e.action_kind === "all")).toBe(true);
+    expect(JSON.stringify(audit.body)).not.toContain(admin);
+    expect(JSON.stringify(audit.body)).not.toContain(ownerSecret);
+
+    const hubPreview = await json("/account/admin/tokens/revoke", {
+      method: "POST",
+      headers: access("admin@esperlabs.app", { "content-type": "application/json" }),
+      body: JSON.stringify({ owner: "tok-ada", target: "all" }),
+    });
+    expect(hubPreview.status).toBe(200);
+    expect(hubPreview.body.executed).toBe(false);
+  });
+
+  it("leaves the calling admin token live when revoking that owner's tokens", async () => {
+    const keep = await mintAdmin("tok-ops-keep", "tok-ops@esperlabs.app");
+    const drop = await mintAdmin("tok-ops-drop", "tok-ops@esperlabs.app");
+    const preview = await json("/v1/admin/tokens/revoke", {
+      method: "POST",
+      headers: auth(keep, { "content-type": "application/json" }),
+      body: JSON.stringify({ owner: "tok-ops", target: "all" }),
+    });
+    expect(preview.status).toBe(200);
+    expect(preview.body.executed).toBe(false);
+    expect(preview.body.sample.map((t: { label: string }) => t.label)).toEqual(["tok-ops-drop"]);
+    const done = await json("/v1/admin/tokens/revoke", {
+      method: "POST",
+      headers: auth(keep, { "content-type": "application/json" }),
+      body: JSON.stringify({ owner: "tok-ops", target: "all", confirm: preview.body.confirm }),
+    });
+    expect(done.body).toEqual({ ok: true, target: "all", executed: true, revoked: 1 });
+    expect((await json("/v1/whoami", { headers: auth(keep) })).status).toBe(200);
+    expect((await json("/v1/whoami", { headers: auth(drop) })).status).toBe(401);
+  });
+
   it("hub admin cleanup uses Access and refuses non-operators", async () => {
     const denied = await json("/account/admin/cleanup", {
       method: "POST",

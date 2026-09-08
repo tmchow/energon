@@ -80,4 +80,29 @@ describe("admin audit", () => {
     expect(listed.events[0].action).toBe("cleanup");
     expect(listed.events[0].executed).toBe(false);
   });
+
+  it("records token revoke previews under action tokens", async () => {
+    const db = memoryDb();
+    const env = { DB: db } as unknown as Env;
+    const actor: Actor = {
+      email: "admin@esperlabs.app",
+      via: "token",
+      tokenId: "tok-1",
+      tokenScope: "admin",
+      admin: true,
+    };
+    const event = await recordAdminAudit(env, actor, {
+      action: "tokens",
+      executed: false,
+      actionKind: "all",
+      target: { owner: "ada" },
+      matched: 2,
+      eligible: 2,
+      confirm: "b".repeat(32),
+    });
+    expect(event.action).toBe("tokens");
+    expect(event.action_kind).toBe("all");
+    expect(event.target).toEqual({ owner: "ada" });
+    expect(event.executed).toBe(false);
+  });
 });

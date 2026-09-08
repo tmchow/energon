@@ -1,9 +1,18 @@
 import { getUser, getUserByHandle, type User } from "./handles";
-import { readTokenScope, requireAdmin, requireHuman, requireToken, type TokenListing } from "./auth";
+import {
+  bulkRevokeOutcomeResponse,
+  bulkRevokeTokens,
+  readTokenScope,
+  requireAdmin,
+  requireHuman,
+  requireToken,
+  type BulkRevokeOutcome,
+  type TokenListing,
+} from "./auth";
 import { tokenStatus } from "./token-status";
-import { AUDIT_DEFAULT_LIMIT, AUDIT_MAX_LIMIT } from "./audit";
-import { publicOrigin, secretJson } from "./http";
-import type { Env } from "./types";
+import { AUDIT_DEFAULT_LIMIT, AUDIT_MAX_LIMIT, recordAdminAudit } from "./audit";
+import { ApiError, publicOrigin, secretJson } from "./http";
+import type { Actor, Env } from "./types";
 
 export type AdminTokenRow = TokenListing & {
   owner_email: string;
@@ -133,4 +142,54 @@ export async function hubAdminTokensListResponse(
   const actor = await requireHuman(request, env, ctx);
   requireAdmin(actor, publicOrigin(env));
   return secretJson(await listAdminTokens(env, new URL(request.url)));
+}
+
+function parseOwnerField(body: Record<string, unknown>): string {
+  const raw = body.owner;
+  if (typeof raw !== "string" || !raw.trim()) {
+    throw new ApiError(400, "bad_owner", "owner must be a handle or email.");
+  }
+  return raw.trim();
+}
+
+async function recordTokensAudit(
+  env: Env,
+  actor: Actor,
+  owner: string,
+  body: Record<string, unknown>,
+  outcome: BulkRevokeOutcome,
+): Promise<void> {
+  const preview = outcome.kind === "executed" ? null : outcome.preview;
+  const result = outcome.kind === "executed" ? outcome.result : null;
+  await recordAdminAudit(env, actor, {
+    action: "tokens",
+    executed: outcome.kind === "executed",
+    actionKind: (preview ?? result)?.target,
+    target: { owner },
+    matched: preview?.matched ?? result?.revoked ?? null,
+    eligible: preview?.matched ?? result?.revoked ?? null,
+    applied: result?.revoked ?? null,
+    confirm: preview?.confirm ?? (typeof body.confirm === "string" ? body.confirm : null),
+  });
+}
+
+export async function revokeAdminTokens(
+  env: Env,
+  actor: Actor,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const ownerRaw = parseOwnerField(body);
+  const owner = await resolveOwner(env, ownerRaw);
+  if (!owner) {
+    throw new ApiError(400, "bad_owner", "No account matches that owner.");
+  }
+  const outcome = await bulkRevokeTokens(env, owner.email, owner.id, body, {
+    excludeIds: actor.tokenId ? [actor.tokenId] : [],
+  });
+  await recordTokensAudit(env, actor, ownerRaw, body, outcome);
+  return bulkRevokeOutcomeResponse(
+    env,
+    outcome,
+    "Those tokens changed since that preview. Review this fresh preview and resend with its confirm.",
+  );
 }

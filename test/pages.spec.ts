@@ -263,6 +263,13 @@ describe("signed-in pages", () => {
     expect(html).toContain('id="admin-preview"');
     expect(html).toContain('id="admin-audit"');
     expect(html).toContain('id="admin-dlg"');
+    expect(html).toContain('id="admin-tokens-owner"');
+    expect(html).toContain('id="admin-tokens-list"');
+    expect(html).toContain('id="admin-tokens-table"');
+    expect(html).toContain('id="admin-revoke-stale"');
+    expect(html).toContain('id="admin-revoke-all"');
+    expect(html).toContain('id="admin-tokens-dlg"');
+    expect(html).toContain("Tokens across accounts");
     expect(html).toContain('aria-label="Cleanup action"');
     expect(html).toContain("The owner sees Expires");
     expect(html).toContain("Set expiry is the safe default");
