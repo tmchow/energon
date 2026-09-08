@@ -275,6 +275,13 @@ export async function usedStorage(db: D1Database): Promise<number> {
   return totalStoredBytes(db);
 }
 
+export async function recomputeStorage(db: D1Database): Promise<{ before: number; after: number }> {
+  const before = await usedStorage(db);
+  const after = await totalStoredBytes(db);
+  await db.prepare(`UPDATE platform_quota SET used = ? WHERE id = 1`).bind(after).run();
+  return { before, after };
+}
+
 export async function releaseStorage(db: D1Database, bytes: number): Promise<void> {
   if (bytes <= 0) return;
   await db

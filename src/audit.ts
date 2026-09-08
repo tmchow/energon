@@ -5,7 +5,7 @@ import type { Actor, Env } from "./types";
 export const AUDIT_DEFAULT_LIMIT = 25;
 export const AUDIT_MAX_LIMIT = 50;
 
-export type AdminAuditAction = "cleanup";
+export type AdminAuditAction = "cleanup" | "quota_recompute" | "sweep" | "gate_unlock";
 
 export type AdminAuditInput = {
   action: AdminAuditAction;

@@ -45,6 +45,10 @@
 .en-admin-health .en-bar { margin: 8px 0 18px; }
 .en-admin-health-scopes { margin: 12px 0 0; padding: 0; list-style: none; font: 400 12px/1.4 var(--font-mono); color: var(--fg-3); }
 .en-admin-health-scopes li { overflow-wrap: anywhere; }
+.en-admin-health-scope { background: none; border: 0; padding: 0; color: inherit; font: inherit; cursor: pointer; text-align: left; }
+.en-admin-health-run { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 18px; }
+.en-admin-health-unlock { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-top: 18px; }
+.en-admin-health-unlock .en-field { flex: 1; min-width: 16rem; }
 .en-tokens-tools { justify-content: flex-end; }
 .en-tokens-tools .en-seg button { height: var(--control-h-sm); }
 .en-tokens-note { padding: 12px var(--pad-card) 0; }

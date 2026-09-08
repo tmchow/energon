@@ -1420,6 +1420,162 @@
         }
       }
     },
+    "/v1/admin/quota/recompute": {
+      "post": {
+        "operationId": "recomputePlatformQuota",
+        "tags": [
+          "admin"
+        ],
+        "summary": "Recompute the platform quota ledger",
+        "description": "Needs an admin token. Sets platform_quota.used from SUM(size) over site_files and loose_files. Returns used_before and used_after. Does not delete content. Recorded on GET /v1/admin/audit. Never returns published bytes, share passwords, or write passwords.",
+        "responses": {
+          "200": {
+            "description": "Ledger before and after the recompute.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuotaRecomputeResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenAdmin"
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/sweep": {
+      "post": {
+        "operationId": "sweepExpiredNow",
+        "tags": [
+          "admin"
+        ],
+        "summary": "Run one expiry sweep",
+        "description": "Needs an admin token. Runs the same expiry sweep as the five-minute cron, once, with the same cap. Returns how many sites and files were swept and how many expired rows remain. Remaining greater than 0 means run again. Recorded on GET /v1/admin/audit. Never returns published bytes, share passwords, or write passwords.",
+        "responses": {
+          "200": {
+            "description": "Sweep result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SweepNowResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenAdmin"
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/gates/unlock": {
+      "post": {
+        "operationId": "unlockShareGate",
+        "tags": [
+          "admin"
+        ],
+        "summary": "Unlock a share gate by scope",
+        "description": "Needs an admin token. Deletes the gate_attempts row for the given scope. unlocked is true when a row was removed. Recorded on GET /v1/admin/audit. Never returns published bytes, share passwords, or write passwords.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "scope"
+                ],
+                "properties": {
+                  "scope": {
+                    "type": "string",
+                    "description": "gate_attempts primary key, such as obj:/handle/f/id/name or ip:."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Unlock result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GateUnlockResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or empty scope.",
+            "x-error-codes": [
+              "bad_json",
+              "bad_target"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenAdmin"
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/connections": {
       "post": {
         "operationId": "startConnection",
@@ -2427,7 +2583,7 @@
     "schemas": {
       "Error": {
         "type": "object",
-        "description": "Every non-2xx JSON body. Some codes add fields: token_expired, cleanup_drift, and cleanup_too_many are typed below; too_large and storage_cap add limit_bytes plus actual_bytes or used_bytes; bad_ttl, ttl_required, and ttl_too_long add presets and default_ttl or max_ttl; forbidden_domain adds allowed_email_domains; site_not_found adds hint; bad_query adds fields (the malformed cleanup target filters). bad_target, bad_action, and bad_confirm come only from POST /v1/cleanup. password_required (401) and rate_limited (429) come from the public content gate, not /v1. bad_label, bad_origin, and token_not_found come from the hub /account API. not_found is any unknown route. bad_path is also returned for a URL that is not valid percent-encoding. connection_bad_code and connection_decided come from the human /account/connections API.",
+        "description": "Every non-2xx JSON body. Some codes add fields: token_expired, cleanup_drift, and cleanup_too_many are typed below; too_large and storage_cap add limit_bytes plus actual_bytes or used_bytes; bad_ttl, ttl_required, and ttl_too_long add presets and default_ttl or max_ttl; forbidden_domain adds allowed_email_domains; site_not_found adds hint; bad_query adds fields (the malformed cleanup target filters). bad_target comes from POST /v1/cleanup and POST /v1/admin/gates/unlock. bad_action and bad_confirm come only from POST /v1/cleanup. password_required (401) and rate_limited (429) come from the public content gate, not /v1. bad_label, bad_origin, and token_not_found come from the hub /account API. not_found is any unknown route. bad_path is also returned for a URL that is not valid percent-encoding. connection_bad_code and connection_decided come from the human /account/connections API.",
         "required": [
           "error",
           "message"
@@ -4351,6 +4507,63 @@
           },
           "people": {
             "type": "integer"
+          }
+        }
+      },
+      "QuotaRecomputeResult": {
+        "type": "object",
+        "required": [
+          "used_before",
+          "used_after"
+        ],
+        "properties": {
+          "used_before": {
+            "type": "integer"
+          },
+          "used_after": {
+            "type": "integer"
+          }
+        }
+      },
+      "SweepNowResult": {
+        "type": "object",
+        "required": [
+          "swept",
+          "expired_remaining"
+        ],
+        "properties": {
+          "swept": {
+            "type": "object",
+            "required": [
+              "sites",
+              "files"
+            ],
+            "properties": {
+              "sites": {
+                "type": "integer"
+              },
+              "files": {
+                "type": "integer"
+              }
+            }
+          },
+          "expired_remaining": {
+            "type": "integer"
+          }
+        }
+      },
+      "GateUnlockResult": {
+        "type": "object",
+        "required": [
+          "scope",
+          "unlocked"
+        ],
+        "properties": {
+          "scope": {
+            "type": "string"
+          },
+          "unlocked": {
+            "type": "boolean"
           }
         }
       },

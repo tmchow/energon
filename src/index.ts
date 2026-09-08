@@ -9,7 +9,7 @@ import { setupResponse } from "./setup";
 import { statsResponse } from "./stats";
 import { parseListQuery } from "./catalog";
 import { adminAuditResponse, listAdminAudit, requireAdminActor } from "./audit";
-import { adminHealthResponse, hubAdminHealthResponse } from "./admin-health";
+import { adminHealthResponse, hubAdminHealthResponse, adminRecomputeResponse, hubAdminRecomputeResponse, adminSweepResponse, hubAdminSweepResponse, adminUnlockResponse, hubAdminUnlockResponse } from "./admin-health";
 import { adminResponse } from "./admin";
 import { cleanupResponse } from "./cleanup";
 import { llmsResponse } from "./llms";
@@ -225,6 +225,18 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
 
   if (path === "/account/admin/health" && method === "GET") {
     return hubAdminHealthResponse(request, env, ctx);
+  }
+
+  if (path === "/account/admin/quota/recompute" && method === "POST") {
+    return hubAdminRecomputeResponse(request, env, ctx);
+  }
+
+  if (path === "/account/admin/sweep" && method === "POST") {
+    return hubAdminSweepResponse(request, env, ctx);
+  }
+
+  if (path === "/account/admin/gates/unlock" && method === "POST") {
+    return hubAdminUnlockResponse(request, env, ctx, await readJson(request));
   }
 
   if (path === "/account/admin/cleanup" && method === "POST") {
@@ -467,6 +479,18 @@ async function api(
 
   if (path === "/v1/admin/health" && method === "GET") {
     return adminHealthResponse(request, env);
+  }
+
+  if (path === "/v1/admin/quota/recompute" && method === "POST") {
+    return adminRecomputeResponse(request, env);
+  }
+
+  if (path === "/v1/admin/sweep" && method === "POST") {
+    return adminSweepResponse(request, env, ctx);
+  }
+
+  if (path === "/v1/admin/gates/unlock" && method === "POST") {
+    return adminUnlockResponse(request, env, await readJson(request));
   }
 
   if (path === "/v1/admin/cleanup" && method === "POST") {

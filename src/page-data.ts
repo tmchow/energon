@@ -42,6 +42,21 @@ export type AdminHealthSnapshot = {
   people: number;
 };
 
+export type QuotaRecomputeResult = {
+  used_before: number;
+  used_after: number;
+};
+
+export type SweepNowResult = {
+  swept: { sites: number; files: number };
+  expired_remaining: number;
+};
+
+export type GateUnlockResult = {
+  scope: string;
+  unlocked: boolean;
+};
+
 export type StatsPayload = {
   email: string;
   admin?: boolean;

@@ -267,6 +267,12 @@ describe("signed-in pages", () => {
     expect(html).toContain("Quota used is the ledger");
     expect(html).toContain("Expired awaiting purge");
     expect(html).toContain("Stale purge claims");
+    expect(html).toContain('id="admin-health-recompute"');
+    expect(html).toContain('id="admin-health-sweep"');
+    expect(html).toContain('id="admin-health-unlock"');
+    expect(html).toContain('id="admin-health-scope"');
+    expect(html).toContain('id="admin-health-recompute-dlg"');
+    expect(html).toContain('id="admin-health-sweep-dlg"');
     expect(html).toContain('id="admin-owner"');
     expect(html).toContain('id="admin-q"');
     expect(html).toContain('id="admin-last-read"');
