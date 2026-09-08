@@ -14,10 +14,15 @@ if [[ -z "${HANDLE:-}" ]]; then
   die "HANDLE missing. Run bin/doctor first."
 fi
 
-if [[ -z "${TOKEN:-}" ]]; then
-  # mint-token writes TOKEN into state.env and prints the secret; capture it.
+if ! grep -q '^TOKEN=ee_live_' "$(state_file)"; then
+  # Parent shells may export a stale TOKEN; mint-token keys off state.env, not the env var.
+  unset TOKEN TOKEN_EXPIRES_AT
   "$_script_dir/mint-token" verify-run >/dev/null
   load_state
+fi
+
+if ! grep -q '^TOKEN=ee_live_' "$(state_file)"; then
+  die "TOKEN missing from state.env after mint"
 fi
 
 printf 'verify-energon ready\n'

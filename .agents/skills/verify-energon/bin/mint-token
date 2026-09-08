@@ -37,7 +37,7 @@ token="$(json_get "$body" "token")"
 expires_at="$(json_get "$body" "expires_at" || true)"
 
 printf '%s\n' "$token" >"$(state_dir)/token"
-if [[ -z "${TOKEN:-}" || "${ENERGON_VERIFY_SAVE_TOKEN:-}" == "1" ]]; then
+if ! grep -q '^TOKEN=ee_live_' "$(state_file)" || [[ "${ENERGON_VERIFY_SAVE_TOKEN:-}" == "1" ]]; then
   python3 - "$(state_file)" "$token" "$expires_at" <<'PY'
 from pathlib import Path
 import sys
