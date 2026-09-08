@@ -426,6 +426,51 @@ describe("hub account API", () => {
     expect(refused.body.error).toBe("forbidden_admin");
   });
 
+  it("lists tokens across accounts for operators and refuses everyone else", async () => {
+    const ownerSecret = await mint("admin-list-ada", "ada@esperlabs.app");
+    const admin = await mintAdmin("admin-list-ops");
+    const asAccount = await json("/v1/admin/tokens", { headers: auth(await mint("admin-list-plain", "admin@esperlabs.app")) });
+    expect(asAccount.status).toBe(403);
+    expect(asAccount.body.error).toBe("forbidden_admin");
+
+    const outsider = await json("/v1/admin/tokens", { headers: auth(ownerSecret) });
+    expect(outsider.status).toBe(403);
+    expect(outsider.body.error).toBe("forbidden_admin");
+
+    const hubDenied = await json("/account/admin/tokens", { headers: access("ada@esperlabs.app") });
+    expect(hubDenied.status).toBe(403);
+    expect(hubDenied.body.error).toBe("forbidden_admin");
+
+    const listed = await json("/v1/admin/tokens?owner=ada", { headers: auth(admin) });
+    expect(listed.status).toBe(200);
+    const row = listed.body.tokens.find((t: { label: string }) => t.label === "admin-list-ada");
+    expect(row).toMatchObject({
+      label: "admin-list-ada",
+      owner_email: "ada@esperlabs.app",
+      owner_handle: "ada",
+      scope: "account",
+      status: "live",
+      recoverable: false,
+    });
+    expect(row.hint).toMatch(/^ee_live_…/);
+    expect(row).not.toHaveProperty("token_hash");
+    expect(row).not.toHaveProperty("token_secret");
+    const raw = JSON.stringify(listed.body);
+    expect(raw).not.toContain(ownerSecret);
+    expect(raw).not.toContain(admin);
+
+    const byEmail = await json("/v1/admin/tokens?owner=ada@esperlabs.app", { headers: auth(admin) });
+    expect(byEmail.body.tokens.some((t: { label: string }) => t.label === "admin-list-ada")).toBe(true);
+
+    const missing = await json("/v1/admin/tokens?owner=no-such-handle", { headers: auth(admin) });
+    expect(missing.status).toBe(200);
+    expect(missing.body.tokens).toEqual([]);
+
+    const hub = await json("/account/admin/tokens?owner=ada", { headers: access("admin@esperlabs.app") });
+    expect(hub.status).toBe(200);
+    expect(hub.body.tokens.some((t: { label: string }) => t.label === "admin-list-ada")).toBe(true);
+  });
+
   it("hub admin cleanup uses Access and refuses non-operators", async () => {
     const denied = await json("/account/admin/cleanup", {
       method: "POST",

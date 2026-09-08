@@ -1271,6 +1271,75 @@
         }
       }
     },
+    "/v1/admin/tokens": {
+      "get": {
+        "operationId": "listAdminTokens",
+        "tags": [
+          "admin"
+        ],
+        "summary": "List API token metadata across accounts",
+        "description": "Needs an admin token (scope=admin and owner still on ADMIN_EMAILS). Newest first. Each row is owner email and handle, label, hint, scope, created, last used, expires, and status (live|stale|expired|revoked). Never the secret, never the hash. Filter with owner (handle or email). Account tokens and the connect flow get 403 forbidden_admin.",
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Public handle or account email. Omitted lists every token on this Energon."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 25
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque cursor from a previous next_cursor."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Token metadata, newest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminTokenList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenAdmin"
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/admin/cleanup": {
       "post": {
         "operationId": "adminCleanup",
@@ -4224,6 +4293,104 @@
             "description": "Sum of eligible or applied object sizes, not file contents."
           },
           "confirm": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AdminToken": {
+        "type": "object",
+        "description": "Redacted token metadata for an operator. Never includes the secret or the hash.",
+        "required": [
+          "id",
+          "label",
+          "created_at",
+          "status",
+          "scope",
+          "owner_email",
+          "owner_handle"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "hint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Redacted token. Admin tokens insert admin after the token prefix, then an ellipsis and the last four."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "account",
+              "admin"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "live",
+              "stale",
+              "expired",
+              "revoked"
+            ]
+          },
+          "expired": {
+            "type": "boolean"
+          },
+          "revoked": {
+            "type": "boolean"
+          },
+          "recoverable": {
+            "const": false
+          },
+          "owner_email": {
+            "type": "string"
+          },
+          "owner_handle": {
+            "type": "string"
+          }
+        }
+      },
+      "AdminTokenList": {
+        "type": "object",
+        "required": [
+          "tokens",
+          "next_cursor"
+        ],
+        "properties": {
+          "tokens": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminToken"
+            }
+          },
+          "next_cursor": {
             "type": [
               "string",
               "null"

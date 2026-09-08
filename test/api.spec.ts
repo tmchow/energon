@@ -2078,4 +2078,45 @@ describe("Energon", () => {
       expect(listed.body.files.find((f: { id: string }) => f.id === fileId)).toBeUndefined();
     });
   });
+
+  describe("admin tokens", () => {
+    it("lists another account's tokens as metadata only", async () => {
+      const ownerToken = await mint("vadmin-tok-owner", "ada@esperlabs.app");
+      const admin = await mintAdmin("vadmin-tok-ops");
+      const listed = await json("/v1/admin/tokens?owner=ada", { headers: auth(admin) });
+      expect(listed.status).toBe(200);
+      const row = listed.body.tokens.find((t: { label: string }) => t.label === "vadmin-tok-owner");
+      expect(row).toMatchObject({
+        owner_email: "ada@esperlabs.app",
+        owner_handle: "ada",
+        label: "vadmin-tok-owner",
+        scope: "account",
+        status: "live",
+      });
+      expect(Object.keys(row).sort()).toEqual(
+        [
+          "created_at",
+          "expired",
+          "expires_at",
+          "hint",
+          "id",
+          "label",
+          "last_used_at",
+          "owner_email",
+          "owner_handle",
+          "recoverable",
+          "revoked",
+          "scope",
+          "status",
+        ].sort(),
+      );
+      expect(JSON.stringify(listed.body)).not.toContain(ownerToken);
+      expect(JSON.stringify(listed.body)).not.toContain("token_hash");
+      expect(JSON.stringify(listed.body)).not.toContain("token_secret");
+
+      const paged = await json("/v1/admin/tokens?owner=ada&limit=1", { headers: auth(admin) });
+      expect(paged.body.tokens).toHaveLength(1);
+      expect(typeof paged.body.next_cursor === "string" || paged.body.next_cursor === null).toBe(true);
+    });
+  });
 });
