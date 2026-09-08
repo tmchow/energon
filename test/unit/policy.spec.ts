@@ -36,6 +36,7 @@ function env(overrides: Record<string, string | undefined> = {}) {
     TTL_PRESETS: undefined,
     ALLOW_UNLIMITED_TOKENS: undefined,
     ALLOWED_EMAIL_DOMAINS: undefined,
+    ADMIN_EMAILS: undefined,
     MAX_FILE_BYTES: undefined,
     MAX_PLATFORM_BYTES: undefined,
     WRITE_POLICY: undefined,
