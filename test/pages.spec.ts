@@ -233,6 +233,10 @@ describe("signed-in pages", () => {
     expect(statsHtml).toContain("You");
     expect(statsHtml).toContain("Organization");
     expect(statsHtml).toContain("People");
+    expect(statsHtml).toContain("This Energon");
+    expect(statsHtml).toContain('id="platform-headroom"');
+    expect(statsHtml).toContain("Used against the cap that stops new publishes.");
+    expect(statsHtml).toContain("20 GB");
     expect(statsHtml).toContain("Largest storage first.");
     expect(statsHtml).toContain("2 KB");
     expect(statsHtml).toContain("1 KB");
@@ -240,9 +244,11 @@ describe("signed-in pages", () => {
     expect(statsHtml).toContain("stats-bob@esperlabs.app");
     expect(statsHtml).toContain("en-person--you");
     expect(statsHtml).toContain('aria-label="Rank people by"');
-    expect(bootstrap(statsHtml).data.you.bytes).toBe(2048);
-    expect(statsHtml).not.toContain("Platform cap");
-    expect(statsHtml).not.toContain("20 GB");
+    expect(statsHtml).toContain('aria-label="Platform storage used"');
+    const statsData = bootstrap(statsHtml).data;
+    expect(statsData.you.bytes).toBe(2048);
+    expect(statsData.platform.limit_bytes).toBe(20 * 1024 * 1024 * 1024);
+    expect(statsData.platform.used_bytes).toBeGreaterThanOrEqual(3072);
     expect(statsHtml).not.toContain('class="app-footer"');
     assertDomBindings(statsHtml);
   });

@@ -22,11 +22,17 @@ export type PersonStats = {
   bytes: number;
 };
 
+export type PlatformHeadroom = {
+  used_bytes: number;
+  limit_bytes: number;
+};
+
 export type StatsPayload = {
   email: string;
   admin?: boolean;
   you: Bucket;
   system: Bucket & { people: number };
+  platform: PlatformHeadroom;
   people: PersonStats[];
 };
 

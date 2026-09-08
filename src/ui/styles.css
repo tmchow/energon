@@ -20,8 +20,10 @@
 @keyframes en-travel-y { from { top: 0; opacity: 0; } 10%, 90% { opacity: 1; } to { top: 100%; opacity: 0; } }
 .en-scene-flow { padding: 18px 0; }
 .en-stats-pane h2, .en-people-heading h2 { font: 550 23px/1.2 var(--font-sans); }
-.en-stats-grid { margin-top: 26px; align-items: stretch; }
+.en-stats-grid { margin-top: 16px; align-items: stretch; }
 .en-stats-pane { padding: 20px 19px 21px; }
+.en-stats-platform { margin-top: 26px; }
+.en-stats-platform .en-bar { margin-top: 18px; }
 .en-people-card { margin-top: 16px; padding: 20px 19px 19px; }
 .en-stats-sub { margin: 4px 0 0; color: var(--fg-3); font: 400 12px/1.4 var(--font-mono); overflow-wrap: anywhere; }
 .en-people-heading { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 14px 16px; }
