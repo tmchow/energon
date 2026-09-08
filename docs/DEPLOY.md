@@ -168,6 +168,17 @@ Published `/{handle}/s/*` and `/{handle}/f/*` are served from `CONTENT_ORIGIN` a
 
 Disable or ignore `*.workers.dev` for humans; the Worker 403s the hub there.
 
+## Offboarding a person
+
+There is no transfer-ownership feature, on purpose. Everything you need is already in place; this is the order to do it in.
+
+1. Remove the person from Cloudflare Access (see [Cloudflare Access](#cloudflare-access)). That is outside Energon and it stops the human: no hub, no new tokens.
+2. Revoke their API tokens. On `/admin`, type their handle in Tokens across accounts, List, then Revoke all. With an admin token, `GET /v1/admin/tokens?owner=handle` and `POST /v1/admin/tokens/revoke` with `{ "owner", "target": "all" }`, then resend with `confirm`. That stops their agents immediately.
+3. Find what they own. On `/admin`, set Owner to their handle and Preview (or `POST /v1/admin/cleanup` with `target.owner`). You get metadata only: owner, name, size, last written, last read, expiry. The admin surface never returns bytes or secrets.
+4. Keep the few things that matter. Anyone with a token can already read anything on this Energon over `/v1`, and Duplicate (the hub More actions menu, or `duplicate_from` on `POST /v1/sites` / `POST /v1/files`) makes an independent copy under the caller's own handle at a new address. That is how ownership moves: the colleague who needs it copies it, then the original expires. There is no bulk transfer because the handle is in the public URL and the R2 key; a copy is a new object with a new owner, which is the honest outcome. Old links to the original stop working when it expires, so tell people the new address.
+5. Free the storage. Back on the same `/admin` preview, choose Set expiry (7 days unless you pick otherwise) or Delete, type the count, confirm. On offboarding the 7-day grace is notice for colleagues who may still hold links; the owner cannot see their catalog any more, so it is not for them. Every preview and execute is recorded in the audit log on `/admin` and `GET /v1/admin/audit`.
+6. Afterwards. Expired objects are purged by the cron within minutes, or run Sweep now on `/admin`. Check the storage health readout there for expired awaiting purge and quota used. The departed handle stays reserved and stays in old URLs; that is harmless.
+
 ## Local
 
 ```bash
@@ -181,7 +192,7 @@ npm run dev
 
 ## What you should not do
 
-Do not reuse another Energon’s D1 `database_id` or R2 bucket. Do not put Access on `/v1`. Do not install two marketplaces that share the same `name`. Do not leave `{{ORIGIN}}` in a skill you ship to agents.
+Do not reuse another Energon’s D1 `database_id` or R2 bucket. Do not put Access on `/v1`. Do not install two marketplaces that share the same `name`. Do not leave `{{ORIGIN}}` in a skill you ship to agents. Do not `d1 execute` an `UPDATE ... SET owner_id` to move content between people; use copy-then-expire (see [Offboarding a person](#offboarding-a-person)). The audit log will not know about a hand edit.
 
 ## Agent connections
 
