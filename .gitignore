@@ -22,3 +22,11 @@ public/static/mermaid/
 src/generated/
 public/static/ui/
 .context/ui-specimen/
+
+# Impeccable engine binaries: per-platform, found by scripts/impeccable in
+# ~/.impeccable/bin or on PATH when absent
+.agents/skills/impeccable/scripts/bin/
+.claude/skills/impeccable/scripts/bin/
+.cursor/skills/impeccable/scripts/bin/
+.github/skills/impeccable/scripts/bin/
+.impeccable/

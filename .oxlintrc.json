@@ -1,6 +1,12 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "ignorePatterns": ["worker-configuration.d.ts"],
+  "ignorePatterns": [
+    "worker-configuration.d.ts",
+    ".agents/skills/impeccable/**",
+    ".claude/skills/impeccable/**",
+    ".cursor/skills/impeccable/**",
+    ".github/skills/impeccable/**"
+  ],
   "categories": {
     "correctness": "error"
   },
