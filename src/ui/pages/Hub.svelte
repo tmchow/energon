@@ -7,6 +7,7 @@
   import { parseByteSize } from '../../config';
   import { hubCleanupDoneMessage, hubCleanupTarget } from '../hub-cleanup-target';
   import { registerHubTools } from '../model-context';
+  import { setGatherFrame } from '../ambient-field';
   import PageTitle from '../components/PageTitle.svelte';
   import Card from '../components/Card.svelte';
   import DropZone from '../components/DropZone.svelte';
@@ -53,6 +54,7 @@
   let stageTtl = $state(untrack(() => data.policy.default_ttl));
   let stageWrite = $state(untrack(() => data.policy.write_policy));
   let dragDepth = $state(0);
+  let dropFrame = $state<HTMLDivElement | null>(null);
   let messages = $state<{ id: number; tone: 'ok' | 'err'; text: string; url?: string; name?: string; password?: string; writePassword?: string; retry?: () => void }[]>([]);
   let messageSequence = 0;
   let catalogStatus = $state('');
@@ -442,6 +444,8 @@
   $effect(() => {
     if (stagePassword.trim() || stageWritePassword.trim()) stageAccessOpen = true;
   });
+  $effect(() => { setGatherFrame(dragDepth > 0 ? dropFrame : null); });
+  onDestroy(() => setGatherFrame(null));
 </script>
 
 <main class="en-wrap">
@@ -552,4 +556,5 @@
     <div class="en-dialog-actions"><Button disabled={mutationBusy} onclick={() => ttlOpen = false}>Cancel</Button><Button id="ttl-dlg-ok" type="submit" variant="primary" disabled={mutationBusy}>Save</Button></div>
   </form>
 </Dialog>
-<div id="drop-overlay" class="en-drop-overlay" hidden={dragDepth === 0} aria-hidden={dragDepth === 0}><div class="en-drop-overlay-frame"><div class="en-drop-title">Drop to stage</div><div class="en-drop-sub">A folder or zip becomes a site. One file gets a stable URL. Nothing is written until you Publish.</div></div></div>
+<div class="en-drop-overlay-bg" hidden={dragDepth === 0} aria-hidden="true"></div>
+<div id="drop-overlay" class="en-drop-overlay" hidden={dragDepth === 0} aria-hidden={dragDepth === 0}><div class="en-drop-overlay-frame" bind:this={dropFrame}><div class="en-drop-title">Drop to stage</div><div class="en-drop-sub">A folder or zip becomes a site. One file gets a stable URL. Nothing is written until you Publish.</div></div></div>

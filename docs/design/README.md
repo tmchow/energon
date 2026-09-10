@@ -40,7 +40,7 @@ Wrangler's custom build and both Vitest configurations run `build:ui`. Generated
 
 `npm run typecheck` checks both the Worker and Svelte UI. The isolated `tooling/svelte` npm workspace supplies TypeScript 6 for `svelte-check`, whose current peer range does not yet support the Worker's TypeScript 7. This preserves the root compiler version and avoids forced peer dependencies.
 
-The handoff CSS contains a glob inside its opening comment that prematurely closes the comment. The build repairs that comment in memory; the source stays byte-for-byte identical. Application overrides also make conduit units travel the full line and retain desktop access to the More menu. Respect `prefers-reduced-motion` and keep the supplied cube geometry.
+The handoff CSS contains a glob inside its opening comment that prematurely closes the comment. The build repairs that comment in memory; the source stays byte-for-byte identical. Application overrides also make conduit units travel the full line and retain desktop access to the More menu. `src/ui/ambient-field.ts` draws the ambient field on a canvas behind every Energon-authored page; `setGatherFrame` from that module is how a page asks the field to fly behind an element (the hub does this on drag-over). Public Markdown and the gate do not load it. Respect `prefers-reduced-motion` and keep the supplied cube geometry.
 
 ## Verification
 
