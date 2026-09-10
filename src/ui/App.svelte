@@ -11,9 +11,11 @@
   import Gate from './pages/Gate.svelte';
   import Markdown from './pages/Markdown.svelte';
   import Hub from './pages/Hub.svelte';
+  import AmbientField from './components/AmbientField.svelte';
   let props: PageProps = $props();
   const admin = $derived('admin' in props.data && Boolean(props.data.admin));
 </script>
+{#if props.page !== 'gate' && props.page !== 'markdown'}<AmbientField />{/if}
 {#if 'email' in props.data && props.page !== 'connect'}<AppHeader active={props.page} email={props.data.email} {admin} />{/if}
 {#if props.page === 'hub'}<Hub data={props.data} />
 {:else if props.page === 'setup'}<Setup data={props.data} />

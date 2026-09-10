@@ -29,8 +29,16 @@
 .en-people-heading { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 14px 16px; }
 .en-people { list-style: none; margin: 18px 0 0; padding: 0; }
 .en-copy-row > div { min-width: 0; overflow-wrap: anywhere; }
-.en-drop-overlay { position: fixed; inset: 0; z-index: 300; display: grid; place-items: center; padding: 24px; background: var(--bg-overlay); pointer-events: none; }
-.en-drop-overlay-frame { width: min(42rem, 100%); text-align: center; padding: 48px 24px; border: 1px dashed var(--accent); border-radius: var(--radius-2); background: var(--bg-dialog); box-shadow: var(--shadow-glow-lg); }
+/* Drag-over: the page goes dark, the field flies behind the drop frame, and the frame reads as a cube face. */
+.en-drop-overlay-bg { position: fixed; inset: 0; z-index: 300; background: var(--bg-canvas); pointer-events: none; }
+.en-drop-overlay { position: fixed; inset: 0; z-index: 302; display: grid; place-items: center; padding: 24px; pointer-events: none; }
+.en-drop-overlay-frame { width: min(42rem, 100%); text-align: center; padding: 48px 24px; border: 1.5px solid rgba(243, 236, 255, 0.75); border-radius: var(--radius-2); background: var(--bg-surface-a); box-shadow: inset 0 0 40px rgba(var(--glow-rgb), 0.22), 0 0 22px rgba(var(--glow-rgb), 0.18), var(--shadow-glow-lg); }
+/* The ambient field lives where the canvas wash lives: the top of the document, behind everything, gone by the catalog. */
+:root { --field-density: 130; --field-alpha: 0.5; --field-height: min(72vh, 680px); }
+.en-ambient { position: absolute; left: 0; top: 0; width: 100%; height: var(--field-height); z-index: -1; pointer-events: none; -webkit-mask-image: linear-gradient(#000 55%, transparent 100%); mask-image: linear-gradient(#000 55%, transparent 100%); }
+.en-ambient canvas { display: block; width: 100%; height: 100%; }
+.en-ambient--gathering { position: fixed; inset: 0; height: auto; z-index: 301; -webkit-mask-image: none; mask-image: none; }
+
 .en-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .en-setup-stack { margin-top: 28px; max-width: 42rem; }
 .en-setup-next { margin-top: 28px; }

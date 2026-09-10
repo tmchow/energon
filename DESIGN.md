@@ -69,7 +69,7 @@ Use semantic tokens in new styles. The values below identify the dark palette; t
 | Lit highlight | `--fg-hot` | `#f3ecff` |
 | Quiet boundary | `--border-1` | `#26233c` |
 
-Keep the supplied canvas wash. Cards and controls use the established surfaces, hairlines, and shadows. Do not add gradient text, photographic backgrounds, glass blur, or unrelated decorative effects.
+Keep the supplied canvas wash. The ambient field (the marketing intro's particles, drifting behind the top of the page) sits where the wash sits: on the canvas, never over cards, tables, or dialogs, faded out before the catalog. Its density and brightness are the `--field-density` and `--field-alpha` tokens in the application layer. Cards and controls use the established surfaces, hairlines, and shadows. Do not add gradient text, photographic backgrounds, glass blur, or unrelated decorative effects.
 
 Charge belongs on the cube, primary action, focal drop zone, URL field, selected controls, progress indicators, focus, and conduit units. Use at most one charged card per page. Do not glow body copy or every panel. App actions use their existing interaction states; do not add breathing animations to buttons.
 
@@ -95,7 +95,7 @@ Reuse [CubeMark](src/ui/components/CubeMark.svelte) and the [supplied logo](src/
 
 Use [the existing icons](src/ui/icons.ts). Add a missing icon in the same 24px grid, 1.75 stroke, round-cap grammar only when the action needs it. Keep icon buttons named. Do not introduce another icon family or use emoji as product icons.
 
-Retain the existing 120ms hover, 200ms state, and 350ms layout timings. Cube breathing and conduit travel are specific brand motifs, not a general license for animated decoration. Honor reduced motion, keep static states understandable, and never delay access to content for an entrance animation.
+Retain the existing 120ms hover, 200ms state, and 350ms layout timings. Cube breathing, conduit travel, and the ambient field are specific brand motifs, not a general license for animated decoration. The field's charge follows the pointer; on drag-over it flies behind the drop frame and wanders there while the page goes dark and the frame reads as a cube face. Those are its only two behaviors. Honor reduced motion, keep static states understandable, and never delay access to content for an entrance animation.
 
 ## Choose components by purpose
 
