@@ -6,13 +6,14 @@ An agent requests a connection, then a signed-in human enters its code and appro
 
 - `request`: POST `/v1/connections` with a label returns a verification URL, eight-digit code, private poll token, ten-minute lifetime, and five-second polling interval. It grants no file access.
 - `approve`: `/connect?request={id}` is a chrome-less page that names the hub host, the requested label, the signed-in account, permissions, code input, lifetime, and approval/denial controls.
+- `ended`: GET `/connect?request=` after expiry, consume, approval, or denial is HTML (not JSON). Expired and consumed pages show `This request has expired; ask your agent to start a new one.` and hide `#connect-code`. Agent poll of `/v1/connections/{id}/token` stays JSON `410 connection_expired` / `403 connection_denied`.
 - `delivery`: POST `/v1/connections/{id}/token` with the private poll token returns 202 pending before approval and the token once after approval.
 - `revocation`: the issued token appears on `/tokens` and obeys ordinary expiry/revocation rules.
 
 ## How to get to it (user POV)
 
 - Agent: read `/auth.md`, POST `/v1/connections`, show the human the returned verification URL and code, then poll with the private poll token.
-- Human: open the agent's verification URL, sign in, enter its code, select lifetime, and approve or deny.
+- Human: open the agent's verification URL, sign in, enter its code, select lifetime, and approve or deny. Opening an expired, consumed, approved, or denied URL shows HTML explaining that the request ended; it does not return JSON.
 
 ## Driving it with energon-verify
 
@@ -25,11 +26,12 @@ Preconditions:
 - **Default — Pending (once, no sleep).** Immediately POST `$ORIGIN/v1/connections/{id}/token` with `{"poll_token":"…"}`. Expect 202 `status:pending`. Do **not** sleep 5 seconds. Do **not** poll pending a second time (that is `429 connection_slow_down`).
 - **Default — Approve (HTTP twin).** POST `$ORIGIN/account/connections/$REQ_ID/approve` with `-H "origin: $ORIGIN"` and `{"user_code":"$USER_CODE","ttl":"1d"}`. Expect 200 `{ "status": "approved" }` (no raw token).
 - **Default — Delivery.** Poll token immediately after approve. Expect 200 with `token` (`ee_live_…`), label, token id, non-null `expires_at`. `GET /v1/whoami` with that token is 200. Second exchange is 410 `connection_expired`. Save only status, account, label, and expiry.
-- **Default — Deny.** New request, then `POST $ORIGIN/account/connections/$REQ_ID/deny` with `-H "origin: $ORIGIN"` and `{}`. Poll is 403 `connection_denied` and no token.
+- **Default — Ended page.** After consume, GET `$ORIGIN/connect?request=$REQ_ID`. Expect `410`, `content-type: text/html`, body containing `This request has expired; ask your agent to start a new one.`, and no `#connect-code`. Save as `consumed.html` and headers as `consumed.headers`. Agent poll remains JSON `410 connection_expired`.
+- **Default — Deny.** New request, then `POST $ORIGIN/account/connections/$REQ_ID/deny` with `-H "origin: $ORIGIN"` and `{}`. Poll is 403 `connection_denied` and no token. GET the same verification URL: 403 HTML containing `This connection was denied` and no `#connect-code`. Save as `denied.html`.
 - **Default — Revoke.** `DELETE /v1/whoami` with the delivered token (or hub revoke by label). `GET /v1/whoami` is 401.
 - **Extra (approve / Connect.svelte) — Browser chrome.** Open `verification_uri`. No app header/footer. The h1 reads `Connect your agent to` plus this run's hub host. Fill `#connect-code`, `#connect-ttl`, Approve. `#connect-status` contains `Connection approved` (full copy: `Connection approved. Return to your agent to finish connecting; it receives the token on its next poll.`). Drive when Connect.svelte copy or controls change.
-- **Extra (request expiry) — Ten-minute wait.** Wait 10 minutes after create only when `src/connections.ts` expiry changed. GET `/connect?request=$id` after expiry is `410 connection_expired` JSON, not the HTML page. Poll is 410. Do not wait otherwise.
-- **Proof.** Default: redacted request/pending/approve/delivery/deny status files. Screenshot only for Extra browser. Never save a raw credential response as evidence.
+- **Extra (request expiry) — Ten-minute wait.** Wait 10 minutes after create only when `src/connections.ts` expiry changed. GET `/connect?request=$id` after expiry is 410 HTML containing `This request has expired`; poll is JSON 410. Do not wait otherwise.
+- **Proof.** Default: redacted request/pending/approve/delivery/deny status files plus ended HTML (`consumed.html`, `denied.html`). Screenshot only for Extra browser. Never save a raw credential response as evidence.
 
 ## Gotchas
 
@@ -38,4 +40,4 @@ Preconditions:
 - Delivery is one-time. If its response is lost, revoke the issued token by label before approving a new request. Do not retry a consumed request.
 - Default does not wait `interval` seconds. Poll pending once, approve via `POST /account/connections/{id}/approve` with `-H "origin: $ORIGIN"`, then poll delivery. A second pending poll within five seconds is `429 connection_slow_down`.
 - A denied request requires a new human decision, not automatic re-registration. This API is not OAuth device authorization.
-- The request lasts ten minutes (`expires_in: 600`). GET `/connect?request=` after expiry or after a consumed/denied request is `410 connection_expired` JSON, not the HTML page. Start a new request. Drive approval before that window closes.
+- The request lasts ten minutes (`expires_in: 600`). Drive approval before that window closes. After expiry or consume, the human URL is still HTML (`This request has expired`); only the agent poll is JSON `410 connection_expired`. Start a new request.

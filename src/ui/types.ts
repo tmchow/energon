@@ -34,7 +34,14 @@ export type LinkAccess = {
 };
 export type TokensData = { email: string; tokens: Token[]; token_env: string; token_policy: TokenPolicy; now: number; admin: boolean; admin_token_policy: TokenPolicy };
 export type SetupData = { email: string; admin?: boolean; identity: InstanceIdentity; install: string };
-export type ConnectData = { email: string; host: string; connection: { id: string; label: string; expires_at: string }; token_policy: TokenPolicy };
+export type ConnectEndedKind = 'expired' | 'approved' | 'denied';
+export type ConnectData = {
+  email: string;
+  host: string;
+  connection: { id: string; label: string; expires_at: string } | null;
+  ended_kind: ConnectEndedKind | null;
+  token_policy: TokenPolicy;
+};
 export type GateData = { action: string; wrong: boolean; limited?: boolean; passwordHeader: string };
 export type MarkdownData = { filename: string; rawHref: string; html: string; size?: number; updatedAt?: string };
 export type AdminCleanupObject = {
