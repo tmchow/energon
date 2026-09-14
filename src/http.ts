@@ -124,9 +124,10 @@ export function applyIsolation(headers: Headers, contentType: string): void {
 
 /** ESM entry + lazy chunks. Served from assets, not the Worker isolate. */
 export const MERMAID_SCRIPT_PATH = "/static/mermaid/mermaid.esm.min.mjs";
+export const MD_EXPAND_SCRIPT_PATH = "/static/md-expand.mjs";
 
 export function isMermaidAssetPath(path: string): boolean {
-  return path === MERMAID_SCRIPT_PATH || path.startsWith("/static/mermaid/");
+  return path === MERMAID_SCRIPT_PATH || path === MD_EXPAND_SCRIPT_PATH || path.startsWith("/static/mermaid/");
 }
 
 /** Unique-origin sandbox makes `'self'` unreliable; name the serving origin. */

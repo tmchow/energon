@@ -4,7 +4,7 @@ import xss, { type IWhiteList, type SafeAttrValueHandler } from "xss";
 import { privateCacheControl } from "./cache";
 import { escapeHtml } from "./chrome";
 import { PRODUCT } from "./config";
-import { applyIsolation, basename, contentDisposition, mermaidDocumentCsp, MERMAID_SCRIPT_PATH, wantsDownload } from "./http";
+import { applyIsolation, basename, contentDisposition, mermaidDocumentCsp, MD_EXPAND_SCRIPT_PATH, MERMAID_SCRIPT_PATH, wantsDownload } from "./http";
 
 const MERMAID_FENCE = /^(```|~~~)[ \t]*mermaid\b/im;
 
@@ -52,7 +52,7 @@ whiteList.td = ["align"];
 whiteList.details = [];
 whiteList.summary = [];
 
-export function renderMarkdown(md: string): { html: string; mermaid: boolean } {
+export function renderMarkdown(md: string): { html: string; mermaid: boolean; tables: boolean } {
   const dirty = marked.parse(md, { async: false }) as string;
   const html = xss(dirty, {
     whiteList,
@@ -70,11 +70,16 @@ export function renderMarkdown(md: string): { html: string; mermaid: boolean } {
       return xssRuntime.safeAttrValue(tag, name, value, cssFilter);
     },
   });
-  return { html, mermaid: MERMAID_FENCE.test(md) || html.includes('class="mermaid"') };
+  return {
+    html,
+    mermaid: MERMAID_FENCE.test(md) || html.includes('class="mermaid"'),
+    tables: /<table\b/i.test(html),
+  };
 }
 
-export function markdownPage(opts: { title: string; html: string; mermaid: boolean }): string {
-  return uiPage(`${opts.title} — ${PRODUCT}`, { page: "markdown", data: { html: opts.html } }, opts.mermaid ? mermaidHead() : "");
+export function markdownPage(opts: { title: string; html: string; mermaid: boolean; tables?: boolean }): string {
+  const extraHead = opts.mermaid ? mermaidHead() : opts.tables ? expandHead() : "";
+  return uiPage(`${opts.title} — ${PRODUCT}`, { page: "markdown", data: { html: opts.html } }, extraHead);
 }
 
 export async function respondMarkdown(
@@ -102,17 +107,21 @@ export async function respondMarkdown(
     vary: "Accept",
   });
   applyIsolation(headers, "text/html");
-  if (rendered.mermaid) headers.set("content-security-policy", mermaidDocumentCsp(new URL(request.url).origin));
-  return new Response(markdownPage({ title: filename, html: rendered.html, mermaid: rendered.mermaid }), { headers });
+  if (rendered.mermaid || rendered.tables) headers.set("content-security-policy", mermaidDocumentCsp(new URL(request.url).origin));
+  return new Response(
+    markdownPage({ title: filename, html: rendered.html, mermaid: rendered.mermaid, tables: rendered.tables }),
+    { headers },
+  );
 }
 
 function mermaidHead(): string {
   return `<script type="module">
 import mermaid from "${MERMAID_SCRIPT_PATH}";
+import { mountMarkdownExpand } from "${MD_EXPAND_SCRIPT_PATH}";
 const light = matchMedia("(prefers-color-scheme: light)").matches;
 const fit = { useMaxWidth: false };
 mermaid.initialize({
-  startOnLoad: true,
+  startOnLoad: false,
   theme: light ? "neutral" : "dark",
   securityLevel: "strict",
   flowchart: fit,
@@ -142,6 +151,19 @@ mermaid.initialize({
     scaleLabelColor: light ? "#14111f" : "#ece8f8",
   },
 });
+try {
+  await mermaid.run({ querySelector: ".en-md pre.mermaid" });
+} catch {
+  /* keep whatever SVG mermaid drew */
+}
+mountMarkdownExpand();
+</script>`;
+}
+
+function expandHead(): string {
+  return `<script type="module">
+import { mountMarkdownExpand } from "${MD_EXPAND_SCRIPT_PATH}";
+mountMarkdownExpand();
 </script>`;
 }
 

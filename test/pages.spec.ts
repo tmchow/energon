@@ -108,7 +108,9 @@ describe("signed-in pages", () => {
     expect(html).toContain('class="en-md"');
     expect(html).toContain('class="en-md-page"');
     expect(html).toMatch(/color-scheme:\s*light dark/);
-    expect(html).toMatch(/\.en-md \.mermaid\{[^}]*overflow-x:auto/);
+    expect(html).toMatch(/en-md-diagram-preview/);
+    expect(html).toMatch(/en-md-expand/);
+    expect(html).toMatch(/en-md-table-preview/);
     expect(html).not.toMatch(/<a[^>]*class="en-brand"/);
     expect(html).not.toContain('class="en-top');
     expect(html).not.toContain('class="en-card');

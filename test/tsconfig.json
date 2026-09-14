@@ -17,6 +17,7 @@
     "./unit/skill-render.spec.ts",
     "./unit/pr-title.spec.ts",
     "./unit/markdown.spec.ts",
+    "./unit/md-expand.spec.ts",
     "./unit/schema-drift.spec.ts",
     "./unit/openapi-drift.spec.ts",
     "./unit/golden.spec.ts",

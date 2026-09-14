@@ -56,7 +56,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 ## Features
 
 - [Discovery documents](./discovery.md) covers unauthenticated `GET /v1/help`, `GET /v1/openapi.json`, `GET /v1/health`, `GET /llms.txt`, and `GET /auth.md`.
-- [Publish a site](./publish-site.md) covers creating a named folder, writing files, serving the public URL, duplicate slug behavior, duplicate, and mermaid on HTML markdown.
+- [Publish a site](./publish-site.md) covers creating a named folder, writing files, serving the public URL, duplicate slug behavior, duplicate, mermaid on HTML markdown, and wide-table expand without mermaid.
 - [Publish a file](./publish-file.md) covers minting a loose file with a stable id, replacing bytes, and downloading.
 - [Connect an agent](./connect-agent.md) covers request, human code approval/denial, one-time delivery, and revocation.
 - [Mint a token](./mint-token.md) covers mint with a lifetime, whoami with `expires_at`, `DELETE /v1/whoami` self-revoke, the expired-token `401 token_expired`, revoke on the Tokens page and hub API, the `Stale` badge and `Live`/`Stale`/`All` filter, and bulk revoke with preview-then-confirm.

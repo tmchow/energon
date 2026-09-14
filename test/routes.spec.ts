@@ -109,6 +109,10 @@ describe("host and route contracts", () => {
     const mermaidSrc = await mermaid.text();
     expect(mermaidSrc).toContain("chunks/mermaid.esm.min/");
     expect(mermaidSrc.length).toBeGreaterThan(1_000);
+    const expand = await req("https://energon.example.com/static/md-expand.mjs");
+    expect(expand.status).toBe(200);
+    expect(expand.headers.get("content-type")).toMatch(/javascript|ecmascript/);
+    expect(await expand.text()).toContain("mountMarkdownExpand");
   });
 
   it("rejects a non-Energon bearer and a bad site slug", async () => {
