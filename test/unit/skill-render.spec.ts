@@ -348,3 +348,17 @@ describe("render path safety", () => {
     });
   });
 });
+
+
+describe("publishing examples", () => {
+  it("uses PUT for site uploads and response URLs for public content", () => {
+    const skill = readFileSync(resolve("templates/skill/SKILL.md.tmpl"), "utf8");
+    const api = readFileSync(resolve("templates/skill/references/api.md.tmpl"), "utf8");
+    expect(skill).toContain("curl -sS -X PUT {{ORIGIN}}/v1/sites/{id}/files/index.html");
+    for (const text of [skill, api]) {
+      expect(text).not.toContain("{{ORIGIN}}/{handle}/");
+      expect(text).not.toContain("Published `/sites`");
+    }
+    expect(api).toContain("then `index.md`");
+  });
+});

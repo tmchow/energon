@@ -110,7 +110,7 @@ export async function setupAccess(rawConfig, client, apply = false, report = () 
     if (matches.length > 1 || (matches.length === 1 && (!matchingPolicies[i] || !sameApp(matches[0], { ...desired, policies: [{ id: matchingPolicies[i].id }] })))) throw new Error(`Application conflict: ${desired.name}. No changes made.`);
     return matches[0];
   });
-  const overlaps = apps.filter((a) => !matchingApps.some((match) => match?.id === a.id) && (touchesHost(a, config.hub_hostname) || touchesHost(a, config.content_hostname) || a.destinations?.some((d) => d.type === "worker")));
+  const overlaps = apps.filter((a) => !matchingApps.some((match) => match?.id === a.id) && (touchesHost(a, config.hub_hostname) || touchesHost(a, config.content_hostname) || a.destinations?.some((d) => ["worker", "all_workers", "preview_worker", "all_preview_workers"].includes(d.type))));
   if (overlaps.length) throw new Error("Existing Access applications overlap the requested hostnames or use Worker-level destinations. Review them manually; no changes made.");
   const plan = { account_id: config.account_id, hub: config.hub_hostname, content: config.content_hostname, provider: { id: provider.id, name: provider.name, type: provider.type }, allowed_emails: config.allowed_emails, resources: desiredApps.map((a, i) => ({ app: a.name, app_action: matchingApps[i] ? "reuse" : "create", policy_action: matchingPolicies[i] ? "reuse" : "create" })) };
   report({ plan });

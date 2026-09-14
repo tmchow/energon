@@ -36,7 +36,7 @@ export ENERGON_VERIFY_PORT=18787          # default; stays off 8787
 
 `bin/launch` alone is for debugging a failed boot. After a successful `bin/up`, source `state.env` and drive.
 
-Launch applies D1 migrations with `--persist-to /tmp/energon-verify/$RUN/persist`, starts `npx wrangler dev --ip 127.0.0.1 --port $PORT --local --persist-to … --var PUBLIC_ORIGIN:$ORIGIN --var CONTENT_ORIGIN:$ORIGIN --show-interactive-dev-session false` in its own process group (`setsid` where available, bash job control on macOS), and waits until `GET $ORIGIN/health` returns `{"ok":true}` and `GET $ORIGIN/v1/help` echoes that same origin.
+Launch applies D1 migrations with `--persist-to /tmp/energon-verify/$RUN/persist`, starts `npx wrangler dev --ip 127.0.0.1 --port $PORT --local --local-upstream 127.0.0.1 --persist-to … --var PUBLIC_ORIGIN:$ORIGIN --var CONTENT_ORIGIN:$ORIGIN --show-interactive-dev-session false` in its own process group (`setsid` where available, bash job control on macOS), and waits until `GET $ORIGIN/health` returns `{"ok":true}` and `GET $ORIGIN/v1/help` echoes that same origin.
 
 Ready when launch prints `verify-energon launch ok` and `GET $ORIGIN/health` is 200. Typical first boot is under a minute. Log: `/tmp/energon-verify/$RUN/wrangler.log`.
 
@@ -56,7 +56,7 @@ Teardown is `bin/cleanup` (kills the recorded pid / process group and the listen
 .agents/skills/verify-energon/bin/doctor
 ```
 
-It is read-only. It checks: persist path is under `/tmp/energon-verify` (not `.wrangler/state`); recorded pid is alive; that pid (or a child in its session) owns `$PORT`; `GET /health` is `{ok:true}`; `GET /v1/help` has `hub` and `content_origin` equal to `$ORIGIN`, `env=ENERGON_TOKEN`, `token_prefix=ee_live_`, `openapi=$ORIGIN/v1/openapi.json`; `GET /v1/openapi.json` has `openapi` `3.1.0` and `servers[0].url` equal to `$ORIGIN`; `GET /` is the hub (`Publish a document, prototype, or file.`, `#pick-files`); `GET /account/data` has an email; hub bootstrap JSON has `data.handle`.
+It is read-only. It checks: persist path is under `/tmp/energon-verify` (not `.wrangler/state`); recorded pid is alive; that pid (or a child in its session) owns `$PORT`; `GET /health` is `{ok:true}`; `GET /v1/help` has `hub` and `content_origin` equal to `$ORIGIN`, a valid token environment name and prefix (saved from discovery into `state.env`), `openapi=$ORIGIN/v1/openapi.json`; `GET /v1/openapi.json` has `openapi` `3.1.0` and `servers[0].url` equal to `$ORIGIN`; `GET /` is the hub (`Publish a document, prototype, or file.`, `#pick-files`); `GET /account/data` has an email; hub bootstrap JSON has `data.handle`.
 
 If doctor fails, stop. Do not drive a foreign run.
 

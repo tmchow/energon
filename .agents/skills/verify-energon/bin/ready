@@ -14,14 +14,14 @@ if [[ -z "${HANDLE:-}" ]]; then
   die "HANDLE missing. Run bin/doctor first."
 fi
 
-if ! grep -q '^TOKEN=ee_live_' "$(state_file)"; then
+if ! grep -q "^TOKEN=${TOKEN_PREFIX:?Run bin/doctor first}" "$(state_file)"; then
   # Parent shells may export a stale TOKEN; mint-token keys off state.env, not the env var.
   unset TOKEN TOKEN_EXPIRES_AT
   "$_script_dir/mint-token" verify-run >/dev/null
   load_state
 fi
 
-if ! grep -q '^TOKEN=ee_live_' "$(state_file)"; then
+if ! grep -q "^TOKEN=${TOKEN_PREFIX:?Run bin/doctor first}" "$(state_file)"; then
   die "TOKEN missing from state.env after mint"
 fi
 
@@ -29,5 +29,5 @@ printf 'verify-energon ready\n'
 printf '  origin   %s\n' "$ORIGIN"
 printf '  handle   %s\n' "$HANDLE"
 printf '  evidence %s\n' "$EVIDENCE"
-printf '  token    set in state.env (ee_live_…)\n'
+printf '  token    set in state.env (%s…)\n' "$TOKEN_PREFIX"
 printf 'set -a; source %s; set +a\n' "$(state_file)"

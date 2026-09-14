@@ -5,6 +5,8 @@ export interface Env {
   PUBLIC_ORIGIN: string;
   CONTENT_ORIGIN?: string;
   REQUIRE_ACCESS?: string;
+  ACCESS_TEAM_DOMAIN?: string;
+  ACCESS_AUD?: string;
   DEV_ACCESS_EMAIL?: string;
   INSTANCE_SLUG?: string;
   MARKETPLACE_NAME?: string;

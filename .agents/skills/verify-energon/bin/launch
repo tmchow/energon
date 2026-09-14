@@ -46,6 +46,7 @@ wrangler_args=(
   --port "$PORT"
   --inspector-port "$INSPECTOR_PORT"
   --local
+  --local-upstream 127.0.0.1
   --persist-to "$PERSIST"
   --var "PUBLIC_ORIGIN:${ORIGIN}"
   --var "CONTENT_ORIGIN:${ORIGIN}"

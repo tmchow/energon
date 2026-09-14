@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { exportJWK, generateKeyPair, SignJWT, type JWTPayload } from "jose";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { TOKEN_PREFIX } from "../../src/config";
 import { actorFromAccess, helpBody, maskToken, mintToken, parseBearer, rejectWorkersDevForHumans, requireToken } from "../../src/auth";
 import { readCookie } from "../../src/gate";
@@ -427,5 +428,59 @@ describe("rejectWorkersDevForHumans", () => {
     expect(ok).toBeNull();
     const local = rejectWorkersDevForHumans(new Request("http://127.0.0.1:8787/"));
     expect(local).toBeNull();
+  });
+});
+
+
+describe("hostname Access JWT authentication", () => {
+  let keys: Awaited<ReturnType<typeof generateKeyPair>>;
+  let publicJwk: Awaited<ReturnType<typeof exportJWK>>;
+  let sequence = 0;
+
+  beforeAll(async () => {
+    keys = await generateKeyPair("RS256");
+    publicJwk = { ...await exportJWK(keys.publicKey), kid: "access-key", alg: "RS256" };
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  async function authenticate(overrides: JWTPayload = {}, options: { badSignature?: boolean; unavailable?: boolean } = {}) {
+    const team = `test-${sequence++}.cloudflareaccess.com`;
+    const issuer = `https://${team}`;
+    const fetchKeys = vi.fn(async (_url: string | URL, _init?: RequestInit) => options.unavailable
+      ? new Response("unavailable", { status: 503 })
+      : Response.json({ keys: [publicJwk] }));
+    vi.stubGlobal("fetch", fetchKeys);
+    const signingKey = options.badSignature ? (await generateKeyPair("RS256")).privateKey : keys.privateKey;
+    const jwt = await new SignJWT({
+      iss: issuer, aud: ["hub-audience"], sub: "uuid-ada", email: "Ada@EsperLabs.app",
+      type: "app", exp: Math.floor(Date.now() / 1000) + 300, ...overrides,
+    }).setProtectedHeader({ alg: "RS256", kid: "access-key" }).sign(signingKey);
+    const actor = await actorFromAccess(new Request("https://energon.example.com/account", {
+      headers: { "Cf-Access-Jwt-Assertion": jwt, "Cf-Access-Authenticated-User-Email": "forged@example.com" },
+    }), { ...env, ACCESS_TEAM_DOMAIN: team, ACCESS_AUD: "hub-audience" } as Env);
+    return { actor, fetchKeys, issuer };
+  }
+
+  it("authenticates a signed hostname Access session without ctx.access", async () => {
+    const { actor, fetchKeys, issuer } = await authenticate();
+    expect(actor).toEqual({ email: "ada@esperlabs.app", idpSub: "uuid-ada", via: "access", admin: false });
+    expect(fetchKeys.mock.calls[0]?.[0]).toBe(`${issuer}/cdn-cgi/access/certs`);
+  });
+
+  it.each([
+    { aud: ["another-application"] }, { iss: "https://attacker.example" },
+    { exp: 1 }, { exp: undefined }, { sub: undefined }, { sub: " " },
+    { email: undefined }, { email: "invalid" }, { type: "org" },
+    { nbf: Math.floor(Date.now() / 1000) + 3600 },
+  ])("rejects invalid claims %j", async (claims) => {
+    expect((await authenticate(claims)).actor).toBeNull();
+  });
+
+  it("rejects an invalid signature", async () => {
+    expect((await authenticate({}, { badSignature: true })).actor).toBeNull();
+  });
+
+  it("fails closed when signing keys are unavailable", async () => {
+    expect((await authenticate({}, { unavailable: true })).actor).toBeNull();
   });
 });

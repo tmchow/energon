@@ -72,8 +72,8 @@ env_name="$(json_get "$help_json" "env" 2>/dev/null || true)"
 prefix="$(json_get "$help_json" "token_prefix" 2>/dev/null || true)"
 if [[ "$hub" == "$ORIGIN" ]]; then ok "GET /v1/help hub=$hub"; else bad "GET /v1/help hub=$hub expected $ORIGIN"; fi
 if [[ "$content" == "$ORIGIN" ]]; then ok "GET /v1/help content_origin=$content"; else bad "GET /v1/help content_origin=$content expected $ORIGIN"; fi
-if [[ "$env_name" == "ENERGON_TOKEN" ]]; then ok "token env ENERGON_TOKEN"; else bad "token env is $env_name"; fi
-if [[ "$prefix" == "ee_live_" ]]; then ok "token prefix ee_live_"; else bad "token prefix is $prefix"; fi
+if [[ "$env_name" =~ ^[A-Z_][A-Z0-9_]*$ ]]; then ok "token env $env_name"; else bad "invalid token env $env_name"; fi
+if [[ "$prefix" =~ ^[a-zA-Z0-9_]+$ ]]; then ok "token prefix $prefix"; else bad "invalid token prefix $prefix"; fi
 openapi_url="$(json_get "$help_json" "openapi" 2>/dev/null || true)"
 if [[ "$openapi_url" == "$ORIGIN/v1/openapi.json" ]]; then ok "GET /v1/help openapi=$openapi_url"; else bad "GET /v1/help openapi=$openapi_url expected $ORIGIN/v1/openapi.json"; fi
 
@@ -117,17 +117,19 @@ else
   bad "bootstrap JSON has no handle"
 fi
 
-python3 - "$(state_file)" "$handle" <<'PY'
-from pathlib import Path
-import sys
-path, handle = Path(sys.argv[1]), sys.argv[2]
-lines = [ln for ln in path.read_text().splitlines() if not ln.startswith("HANDLE=")]
-lines.append(f"HANDLE={handle}")
-path.write_text("\n".join(lines) + "\n")
-PY
-
 if [[ "$fail" -ne 0 ]]; then
   printf 'doctor: instance is not safe to drive\n' >&2
   exit 1
 fi
+
+python3 - "$(state_file)" "$handle" "$env_name" "$prefix" <<'PY'
+from pathlib import Path
+import sys
+path, handle = Path(sys.argv[1]), sys.argv[2]
+lines = [ln for ln in path.read_text().splitlines() if not ln.startswith(("HANDLE=", "TOKEN_ENV=", "TOKEN_PREFIX="))]
+lines.append(f"HANDLE={handle}")
+lines.extend([f"TOKEN_ENV={sys.argv[3]}", f"TOKEN_PREFIX={sys.argv[4]}"])
+path.write_text("\n".join(lines) + "\n")
+PY
+
 printf 'doctor: ok — drive this origin only (%s)\n' "$ORIGIN"

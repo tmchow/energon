@@ -81,6 +81,12 @@ describe("Access setup", () => {
     const f = fixture();f.apps.push({ id: "other", name: "other", destinations: [{ type: "public", uri }] });
     await expect(setupAccess(config, f.client, true)).rejects.toThrow("overlap");expect(f.writes).toEqual([]);
   });
+  it.each(["worker", "all_workers", "preview_worker", "all_preview_workers"])("rejects %s destinations before preview or apply writes", async (type) => {
+    for (const apply of [false, true]) {
+      const f = fixture();f.apps.push({ id: "other", name: "other", destinations: [{ type }] });
+      await expect(setupAccess(config, f.client, apply)).rejects.toThrow("overlap");expect(f.writes).toEqual([]);
+    }
+  });
   it("rejects missing providers before writes", async () => {
     const f = fixture();
     await expect(setupAccess({ ...config, identity_provider_id: "22222222-2222-4222-8222-222222222222" }, f.client, true)).rejects.toThrow("not visible");

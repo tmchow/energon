@@ -1,3 +1,4 @@
+import { createRemoteJWKSet, jwtVerify } from "jose";
 import {
   DEFAULT_PUBLIC_ORIGIN,
   MAX_IMPORT_FILES,
@@ -156,6 +157,23 @@ function identitySubFromAccess(identity: unknown): string | null {
   return null;
 }
 
+let accessKeys: { issuer: string; resolve: ReturnType<typeof createRemoteJWKSet> } | undefined;
+
+async function identityFromAccessJwt(request: Request, env: Env) {
+  const jwt = request.headers.get("Cf-Access-Jwt-Assertion");
+  const team = env.ACCESS_TEAM_DOMAIN?.trim();
+  const audience = env.ACCESS_AUD?.trim();
+  if (!jwt || !team || !audience || !/^[a-z0-9-]+\.cloudflareaccess\.com$/.test(team)) return null;
+  const issuer = `https://${team}`;
+  if (accessKeys?.issuer !== issuer) {
+    accessKeys = { issuer, resolve: createRemoteJWKSet(new URL(`${issuer}/cdn-cgi/access/certs`), { timeoutDuration: 5000 }) };
+  }
+  const { payload } = await jwtVerify(jwt, accessKeys.resolve, {
+    issuer, audience, algorithms: ["RS256"], requiredClaims: ["exp", "sub", "email"],
+  });
+  return payload.type === "app" ? payload : null;
+}
+
 export async function actorFromAccess(
   request: Request,
   env: Env,
@@ -175,9 +193,11 @@ export async function actorFromAccess(
     return { email, idpSub, via: "access", admin: emailIsAdmin(env, email) };
   }
 
-  if (!ctx?.access?.aud) return null;
   try {
-    const identity = await ctx.access.getIdentity();
+    // Hostname-based Access provides a signed assertion, but not the Worker-level ctx.access identity.
+    const identity = ctx?.access?.aud
+      ? await ctx.access.getIdentity()
+      : await identityFromAccessJwt(request, env);
     const email = typeof identity?.email === "string" ? identity.email.trim().toLowerCase() : "";
     if (!email.includes("@")) return null;
     const idpSub = identitySubFromAccess(identity);
