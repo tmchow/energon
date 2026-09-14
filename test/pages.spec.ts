@@ -100,12 +100,22 @@ describe("signed-in pages", () => {
     expect(html).toContain("en-gate en-shake");
   });
 
-  it("links public Markdown branding to the product site while hub branding stays local", async () => {
+  it("renders public Markdown as the document without app chrome while hub branding stays local", async () => {
     const token = await mint("markdown-brand");
     const file = await json("/v1/files", { method: "POST", headers: { authorization: `Bearer ${token}`, "X-Filename": "brand.md", "content-type": "text/markdown" }, body: "# Brand link" });
     const html = await (await req(file.body.url, { headers: { accept: "text/html" } })).text();
-    expect(html).toMatch(/<a[^>]*class="en-brand"[^>]*href="https:\/\/getenergon.com"/);
-    expect(html).toContain("Brand link");
+    expect(html).toContain("<h1>Brand link</h1>");
+    expect(html).toContain('class="en-md"');
+    expect(html).toMatch(/color-scheme:\s*light dark/);
+    expect(html).not.toMatch(/<a[^>]*class="en-brand"/);
+    expect(html).not.toContain('class="en-top');
+    expect(html).not.toContain('class="en-card');
+    expect(html).not.toContain(">Raw<");
+    expect(html).not.toContain("?raw=1");
+    expect(html).not.toContain('<script type="module"');
+    const shell = uiPage("notes.md — Energon", { page: "markdown", data: { html: "<h1>Hi</h1>" } });
+    expect(shell).toContain('class="en-md"');
+    expect(shell).not.toMatch(/<a[^>]*class="en-brand"/);
     const hub = await (await req("/")).text();
     expect(hub).toMatch(/<a[^>]*class="en-brand"[^>]*href="\/"/);
   });

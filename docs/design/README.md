@@ -20,7 +20,7 @@ The marketing site is maintained separately in the private `tmchow/energon-marke
 
 Use Svelte 5 runes (`$props`, `$state`, `$derived`) for new UI code. Form controls expose bindable values; components accepting content use snippets. Keep API calls in the owning page or `uploads.ts`, and use the existing Worker helpers for shared domain rules such as slug numbering and byte formatting.
 
-The hub owns upload staging, explicit collision confirmation, pagination, and catalog dialogs. Tokens reveals a newly minted secret in browser state once; reloading fetches only the catalog's redacted token records. Connect retains the human approval boundary. Password gates use ordinary HTML forms, and Markdown rendering retains the existing sanitizer, CSP, Mermaid loader, raw responses, and downloads.
+The hub owns upload staging, explicit collision confirmation, pagination, and catalog dialogs. Tokens reveals a newly minted secret in browser state once; reloading fetches only the catalog's redacted token records. Connect retains the human approval boundary. Password gates use ordinary HTML forms. Markdown rendering retains the existing sanitizer, CSP, Mermaid loader, raw responses, and downloads. The rendered document is not wrapped in app chrome and follows the system color scheme.
 
 Interactive pages initially render dates in UTC so server and client hydration agree, then switch to the browser's local timezone. Public Markdown has no application JavaScript and keeps UTC. All `time` elements retain the exact ISO timestamp.
 

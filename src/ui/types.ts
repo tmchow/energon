@@ -44,7 +44,7 @@ export type ConnectData = {
   token_policy: TokenPolicy;
 };
 export type GateData = { action: string; wrong: boolean; limited?: boolean; passwordHeader: string };
-export type MarkdownData = { filename: string; rawHref: string; html: string; size?: number; updatedAt?: string };
+export type MarkdownData = { html: string };
 export type AdminCleanupObject = {
   kind: 'site' | 'file';
   ref: string;

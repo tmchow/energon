@@ -73,16 +73,8 @@ export function renderMarkdown(md: string): { html: string; mermaid: boolean } {
   return { html, mermaid: MERMAID_FENCE.test(md) || html.includes('class="mermaid"') };
 }
 
-export function markdownPage(opts: {
-  title: string;
-  filename: string;
-  rawHref: string;
-  size?: number;
-  updatedAt?: string;
-  html: string;
-  mermaid: boolean;
-}): string {
-  return uiPage(`${opts.title} — ${PRODUCT}`, { page: "markdown", data: opts }, opts.mermaid ? mermaidHead() : "");
+export function markdownPage(opts: { title: string; html: string; mermaid: boolean }): string {
+  return uiPage(`${opts.title} — ${PRODUCT}`, { page: "markdown", data: { html: opts.html } }, opts.mermaid ? mermaidHead() : "");
 }
 
 export async function respondMarkdown(
@@ -103,7 +95,6 @@ export async function respondMarkdown(
     return new Response(obj.body, { headers });
   }
   const rendered = renderMarkdown(await obj.text());
-  const rawHref = `${new URL(request.url).pathname}?raw=1`;
   const headers = new Headers({
     "content-type": "text/html; charset=utf-8",
     "x-content-type-options": "nosniff",
@@ -112,28 +103,27 @@ export async function respondMarkdown(
   });
   applyIsolation(headers, "text/html");
   if (rendered.mermaid) headers.set("content-security-policy", mermaidDocumentCsp(new URL(request.url).origin));
-  return new Response(
-    markdownPage({
-      title: filename,
-      filename,
-      rawHref,
-      size: obj.size,
-      updatedAt: obj.uploaded.toISOString(),
-      html: rendered.html,
-      mermaid: rendered.mermaid,
-    }),
-    { headers },
-  );
+  return new Response(markdownPage({ title: filename, html: rendered.html, mermaid: rendered.mermaid }), { headers });
 }
 
 function mermaidHead(): string {
   return `<script type="module">
 import mermaid from "${MERMAID_SCRIPT_PATH}";
+const light = matchMedia("(prefers-color-scheme: light)").matches;
 mermaid.initialize({
   startOnLoad: true,
-  theme: "dark",
+  theme: light ? "neutral" : "dark",
   securityLevel: "strict",
-  themeVariables: {
+  themeVariables: light ? {
+    darkMode: false,
+    background: "#f6f4fb",
+    primaryColor: "#efeaf8",
+    primaryTextColor: "#14111f",
+    primaryBorderColor: "#7a4dff",
+    lineColor: "#6b6486",
+    secondaryColor: "#ffffff",
+    tertiaryColor: "#efecf7",
+  } : {
     darkMode: true,
     background: "#070814",
     primaryColor: "#16102a",

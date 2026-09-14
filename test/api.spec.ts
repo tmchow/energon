@@ -1127,7 +1127,12 @@ describe("Energon", () => {
     expect(html).not.toContain("http://example.com/a.png");
     expect(html).not.toContain("<script>alert(1)</script>");
     expect(html).not.toContain("javascript:alert");
-    expect(html).toContain("?raw=1");
+    expect(html).toContain('class="en-md"');
+    expect(html).toMatch(/prefers-color-scheme:\s*light/);
+    expect(html).not.toContain("?raw=1");
+    expect(html).not.toContain(">Raw<");
+    expect(html).not.toMatch(/<a[^>]*class="en-brand"/);
+    expect(html).not.toContain('class="en-card');
 
     const home = await req(`/ada/s/${site_docs.id}/docs/`, { headers: { accept: "text/html" } });
     const homeHtml = await home.text();

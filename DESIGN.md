@@ -26,7 +26,7 @@ Before choosing components, identify what someone came to do, what they need to 
 | Stats | Storage and usage with clear units | Scope, totals, and comparable per-person values |
 | Admin | Preview a host-wide retirement, then confirm | Owner, name, size, last written, last read, expiry, and the recorded audit |
 | Password gate | Enter the shared password | The result of a failed attempt and guidance from the sender |
-| Markdown | Read the author's document | Raw access, download, readable code and tables |
+| Markdown | Read the author's document | Readable code and tables in both color schemes; source via curl or `?raw=1` |
 
 Keep the primary task visible without an introductory feature tour. Put policy explanations beside the fields they qualify. Separate unrelated jobs rather than making every screen use the same arrangement of cards.
 
@@ -75,7 +75,7 @@ Charge belongs on the cube, primary action, focal drop zone, URL field, selected
 
 Green indicates a successful result, amber a warning or expiry condition, and rose an error or destructive confirmation. Existing destructive icon buttons use amber. Preserve that distinction and always provide a text label or other non-color cue. A lock describes a share password, not an individual access-control list. The lockup (lock northwest, filled pencil southeast) describes a write password.
 
-The application ships dark. Light tokens and specimen examples exist for exploration; their presence is not a reason to add a theme switch or claim a production light theme is complete.
+The application ships dark. Public Markdown follows the system color scheme so the author's document is readable in light or dark. Light tokens and specimen examples exist for exploration of hub UI; their presence is not a reason to add a theme switch or claim a production light hub is complete.
 
 ### Typography and geometry
 
@@ -150,7 +150,7 @@ Wrap long identifiers or contain their scrolling locally. Never conceal page ove
 
 Use semantic headings, tables, links, buttons, and labeled fields. Preserve visible keyboard focus, dialog focus handling, accessible icon names, and feedback announcements. Check contrast in the rendered state, including muted text and disabled controls; a token name alone does not establish accessibility.
 
-Keep password submission usable as an ordinary HTML form. Preserve the Markdown reader's lightweight public behavior and Raw access. New app interactions must not impose the entire application bundle on reading-only public pages.
+Keep password submission usable as an ordinary HTML form. Preserve the Markdown reader's lightweight public behavior: the document is the page, with no app chrome, and no application bundle. `curl` and `?raw=1` still return source. New app interactions must not impose the entire application bundle on reading-only public pages.
 
 ## Review the result, then improve the guide
 

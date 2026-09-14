@@ -205,7 +205,60 @@ span.en-scan.en-scan--on:hover { color: var(--fg-hot); }
   opacity: 0.55;
   cursor: not-allowed;
 }
-.en-md-wrap { max-width: 46rem; }
+/* Public Markdown is the document: no app chrome, system light and dark. Hub stays dark. */
+html:has(body.page-markdown) {
+  color-scheme: light dark;
+  background-color: light-dark(var(--paper-0), var(--ink-0));
+}
+body.page-markdown {
+  color-scheme: light dark;
+  background: light-dark(var(--paper-0), var(--ink-0));
+  --bg-canvas: light-dark(var(--paper-0), var(--ink-0));
+  --bg-surface: light-dark(var(--paper-1), var(--ink-2));
+  --bg-surface-a: light-dark(rgba(255, 255, 255, 0.88), rgba(13, 18, 32, 0.86));
+  --bg-sunken: light-dark(var(--paper-2), var(--ink-1));
+  --bg-raised: light-dark(var(--paper-3), var(--ink-3));
+  --bg-hover: light-dark(rgba(122, 77, 255, 0.06), rgba(176, 140, 255, 0.08));
+  --bg-code: light-dark(#1a1530, #0a0c16);
+  --fg-1: light-dark(var(--paper-9), var(--ink-9));
+  --fg-2: light-dark(var(--paper-8), var(--ink-8));
+  --fg-3: light-dark(var(--paper-7), var(--ink-7));
+  --fg-4: light-dark(var(--paper-6), var(--ink-6));
+  --fg-brand: light-dark(var(--violet-700), var(--violet-200));
+  --fg-hot: light-dark(var(--violet-800), var(--violet-hot));
+  --fg-code: #e4def4;
+  --fg-scene: light-dark(var(--paper-8), #b8b0ce);
+  --border-1: light-dark(var(--paper-4), var(--ink-4));
+  --border-2: light-dark(var(--paper-5), var(--ink-5));
+  --border-brand-faint: light-dark(rgba(122, 77, 255, 0.14), rgba(176, 140, 255, 0.14));
+  --border-brand: light-dark(rgba(122, 77, 255, 0.22), rgba(176, 140, 255, 0.22));
+  --accent: light-dark(var(--violet-600), var(--violet-400));
+  --accent-strong: light-dark(var(--violet-700), var(--violet-200));
+  --accent-hover: light-dark(var(--violet-700), var(--violet-300));
+  --accent-soft: light-dark(rgba(122, 77, 255, 0.1), rgba(176, 140, 255, 0.16));
+  --accent-ring: light-dark(var(--violet-500), var(--violet-300));
+}
+@media (prefers-color-scheme: light) {
+  body.page-markdown { --glow-rgb: 122, 77, 255; }
+}
+.en-md-wrap { max-width: var(--measure-md); }
+body.page-markdown .en-md { padding: 0; overflow-x: auto; }
+.en-md h4, .en-md h5, .en-md h6 { font-weight: 550; letter-spacing: var(--tracking-title); margin: 18px 0 8px; }
+.en-md h4 { font-size: 16px; } .en-md h5, .en-md h6 { font-size: 15px; }
+.en-md a { color: var(--accent); }
+.en-md a:hover { color: var(--accent-hover); }
+.en-md img { max-width: 100%; height: auto; border-radius: var(--radius-1); }
+.en-md hr { border: 0; border-top: 1px solid var(--border-1); margin: 24px 0; }
+.en-md th { background: var(--bg-sunken); font-weight: 550; }
+.en-md tbody tr:last-child th, .en-md tbody tr:last-child td { border-bottom: 0; }
+.en-md code:not(pre code) { background: var(--bg-sunken); color: var(--fg-1); border-color: var(--border-1); }
+.en-md pre.mermaid { background: transparent; border: 0; color: inherit; padding: 0; box-shadow: none; }
+.en-md li:has(> input[type="checkbox"]) { list-style: none; }
+.en-md ul:has(> li > input[type="checkbox"]) { padding-left: 0.2em; }
+.en-md input[type="checkbox"] { margin-right: 0.45em; accent-color: var(--accent); }
+.en-md details { margin: 0 0 14px; }
+.en-md summary { cursor: pointer; }
+.en-md blockquote > :last-child { margin-bottom: 0; }
 @media (max-width: 719px) {
   .en-mint { grid-template-columns: 1fr; }
   .en-mint > .en-field { width: 100%; }
