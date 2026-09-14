@@ -32,7 +32,6 @@ export default defineConfig({
             tag_name: "v1.0.0",
             html_url: "https://example.test/releases/v1.0.0",
             published_at: "2026-09-14T00:00:00.000Z",
-            body: "## Operator\n- none",
           }),
         },
       },

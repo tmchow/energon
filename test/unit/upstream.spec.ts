@@ -8,7 +8,6 @@ import {
   loadUpstream,
   pageChrome,
   parseGithubRelease,
-  parseOperatorNotes,
   parseSemver,
   snapshotFromRelease,
   UPSTREAM_DOCS_UPDATE,
@@ -19,7 +18,6 @@ const release = (over: Partial<GithubRelease> = {}): GithubRelease => ({
   tag_name: "v1.1.0",
   html_url: "https://example.test/releases/v1.1.0",
   published_at: "2026-09-14T00:00:00.000Z",
-  body: "## Operator\n- Restart after deploy\n- D1: none",
   ...over,
 });
 
@@ -47,29 +45,18 @@ describe("compareSemver", () => {
   });
 });
 
-describe("parseOperatorNotes", () => {
-  it("returns Operator bullets and stops at the next heading", () => {
-    expect(parseOperatorNotes("## Features\n- skip\n\n## Operator\n- D1: none\n* Restart after deploy\n\n## Bug Fixes\n- later")).toEqual([
-      "D1: none",
-      "Restart after deploy",
-    ]);
-  });
-
-  it("is empty without an Operator heading", () => {
-    expect(parseOperatorNotes("## Features\n- a")).toEqual([]);
-    expect(parseOperatorNotes(null)).toEqual([]);
-    expect(parseOperatorNotes("")).toEqual([]);
-  });
-});
-
 describe("parseGithubRelease", () => {
-  it("requires tag_name and html_url", () => {
+  it("requires tag_name and html_url and ignores release body", () => {
     expect(parseGithubRelease({ tag_name: "v1.0.0" })).toBeNull();
-    expect(parseGithubRelease({ tag_name: "v1.0.0", html_url: "https://example.test/r", published_at: 1 })).toEqual({
+    expect(parseGithubRelease({
+      tag_name: "v1.0.0",
+      html_url: "https://example.test/r",
+      published_at: 1,
+      body: "## Operator\n- skip",
+    })).toEqual({
       tag_name: "v1.0.0",
       html_url: "https://example.test/r",
       published_at: "",
-      body: null,
     });
   });
 });
@@ -85,15 +72,14 @@ describe("classifyUpstream", () => {
 });
 
 describe("snapshots", () => {
-  it("copies Operator notes onto an update snapshot", () => {
+  it("keeps only version metadata on an update snapshot", () => {
     const snap = snapshotFromRelease("1.0.0", release());
-    expect(snap).toMatchObject({
+    expect(snap).toEqual({
       status: "update",
       this_version: "1.0.0",
       latest_tag: "v1.1.0",
       latest_url: "https://example.test/releases/v1.1.0",
       published_at: "2026-09-14T00:00:00.000Z",
-      operator: ["Restart after deploy", "D1: none"],
       docs_url: UPSTREAM_DOCS_UPDATE,
     });
   });
@@ -109,7 +95,6 @@ describe("snapshots", () => {
       latest_tag: null,
       latest_url: null,
       published_at: null,
-      operator: [],
       docs_url: UPSTREAM_DOCS_UPDATE,
     });
   });

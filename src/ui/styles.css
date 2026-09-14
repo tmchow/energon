@@ -119,9 +119,6 @@
 .en-admin-health-run { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 18px; }
 .en-admin-health-unlock { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-top: 18px; }
 .en-admin-health-unlock .en-field { flex: 1; min-width: 16rem; }
-.en-admin-update-heading { margin: 0 0 8px; font: var(--type-label); color: var(--fg-3); }
-.en-admin-update-ops { margin: 0 0 16px; padding-left: 1.2em; color: var(--fg-2); }
-.en-admin-update-ops li { margin: 0 0 4px; }
 .en-admin-update-run { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 16px; }
 .en-admin-update-note { margin: 0 0 8px; }
 .en-tokens-tools { justify-content: flex-end; }

@@ -403,8 +403,8 @@ describe("signed-in pages", () => {
     expect(html).toContain('id="admin-update"');
     expect(html).toContain("1.1.0 is available");
     expect(html).toContain("This Energon is 1.0.0.");
-    expect(html).toContain("Restart after deploy");
-    expect(html).toContain('id="admin-update-operator"');
+    expect(html).not.toContain("Restart after deploy");
+    expect(html).not.toContain('id="admin-update-operator"');
     expect(html).toContain('id="admin-update-dismiss"');
     expect(html).toContain("Read the release");
     expect(html).toContain("How to update");
@@ -427,7 +427,6 @@ describe("signed-in pages", () => {
         latest_tag: null,
         latest_url: null,
         published_at: null,
-        operator: [],
         docs_url: UPSTREAM_DOCS_UPDATE,
       },
     });
@@ -445,7 +444,6 @@ describe("signed-in pages", () => {
         latest_tag: "v1.1.0",
         latest_url: "https://example.test/releases/v1.1.0",
         published_at: null,
-        operator: [],
         docs_url: UPSTREAM_DOCS_UPDATE,
       },
     });
@@ -509,7 +507,6 @@ function updateSnapshot(): UpstreamSnapshot {
     latest_tag: "v1.1.0",
     latest_url: "https://example.test/releases/v1.1.0",
     published_at: "2026-09-14T00:00:00.000Z",
-    operator: ["Restart after deploy"],
     docs_url: UPSTREAM_DOCS_UPDATE,
   };
 }

@@ -65,7 +65,6 @@ export type UpstreamSnapshot = {
   latest_tag: string | null;
   latest_url: string | null;
   published_at: string | null;
-  operator: string[];
   docs_url: string;
 };
 

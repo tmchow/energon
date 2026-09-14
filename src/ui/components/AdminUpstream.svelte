@@ -45,12 +45,6 @@
       This Energon is {snapshot.this_version ?? 'unknown'}.{#if snapshot.published_at}
         Released <Timestamp value={snapshot.published_at} dateOnly />.{/if}
     </p>
-    {#if snapshot.operator.length}
-      <p class="en-admin-update-heading">Operator</p>
-      <ul id="admin-update-operator" class="en-admin-update-ops">
-        {#each snapshot.operator as item (item)}<li>{item}</li>{/each}
-      </ul>
-    {/if}
     <div class="en-admin-update-run">
       {#if snapshot.latest_url}
         <Button href={snapshot.latest_url} variant="outline" size="sm">Read the release</Button>

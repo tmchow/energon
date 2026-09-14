@@ -13,7 +13,6 @@ export type GithubRelease = {
   tag_name: string;
   html_url: string;
   published_at: string;
-  body: string | null;
 };
 
 export function parseSemver(raw: string): [number, number, number] | null {
@@ -32,26 +31,12 @@ export function compareSemver(a: string, b: string): number | null {
   return 0;
 }
 
-export function parseOperatorNotes(body: string | null | undefined): string[] {
-  if (!body) return [];
-  const start = body.search(/^## Operator\s*$/m);
-  if (start < 0) return [];
-  const rest = body.slice(start).replace(/^## Operator\s*\n?/, "");
-  const next = rest.search(/^## /m);
-  const block = next < 0 ? rest : rest.slice(0, next);
-  return block
-    .split("\n")
-    .map((line) => line.replace(/^[-*]\s*/, "").trim())
-    .filter(Boolean);
-}
-
 export function parseGithubRelease(raw: unknown): GithubRelease | null {
   if (!raw || typeof raw !== "object") return null;
   const rec = raw as Record<string, unknown>;
   if (typeof rec.tag_name !== "string" || typeof rec.html_url !== "string") return null;
   const published = typeof rec.published_at === "string" ? rec.published_at : "";
-  const body = typeof rec.body === "string" ? rec.body : null;
-  return { tag_name: rec.tag_name, html_url: rec.html_url, published_at: published, body };
+  return { tag_name: rec.tag_name, html_url: rec.html_url, published_at: published };
 }
 
 export function classifyUpstream(thisVersion: string | null, latestTag: string): UpstreamStatus {
@@ -69,7 +54,6 @@ export function snapshotFromRelease(thisVersion: string | null, release: GithubR
     latest_tag: release.tag_name,
     latest_url: release.html_url,
     published_at: release.published_at || null,
-    operator: parseOperatorNotes(release.body),
     docs_url: UPSTREAM_DOCS_UPDATE,
   };
 }
@@ -81,7 +65,6 @@ export function failedSnapshot(thisVersion: string | null): UpstreamSnapshot {
     latest_tag: null,
     latest_url: null,
     published_at: null,
-    operator: [],
     docs_url: UPSTREAM_DOCS_UPDATE,
   };
 }
