@@ -35,7 +35,7 @@ git status --short
 npm ci
 ```
 
-Keep instance configuration and generated plugins on this fork. Upstream accepts improvements that apply to every Energon, without personal origins, resource IDs, or generated catalogs; see [CONTRIBUTING.md](./CONTRIBUTING.md).
+Keep configuration for this Energon and generated plugins on this fork. Upstream accepts improvements that apply to every Energon, without personal origins, resource IDs, or generated catalogs; see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ### 3. Inspect the account and resources
 
@@ -150,7 +150,7 @@ Expect health/help 200, anonymous hub/admin redirects to Access, and unauthentic
 
 Have the human sign in through the chosen provider and confirm their email and administrator access. Confirm the compiled `/static/ui/*` script loads, stage a disposable file and cancel it, and exercise catalog search. If sign-in succeeds but the hub says **Not signed in**, check the team domain and hub audience against the active Access application and redeploy. A health response does not prove the interactive interface or identity worked.
 
-Follow [Connect an agent](#connect-an-agent). The human must approve the connection and its lifetime themselves; the agent should confirm authenticated `whoami` before publishing. Use the installed plugin and the running host's `/v1/help`, `/llms.txt`, and `/v1/openapi.json` for request syntax. Publish uniquely named disposable fixtures and use returned content URLs:
+Follow [Connect an agent](#connect-an-agent). The human must approve the connection and its lifetime themselves; the agent should confirm authenticated `whoami` before publishing. Use the installed plugin and the running Energon's `/v1/help`, `/llms.txt`, and `/v1/openapi.json` for request syntax. Publish uniquely named disposable fixtures and use returned content URLs:
 
 1. Open an HTML site with a stylesheet, relative asset, and JavaScript interaction in a browser.
 2. Read rendered and raw Markdown, update it, and confirm the same URL returns the new bytes.

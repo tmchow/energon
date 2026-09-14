@@ -119,7 +119,7 @@ Keep the diff small so merging `upstream/main` stays manageable. Worker, hub, `/
 
 Before an update, inspect local changes and retain the installation's account ID, D1/R2 bindings, both origins/routes, policy, Access vars, plugin identity, and token prefix. Review upstream changes before merging; do not replace the configured `wrangler.toml` or `instance-skill.json` with upstream placeholders. Compare new keys with `wrangler.example.toml`, apply only the settings needed, and regenerate the plugin after template changes. Review and commit generated changes to the fork.
 
-Supported customization uses Wrangler vars (`FOOTER_TEXT`, TTL, email domains, `WRITE_POLICY`) and the instance manifest. Hub UI source is in `src/ui/`; direct component changes add merge conflicts. Use the updated checkout's [installation checks and migration order](../INSTALL.md#6-commit-and-deploy), then repeat acceptance checks for the upgraded host.
+Supported customization uses Wrangler vars (`FOOTER_TEXT`, TTL, email domains, `WRITE_POLICY`) and `instance-skill.json`. Hub UI source is in `src/ui/`; direct component changes add merge conflicts. Use the updated checkout's [installation checks and migration order](../INSTALL.md#6-commit-and-deploy), then repeat acceptance checks for the upgraded Energon.
 
 ## Cloudflare Access
 
