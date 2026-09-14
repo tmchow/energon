@@ -351,16 +351,19 @@ body.page-markdown .en-md-table table,
   margin: 0;
   padding: 0;
   border: 0;
-  background: transparent;
+  background: var(--bg-canvas);
   color: var(--fg-1);
 }
-.en-md-expand::backdrop { background: var(--bg-overlay); }
+.en-md-expand::backdrop {
+  background: light-dark(var(--paper-0), var(--ink-0));
+}
 .en-md-expand-stage {
   position: absolute;
   inset: 0;
   overflow: hidden;
   touch-action: none;
   cursor: grab;
+  background: var(--bg-canvas);
 }
 .en-md-expand-stage:active { cursor: grabbing; }
 .en-md-expand-pan { transform-origin: 0 0; width: max-content; }

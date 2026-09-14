@@ -80,6 +80,9 @@ describe("markdown page shell", () => {
     expect(css).toMatch(/body\.page-markdown \.en-md-diagram-preview \{[\s\S]*?min-height: 12\.5rem/);
     expect(css).toMatch(/body\.page-markdown \.en-md-table-preview \{[\s\S]*?overflow-x: auto/);
     expect(css).toMatch(/\.en-md-expand \{/);
+    expect(css).toMatch(/\.en-md-expand \{[\s\S]*?background: var\(--bg-canvas\)/);
+    expect(css).toMatch(/\.en-md-expand::backdrop \{[\s\S]*?background: light-dark\(var\(--paper-0\), var\(--ink-0\)\)/);
+    expect(css).not.toMatch(/\.en-md-expand::backdrop \{[^}]*--bg-overlay/);
     expect(css).not.toMatch(/\.en-md-diagram-lightbox/);
     const built = readFileSync(resolve("src/generated/ui.css"), "utf8");
     expect(built).toContain("en-md-diagram-preview");
