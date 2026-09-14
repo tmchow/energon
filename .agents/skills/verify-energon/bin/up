@@ -11,6 +11,6 @@ source "$_script_dir/_lib.sh"
 cd "$REPO_ROOT"
 "$_script_dir/launch"
 export ENERGON_VERIFY_RUN
-ENERGON_VERIFY_RUN="$(cat "$CURRENT_FILE")"
+ENERGON_VERIFY_RUN="${ENERGON_VERIFY_RUN:-$(cat "$CURRENT_FILE")}"
 "$_script_dir/doctor"
 "$_script_dir/ready"

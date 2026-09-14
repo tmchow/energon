@@ -33,11 +33,11 @@ if [[ "$code" != "201" ]]; then
 fi
 
 token="$(json_get "$body" "token")"
-[[ "$token" == ee_live_* ]] || die "minted value is not an ee_live_ token: $token"
+[[ -n "${TOKEN_PREFIX:-}" && "$token" == "$TOKEN_PREFIX"* ]] || die "minted value does not match the discovered token prefix"
 expires_at="$(json_get "$body" "expires_at" || true)"
 
 printf '%s\n' "$token" >"$(state_dir)/token"
-if ! grep -q '^TOKEN=ee_live_' "$(state_file)" || [[ "${ENERGON_VERIFY_SAVE_TOKEN:-}" == "1" ]]; then
+if ! grep -q "^TOKEN=${TOKEN_PREFIX:?Run bin/doctor first}" "$(state_file)" || [[ "${ENERGON_VERIFY_SAVE_TOKEN:-}" == "1" ]]; then
   python3 - "$(state_file)" "$token" "$expires_at" <<'PY'
 from pathlib import Path
 import sys
