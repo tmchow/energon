@@ -47,9 +47,10 @@ describe("markdown page shell", () => {
     expect(mermaidRuntime).toBeTruthy();
     expect(mermaidRuntime).toMatch(/import mermaid from "\/static\/mermaid\/mermaid\.esm\.min\.mjs"/);
     expect(mermaidRuntime).not.toMatch(/import \{ mountMarkdownExpand \} from/);
-    expect(mermaidRuntime).toContain(`await import("${"/static/md-expand.mjs"}")`);
-    expect(mermaidRuntime).toContain("postRenderCallback");
-    expect(mermaidRuntime.indexOf("await mermaid.run")).toBeLessThan(mermaidRuntime.lastIndexOf("mountMarkdownExpand()"));
+    expect(mermaidRuntime).not.toContain("postRenderCallback");
+    expect(mermaidRuntime.indexOf("mermaid.initialize")).toBeLessThan(mermaidRuntime.indexOf("await mermaid.run"));
+    expect(mermaidRuntime.indexOf("await mermaid.run")).toBeLessThan(mermaidRuntime.indexOf(`await import("${"/static/md-expand.mjs"}")`));
+    expect(mermaidRuntime).toMatch(/try \{\s*const \{ mountMarkdownExpand \} = await import\("\/static\/md-expand\.mjs"\)/);
     expect(html).toContain("xyChart: fit");
     expect(html).not.toContain("xychart: fit");
     expect(html).toContain("scaleLabelColor");

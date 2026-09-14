@@ -114,12 +114,11 @@ export async function respondMarkdown(
   );
 }
 
-// Dynamic-import expand so mermaid's ESM graph stays CORS-clean. Mount after
-// each SVG so a sibling script cannot wrap only the first fence.
+// Run mermaid before loading expand. A failed expand import must not leave
+// fences as source. Mount after run so every SVG is wrapped, not only the first.
 function mermaidRuntimeHead(): string {
   return `<script type="module">
 import mermaid from "${MERMAID_SCRIPT_PATH}";
-const { mountMarkdownExpand } = await import("${MD_EXPAND_SCRIPT_PATH}");
 const light = matchMedia("(prefers-color-scheme: light)").matches;
 const fit = { useMaxWidth: false };
 mermaid.initialize({
@@ -154,16 +153,16 @@ mermaid.initialize({
   },
 });
 try {
-  await mermaid.run({
-    querySelector: ".en-md pre.mermaid",
-    postRenderCallback: async () => {
-      mountMarkdownExpand();
-    },
-  });
+  await mermaid.run({ querySelector: ".en-md pre.mermaid" });
 } catch {
   /* keep whatever SVG mermaid drew */
 }
-mountMarkdownExpand();
+try {
+  const { mountMarkdownExpand } = await import("${MD_EXPAND_SCRIPT_PATH}");
+  mountMarkdownExpand();
+} catch {
+  /* diagrams stay as inline SVG without the overlay */
+}
 </script>`;
 }
 
