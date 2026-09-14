@@ -24,7 +24,7 @@ Before choosing components, identify what someone came to do, what they need to 
 | Connect | Identify the requesting agent and enter its code | Expiry, scope, explicit approve and deny actions |
 | About | A concrete publishing or reference workflow | What people and agents can do with the same work |
 | Stats | Storage and usage with clear units | Scope, totals, and comparable per-person values |
-| Admin | Preview a host-wide retirement, then confirm | Owner, name, size, last written, last read, expiry, and the recorded audit |
+| Admin | See this Energon's version and health, then preview a host-wide retirement | A newer release when one exists, owner, name, size, last written, last read, expiry, tokens, and the recorded audit |
 | Password gate | Enter the shared password | The result of a failed attempt and guidance from the sender |
 | Markdown | Read the author's document | Readable code and tables in both color schemes; source via curl or `?raw=1` |
 

@@ -28,7 +28,7 @@ Do not put secrets, tokens, or share passwords in published files. Last write wi
 - [Health](${origin}/v1/health): \`{"ok":true}\`. No auth.
 - [Hub](${origin}/): human UI. Cloudflare Access.
 - [About](${origin}/about) and [Stats](${origin}/stats): signed-in humans only.
-- [Admin](${origin}/admin): operators listed on \`ADMIN_EMAILS\`. Retire old work, check storage health, and list or revoke tokens across accounts; every action is recorded. Signed-in humans only.
+- [Admin](${origin}/admin): operators listed on \`ADMIN_EMAILS\`. See a newer release, retire unused work, check storage health, and list or revoke tokens across accounts; every action is recorded. Signed-in humans only.
 - [Setup](${origin}/setup) and [Tokens](${origin}/tokens): signed-in humans only. Approve connections at /connect; create or revoke tokens at /tokens.
 
 ## How to publish

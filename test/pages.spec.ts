@@ -344,7 +344,8 @@ describe("signed-in pages", () => {
     const page = await req("/admin", { headers: access("admin@esperlabs.app") });
     expect(page.status).toBe(200);
     const html = await page.text();
-    expect(html).toContain("Retire old work.");
+    expect(html).toContain(">Admin.<");
+    expect(html).toContain("Check this Energon, retire unused work, and revoke tokens.");
     expect(html).toContain('id="admin-health"');
     expect(html).toContain("Quota used is the ledger");
     expect(html).toContain("Expired awaiting purge");
