@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { FIGURE_EXTRA_REM, lightboxStartScale, previewLayout, PROSE_MEASURE_REM } from "../../public/static/md-expand.mjs";
+import {
+  FIGURE_EXTRA_REM,
+  lightboxStartScale,
+  previewLayout,
+  PROSE_MEASURE_REM,
+  shouldDismissOverlay,
+} from "../../public/static/md-expand.mjs";
 
 describe("markdown expand layout", () => {
   it("keeps a wide graph at the min height instead of a smear", () => {
@@ -24,5 +30,36 @@ describe("markdown expand layout", () => {
   it("keeps figure width as prose plus a small extra", () => {
     expect(PROSE_MEASURE_REM).toBe(46);
     expect(FIGURE_EXTRA_REM).toBe(6);
+  });
+});
+
+describe("markdown expand overlay dismiss", () => {
+  const tap = {
+    eventType: "pointerup",
+    downOnEmptyStage: true,
+    moved: false,
+    pinched: false,
+    pointersRemaining: 0,
+  };
+
+  it("closes on an empty-stage click", () => {
+    expect(shouldDismissOverlay(tap)).toBe(true);
+  });
+
+  it("does not close when the down target was the diagram or table", () => {
+    expect(shouldDismissOverlay({ ...tap, downOnEmptyStage: false })).toBe(false);
+  });
+
+  it("does not close after a pan", () => {
+    expect(shouldDismissOverlay({ ...tap, moved: true })).toBe(false);
+  });
+
+  it("does not close after a pinch even if the last lift looks like a click", () => {
+    expect(shouldDismissOverlay({ ...tap, pinched: true })).toBe(false);
+    expect(shouldDismissOverlay({ ...tap, pointersRemaining: 1 })).toBe(false);
+  });
+
+  it("does not close on pointercancel", () => {
+    expect(shouldDismissOverlay({ ...tap, eventType: "pointercancel" })).toBe(false);
   });
 });

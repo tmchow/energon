@@ -298,6 +298,28 @@ function ensureExpand() {
 }
 
 /**
+ * Empty-stage click closes the overlay. `setPointerCapture` retargets
+ * `pointerup` at the stage, so this uses the pointerdown target instead.
+ *
+ * @param {{
+ *   eventType: string,
+ *   downOnEmptyStage: boolean,
+ *   moved: boolean,
+ *   pinched: boolean,
+ *   pointersRemaining: number,
+ * }} gesture
+ */
+export function shouldDismissOverlay(gesture) {
+  return (
+    gesture.eventType === "pointerup" &&
+    gesture.downOnEmptyStage &&
+    !gesture.moved &&
+    !gesture.pinched &&
+    gesture.pointersRemaining === 0
+  );
+}
+
+/**
  * @param {HTMLElement} stage
  * @param {HTMLElement} pan
  * @param {() => void} onBackdrop
@@ -310,6 +332,8 @@ function attachPanZoom(stage, pan, onBackdrop) {
   let pinchDist = 0;
   let pinchScale = 1;
   let moved = false;
+  let pinched = false;
+  let downOnEmptyStage = false;
   let dragOffX = 0;
   let dragOffY = 0;
 
@@ -347,7 +371,13 @@ function attachPanZoom(stage, pan, onBackdrop) {
 
   stage.addEventListener("pointerdown", (event) => {
     if (event.button && event.button !== 0) return;
-    moved = false;
+    if (pointers.size === 0) {
+      moved = false;
+      pinched = false;
+      downOnEmptyStage = event.target === stage;
+    } else {
+      pinched = true;
+    }
     stage.setPointerCapture(event.pointerId);
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointers.size === 1) {
@@ -385,7 +415,17 @@ function attachPanZoom(stage, pan, onBackdrop) {
       dragOffX = x - remain.x;
       dragOffY = y - remain.y;
     }
-    if (event.type === "pointerup" && event.target === stage && !moved) onBackdrop();
+    if (
+      shouldDismissOverlay({
+        eventType: event.type,
+        downOnEmptyStage,
+        moved,
+        pinched,
+        pointersRemaining: pointers.size,
+      })
+    ) {
+      onBackdrop();
+    }
   };
   stage.addEventListener("pointerup", endPointer);
   stage.addEventListener("pointercancel", endPointer);
