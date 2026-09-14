@@ -164,10 +164,12 @@ function wrapDiagram(pre) {
 function wrapWideTable(table, article) {
   if (table.closest(".en-md-figure")) return;
   table.style.width = "max-content";
+  table.style.maxWidth = "none";
   const natural = table.scrollWidth;
   const prose = Math.min(article.clientWidth, remPx(PROSE_MEASURE_REM));
   if (natural <= prose + 8) {
     table.style.width = "";
+    table.style.maxWidth = "";
     return;
   }
 
@@ -182,6 +184,7 @@ function wrapWideTable(table, article) {
   preview.append(table);
   figure.append(preview);
   table.style.width = "max-content";
+  table.style.maxWidth = "none";
 
   if (table.scrollWidth > preview.clientWidth + 8) {
     const open = document.createElement("button");
