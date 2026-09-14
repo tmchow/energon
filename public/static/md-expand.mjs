@@ -90,19 +90,35 @@ function parseLength(value) {
 export function mountMarkdownExpand(root = document) {
   const article = root.querySelector?.(".en-md");
   if (!article || !("querySelectorAll" in article)) return;
-  for (const pre of article.querySelectorAll(":scope > pre.mermaid, .en-md-figure pre.mermaid")) {
-    wrapDiagram(pre);
+  for (const pre of article.querySelectorAll("pre.mermaid")) {
+    try {
+      wrapDiagram(pre);
+    } catch {
+      /* keep remaining figures */
+    }
   }
   for (const table of article.querySelectorAll(":scope > table")) {
-    wrapWideTable(table, article);
+    try {
+      wrapWideTable(table, article);
+    } catch {
+      /* keep remaining tables */
+    }
   }
-  if (typeof ResizeObserver === "function") {
-    const relayout = () => {
-      for (const pre of article.querySelectorAll(".en-md-diagram pre.mermaid")) layoutPreview(pre);
-      for (const table of article.querySelectorAll(":scope > table")) wrapWideTable(table, article);
-    };
-    new ResizeObserver(relayout).observe(article);
-  }
+  observeExpandLayout(article);
+}
+
+/** @type {WeakSet<Element>} */
+const expandObserved = new WeakSet();
+
+/** @param {Element} article */
+function observeExpandLayout(article) {
+  if (typeof ResizeObserver !== "function" || expandObserved.has(article)) return;
+  expandObserved.add(article);
+  const relayout = () => {
+    for (const pre of article.querySelectorAll(".en-md-diagram pre.mermaid")) layoutPreview(pre);
+    for (const table of article.querySelectorAll(":scope > table")) wrapWideTable(table, article);
+  };
+  new ResizeObserver(relayout).observe(article);
 }
 
 /** @param {HTMLElement} pre */

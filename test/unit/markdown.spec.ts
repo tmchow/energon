@@ -43,11 +43,13 @@ describe("markdown page shell", () => {
     expect(html).toContain("mountMarkdownExpand");
     const modules = [...html.matchAll(/<script type="module">([\s\S]*?)<\/script>/g)].map((m) => m[1]);
     const mermaidRuntime = modules.find((src) => src.includes("mermaid.initialize"));
-    const expandRuntime = modules.find((src) => src.includes("mountMarkdownExpand"));
+    expect(modules).toHaveLength(1);
     expect(mermaidRuntime).toBeTruthy();
-    expect(expandRuntime).toBeTruthy();
-    expect(mermaidRuntime).not.toContain("md-expand");
-    expect(expandRuntime).not.toContain("mermaid.initialize");
+    expect(mermaidRuntime).toMatch(/import mermaid from "\/static\/mermaid\/mermaid\.esm\.min\.mjs"/);
+    expect(mermaidRuntime).not.toMatch(/import \{ mountMarkdownExpand \} from/);
+    expect(mermaidRuntime).toContain(`await import("${"/static/md-expand.mjs"}")`);
+    expect(mermaidRuntime).toContain("postRenderCallback");
+    expect(mermaidRuntime.indexOf("await mermaid.run")).toBeLessThan(mermaidRuntime.lastIndexOf("mountMarkdownExpand()"));
     expect(html).toContain("xyChart: fit");
     expect(html).not.toContain("xychart: fit");
     expect(html).toContain("scaleLabelColor");
@@ -63,6 +65,8 @@ describe("markdown page shell", () => {
     });
     expect(html).toContain("/static/md-expand.mjs");
     expect(html).toContain("mountMarkdownExpand");
+    expect(html).toMatch(/import \{ mountMarkdownExpand \} from "\/static\/md-expand\.mjs"/);
+    expect(html).not.toContain("postRenderCallback");
     expect(html).not.toContain("/static/mermaid/");
     expect(html).not.toContain("mermaid.initialize");
   });

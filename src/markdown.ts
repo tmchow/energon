@@ -78,7 +78,7 @@ export function renderMarkdown(md: string): { html: string; mermaid: boolean; ta
 }
 
 export function markdownPage(opts: { title: string; html: string; mermaid: boolean; tables?: boolean }): string {
-  const extraHead = opts.mermaid ? mermaidHead() : opts.tables ? expandHead() : "";
+  const extraHead = opts.mermaid ? mermaidRuntimeHead() : opts.tables ? expandHead() : "";
   return uiPage(`${opts.title} — ${PRODUCT}`, { page: "markdown", data: { html: opts.html } }, extraHead);
 }
 
@@ -114,13 +114,12 @@ export async function respondMarkdown(
   );
 }
 
-function mermaidHead(): string {
-  return `${mermaidRuntimeHead()}${expandHead()}`;
-}
-
+// Dynamic-import expand so mermaid's ESM graph stays CORS-clean. Mount after
+// each SVG so a sibling script cannot wrap only the first fence.
 function mermaidRuntimeHead(): string {
   return `<script type="module">
 import mermaid from "${MERMAID_SCRIPT_PATH}";
+const { mountMarkdownExpand } = await import("${MD_EXPAND_SCRIPT_PATH}");
 const light = matchMedia("(prefers-color-scheme: light)").matches;
 const fit = { useMaxWidth: false };
 mermaid.initialize({
@@ -155,10 +154,16 @@ mermaid.initialize({
   },
 });
 try {
-  await mermaid.run({ querySelector: ".en-md pre.mermaid" });
+  await mermaid.run({
+    querySelector: ".en-md pre.mermaid",
+    postRenderCallback: async () => {
+      mountMarkdownExpand();
+    },
+  });
 } catch {
   /* keep whatever SVG mermaid drew */
 }
+mountMarkdownExpand();
 </script>`;
 }
 
