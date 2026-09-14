@@ -1707,6 +1707,8 @@ describe("Energon", () => {
       });
       expect(names(sizeRest.body.files)).toEqual(["tiny.txt"]);
       expect(sizeRest.body.next_cursor).toBeNull();
+      const viaAlias = await json(`/v1/files?sort=size&limit=2&files_cursor=${encodeURIComponent(sizePage.body.next_cursor)}`, { headers: auth(token) });
+      expect(names(viaAlias.body.files)).toEqual(["tiny.txt"]);
 
       const newest = await json("/v1/files", { headers: auth(token) });
       const oldest = await json("/v1/files?sort=age", { headers: auth(token) });

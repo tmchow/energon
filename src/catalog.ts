@@ -24,6 +24,9 @@ export type ListPresentation = {
   sort: CatalogSort;
   limit: number;
   cursor: string | null;
+  /** Documented `/v1` aliases for `cursor`, read only when `cursor` is absent. */
+  sitesCursor: string | null;
+  filesCursor: string | null;
   /** Hub-only: restrict the merged catalog to one table. */
   kind?: CatalogKind;
 };
@@ -158,6 +161,8 @@ export function parseListQuery(url: URL): ListQuery {
     sort: parseSort(url.searchParams.get("sort")),
     limit,
     cursor: url.searchParams.get("cursor"),
+    sitesCursor: url.searchParams.get("sites_cursor"),
+    filesCursor: url.searchParams.get("files_cursor"),
     kind: parseKind(url.searchParams.get("kind")),
   };
 }
@@ -427,11 +432,11 @@ function cursorSql<Row>(spec: SortSpec<Row>, sort: CatalogSort, raw: string | nu
 }
 
 export function siteCursorSql(query: ListQuery): CursorSql {
-  return cursorSql(siteSort(query.sort), query.sort, query.cursor);
+  return cursorSql(siteSort(query.sort), query.sort, query.cursor ?? query.sitesCursor);
 }
 
 export function fileCursorSql(query: ListQuery): CursorSql {
-  return cursorSql(fileSort(query.sort), query.sort, query.cursor);
+  return cursorSql(fileSort(query.sort), query.sort, query.cursor ?? query.filesCursor);
 }
 
 /** One row of the hub's merged sites + files UNION, aliased `u`. `kind` breaks ties before `id` because ids are minted per table. */

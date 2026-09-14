@@ -222,6 +222,16 @@ describe("list helpers", () => {
     expect(sql.order).toBe("filename ASC, id ASC");
   });
 
+  it("reads the documented sites_cursor and files_cursor aliases when cursor is absent", () => {
+    const fileCursor = nextFileCursor("name", { id: "Ab12Cd", filename: "notes.md", updated_at: null, created_at: "t0", size: 3 });
+    const viaAlias = fileCursorSql(q(`?sort=name&files_cursor=${encodeURIComponent(fileCursor)}`));
+    expect(viaAlias.sql).toBe(fileCursorSql({ ...q("?sort=name"), cursor: fileCursor }).sql);
+    expect(viaAlias.binds).toEqual(["notes.md", "notes.md", "Ab12Cd"]);
+    const siteCursor = nextSiteCursor("name", { id: "Ab12Cd", slug: "notes", handle: "ada", updated_at: "t0", size: 3 });
+    expect(siteCursorSql(q(`?sort=name&sites_cursor=${encodeURIComponent(siteCursor)}`)).sql).not.toBe("");
+    expect(fileCursorSql(q(`?sort=name&cursor=junk&files_cursor=${encodeURIComponent(fileCursor)}`)).sql).toBe("");
+  });
+
   it("ignores a cursor minted under another sort", () => {
     const cursor = nextFileCursor("name", { id: "Ab12Cd", filename: "notes.md", updated_at: null, created_at: "t0", size: 3 });
     expect(fileCursorSql({ ...q("?sort=size"), cursor }).sql).toBe("");

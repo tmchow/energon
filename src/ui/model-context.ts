@@ -3,6 +3,7 @@ import type { CatalogData } from './types';
 
 type Tool = { name: string; description: string; inputSchema: object; execute: () => Promise<unknown> };
 type ModelContext = { registerTool: (tool: Tool) => void; unregisterTool?: (name: string) => void };
+const LIST_PAGE_CAP = 10;
 
 export function registerHubTools(): () => void {
   const context = (document as Document & { modelContext?: ModelContext }).modelContext
@@ -17,8 +18,14 @@ export function registerHubTools(): () => void {
     name: 'energon_list', description: 'List sites, files, and token labels visible on this signed-in hub. Does not return token secrets.',
     inputSchema: { type: 'object', properties: {} },
     async execute() {
-      const data = await api<CatalogData>('/account/data');
-      return text({ email: data.email, sites: data.items.filter(item => item.kind === 'site'), files: data.items.filter(item => item.kind === 'file'), tokens: (data.tokens || []).filter(t => !t.revoked).map(t => ({ label: t.label, hint: t.hint || null, recoverable: t.recoverable })) });
+      const data = await api<CatalogData>('/account/data?limit=50');
+      const items = [...data.items];
+      for (let cursor = data.cursor, pages = 1; cursor && pages < LIST_PAGE_CAP; pages++) {
+        const next = await api<CatalogData>(`/account/data?limit=50&cursor=${encodeURIComponent(cursor)}`);
+        items.push(...next.items);
+        cursor = next.cursor;
+      }
+      return text({ email: data.email, total: data.total, sites: items.filter(item => item.kind === 'site'), files: items.filter(item => item.kind === 'file'), tokens: (data.tokens || []).filter(t => !t.revoked).map(t => ({ label: t.label, hint: t.hint || null, recoverable: t.recoverable })) });
     },
   });
   return () => { context.unregisterTool?.('energon_help'); context.unregisterTool?.('energon_list'); };
