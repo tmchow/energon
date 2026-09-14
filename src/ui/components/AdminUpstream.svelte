@@ -12,11 +12,12 @@
   } = $props();
 
   const showCard = $derived(snapshot.status === 'update' && !dismissed);
-  const title = $derived(releaseTitle(snapshot.latest_tag));
+  const latestLabel = $derived(displayVersion(snapshot.latest_tag));
+  const title = $derived(latestLabel ? `${latestLabel} is available` : 'A newer release is available');
 
-  function releaseTitle(tag: string | null): string {
-    if (!tag) return 'A newer release is available';
-    return `${tag.replace(/^v/i, '')} is available`;
+  function displayVersion(tag: string | null): string | null {
+    if (!tag) return null;
+    return tag.replace(/^v/i, '');
   }
 
   function note(current: UpstreamSnapshot): string {
@@ -42,8 +43,10 @@
   <Card id="admin-update" title={title} className="en-admin-card">
     {#snippet headEnd()}<Badge tone="warn">Update</Badge>{/snippet}
     <p class="en-muted-copy">
-      This Energon is {snapshot.this_version ?? 'unknown'}.{#if snapshot.published_at}
-        Released <Timestamp value={snapshot.published_at} dateOnly />.{/if}
+      This Energon is {snapshot.this_version ?? 'unknown'}.
+      {#if latestLabel && snapshot.published_at}
+        {latestLabel} was released <Timestamp value={snapshot.published_at} dateOnly />.
+      {/if}
     </p>
     <div class="en-admin-update-run">
       {#if snapshot.latest_url}

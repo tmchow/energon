@@ -403,6 +403,7 @@ describe("signed-in pages", () => {
     expect(html).toContain('id="admin-update"');
     expect(html).toContain("1.1.0 is available");
     expect(html).toContain("This Energon is 1.0.0.");
+    expect(html).toContain("1.1.0 was released");
     expect(html).not.toContain("Restart after deploy");
     expect(html).not.toContain('id="admin-update-operator"');
     expect(html).toContain('id="admin-update-dismiss"');
