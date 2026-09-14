@@ -30,10 +30,10 @@ Save non-secret inputs in a local JSON file outside the repository:
 ```json
 {
   "account_id": "0123456789abcdef0123456789abcdef",
-  "hub_hostname": "energon.example.com",
-  "content_hostname": "share.example.com",
+  "hub_hostname": "energon.your.co",
+  "content_hostname": "share.your.co",
   "identity_provider_id": "11111111-1111-4111-8111-111111111111",
-  "allowed_emails": ["owner@example.com"]
+  "allowed_emails": ["owner@your.co"]
 }
 ```
 

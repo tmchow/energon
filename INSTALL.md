@@ -41,7 +41,7 @@ Put the printed D1 `database_id` into `wrangler.toml`. Keep `database_name` and 
 Ask the human for:
 
 - Hub hostname (example: `https://energon.your.co`)
-- Content hostname (example: `https://content.energon.your.co`; this must be separate from the hub)
+- Content hostname (example: `https://share.your.co`; this must be separate from the hub)
 - Email domains that may mint tokens (example: `your.co,your.com`)
 - Write default: `org` (any token on this host — usual for coworker/agent sharing) or `owner` (only the creator)
 - Whether content may live forever (`ALLOW_UNLIMITED_RETENTION=true`) or must expire
@@ -74,7 +74,7 @@ Strings only (Wrangler). Committed defaults are company-shaped. Full table: [doc
 | Var | Typical company value |
 | --- | --- |
 | `PUBLIC_ORIGIN` | `https://energon.your.co` |
-| `CONTENT_ORIGIN` | `https://content.energon.your.co` |
+| `CONTENT_ORIGIN` | `https://share.your.co` |
 | `TOKEN_ENV` | match the rendered skill |
 | `SKILL_NAME` / `MARKETPLACE_NAME` | match the rendered skill |
 | `MARKETPLACE_REPO` | `your-org/energon` |
