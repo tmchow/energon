@@ -110,28 +110,36 @@ function mermaidHead(): string {
   return `<script type="module">
 import mermaid from "${MERMAID_SCRIPT_PATH}";
 const light = matchMedia("(prefers-color-scheme: light)").matches;
+const fit = { useMaxWidth: false };
 mermaid.initialize({
   startOnLoad: true,
   theme: light ? "neutral" : "dark",
   securityLevel: "strict",
-  themeVariables: light ? {
-    darkMode: false,
-    background: "#f6f4fb",
-    primaryColor: "#efeaf8",
-    primaryTextColor: "#14111f",
-    primaryBorderColor: "#7a4dff",
-    lineColor: "#6b6486",
-    secondaryColor: "#ffffff",
-    tertiaryColor: "#efecf7",
-  } : {
-    darkMode: true,
-    background: "#070814",
-    primaryColor: "#16102a",
-    primaryTextColor: "#ece8f8",
-    primaryBorderColor: "#8a6cff",
-    lineColor: "#9a93b3",
-    secondaryColor: "#0d1220",
-    tertiaryColor: "#10162a",
+  flowchart: fit,
+  sequence: fit,
+  gantt: fit,
+  class: fit,
+  er: fit,
+  state: fit,
+  gitGraph: fit,
+  journey: fit,
+  timeline: fit,
+  mindmap: fit,
+  c4: fit,
+  pie: fit,
+  quadrantChart: fit,
+  sankey: fit,
+  requirement: fit,
+  block: fit,
+  architecture: fit,
+  kanban: fit,
+  packet: fit,
+  radar: fit,
+  treemap: fit,
+  xychart: fit,
+  themeVariables: {
+    background: light ? "#f6f4fb" : "#070814",
+    scaleLabelColor: light ? "#14111f" : "#ece8f8",
   },
 });
 </script>`;

@@ -31,5 +31,8 @@ describe("markdown page shell", () => {
     expect(html).toContain('matchMedia("(prefers-color-scheme: light)")');
     expect(html).toContain('theme: light ? "neutral" : "dark"');
     expect(html).toContain('securityLevel: "strict"');
+    expect(html).toContain("useMaxWidth: false");
+    expect(html).toContain("scaleLabelColor");
+    expect(html).not.toContain("primaryColor:");
   });
 });

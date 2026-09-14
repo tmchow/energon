@@ -252,7 +252,8 @@ body.page-markdown .en-md { padding: 0; overflow-x: auto; }
 .en-md th { background: var(--bg-sunken); font-weight: 550; }
 .en-md tbody tr:last-child th, .en-md tbody tr:last-child td { border-bottom: 0; }
 .en-md code:not(pre code) { background: var(--bg-sunken); color: var(--fg-1); border-color: var(--border-1); }
-.en-md pre.mermaid { background: transparent; border: 0; color: inherit; padding: 0; box-shadow: none; }
+.en-md pre.mermaid { background: transparent; border: 0; color: inherit; padding: 0; box-shadow: none; overflow: visible; }
+body.page-markdown .en-md .mermaid svg { width: auto; max-width: none; height: auto; }
 .en-md li:has(> input[type="checkbox"]) { list-style: none; }
 .en-md ul:has(> li > input[type="checkbox"]) { padding-left: 0.2em; }
 .en-md input[type="checkbox"] { margin-right: 0.45em; accent-color: var(--accent); }
