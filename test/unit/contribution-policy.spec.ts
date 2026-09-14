@@ -12,6 +12,16 @@ function workflowFiles() {
     .map((name) => ({ name, body: readFileSync(join(workflowsDir, name), "utf8") }));
 }
 
+function walkFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const next = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...walkFiles(next));
+    else if (entry.isFile()) out.push(next);
+  }
+  return out;
+}
+
 describe("contribution policy", () => {
   it("does not auto-close fork pull requests", () => {
     expect(existsSync(join(workflowsDir, "decline-fork-prs.yml"))).toBe(false);
@@ -110,7 +120,17 @@ describe("contribution policy", () => {
     const skill = readFileSync(join(root, ".agents/skills/cut-release/SKILL.md"), "utf8");
     expect(skill).toContain("gh repo view --json isFork,nameWithOwner,url");
     expect(skill).toContain("gh pr list --label \"autorelease: pending\"");
-    expect(skill).not.toContain("--repo tmchow/energon");
+  });
+
+  it("does not hard-code tmchow/energon in shipped skills", () => {
+    const agents = readFileSync(join(root, "AGENTS.md"), "utf8");
+    expect(agents).toMatch(
+      /Skills under `\.agents\/skills\/` ship on every fork[\s\S]*Do not write `tmchow\/energon`/,
+    );
+    expect(agents).toContain("Do not put `tmchow/energon` in these files.");
+    for (const file of walkFiles(join(root, ".agents/skills"))) {
+      expect(readFileSync(file, "utf8").includes("tmchow/energon"), file).toBe(false);
+    }
   });
 
   it("lints PR titles as conventional commits without pull_request_target", () => {
