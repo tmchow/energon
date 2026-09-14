@@ -300,6 +300,8 @@ function ensureExpand() {
 /**
  * Empty-stage click closes the overlay. `setPointerCapture` retargets
  * `pointerup` at the stage, so this uses the pointerdown target instead.
+ * The pan wrapper is a transform host and may fill the stage; only SVG/table
+ * descendants count as content.
  *
  * @param {{
  *   eventType: string,
@@ -317,6 +319,18 @@ export function shouldDismissOverlay(gesture) {
     !gesture.pinched &&
     gesture.pointersRemaining === 0
   );
+}
+
+/**
+ * @param {EventTarget | null} target
+ * @param {Element} stage
+ * @param {Element} pan
+ */
+export function overlayDownIsBackdrop(target, stage, pan) {
+  if (target == null) return true;
+  if (target === stage || target === pan) return true;
+  if (typeof pan.contains !== "function") return true;
+  return !pan.contains(target);
 }
 
 /**
@@ -374,7 +388,7 @@ function attachPanZoom(stage, pan, onBackdrop) {
     if (pointers.size === 0) {
       moved = false;
       pinched = false;
-      downOnEmptyStage = event.target === stage;
+      downOnEmptyStage = overlayDownIsBackdrop(event.target, stage, pan);
     } else {
       pinched = true;
     }

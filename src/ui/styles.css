@@ -363,7 +363,7 @@ body.page-markdown .en-md-table table,
   cursor: grab;
 }
 .en-md-expand-stage:active { cursor: grabbing; }
-.en-md-expand-pan { transform-origin: 0 0; }
+.en-md-expand-pan { transform-origin: 0 0; width: max-content; }
 .en-md-expand-pan svg { display: block; max-width: none; }
 .en-md-expand-pan .en-md { padding: 0; overflow: visible; }
 .en-md-expand-close {

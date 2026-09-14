@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   FIGURE_EXTRA_REM,
   lightboxStartScale,
+  overlayDownIsBackdrop,
   previewLayout,
   PROSE_MEASURE_REM,
   shouldDismissOverlay,
@@ -61,5 +62,19 @@ describe("markdown expand overlay dismiss", () => {
 
   it("does not close on pointercancel", () => {
     expect(shouldDismissOverlay({ ...tap, eventType: "pointercancel" })).toBe(false);
+  });
+
+  it("treats the pan wrapper as empty backdrop, not diagram content", () => {
+    const stage = {};
+    const svg = {};
+    const pan = {
+      contains(node) {
+        return node === pan || node === svg;
+      },
+    };
+    expect(overlayDownIsBackdrop(stage, stage, pan)).toBe(true);
+    expect(overlayDownIsBackdrop(pan, stage, pan)).toBe(true);
+    expect(overlayDownIsBackdrop(svg, stage, pan)).toBe(false);
+    expect(overlayDownIsBackdrop(null, stage, pan)).toBe(true);
   });
 });
