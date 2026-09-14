@@ -115,9 +115,12 @@ export async function respondMarkdown(
 }
 
 function mermaidHead(): string {
+  return `${mermaidRuntimeHead()}${expandHead()}`;
+}
+
+function mermaidRuntimeHead(): string {
   return `<script type="module">
 import mermaid from "${MERMAID_SCRIPT_PATH}";
-import { mountMarkdownExpand } from "${MD_EXPAND_SCRIPT_PATH}";
 const light = matchMedia("(prefers-color-scheme: light)").matches;
 const fit = { useMaxWidth: false };
 mermaid.initialize({
@@ -156,7 +159,6 @@ try {
 } catch {
   /* keep whatever SVG mermaid drew */
 }
-mountMarkdownExpand();
 </script>`;
 }
 

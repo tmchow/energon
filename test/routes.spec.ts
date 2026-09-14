@@ -112,6 +112,7 @@ describe("host and route contracts", () => {
     const expand = await req("https://energon.example.com/static/md-expand.mjs");
     expect(expand.status).toBe(200);
     expect(expand.headers.get("content-type")).toMatch(/javascript|ecmascript/);
+    expect(expand.headers.get("access-control-allow-origin")).toBe("*");
     expect(await expand.text()).toContain("mountMarkdownExpand");
   });
 
