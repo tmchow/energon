@@ -203,6 +203,8 @@ describe("signed-in pages", () => {
     expect(setupHtml).toContain('id="agent-install"');
     expect(setupHtml).toContain("Install and connect in one step");
     expect(setupHtml).toContain("user (global) scope");
+    expect(setupHtml).toContain("npx skills add tmchow/energon --skill energon -g");
+    expect(setupHtml).toContain("Skills CLI");
     expect(setupHtml).toContain("connect with a code");
     expect(setupHtml).toContain("/auth.md");
     expect(setupHtml).not.toContain('class="app-footer"');

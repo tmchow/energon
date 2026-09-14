@@ -13,7 +13,8 @@
   </PageTitle>
   <div class="en-stack en-setup-stack">
     <Card title="Marketplace" hint="Use the form your agent tool asks for">
-      <p class="en-muted-copy">Add this repo as a plugin marketplace, then install <code>{data.identity.plugin}</code> (<code>{data.identity.plugin}@{data.identity.marketplace}</code>) at user (global) scope.</p>
+      <p class="en-muted-copy">Install at user (global) scope. The Skills CLI works across compatible agents. Or add this repo as a plugin marketplace, then install <code>{data.identity.plugin}</code> (<code>{data.identity.plugin}@{data.identity.marketplace}</code>).</p>
+      <CopyRow label="Skills CLI" value={data.skillsAdd} />
       <CopyRow label="GitHub repo" value={data.identity.repo || 'your-org/energon'} />
       <CopyRow label="Repo URL" value={data.identity.repo ? `https://github.com/${data.identity.repo}` : data.identity.origin} />
     </Card>

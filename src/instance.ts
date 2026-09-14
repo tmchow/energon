@@ -39,6 +39,11 @@ export function installLine(id: InstanceIdentity): string {
   return `${id.plugin}@${id.marketplace}`;
 }
 
+export function skillsAddCommand(id: InstanceIdentity): string {
+  const repo = id.repo.trim() || "your-org/energon";
+  return `npx skills add ${repo} --skill ${id.skill} -g`;
+}
+
 export function identityPublic(id: InstanceIdentity): Record<string, unknown> {
   return {
     product: PRODUCT,

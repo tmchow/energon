@@ -22,6 +22,7 @@ describe("Energon", () => {
     expect(text).toContain("ENERGON_TOKEN");
     expect(text).toContain("/v1/help");
     expect(text).toContain("user (global) scope");
+    expect(text).toContain("npx skills add tmchow/energon --skill energon -g");
     expect(text).toContain("unless the human asked for that");
     expect(text).toContain("token_expired");
     expect(text).not.toMatch(/ee_live_[A-Za-z0-9]+/);

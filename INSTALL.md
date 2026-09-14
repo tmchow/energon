@@ -185,7 +185,13 @@ Install at **user (global) scope** so it is available in every project. Project 
 
 Each Energon ships its own skill in its own repo, with its own name and token env. `yourco-energon` and another company's `esper-energon` can both live on the same machine. Install the one you want everywhere at user scope. If you belong to more than one organization, install each skill, or pin the second in that company's project settings. Do not install two marketplaces that share the same `name`.
 
-Usually you only add the company repo:
+The shortest path is the Skills CLI, which installs the same skill across compatible agents. Use `--skill` so you install this Energon's publish skill, not `verify-energon` from the same repo. After merging marketplace template changes, run `npm run skill:render` so the catalog can find that skill:
+
+```
+npx skills add your-org/energon --skill yourco-energon -g
+```
+
+Or add the company repo as a marketplace:
 
 ```
 your-org/energon
@@ -200,7 +206,7 @@ Add that as a marketplace, then install the plugin named in `GET {origin}/v1/hel
 Or paste this, filling in the values from `/v1/help` or `/setup`:
 
 ```
-Add the plugin marketplace at https://github.com/{owner/repo} ({owner/repo}) and install {plugin} at user (global) scope, using your normal plugin install flow. Do not install at project or workspace scope unless I ask.
+Install {plugin} at user (global) scope from https://github.com/{owner/repo} ({owner/repo}). Run `npx skills add {owner/repo} --skill {plugin} -g`, or add that GitHub marketplace and install {plugin} with your normal plugin flow. Do not install at project or workspace scope unless I ask.
 
 Then read {origin}/auth.md. If {TOKEN_ENV} is already set, use it. Otherwise connect with a code: show me the link and code, wait for my approval, then save the delivered token as {TOKEN_ENV} where this environment keeps secrets, readable only by me. Do not invent a token.
 ```
@@ -208,6 +214,12 @@ Then read {origin}/auth.md. If {TOKEN_ENV} is already set, use it. Otherwise con
 Signed-in humans can copy a filled block from `{origin}/setup`.
 
 Harness-specific commands (replace repo / plugin with this Energon’s values):
+
+**Skills CLI** (same command as above; works across compatible agents)
+
+```
+npx skills add your-org/energon --skill yourco-energon -g
+```
 
 **Claude Code**
 

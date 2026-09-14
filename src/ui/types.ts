@@ -34,7 +34,7 @@ export type LinkAccess = {
   write_password?: string | null;
 };
 export type TokensData = { email: string; tokens: Token[]; token_env: string; token_policy: TokenPolicy; now: number; admin: boolean; admin_token_policy: TokenPolicy };
-export type SetupData = { email: string; admin?: boolean; identity: InstanceIdentity; install: string };
+export type SetupData = { email: string; admin?: boolean; identity: InstanceIdentity; install: string; skillsAdd: string };
 export type ConnectEndedKind = 'expired' | 'approved' | 'denied';
 export type ConnectData = {
   email: string;

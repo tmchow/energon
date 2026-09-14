@@ -61,7 +61,7 @@ setup and verification.
 
 ### Connect an agent to an existing Energon
 
-Open that Energon's `/setup` page, or read `GET {origin}/v1/help`. Both name the marketplace repo, plugin, and token environment variable. Install the plugin at user scope with your agent's normal plugin flow; [INSTALL.md](./INSTALL.md#connect-an-agent) lists the commands for Claude Code, Cursor, Codex, Grok, and GitHub Copilot.
+Open that Energon's `/setup` page, or read `GET {origin}/v1/help`. Both name the marketplace repo, plugin, and token environment variable. Install at user scope with `npx skills add {owner/repo} --skill {plugin} -g`, or your agent's normal plugin flow; [INSTALL.md](./INSTALL.md#connect-an-agent) lists the commands for the Skills CLI, Claude Code, Cursor, Codex, Grok, and GitHub Copilot.
 
 The agent then follows `{origin}/auth.md`. If the token variable is already set, it uses it. Otherwise it shows you a link and an eight-digit code; you sign in, approve, and the agent saves the delivered token. For CI and hosted sandboxes, mint a token at `{origin}/tokens` and store it in the environment's secret store. Tokens are shown once.
 
@@ -83,7 +83,7 @@ Open <http://127.0.0.1:8787>. Localhost skips Cloudflare Access and signs you in
 ```text
 Read INSTALL.md in this repository, section "Connect an agent", and install Energon for this machine.
 
-Ask me for our Energon origin (https://...) if it is not already in the environment or INSTALL.md. Install the skill from this Energon's repo at user (global) scope. Then read {origin}/auth.md: if the token env named by GET {origin}/v1/help is set, use it; otherwise connect with a code, show me the link and code, and after I approve, save the token as that env where this environment keeps secrets. If I already use another Energon, this skill has a different name. Install it too, or pin it in this repo. Do not invent a token.
+Ask me for our Energon origin (https://...) if it is not already in the environment or INSTALL.md. Install the skill from this Energon's repo at user (global) scope (`npx skills add {owner/repo} --skill {plugin} -g`, or that host's plugin marketplace flow). Then read {origin}/auth.md: if the token env named by GET {origin}/v1/help is set, use it; otherwise connect with a code, show me the link and code, and after I approve, save the token as that env where this environment keeps secrets. If I already use another Energon, this skill has a different name. Install it too, or pin it in this repo. Do not invent a token.
 ```
 
 A running Energon's `/setup` page has the same prompt filled with its own values.

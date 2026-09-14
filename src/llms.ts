@@ -53,7 +53,7 @@ Do not put secrets, tokens, or share passwords in published files. Last write wi
 ${hubGuestWriteSection(content)}
 ## Optional
 
-- Agent skill for this Energon: add marketplace \`${id.repo}\` (\`https://github.com/${id.repo}\`) and install \`${id.plugin}\` at user (global) scope (\`${id.plugin}@${id.marketplace}\`). Do not install at project or workspace scope unless the human asked for that. The skill files name this origin (${id.origin}). A fork replaces the shipped skill with \`npm run skill:init\`. Claude Code and [Agent Plugins](https://agent-plugins.org/) hosts use the same repo.
+- Agent skill for this Energon: install at user (global) scope with \`npx skills add ${id.repo} --skill ${id.skill} -g\`, or add marketplace \`${id.repo}\` (\`https://github.com/${id.repo}\`) and install \`${id.plugin}\` (\`${id.plugin}@${id.marketplace}\`). Do not install at project or workspace scope unless the human asked for that. The skill files name this origin (${id.origin}). A fork replaces the shipped skill with \`npm run skill:init\`. Claude Code and [Agent Plugins](https://agent-plugins.org/) hosts use the same repo.
 - WebMCP tools register only on the signed-in hub. Agents that are not in that tab should use HTTP + the token.
 `;
 }

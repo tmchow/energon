@@ -131,9 +131,10 @@ describe("skill:init", () => {
     expect(JSON.parse(readFileSync(join(root, ".agents", "plugins", "marketplace.json"), "utf8")).plugins[0].source.path).toBe(
       "./plugins/yourco-energon",
     );
-    expect(JSON.parse(readFileSync(join(root, ".claude-plugin", "marketplace.json"), "utf8")).plugins[0].source).toBe(
-      "./plugins/yourco-energon",
-    );
+    const claudeMarket = JSON.parse(readFileSync(join(root, ".claude-plugin", "marketplace.json"), "utf8"));
+    expect(claudeMarket.metadata.pluginRoot).toBeUndefined();
+    expect(claudeMarket.plugins[0].source).toBe("./plugins/yourco-energon");
+    expect(claudeMarket.plugins[0].skills).toEqual(["./skills/yourco-energon"]);
     expect(existsSync(join(root, ".agents", "skills"))).toBe(false);
     expect(existsSync(join(pluginDir, "logo.svg"))).toBe(true);
     expect(runRender(["--check"], { root }).dirty).toEqual([]);
