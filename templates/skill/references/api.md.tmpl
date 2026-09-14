@@ -8,7 +8,7 @@ This page is the short form. The full contract (every path, request and response
 
 Errors are JSON: `{ error, message, hub }` plus extra fields. `message` is written for agents to read aloud to humans.
 
-The hub (`/`, `/account`) is behind Cloudflare Access. Published `/sites` and `/files` URLs are not. Anyone with the link can GET them unless a share password is set. Browsers get a form; agents send `X-Energon-Password`. Token `GET /v1/...` skips the share password. Publish responses include `url` (human) and `api_url` (agent). Writes that set a password echo it once plus `password_protected`. `/v1` GET never returns the password.
+The hub (`/`, `/account`) is behind Cloudflare Access. Published `/{handle}/s/{id}/{slug}/` and `/{handle}/f/{id}/{filename}` URLs are not. Anyone with the link can GET them unless a share password is set. Browsers get a form; agents send `X-Energon-Password`. Token `GET /v1/...` skips the share password. Publish responses include `url` (human) and `api_url` (agent). Writes that set a password echo it once plus `password_protected`. `/v1` GET never returns the password.
 
 This skill talks only to **{{ORIGIN}}**. Install a separately rendered skill for any other Energon.
 
@@ -42,9 +42,10 @@ DELETE /v1/sites/{id}/files/{path}       one path
 
 Create `201` `{ id, slug, url, created: true, password_protected, password, write_password_protected, write_password, ttl, expires_at }`. `password` / `write_password` are the phrases you just set, or `null`. `duplicate_from` is the source site **id**. Same slug always creates a new site (new id). PUT is `201` for a new path, `200` if replacing. PUT/GET file responses include `url` and `api_url`. GET listings have `id`, `password_protected`, `write_password_protected`, and `expires_at`. `/v1/sites/{slug}` does not resolve a site.
 
-Human URL: `{{ORIGIN}}/{handle}/s/{id}/{slug}/{path}`  
+Human URL: use the response `url` on the content origin (`/{handle}/s/{id}/{slug}/{path}`).
+
 Agent URL: `{{ORIGIN}}/v1/sites/{id}/files/{path}`  
-Directory URL: `{{ORIGIN}}/{handle}/s/{id}/{slug}/` serves `index.html` if present, else a file list.
+Directory URL: use the create response `url` (`/{handle}/s/{id}/{slug}/` on the content origin). It serves `index.html` first, then `index.md`, otherwise a file list.
 
 ## Loose files
 
