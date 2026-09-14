@@ -21,9 +21,13 @@
     const ro = new ResizeObserver(() => place(false));
     ro.observe(node);
     $effect(() => {
-      value;
-      options;
-      requestAnimationFrame(() => place(armed));
+      const animate = armed;
+      const current = value;
+      const list = options;
+      requestAnimationFrame(() => {
+        const known = list.some((option) => (typeof option === 'string' ? option : option.value) === current);
+        place(animate && known);
+      });
     });
     return () => ro.disconnect();
   }
