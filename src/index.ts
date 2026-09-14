@@ -2,7 +2,8 @@ import { uiPage } from "./ui-render";
 import { connectResponse } from "./connect";
 import { CONNECTION_JSON_MAX_BYTES, decideConnection, purgeConnections } from "./connections";
 import { aboutResponse } from "./about";
-import { instanceFooter, PRIVATE_HTML_HEADERS } from "./chrome";
+import { PRIVATE_HTML_HEADERS } from "./chrome";
+import { pageChrome } from "./upstream";
 import logoSvg from "./logo.svg";
 import { actorFromAccess, assertEmailAllowed, bulkRevokeResponse, helpBody, listTokens, mintToken, parseTokenScope, rejectWorkersDevForHumans, requireAdmin, requireHuman, revokeToken, unauthorized } from "./auth";
 import { setupResponse } from "./setup";
@@ -447,7 +448,8 @@ async function serveHub(request: Request, env: Env, ctx: ExecutionContext): Prom
     total: page.total,
     cursor: page.next_cursor,
   };
-  return new Response(uiPage(PRODUCT, { page: "hub", data: { ...bootstrap, words: MEMORABLE_WORDS, query }, footer: instanceFooter(env) }), { headers: PRIVATE_HTML_HEADERS });
+  const chrome = await pageChrome(env, Boolean(actor?.admin));
+  return new Response(uiPage(PRODUCT, { page: "hub", data: { ...bootstrap, words: MEMORABLE_WORDS, query }, footer: chrome.footer, upstream: chrome.upstream }), { headers: PRIVATE_HTML_HEADERS });
 }
 
 async function serveTokens(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -461,7 +463,8 @@ async function serveTokens(request: Request, env: Env, ctx: ExecutionContext): P
     admin: Boolean(actor.admin),
     admin_token_policy: tokenPolicyPublic(adminTokenPolicy(), publicOrigin(env)),
   };
-  return new Response(uiPage(`Tokens — ${PRODUCT}`, { page: "tokens", data: { ...bootstrap, now: Date.now() }, footer: instanceFooter(env) }), { headers: PRIVATE_HTML_HEADERS });
+  const chrome = await pageChrome(env, Boolean(actor.admin));
+  return new Response(uiPage(`Tokens — ${PRODUCT}`, { page: "tokens", data: { ...bootstrap, now: Date.now() }, footer: chrome.footer, upstream: chrome.upstream }), { headers: PRIVATE_HTML_HEADERS });
 }
 
 export type { Env };

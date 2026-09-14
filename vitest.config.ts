@@ -27,6 +27,13 @@ export default defineConfig({
           // Fixture emails in the worker suite. Production wrangler leaves this unset.
           ALLOWED_EMAIL_DOMAINS: "esperlabs.app,esperlabs.ai",
           ADMIN_EMAILS: "admin@esperlabs.app,tok-ops@esperlabs.app",
+          // Same tag as version.txt so worker pages stay current and never hit GitHub.
+          UPSTREAM_RELEASE_JSON: JSON.stringify({
+            tag_name: "v1.0.0",
+            html_url: "https://example.test/releases/v1.0.0",
+            published_at: "2026-09-14T00:00:00.000Z",
+            body: "## Operator\n- none",
+          }),
         },
       },
     }),

@@ -69,3 +69,4 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Admin cleanup](./admin-cleanup.md) covers `/admin` for operators on `ADMIN_EMAILS`, `POST /v1/admin/cleanup` with an admin token, owner and `last_read_before` filters, the 7-day `set_ttl` default, `expire_not_own`, and the audit log.
 - [Admin health](./admin-health.md) covers the `/admin` health readout, `GET /v1/admin/health`, and the repair POSTs for quota recompute, sweep now, and unlocking a share gate.
 - [Admin tokens](./admin-tokens.md) covers listing and revoking token metadata across accounts on `/admin`, `GET /v1/admin/tokens`, `POST /v1/admin/tokens/revoke`, owner filter, preview-then-confirm, audit, and `403 forbidden_admin` for account tokens.
+- [Admin upstream release](./admin-upstream.md) covers the Admin **Update** badge, the quiet `/admin#admin-update` card when latest is newer, dismiss in this browser, and muted failed or unknown checks.

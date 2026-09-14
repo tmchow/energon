@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { appFooter, documentShell, instanceFooter } from "../src/chrome";
 import { uiPage } from "../src/ui-render";
+import type { UpstreamSnapshot } from "../src/page-data";
+import { UPSTREAM_DOCS_UPDATE } from "../src/upstream";
 import { access, assertDomBindings, json, mint, req } from "./helpers";
 
 describe("signed-in pages", () => {
@@ -86,6 +88,8 @@ describe("signed-in pages", () => {
     expect(html).not.toContain('href="/admin"');
     const adminHub = await (await req("/", { headers: access("admin@esperlabs.app") })).text();
     expect(adminHub).toContain('href="/admin"');
+    expect(adminHub).not.toContain('href="/admin#admin-update"');
+    expect(adminHub).not.toContain(">Update<");
     expect(adminHub.indexOf('href="/stats"')).toBeLessThan(adminHub.indexOf('href="/admin"'));
   });
 
@@ -381,7 +385,72 @@ describe("signed-in pages", () => {
     expect(bootstrap(html).data.health.quota.limit_bytes).toBe(20 * 1024 * 1024 * 1024);
     expect(bootstrap(html).data.health.quota.used_bytes).toBeGreaterThanOrEqual(0);
     expect(bootstrap(html).data.health.expired_awaiting_purge).toBeGreaterThanOrEqual(0);
+    expect(html).toContain("This Energon · 1.0.0");
+    expect(html).not.toContain('id="admin-update"');
+    expect(html).not.toContain('href="/admin#admin-update"');
+    expect(html).not.toContain("Could not check for a newer release.");
+    expect(bootstrap(html).upstream.status).toBe("current");
+    expect(bootstrap(html).upstream.this_version).toBe("1.0.0");
     assertDomBindings(html);
+  });
+
+  it("admin update card and nav badge render from an update snapshot", () => {
+    const html = uiPage("Admin — Energon", {
+      page: "admin",
+      data: adminPageData(),
+      upstream: updateSnapshot(),
+    });
+    expect(html).toContain('id="admin-update"');
+    expect(html).toContain("1.1.0 is available");
+    expect(html).toContain("This Energon is 1.0.0.");
+    expect(html).toContain("Restart after deploy");
+    expect(html).toContain('id="admin-update-operator"');
+    expect(html).toContain('id="admin-update-dismiss"');
+    expect(html).toContain("Read the release");
+    expect(html).toContain("How to update");
+    expect(html).toContain(UPSTREAM_DOCS_UPDATE);
+    expect(html).toContain('href="/admin#admin-update"');
+    expect(html).toMatch(/Admin[\s\S]*Update/);
+    expect(html.indexOf('id="admin-update"')).toBeLessThan(html.indexOf('id="admin-health"'));
+    expect(html).toMatch(/id="admin-update"[^>]*class="en-card en-admin-card"/);
+    expect(html).not.toMatch(/id="admin-update"[^>]*en-card--charged/);
+    expect(html).toContain("This Energon · 1.0.0");
+  });
+
+  it("admin failed and unknown checks stay muted without a nav mark", () => {
+    const failed = uiPage("Admin — Energon", {
+      page: "admin",
+      data: adminPageData(),
+      upstream: {
+        status: "failed",
+        this_version: "1.0.0",
+        latest_tag: null,
+        latest_url: null,
+        published_at: null,
+        operator: [],
+        docs_url: UPSTREAM_DOCS_UPDATE,
+      },
+    });
+    expect(failed).toContain('id="admin-update-note"');
+    expect(failed).toContain("Could not check for a newer release.");
+    expect(failed).not.toContain('id="admin-update"');
+    expect(failed).not.toContain('href="/admin#admin-update"');
+
+    const unknown = uiPage("Admin — Energon", {
+      page: "admin",
+      data: adminPageData(),
+      upstream: {
+        status: "unknown",
+        this_version: null,
+        latest_tag: "v1.1.0",
+        latest_url: "https://example.test/releases/v1.1.0",
+        published_at: null,
+        operator: [],
+        docs_url: UPSTREAM_DOCS_UPDATE,
+      },
+    });
+    expect(unknown).toContain("This build has no version. Latest release is 1.1.0.");
+    expect(unknown).not.toContain('href="/admin#admin-update"');
   });
 
   it("FOOTER_TEXT becomes an escaped chrome footer; empty omits it", () => {
@@ -412,4 +481,35 @@ function bootstrap(html: string) {
   const match = html.match(/<script id="bootstrap" type="application\/json">([\s\S]*?)<\/script>/);
   expect(match).not.toBeNull();
   return JSON.parse(match![1]);
+}
+
+function adminPageData() {
+  return {
+    email: "admin@esperlabs.app",
+    handle: "admin",
+    admin: true,
+    policy: { presets: [{ id: "7d", label: "7 days" }], default_ttl: "7d", allow_unlimited: false, write_policy: "owner" },
+    health: {
+      quota: { used_bytes: 0, catalog_bytes: 0, limit_bytes: 1 },
+      expired_awaiting_purge: 0,
+      stale_purge_claims: 0,
+      locked_gates: 0,
+      locked_scopes: [],
+      sites: 0,
+      files: 0,
+      people: 0,
+    },
+  };
+}
+
+function updateSnapshot(): UpstreamSnapshot {
+  return {
+    status: "update",
+    this_version: "1.0.0",
+    latest_tag: "v1.1.0",
+    latest_url: "https://example.test/releases/v1.1.0",
+    published_at: "2026-09-14T00:00:00.000Z",
+    operator: ["Restart after deploy"],
+    docs_url: UPSTREAM_DOCS_UPDATE,
+  };
 }

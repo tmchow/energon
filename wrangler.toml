@@ -67,5 +67,10 @@ run_worker_first = ["/static/ui/*", "/static/mermaid/*", "/static/md-expand.mjs"
 
 [[rules]]
 type = "Text"
+globs = ["version.txt"]
+fallthrough = true
+
+[[rules]]
+type = "Text"
 globs = ["**/*.html", "**/*.svg", "**/*.css", "**/*.client.js"]
 fallthrough = false

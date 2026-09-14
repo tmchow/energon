@@ -1,8 +1,10 @@
 import { uiPage } from "./ui-render";
-import { instanceFooter, PRIVATE_HTML_HEADERS } from "./chrome";
+import { PRIVATE_HTML_HEADERS } from "./chrome";
 import { PRODUCT } from "./config";
 import { identityFromEnv, type InstanceIdentity } from "./instance";
+import type { UpstreamSnapshot } from "./page-data";
 import type { Actor, Env } from "./types";
+import { pageChrome } from "./upstream";
 
 function marketplaceUrl(id: InstanceIdentity): string {
   const repo = id.repo;
@@ -17,12 +19,19 @@ function installBlock(id: InstanceIdentity): string {
 Then read ${id.origin}/auth.md. If ${id.tokenEnv} is already set, use it. Otherwise connect with a code: show me the link and code, wait for my approval, then save the delivered token as ${id.tokenEnv} where this environment keeps secrets, readable only by me. Do not invent a token.`;
 }
 
-export function setupResponse(actor: Actor, env: Env): Response {
-  return new Response(setupPage(actor.email, identityFromEnv(env), instanceFooter(env), Boolean(actor.admin)), {
+export async function setupResponse(actor: Actor, env: Env): Promise<Response> {
+  const chrome = await pageChrome(env, Boolean(actor.admin));
+  return new Response(setupPage(actor.email, identityFromEnv(env), chrome.footer, Boolean(actor.admin), chrome.upstream), {
     headers: PRIVATE_HTML_HEADERS,
   });
 }
 
-export function setupPage(email: string, id: InstanceIdentity, footer = "", admin = false): string {
-  return uiPage(`Setup — ${PRODUCT}`, { page: "setup", data: { email, admin, identity: id, install: installBlock(id) }, footer });
+export function setupPage(
+  email: string,
+  id: InstanceIdentity,
+  footer = "",
+  admin = false,
+  upstream?: UpstreamSnapshot,
+): string {
+  return uiPage(`Setup — ${PRODUCT}`, { page: "setup", data: { email, admin, identity: id, install: installBlock(id) }, footer, upstream });
 }

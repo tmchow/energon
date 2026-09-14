@@ -57,6 +57,18 @@ export type GateUnlockResult = {
   unlocked: boolean;
 };
 
+export type UpstreamStatus = "current" | "update" | "unknown" | "failed";
+
+export type UpstreamSnapshot = {
+  status: UpstreamStatus;
+  this_version: string | null;
+  latest_tag: string | null;
+  latest_url: string | null;
+  published_at: string | null;
+  operator: string[];
+  docs_url: string;
+};
+
 export type StatsPayload = {
   email: string;
   admin?: boolean;

@@ -1,4 +1,4 @@
-import type { AdminHealthSnapshot, GateUnlockResult, InstanceIdentity, QuotaRecomputeResult, SweepNowResult } from '../page-data';
+import type { AdminHealthSnapshot, GateUnlockResult, InstanceIdentity, QuotaRecomputeResult, SweepNowResult, UpstreamSnapshot } from '../page-data';
 import type { StatsPayload } from '../page-data';
 import type { BulkRevokePreview, BulkRevokeResult, BulkRevokeTarget, TokenStatus } from '../token-status';
 
@@ -93,7 +93,7 @@ export type AdminAuditEvent = {
   bytes: number | null;
   confirm: string | null;
 };
-export type { AdminHealthSnapshot, GateUnlockResult, QuotaRecomputeResult, SweepNowResult };
+export type { AdminHealthSnapshot, GateUnlockResult, QuotaRecomputeResult, SweepNowResult, UpstreamSnapshot };
 export type AdminData = { email: string; handle: string; admin: boolean; policy: RetentionPolicy; health: AdminHealthSnapshot };
 export type PageProps = (
   | { page: 'hub'; data: HubData }
@@ -105,4 +105,4 @@ export type PageProps = (
   | { page: 'admin'; data: AdminData }
   | { page: 'gate'; data: GateData }
   | { page: 'markdown'; data: MarkdownData }
-) & { footer?: string };
+) & { footer?: string; upstream?: UpstreamSnapshot };

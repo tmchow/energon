@@ -1,12 +1,13 @@
 import { uiPage } from "./ui-render";
-import { instanceFooter, PRIVATE_HTML_HEADERS } from "./chrome";
+import { PRIVATE_HTML_HEADERS } from "./chrome";
 import { PRODUCT } from "./config";
 import { usedStorage } from "./http";
 import { instancePolicy } from "./policy";
 import type { Actor, Env } from "./types";
+import { pageChrome } from "./upstream";
 
 export type { StatsPayload, PersonStats } from "./page-data";
-import type { StatsPayload, PersonStats } from "./page-data";
+import type { StatsPayload, PersonStats, UpstreamSnapshot } from "./page-data";
 
 export async function loadStats(env: Env, email: string): Promise<StatsPayload> {
   const involved = "created_by = ? OR last_written_by = ?";
@@ -115,13 +116,14 @@ async function listPeople(env: Env): Promise<PersonStats[]> {
 
 export async function statsResponse(env: Env, actor: Actor): Promise<Response> {
   const stats = await loadStats(env, actor.email);
-  return new Response(statsPage({ ...stats, admin: Boolean(actor.admin) }, instanceFooter(env)), {
+  const chrome = await pageChrome(env, Boolean(actor.admin));
+  return new Response(statsPage({ ...stats, admin: Boolean(actor.admin) }, chrome.footer, chrome.upstream), {
     headers: PRIVATE_HTML_HEADERS,
   });
 }
 
-export function statsPage(stats: StatsPayload, footer = ""): string {
-  return uiPage(`Stats — ${PRODUCT}`, { page: "stats", data: stats, footer });
+export function statsPage(stats: StatsPayload, footer = "", upstream?: UpstreamSnapshot): string {
+  return uiPage(`Stats — ${PRODUCT}`, { page: "stats", data: stats, footer, upstream });
 }
 
 async function scalar(env: Env, sql: string, ...binds: string[]): Promise<number> {

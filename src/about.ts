@@ -1,14 +1,17 @@
 import { uiPage } from "./ui-render";
-import { instanceFooter, PRIVATE_HTML_HEADERS } from "./chrome";
+import { PRIVATE_HTML_HEADERS } from "./chrome";
 import { PRODUCT } from "./config";
+import type { UpstreamSnapshot } from "./page-data";
 import type { Actor, Env } from "./types";
+import { pageChrome } from "./upstream";
 
-export function aboutResponse(actor: Actor, env?: Env): Response {
-  return new Response(aboutPage(actor.email, instanceFooter(env), Boolean(actor.admin)), {
+export async function aboutResponse(actor: Actor, env?: Env): Promise<Response> {
+  const chrome = env ? await pageChrome(env, Boolean(actor.admin)) : { footer: "" };
+  return new Response(aboutPage(actor.email, chrome.footer, Boolean(actor.admin), chrome.upstream), {
     headers: PRIVATE_HTML_HEADERS,
   });
 }
 
-export function aboutPage(email: string, footer = "", admin = false): string {
-  return uiPage(`About — ${PRODUCT}`, { page: "about", data: { email, admin }, footer });
+export function aboutPage(email: string, footer = "", admin = false, upstream?: UpstreamSnapshot): string {
+  return uiPage(`About — ${PRODUCT}`, { page: "about", data: { email, admin }, footer, upstream });
 }
