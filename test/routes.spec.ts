@@ -149,21 +149,15 @@ describe("hub account API", () => {
     expect(res.headers.get("cache-control")).toMatch(/private/);
     const data = (await res.json()) as {
       email: string;
-      sites: unknown[];
-      files: unknown[];
-      sites_total: number;
-      files_total: number;
-      sites_cursor: string | null;
-      files_cursor: string | null;
+      items: unknown[];
+      total: number;
+      cursor: string | null;
       tokens: { label: string }[];
     };
     expect(data.email).toBe(email);
-    expect(data.sites).toEqual(expect.any(Array));
-    expect(data.files).toEqual(expect.any(Array));
-    expect(data).toHaveProperty("sites_total");
-    expect(data).toHaveProperty("files_total");
-    expect(data).toHaveProperty("sites_cursor");
-    expect(data).toHaveProperty("files_cursor");
+    expect(data.items).toEqual(expect.any(Array));
+    expect(data).toHaveProperty("total");
+    expect(data).toHaveProperty("cursor");
     expect(data.tokens.some((t) => t.label === "listed")).toBe(true);
     expect(JSON.stringify(data)).not.toContain(token);
   });

@@ -9,7 +9,7 @@ Account export lets a person or agent download every site and loose file they ow
 - `owned-manifest` lists `scope: "owned"`, `owner.email` / `owner.handle`, and per object `id`, name, `url`, `size`, `expires_at`, `write_policy`, and `archive_path`.
 - `owned-empty` is `400 empty_export` when the caller owns nothing live.
 - `owned-cap` refuses an archive over the file-count cap with `400 too_many_files` and the totals (`limit_files`, `actual_files`, `sites`, `files`); the message names `GET /v1/sites/{id}/export`.
-- `owned-hub` is the Hub card `#account-export` linking to `GET /account/export`.
+- `owned-hub` is the Hub card `#account-export` linking to `GET /account/export`. The card appears only once the catalog has at least one item (or a filter is active); an empty catalog hides it.
 
 ## How to get to it (user POV)
 

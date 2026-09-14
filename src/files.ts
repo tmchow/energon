@@ -30,7 +30,6 @@ import {
   d1Changed,
 } from "./expire";
 import { ensureHandle, ensureUser } from "./handles";
-import { listSitesFor } from "./sites";
 import { maybeUnlockWithWritePassword, passwordEcho, passwordField, passwordHashFromInput, protectContent, readSetPasswordHeader, readSetWritePasswordHeader, assignPasswordStore, hubLinkAccessFields, storedPasswordSecret, writePasswordField, writePasswordHashFromInput } from "./gate";
 import { filePublicUrl, isFileId, urlFilename } from "./urls";
 import {
@@ -1060,31 +1059,4 @@ export async function serveLoose(
 
 async function mintFileId(env: Env): Promise<string> {
   return mintObjectId(env, "loose_files");
-}
-
-export async function hubLists(
-  env: Env,
-  email: string,
-  query: ListQuery,
-  ownerId?: string,
-): Promise<{
-  sites: Awaited<ReturnType<typeof listSitesFor>>["items"];
-  files: Awaited<ReturnType<typeof listLooseFor>>["items"];
-  sites_total: number;
-  files_total: number;
-  sites_cursor: string | null;
-  files_cursor: string | null;
-}> {
-  const [sites, files] = await Promise.all([
-    listSitesFor(env, email, query, ownerId),
-    listLooseFor(env, email, query, ownerId),
-  ]);
-  return {
-    sites: sites.items,
-    files: files.items,
-    sites_total: sites.total,
-    files_total: files.total,
-    sites_cursor: sites.next_cursor,
-    files_cursor: files.next_cursor,
-  };
 }

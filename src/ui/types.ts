@@ -12,15 +12,16 @@ export type CatalogItem = {
   url: string; created_by: string; last_written_by: string | null;
   created_at: string; updated_at: string | null; expires_at: string | null; last_read_at?: string | null; size: number;
   password_protected: boolean; write_password_protected?: boolean; written_via?: string | null; write_policy: string;
-} & ({ slug: string; file_count: number; id: string; filename?: never } | { id: string; filename: string; slug?: never; file_count?: never });
+} & ({ kind: 'site'; slug: string; file_count: number; id: string; filename?: never } | { kind: 'file'; id: string; filename: string; slug?: never; file_count?: never });
+export type CatalogItemKind = CatalogItem['kind'];
 export type CatalogData = {
-  email: string | null; admin?: boolean; sites: CatalogItem[]; files: CatalogItem[]; sites_total: number; files_total: number;
-  sites_cursor: string | null; files_cursor: string | null; tokens?: Token[];
+  email: string | null; admin?: boolean; items: CatalogItem[]; total: number; cursor: string | null; tokens?: Token[];
 };
 export type HubQuery = {
   q: string;
   scope: string;
   sort: string;
+  kind?: 'sites' | 'files';
   expires?: { kind: 'never' } | { kind: 'before'; at: string };
   updatedBefore?: string;
   minSize?: number;

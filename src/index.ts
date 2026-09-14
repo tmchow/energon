@@ -9,6 +9,8 @@ import { setupResponse } from "./setup";
 import { statsResponse } from "./stats";
 import { parseHubListQuery } from "./catalog";
 import { listAdminAudit } from "./audit";
+import { listHubCatalog, type HubCatalogItem } from "./hub-catalog";
+
 import { hubAdminHealthResponse, hubAdminRecomputeResponse, hubAdminSweepResponse, hubAdminUnlockResponse } from "./admin-health";
 import { hubAdminTokensListResponse, revokeAdminTokens } from "./admin-tokens";
 import { adminResponse } from "./admin";
@@ -26,7 +28,7 @@ import { CONTENT_ONLY_404_MESSAGE } from "./guest-write-protocol";
 import { ensureUser } from "./handles";
 import { identityFromEnv } from "./instance";
 import { MEMORABLE_WORDS } from "./memorable";
-import { deleteLooseFile, getLooseFile, hubLists, hubLooseLinkAccess, patchLoose, postLooseFromRequest, putLooseFromRequest, serveLoose } from "./files";
+import { deleteLooseFile, getLooseFile, hubLooseLinkAccess, patchLoose, postLooseFromRequest, putLooseFromRequest, serveLoose } from "./files";
 import { contentPatch } from "./gate";
 import { ApiError, accountOriginRequired, assertTrustedAccountOrigin, contentOrigin, dedicatedContentOrigin, isLocalHost, isMermaidAssetPath, isPublicContentPath, json, jsonMaybeSecret, methodNotAllowed, publicOrigin, readBodyCapped, readJson, secretJson, serveMermaidAsset } from "./http";
 import { instancePolicy, policyPublic, tokenPolicy, tokenPolicyPublic, adminTokenPolicy, emailIsAdmin } from "./policy";
@@ -43,6 +45,7 @@ import {
 import { isSiteId, sitePublicUrl } from "./urls";
 import { dispatchV1 } from "./v1-routes";
 import type { Env } from "./types";
+const EMPTY_CATALOG: { items: HubCatalogItem[]; total: number; next_cursor: string | null } = { items: [], total: 0, next_cursor: null };
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -206,11 +209,9 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     if (actor) assertEmailAllowed(env, actor.email);
     const query = parseHubListQuery(url);
     const user = actor ? await ensureUser(env, actor.email, actor.idpSub) : null;
-    const lists = actor
-      ? await hubLists(env, actor.email, query, user?.id)
-      : { sites: [], files: [], sites_total: 0, files_total: 0, sites_cursor: null, files_cursor: null };
+    const page = actor ? await listHubCatalog(env, actor.email, query, user?.id) : EMPTY_CATALOG;
     const tokens = user ? await listTokens(env, user.email, user.id) : [];
-    return secretJson({ email: actor?.email ?? null, admin: actor ? emailIsAdmin(env, actor.email) : false, ...lists, tokens });
+    return secretJson({ email: actor?.email ?? null, admin: actor ? emailIsAdmin(env, actor.email) : false, items: page.items, total: page.total, cursor: page.next_cursor, tokens });
   }
 
   if (path === "/account/admin/audit" && method === "GET") {
@@ -432,9 +433,8 @@ async function serveHub(request: Request, env: Env, ctx: ExecutionContext): Prom
   const actor = await actorFromAccess(request, env, ctx);
   if (actor) assertEmailAllowed(env, actor.email);
   const user = actor ? await ensureUser(env, actor.email, actor.idpSub) : null;
-  const lists = actor
-    ? await hubLists(env, actor.email, parseHubListQuery(new URL(request.url)), user?.id)
-    : { sites: [], files: [], sites_total: 0, files_total: 0, sites_cursor: null, files_cursor: null };
+  const query = parseHubListQuery(new URL(request.url));
+  const page = actor ? await listHubCatalog(env, actor.email, query, user?.id) : EMPTY_CATALOG;
   const bootstrap = {
     email: actor?.email ?? null,
     admin: Boolean(actor?.admin),
@@ -443,14 +443,11 @@ async function serveHub(request: Request, env: Env, ctx: ExecutionContext): Prom
     content_origin: contentOrigin(env),
     policy: policyPublic(instancePolicy(env)),
     identity: identityFromEnv(env),
-    sites: lists.sites,
-    files: lists.files,
-    sites_total: lists.sites_total,
-    files_total: lists.files_total,
-    sites_cursor: lists.sites_cursor,
-    files_cursor: lists.files_cursor,
+    items: page.items,
+    total: page.total,
+    cursor: page.next_cursor,
   };
-  return new Response(uiPage(PRODUCT, { page: "hub", data: { ...bootstrap, words: MEMORABLE_WORDS, query: parseHubListQuery(new URL(request.url)) }, footer: instanceFooter(env) }), { headers: PRIVATE_HTML_HEADERS });
+  return new Response(uiPage(PRODUCT, { page: "hub", data: { ...bootstrap, words: MEMORABLE_WORDS, query }, footer: instanceFooter(env) }), { headers: PRIVATE_HTML_HEADERS });
 }
 
 async function serveTokens(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

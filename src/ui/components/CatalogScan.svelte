@@ -10,11 +10,11 @@
   const iconName = $derived((mark === 'peopleOff' ? 'peopleOff' : mark) as IconName);
 </script>
 {#if onclick}
-  <button type="button" class="en-scan" class:en-scan--on={on} title={name} aria-label={name} {onclick}>
+  <button type="button" class="en-scan" class:en-scan--on={on} data-tip={name} aria-label={name} {onclick}>
     <Icon name={iconName} size={CATALOG_SCAN_SIZE} />
   </button>
 {:else}
-  <span class="en-scan" class:en-scan--on={on} title={name} role="img" aria-label={name}>
+  <span class="en-scan" class:en-scan--on={on} data-tip={name} role="img" aria-label={name}>
     <Icon name={iconName} size={CATALOG_SCAN_SIZE} />
   </span>
 {/if}

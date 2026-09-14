@@ -7,7 +7,7 @@
   const classes = $derived(['en-icon-btn', on && 'en-icon-btn--on', tone && `en-icon-btn--${tone}`, `en-icon-btn--${size}`, extra && 'en-icon-btn--extra', more && 'en-icon-btn--more', className].filter(Boolean).join(' '));
 </script>
 {#if href}
-  <a {href} class={classes} title={label} aria-label={label}><Icon name={icon} size={iconSize} /></a>
+  <a {href} class={classes} data-tip={label} aria-label={label}><Icon name={icon} size={iconSize} /></a>
 {:else}
-  <button {...rest} type="button" class={classes} title={label} aria-label={label}><Icon name={icon} size={iconSize} /></button>
+  <button {...rest} type="button" class={classes} data-tip={label} aria-label={label}><Icon name={icon} size={iconSize} /></button>
 {/if}

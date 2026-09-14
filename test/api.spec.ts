@@ -1762,8 +1762,41 @@ describe("Energon", () => {
       expect(hub.status).toBe(200);
       const data = await json("/account/data?min_size=1kb&sort=size", { headers: { "Cf-Access-Authenticated-User-Email": email } });
       expect(data.status).toBe(200);
-      expect(names(data.body.files)).toEqual(["huge.txt", "mid.txt"]);
-      expect(names(data.body.sites)).toEqual(["cl-big"]);
+      expect(data.body.items.map((i: { kind: string; slug?: string; filename?: string }) => `${i.kind}:${i.slug ?? i.filename}`)).toEqual(["file:huge.txt", "site:cl-big", "file:mid.txt"]);
+      const filesOnly = await json("/account/data?min_size=1kb&sort=size&kind=files", { headers: { "Cf-Access-Authenticated-User-Email": email } });
+      expect(filesOnly.body.total).toBe(2);
+      expect(names(filesOnly.body.items)).toEqual(["huge.txt", "mid.txt"]);
+    });
+
+    it("pages the hub catalog across sites and files with one cursor", async () => {
+      const email = "hub-merge@esperlabs.app";
+      const token = await mint("hub-merge", email);
+      await upload(token, "merge-b.txt", "b");
+      await upload(token, "merge-d.txt", "d");
+      await site(token, "merge-a", { "index.html": "<p>a</p>" });
+      await site(token, "merge-c", { "index.html": "<p>c</p>" });
+      const walk = async (sort: string) => {
+        const seen: string[] = [];
+        let cursor: string | null = null;
+        for (let i = 0; i < 6; i++) {
+          const page = await json(`/account/data?q=merge-&sort=${sort}&limit=3${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, { headers: access(email) });
+          expect(page.status).toBe(200);
+          expect(page.body.total).toBe(4);
+          expect(page.body.items.length).toBeLessThanOrEqual(3);
+          seen.push(...page.body.items.map((i: { kind: string; slug?: string; filename?: string }) => `${i.kind}:${i.slug ?? i.filename}`));
+          cursor = page.body.cursor;
+          if (!cursor) break;
+        }
+        return seen;
+      };
+      expect(await walk("name")).toEqual(["site:merge-a", "file:merge-b.txt", "site:merge-c", "file:merge-d.txt"]);
+      const byAge = await walk("age");
+      expect(byAge).toHaveLength(4);
+      expect(new Set(byAge).size).toBe(4);
+      expect(byAge.slice(0, 2)).toEqual(["file:merge-b.txt", "file:merge-d.txt"]);
+      const sites = await json("/account/data?q=merge-&kind=sites", { headers: access(email) });
+      expect(sites.body.total).toBe(2);
+      expect(sites.body.items.every((i: { kind: string }) => i.kind === "site")).toBe(true);
     });
 
     it("lists and cleanup stay involvement-scoped", async () => {
@@ -2048,7 +2081,7 @@ describe("Energon", () => {
       const detail = await json(`/v1/sites/${created.id}`, { headers: auth(token) });
       expect(detail.body.last_read_at).toBe(first);
       const hub = await json("/account/data?q=read-me", { headers: access(email) });
-      expect(hub.body.sites.find((s: { id: string }) => s.id === created.id).last_read_at).toBe(first);
+      expect(hub.body.items.find((s: { id: string }) => s.id === created.id).last_read_at).toBe(first);
     });
 
     it("ignores 404s and the generated listing on a public site", async () => {
@@ -2116,7 +2149,7 @@ describe("Energon", () => {
       const listed = await json("/v1/files?q=read.txt", { headers: auth(token) });
       expect(listed.body.files.find((f: { id: string }) => f.id === id).last_read_at).toBe(first);
       const hub = await json("/account/data?q=read.txt", { headers: access(email) });
-      expect(hub.body.files.find((f: { id: string }) => f.id === id).last_read_at).toBe(first);
+      expect(hub.body.items.find((f: { id: string }) => f.id === id).last_read_at).toBe(first);
     });
 
     it("stamps an owned zip the same way a site zip does", async () => {

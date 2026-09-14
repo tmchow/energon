@@ -24,8 +24,8 @@ export type ListPresentation = {
   sort: CatalogSort;
   limit: number;
   cursor: string | null;
-  sitesCursor: string | null;
-  filesCursor: string | null;
+  /** Hub-only: restrict the merged catalog to one table. */
+  kind?: CatalogKind;
 };
 
 export type ListQuery = SelectionCriteria & ListPresentation;
@@ -122,6 +122,10 @@ export function criteriaFrom(input: Record<string, unknown>): ParsedCriteria {
   return { criteria, malformed };
 }
 
+export function parseKind(raw: string | null | undefined): CatalogKind | undefined {
+  return raw === "sites" || raw === "files" ? raw : undefined;
+}
+
 export function parseSort(raw: string | null | undefined): CatalogSort {
   switch (raw) {
     case "name":
@@ -154,8 +158,7 @@ export function parseListQuery(url: URL): ListQuery {
     sort: parseSort(url.searchParams.get("sort")),
     limit,
     cursor: url.searchParams.get("cursor"),
-    sitesCursor: url.searchParams.get("sites_cursor"),
-    filesCursor: url.searchParams.get("files_cursor"),
+    kind: parseKind(url.searchParams.get("kind")),
   };
 }
 
@@ -175,8 +178,8 @@ export function catalogSearchParams(input: {
   updatedBefore?: string;
   lastReadBefore?: string;
   minSize?: string;
-  sitesCursor?: string | null;
-  filesCursor?: string | null;
+  kind?: CatalogKind;
+  cursor?: string | null;
 }): URLSearchParams {
   const params = new URLSearchParams({ q: input.q.trim(), scope: input.scope, sort: input.sort });
   if (input.expires?.kind === "never") params.set("expires", "never");
@@ -184,8 +187,8 @@ export function catalogSearchParams(input: {
   if (input.updatedBefore) params.set("updated_before", input.updatedBefore);
   if (input.lastReadBefore) params.set("last_read_before", input.lastReadBefore);
   if (input.minSize) params.set("min_size", input.minSize);
-  if (input.sitesCursor) params.set("sites_cursor", input.sitesCursor);
-  if (input.filesCursor) params.set("files_cursor", input.filesCursor);
+  if (input.kind) params.set("kind", input.kind);
+  if (input.cursor) params.set("cursor", input.cursor);
   return params;
 }
 
@@ -424,11 +427,37 @@ function cursorSql<Row>(spec: SortSpec<Row>, sort: CatalogSort, raw: string | nu
 }
 
 export function siteCursorSql(query: ListQuery): CursorSql {
-  return cursorSql(siteSort(query.sort), query.sort, query.cursor ?? query.sitesCursor);
+  return cursorSql(siteSort(query.sort), query.sort, query.cursor);
 }
 
 export function fileCursorSql(query: ListQuery): CursorSql {
-  return cursorSql(fileSort(query.sort), query.sort, query.cursor ?? query.filesCursor);
+  return cursorSql(fileSort(query.sort), query.sort, query.cursor);
+}
+
+/** One row of the hub's merged sites + files UNION, aliased `u`. `kind` breaks ties before `id` because ids are minted per table. */
+export type CatalogCursorRow = { kind: "site" | "file"; id: string; name: string; sort_updated: string; size: number };
+
+function catalogSort(sort: CatalogSort): SortSpec<CatalogCursorRow> {
+  switch (sort) {
+    case "updated":
+      return { exprs: ["u.sort_updated", "u.kind", "u.id"], dir: "DESC", clause: "where", lead: "text", values: (r) => [r.sort_updated, r.kind, r.id] };
+    case "name":
+      return { exprs: ["u.name", "u.kind", "u.id"], dir: "ASC", clause: "where", lead: "text", values: (r) => [r.name, r.kind, r.id] };
+    case "size":
+      return { exprs: ["u.size", "u.kind", "u.id"], dir: "DESC", clause: "where", lead: "number", values: (r) => [String(r.size), r.kind, r.id] };
+    case "age":
+      return { exprs: ["u.sort_updated", "u.kind", "u.id"], dir: "ASC", clause: "where", lead: "text", values: (r) => [r.sort_updated, r.kind, r.id] };
+    default:
+      return assertNever(sort);
+  }
+}
+
+export function catalogCursorSql(query: ListQuery): CursorSql {
+  return cursorSql(catalogSort(query.sort), query.sort, query.cursor);
+}
+
+export function nextCatalogCursor(sort: CatalogSort, last: CatalogCursorRow): string {
+  return encodeCursor([sort, ...catalogSort(sort).values(last)]);
 }
 
 export function nextSiteCursor(sort: CatalogSort, last: SiteCursorRow): string {

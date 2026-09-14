@@ -1,6 +1,7 @@
 export type HubCleanupFind = {
   q: string;
   scope: string;
+  kind: 'all' | 'sites' | 'files';
   expires: 'any' | 'never';
   expiresBefore: string;
   updatedBefore: string;
@@ -16,6 +17,7 @@ export function hubCleanupTarget(pick: HubCleanupPick, find: HubCleanupFind): Re
     const target: Record<string, unknown> = {};
     if (find.q.trim()) target.q = find.q.trim();
     if (find.scope !== 'involved') target.scope = find.scope;
+    if (find.kind !== 'all') target.kind = find.kind;
     if (find.expires === 'never') target.expires = 'never';
     else if (find.expiresBefore.trim()) target.expires_before = find.expiresBefore.trim();
     if (find.updatedBefore.trim()) target.updated_before = find.updatedBefore.trim();

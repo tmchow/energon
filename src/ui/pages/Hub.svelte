@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, tick, untrack } from 'svelte';
   import type { AdminCleanupPreview, AdminCleanupResult, CatalogData, CatalogItem, HubData, LinkAccess } from '../types';
-  import { api, jsonBody, errorMessage, RequestError } from '../api';
+  import { api, jsonBody, errorMessage, formatTime, RequestError } from '../api';
   import { stageFiles, publish, slugify, type StagedUpload, type PublishResult } from '../uploads';
   import { nextNumberedSlug } from "../../slugs";
   import { parseByteSize } from '../../config';
@@ -20,7 +20,8 @@
   import Button from '../components/Button.svelte';
   import Flash from '../components/Flash.svelte';
   import Catalog from '../components/Catalog.svelte';
-  import CleanupReview from '../components/CleanupReview.svelte';
+  import Icon from '../components/Icon.svelte';
+  import CleanupDialog from '../components/CleanupDialog.svelte';
   import Dialog from '../components/Dialog.svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import Sheet from '../components/Sheet.svelte';
@@ -31,10 +32,12 @@
   let q = $state(untrack(() => data.query?.q || ''));
   let scope = $state(untrack(() => data.query?.scope || 'involved'));
   let sort = $state(untrack(() => data.query?.sort || 'updated'));
+  let kind = $state<'all' | 'sites' | 'files'>(untrack(() => data.query?.kind || 'all'));
   let expires = $state<'any' | 'never'>(untrack(() => data.query?.expires?.kind === 'never' ? 'never' : 'any'));
   let expiresBefore = $state(untrack(() => data.query?.expires?.kind === 'before' ? data.query.expires.at : ''));
   let updatedBefore = $state(untrack(() => data.query?.updatedBefore || ''));
   let minSize = $state(untrack(() => data.query?.minSize != null ? String(data.query.minSize) : ''));
+  let filtersOpen = $state(untrack(() => !!(data.query?.expires || data.query?.updatedBefore || data.query?.minSize != null)));
   let selectedSites = $state<string[]>([]);
   let selectedFiles = $state<string[]>([]);
   let matching = $state(false);
@@ -42,6 +45,7 @@
   let cleanupTtl = $state(untrack(() => data.policy.presets.some(p => p.id === '7d') ? '7d' : (data.policy.presets.find(p => p.id !== 'never')?.id || data.policy.default_ttl)));
   let cleanupPreview = $state<AdminCleanupPreview | null>(null);
   let cleanupBusy = $state(false);
+  let barHeight = $state(0);
   let cleanupConfirmOpen = $state(false);
   let cleanupConfirmError = $state('');
   let loading = $state(false);
@@ -96,6 +100,12 @@
   const writeOptions = [{ value: 'owner', label: 'Only the creator' }, { value: 'org', label: 'Anyone in the org' }];
   const doorOptions = [{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }];
   const targetName = $derived(target ? (target.item.slug ?? target.item.filename) : '');
+  const targetMeta = $derived(target ? [
+    target.kind === 'site' ? 'Site' : 'File',
+    target.item.write_policy === 'org' ? 'Anyone in the org' : 'Only the creator',
+    `Last writer ${target.item.last_written_by || target.item.created_by}${target.item.written_via === 'write_password' ? ' via shared write' : ''}`,
+    `Last read ${target.item.last_read_at ? formatTime(target.item.last_read_at, true) : 'none recorded'}`,
+  ].join(' · ') : '');
   const targetPath = $derived(target ? `/account/${target.kind === 'site' ? 'sites' : 'files'}/${encodeURIComponent(target.item.id)}` : '');
   const ttlNote = $derived('You can delete this whenever you want. Expiration is only the automatic stop.' + (!data.policy.allow_unlimited && ttlOptions.length ? ` Longest allowed is ${ttlOptions.at(-1)?.label}.` : ''));
   const isTargetCreator = $derived(!!target && target.item.created_by === data.email);
@@ -109,7 +119,8 @@
   const writePhraseOk = $derived(!isTargetCreator || writeDoor === 'off' || !!writePassword.trim() || (writeUnrecovered && writeDoor === 'on'));
   const linkAccessReady = $derived(linkAccessLoaded && !passwordLoading && (shareDirty || writeDirty) && sharePhraseOk && writePhraseOk);
   const linkAccessBusy = $derived(mutationBusy || passwordLoading || !linkAccessLoaded);
-  const filtered = $derived(!!(q.trim() || scope !== 'involved' || sort !== 'updated' || expires === 'never' || expiresBefore.trim() || updatedBefore.trim() || minSize.trim()));
+  const moreFiltersActive = $derived([expires === 'never', !!expiresBefore.trim(), !!updatedBefore.trim(), !!minSize.trim()].filter(Boolean).length);
+  const filtered = $derived(!!(q.trim() || scope !== 'involved' || kind !== 'all' || sort !== 'updated' || moreFiltersActive));
   const hasSelection = $derived(matching || selectedSites.length + selectedFiles.length > 0);
   const selectionLabel = $derived(matching ? 'Everything matching these filters' : `${selectedSites.length + selectedFiles.length} selected`);
   const cleanupActionOptions = [
@@ -132,27 +143,27 @@
   const updatedBeforeError = $derived(validTimestamp(updatedBefore) ? '' : dateError);
   const minSizeError = $derived(validSize(minSize) ? '' : 'Enter bytes or a size like 500kb, 1mb, or 2gb.');
   const filtersValid = $derived(!expiresBeforeError && !updatedBeforeError && !minSizeError);
-  async function refresh(only?: 'sites' | 'files') {
+  async function refresh(more = false) {
     const sequence = ++requestSequence;
     controller?.abort();
     if (!filtersValid) { loading = false; return; }
     controller = new AbortController(); loading = true;
     const query = new URLSearchParams({ q: q.trim(), scope, sort });
+    if (kind !== 'all') query.set('kind', kind);
     if (expires === 'never') query.set('expires', 'never');
     else if (expiresBefore.trim()) query.set('expires_before', expiresBefore.trim());
     if (updatedBefore.trim()) query.set('updated_before', updatedBefore.trim());
     if (minSize.trim()) query.set('min_size', minSize.trim());
-    if (only && lists[`${only}_cursor`]) query.set(`${only}_cursor`, lists[`${only}_cursor`]!);
+    if (more && lists.cursor) query.set('cursor', lists.cursor);
     try {
       const next = await api<CatalogData>('/account/data?' + query, { signal: controller.signal });
       if (sequence !== requestSequence) return;
-      if (!only) lists = next;
-      else lists = { ...lists, [only]: [...lists[only], ...next[only]], [`${only}_total`]: next[`${only}_total`], [`${only}_cursor`]: next[`${only}_cursor`] };
-      catalogStatus = only ? `Loaded ${count(lists[only].length, only === 'sites' ? 'site' : 'file')} of ${lists[`${only}_total`]}.` : `${count(lists.sites_total, 'site')} and ${count(lists.files_total, 'file')}${filtered ? ' match' : ''}.`;
+      lists = more ? { ...lists, items: [...lists.items, ...next.items], total: next.total, cursor: next.cursor } : next;
+      catalogStatus = more ? `Loaded ${lists.items.length} of ${count(lists.total, 'item')}.` : `${count(lists.total, 'item')}${filtered ? ' match' : ''}.`;
     } catch (error) {
       if (sequence === requestSequence && !(error instanceof DOMException && error.name === 'AbortError')) {
         catalogStatus = 'The catalog did not load.';
-        message(`The catalog did not load. ${errorMessage(error)}`, 'err', undefined, () => { void refresh(only); });
+        message(`The catalog did not load. ${errorMessage(error)}`, 'err', undefined, () => { void refresh(more); });
       }
     } finally { if (sequence === requestSequence) loading = false; }
   }
@@ -178,31 +189,29 @@
     matching = false;
     dropCleanupPreview();
   }
-  function siteSelected(id: string) { return matching || selectedSites.includes(id); }
-  function fileSelected(id: string) { return matching || selectedFiles.includes(id); }
+  const visibleIds = (of: 'site' | 'file') => lists.items.filter((item) => item.kind === of).map((item) => item.id);
+  function itemSelected(item: CatalogItem) { return matching || (item.kind === 'site' ? selectedSites : selectedFiles).includes(item.id); }
   function materializeMatching() {
     if (!matching) return;
     matching = false;
-    selectedSites = lists.sites.map((item) => item.id);
-    selectedFiles = lists.files.map((item) => item.id);
+    selectedSites = visibleIds('site');
+    selectedFiles = visibleIds('file');
   }
-  function toggleItem(kind: 'site' | 'file', item: CatalogItem, on: boolean) {
+  function toggleItem(item: CatalogItem, on: boolean) {
     materializeMatching();
-    if (kind === 'site') {
+    if (item.kind === 'site') {
       selectedSites = on ? (selectedSites.includes(item.id) ? selectedSites : [...selectedSites, item.id]) : selectedSites.filter((id) => id !== item.id);
     } else {
       selectedFiles = on ? (selectedFiles.includes(item.id) ? selectedFiles : [...selectedFiles, item.id]) : selectedFiles.filter((id) => id !== item.id);
     }
     if (!matching && selectedSites.length + selectedFiles.length === 0) dropCleanupPreview();
   }
-  function toggleVisible(kind: 'site' | 'file', on: boolean) {
+  function toggleVisible(on: boolean) {
     materializeMatching();
-    const visible = (kind === 'site' ? lists.sites : lists.files).map((item) => item.id);
-    if (kind === 'site') {
-      selectedSites = on ? [...new Set([...selectedSites, ...visible])] : selectedSites.filter((id) => !visible.includes(id));
-    } else {
-      selectedFiles = on ? [...new Set([...selectedFiles, ...visible])] : selectedFiles.filter((id) => !visible.includes(id));
-    }
+    const sites = visibleIds('site');
+    const files = visibleIds('file');
+    selectedSites = on ? [...new Set([...selectedSites, ...sites])] : selectedSites.filter((id) => !sites.includes(id));
+    selectedFiles = on ? [...new Set([...selectedFiles, ...files])] : selectedFiles.filter((id) => !files.includes(id));
     if (!matching && selectedSites.length + selectedFiles.length === 0) dropCleanupPreview();
   }
   function selectMatching() {
@@ -213,7 +222,7 @@
   function cleanupTarget(): Record<string, unknown> | null {
     return hubCleanupTarget(
       matching ? { matching: true } : { matching: false, sites: selectedSites, files: selectedFiles },
-      { q, scope, expires, expiresBefore, updatedBefore, minSize },
+      { q, scope, kind, expires, expiresBefore, updatedBefore, minSize },
     );
   }
   function cleanupBody(confirm?: string): Record<string, unknown> | null {
@@ -227,10 +236,10 @@
   async function previewCleanup() {
     const body = cleanupBody();
     if (!body || cleanupBusy) return;
-    cleanupBusy = true; cleanupConfirmError = '';
+    cleanupBusy = true; cleanupConfirmError = ''; cleanupPreview = null; cleanupConfirmOpen = true;
     try {
       cleanupPreview = await api<AdminCleanupPreview>('/account/cleanup', jsonBody('POST', body));
-    } catch (error) { cleanupPreview = null; message(errorMessage(error), 'err'); }
+    } catch (error) { dropCleanupPreview(); message(errorMessage(error), 'err'); }
     finally { cleanupBusy = false; }
   }
   async function confirmCleanup() {
@@ -294,10 +303,10 @@
       message(errorMessage(error), 'err'); await refresh();
     } finally { busy = false; publishing = false; }
   }
-  function selectTarget(kind: 'site' | 'file', item: CatalogItem) { target = { kind, item }; modalError = ''; }
-  function deleteItem(kind: 'site' | 'file', item: CatalogItem) { selectTarget(kind, item); confirmAction = 'Delete'; confirmOpen = true; }
-  function editPassword(kind: 'site' | 'file', item: CatalogItem) {
-    selectTarget(kind, item);
+  function selectTarget(item: CatalogItem) { target = { kind: item.kind, item }; modalError = ''; }
+  function deleteItem(item: CatalogItem) { selectTarget(item); confirmAction = 'Delete'; confirmOpen = true; }
+  function editPassword(item: CatalogItem) {
+    selectTarget(item);
     password = '';
     writePassword = '';
     loadedShare = '';
@@ -358,7 +367,7 @@
       if (seq === linkAccessSeq && passwordOpen) modalError = errorMessage(error);
     } finally { if (seq === linkAccessSeq) passwordLoading = false; }
   }
-  function openMore(kind: 'site' | 'file', item: CatalogItem) { selectTarget(kind, item); moreOpen = true; }
+  function openMore(item: CatalogItem) { selectTarget(item); moreOpen = true; }
   async function mutate(run: () => Promise<void>) {
     if (mutationBusy) return;
     mutationBusy = true; modalError = '';
@@ -418,7 +427,7 @@
   const moreItems = $derived(target ? [
     ...(target.kind === 'file' || (target.item.file_count ?? 0) > 0 ? [{ label: target.kind === 'site' ? 'Download zip' : 'Download', icon: 'download' as const, href: `${targetPath}/${target.kind === 'site' ? 'export' : 'download'}` }] : []),
     { label: 'Duplicate', icon: 'fork' as const, onClick: duplicate },
-    { label: target.item.password_protected || target.item.write_password_protected ? 'Change or remove password' : 'Set password', icon: 'lock' as const, onClick: () => { moreOpen = false; editPassword(target!.kind, target!.item); } },
+    { label: target.item.password_protected || target.item.write_password_protected ? 'Change or remove password' : 'Set password', icon: 'lock' as const, onClick: () => { moreOpen = false; editPassword(target!.item); } },
     ...(target.item.created_by === data.email ? [{ label: 'Who can write', icon: 'person' as const, onClick: () => { write = target!.item.write_policy; writeOpen = true; } }] : []),
     ...(canMutateTarget ? [{ label: 'Change expiration', icon: 'clock' as const, onClick: () => { ttl = data.policy.default_ttl; ttlOpen = true; } }] : []),
     { label: 'Delete', icon: 'trash' as const, danger: true, onClick: () => { confirmAction = 'Delete'; confirmOpen = true; } },
@@ -448,7 +457,7 @@
   onDestroy(() => setGatherFrame(null));
 </script>
 
-<main class="en-wrap">
+<main class="en-wrap" style:padding-bottom={hasSelection && barHeight ? `calc(var(--pad-page-bottom) + ${barHeight + 24}px)` : undefined}>
   <PageTitle wide title="Publish a document, prototype, or file."><p class="en-lede">Upload here and get a link. Or <a href="/setup">connect your agent</a> to publish for you.</p></PageTitle>
   <div id="messages" class="en-hub-messages">{#each messages as item (item.id)}<Flash tone={item.tone} password={item.password} writePassword={item.writePassword} onDismiss={() => dismiss(item.id)} action={item.retry ? { label: 'Try again', onclick: () => { dismiss(item.id); item.retry?.(); } } : undefined}>{item.text}{#if item.url} <a href={item.url}>{item.name}</a>{/if}</Flash>{/each}</div>
   <div class="en-space-after"><Card charged tight>
@@ -457,49 +466,48 @@
     <input bind:this={folderpick} id="folderpick" class="en-sr-only" type="file" webkitdirectory tabindex="-1" aria-hidden="true" onchange={e => picked(e, true)} />
   </Card></div>
   <div class="en-stack en-space-after">
-    <Card title="Sites" hint={`${lists.sites.length < lists.sites_total ? `${lists.sites.length} of ` : ''}${count(lists.sites_total, 'site')}`} tight>
-      <div class="en-card-body en-toolbar"><Input size="md" id="q" class="en-search" type="search" placeholder="Search slugs and filenames" aria-label="Search slugs and filenames" bind:value={q} oninput={search} />
+    <Card title="Catalog" hint={`${lists.items.length < lists.total ? `${lists.items.length} of ` : ''}${count(lists.total, 'item')}`} tight>
+      <div class="en-card-body en-toolbar en-catalog-toolbar"><Input size="md" id="q" class="en-search" type="search" placeholder="Search slugs and filenames" aria-label="Search slugs and filenames" bind:value={q} oninput={search} />
         <SegmentedControl id="scope" bind:value={scope} ariaLabel="Catalog scope" onChange={() => { applyFilters(); }} options={[{ value: 'involved', label: 'Your work' }, { value: 'created', label: 'Created by you' }, { value: 'edited', label: 'Last edited by you' }]} />
-        <Select id="sort" aria-label="Sort" bind:value={sort} onchange={() => refresh()} options={[{ value: 'updated', label: 'Updated' }, { value: 'name', label: 'Name' }, { value: 'size', label: 'Size' }, { value: 'age', label: 'Oldest' }]} />
       </div>
-      <div id="catalog-filters" class="en-card-body en-catalog-filters">
+      <div class="en-card-body en-toolbar en-catalog-toolbar en-catalog-toolbar--second">
+        <SegmentedControl id="kind" bind:value={kind} ariaLabel="Catalog kind" onChange={() => { applyFilters(); }} options={[{ value: 'all', label: 'All' }, { value: 'sites', label: 'Sites' }, { value: 'files', label: 'Files' }]} />
+        <Select id="sort" aria-label="Sort" bind:value={sort} onchange={() => refresh()} options={[{ value: 'updated', label: 'Updated' }, { value: 'name', label: 'Name' }, { value: 'size', label: 'Size' }, { value: 'age', label: 'Oldest' }]} />
+        <button type="button" id="catalog-filters-toggle" class="en-btn en-btn--ghost en-btn--md en-filters-toggle" aria-expanded={filtersOpen} aria-controls="catalog-filters" onclick={() => { filtersOpen = !filtersOpen; }}>More filters{#if moreFiltersActive}<span class="en-filters-count" aria-label="{moreFiltersActive} active">{moreFiltersActive}</span>{/if}<Icon name="chevron" size={16} className={filtersOpen ? 'en-filters-chevron en-filters-chevron--open' : 'en-filters-chevron'} /></button>
+      </div>
+      <div id="catalog-filters" class="en-card-body en-catalog-filters" hidden={!filtersOpen}>
         <Field label="Expiry"><SegmentedControl id="catalog-expires" ariaLabel="Expiry filter" options={[{ value: 'any', label: 'Any' }, { value: 'never', label: 'Never expires' }]} bind:value={expires} onChange={() => { expiresBefore = ''; applyFilters(); }} /></Field>
         <Field label="Expires before" htmlFor="catalog-expires-before" note="A date, 2026-01-01, or an ISO timestamp." noteId="catalog-expires-before-note" error={expiresBeforeError} errorId="catalog-expires-before-error"><Input id="catalog-expires-before" bind:value={expiresBefore} mono placeholder="2026-01-01" disabled={expires === 'never'} aria-invalid={expiresBeforeError ? 'true' : undefined} aria-describedby={expiresBeforeError ? 'catalog-expires-before-error catalog-expires-before-note' : 'catalog-expires-before-note'} onchange={applyFilters} /></Field>
         <Field label="Last written before" htmlFor="catalog-updated-before" note="A date, 2026-01-01, or an ISO timestamp." noteId="catalog-updated-before-note" error={updatedBeforeError} errorId="catalog-updated-before-error"><Input id="catalog-updated-before" bind:value={updatedBefore} mono placeholder="2026-01-01" aria-invalid={updatedBeforeError ? 'true' : undefined} aria-describedby={updatedBeforeError ? 'catalog-updated-before-error catalog-updated-before-note' : 'catalog-updated-before-note'} onchange={applyFilters} /></Field>
         <Field label="Minimum size" htmlFor="catalog-min-size" note="Bytes, or a size like 500kb, 1mb, or 2gb." noteId="catalog-min-size-note" error={minSizeError} errorId="catalog-min-size-error"><Input id="catalog-min-size" bind:value={minSize} placeholder="1mb" aria-invalid={minSizeError ? 'true' : undefined} aria-describedby={minSizeError ? 'catalog-min-size-error catalog-min-size-note' : 'catalog-min-size-note'} onchange={applyFilters} /></Field>
       </div>
       <p id="catalog-status" class="en-sr-only" role="status">{catalogStatus}</p>
-      <div class="en-card-body en-catalog-select">
-        <Button id="catalog-select-matching" size="md" onclick={selectMatching}>Select all matching these filters</Button>
-      </div>
-      <div id="catalog-cleanup" class="en-card-body en-catalog-cleanup" hidden={!hasSelection}>
-        <p class="en-catalog-cleanup-count">{selectionLabel}</p>
-        <Button id="catalog-cleanup-clear" size="md" onclick={clearCleanupSelection}>Clear</Button>
-        <Field label="Action" note="Set expiry is the safe default. Delete has no recycle bin.">
-          <SegmentedControl id="catalog-cleanup-action" ariaLabel="Cleanup action" options={cleanupActionOptions} bind:value={cleanupAction} disabled={cleanupBusy} />
-        </Field>
-        {#if cleanupAction === 'set_ttl'}
-          <Field label="New expiry" htmlFor="catalog-cleanup-ttl">
-            <Select id="catalog-cleanup-ttl" aria-label="New expiry" bind:value={cleanupTtl} options={ttlOptions} disabled={cleanupBusy} />
-          </Field>
-        {/if}
-        <Button id="catalog-cleanup-preview" variant="primary" disabled={cleanupBusy} onclick={() => { void previewCleanup(); }}>{cleanupBusy && !cleanupConfirmOpen ? 'Previewing…' : 'Preview'}</Button>
-      </div>
-      <div id="sites" aria-busy={loading}><Catalog kind="site" items={lists.sites} cursor={lists.sites_cursor} busy={loading} filtered={filtered} writePolicyDefault={data.policy.write_policy} selected={siteSelected} onToggle={(item, on) => toggleItem('site', item, on)} onToggleVisible={(on) => toggleVisible('site', on)} onMore={item => openMore('site', item)} onPassword={item => editPassword('site', item)} onDelete={item => deleteItem('site', item)} onLoadMore={() => refresh('sites')} /></div>
+      <div id="catalog" aria-busy={loading}><Catalog items={lists.items} cursor={lists.cursor} busy={loading} filtered={filtered} {kind} writePolicyDefault={data.policy.write_policy} selected={itemSelected} onToggle={toggleItem} onToggleVisible={toggleVisible} onSelectMatching={selectMatching} onMore={openMore} onPassword={editPassword} onDelete={deleteItem} onLoadMore={() => refresh(true)} /></div>
     </Card>
-    <Card title="Files" hint={`${lists.files.length < lists.files_total ? `${lists.files.length} of ` : ''}${count(lists.files_total, 'file')}`} tight>
-      <div id="files" aria-busy={loading}><Catalog kind="file" items={lists.files} cursor={lists.files_cursor} busy={loading} filtered={filtered} writePolicyDefault={data.policy.write_policy} selected={fileSelected} onToggle={(item, on) => toggleItem('file', item, on)} onToggleVisible={(on) => toggleVisible('file', on)} onMore={item => openMore('file', item)} onPassword={item => editPassword('file', item)} onDelete={item => deleteItem('file', item)} onLoadMore={() => refresh('files')} /></div>
-    </Card>
-    <CleanupReview preview={cleanupPreview} action={cleanupAction} bind:confirmOpen={cleanupConfirmOpen} bind:confirmError={cleanupConfirmError} busy={cleanupBusy} sampleId="catalog-cleanup-sample" confirmId="catalog-cleanup-dlg" confirmButtonId="catalog-cleanup-confirm" onConfirm={() => { void confirmCleanup(); }} />
-    <Card className="en-hub-export" id="account-export" title="Download what you own">
+    {#if lists.total > 0 || filtered}<Card className="en-hub-export" id="account-export" title="Download what you own">
       <div class="en-stack">
         <p class="en-lede">Sites and loose files keyed to this account, as one zip, before a bulk cleanup. Work you only edited is not included. Same size and file-count caps as a site export.</p>
         <Button href="/account/export" size="md">Download everything you own</Button>
       </div>
-    </Card>
+    </Card>{/if}
   </div>
   <p class="en-lede">Your catalog includes work you created or last edited. To revise an existing file at the same link, ask your agent to update it; uploading it here creates a new file. Links show current contents until expiry or deletion.</p>
+<div id="catalog-cleanup" class="en-catalog-cleanup" role="region" aria-label="Selection actions" hidden={!hasSelection} bind:clientHeight={barHeight}>
+      <p class="en-catalog-cleanup-count">{selectionLabel}</p>
+      <Button id="catalog-cleanup-clear" size="md" onclick={clearCleanupSelection}>Clear</Button>
+      <Field label="Action">
+        <SegmentedControl id="catalog-cleanup-action" ariaLabel="Cleanup action" options={cleanupActionOptions} bind:value={cleanupAction} disabled={cleanupBusy} />
+      </Field>
+      {#if cleanupAction === 'set_ttl'}
+        <Field label="New expiry" htmlFor="catalog-cleanup-ttl">
+          <Select id="catalog-cleanup-ttl" aria-label="New expiry" bind:value={cleanupTtl} options={ttlOptions} disabled={cleanupBusy} />
+        </Field>
+      {/if}
+      <Button id="catalog-cleanup-run" variant={cleanupAction === 'delete' ? 'danger' : 'primary'} disabled={cleanupBusy} onclick={() => { void previewCleanup(); }}>{cleanupAction === 'delete' ? 'Delete' : cleanupAction === 'expire' ? 'Expire soon' : 'Set expiry'}</Button>
+      <p class="en-note en-catalog-cleanup-note">Set expiry is the safe default. Delete has no recycle bin.</p>
+    </div>
 </main>
+<CleanupDialog id="catalog-cleanup-dlg" sampleId="catalog-cleanup-sample" bind:open={cleanupConfirmOpen} preview={cleanupPreview} action={cleanupAction} pending={selectionLabel} busy={cleanupBusy} error={cleanupConfirmError} onConfirm={() => { void confirmCleanup(); }} />
 
 {#snippet stage()}{#if staged}
   <form id="stage" class="en-stage" onsubmit={launch}>
@@ -517,7 +525,7 @@
   </form>
 {/if}{/snippet}
 
-<Sheet bind:open={moreOpen} title={targetName} meta={target ? `${target.kind === 'site' ? 'Site' : 'File'} · ${target.item.write_policy === 'org' ? 'Anyone in the org' : 'Only the creator'}` : ''} items={moreItems} />
+<Sheet bind:open={moreOpen} title={targetName} meta={targetMeta} items={moreItems} />
 <ConfirmDialog bind:open={confirmOpen} title={`${confirmAction} ${target?.kind || 'site'}`} message={confirmAction === 'Delete' ? `This removes the ${target?.kind} and its bytes. There is no recycle bin. Type the name to confirm.` : 'Creates a new site you own. Expiration starts now. The share password and write password are not copied.'}
   label={confirmAction === 'Delete' ? `Type “${targetName}” to delete` : 'New slug'} initial={confirmAction === 'Duplicate' ? duplicateSlug : ''} match={confirmAction === 'Delete' ? targetName : undefined} action={confirmAction} danger={confirmAction === 'Delete'} busy={mutationBusy} onConfirm={confirm} error={modalError} />
 <Dialog dismissible={!mutationBusy} id="pw-dlg" bind:open={passwordOpen} title="Link access" message="Copy a phrase to share the link. Turn a password off and save to remove it.">

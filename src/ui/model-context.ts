@@ -18,7 +18,7 @@ export function registerHubTools(): () => void {
     inputSchema: { type: 'object', properties: {} },
     async execute() {
       const data = await api<CatalogData>('/account/data');
-      return text({ email: data.email, sites: data.sites, files: data.files, tokens: (data.tokens || []).filter(t => !t.revoked).map(t => ({ label: t.label, hint: t.hint || null, recoverable: t.recoverable })) });
+      return text({ email: data.email, sites: data.items.filter(item => item.kind === 'site'), files: data.items.filter(item => item.kind === 'file'), tokens: (data.tokens || []).filter(t => !t.revoked).map(t => ({ label: t.label, hint: t.hint || null, recoverable: t.recoverable })) });
     },
   });
   return () => { context.unregisterTool?.('energon_help'); context.unregisterTool?.('energon_list'); };

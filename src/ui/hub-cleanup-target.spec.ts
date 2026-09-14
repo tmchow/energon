@@ -4,6 +4,7 @@ import { hubCleanupDoneMessage, hubCleanupTarget, type HubCleanupFind } from './
 const find: HubCleanupFind = {
   q: 'vhubclean',
   scope: 'involved',
+  kind: 'all',
   expires: 'any',
   expiresBefore: '',
   updatedBefore: '',
@@ -19,6 +20,7 @@ describe('hubCleanupTarget', () => {
     expect(hubCleanupTarget({ matching: true }, {
       q: '',
       scope: 'involved',
+      kind: 'all',
       expires: 'any',
       expiresBefore: '',
       updatedBefore: '',
@@ -36,6 +38,7 @@ describe('hubCleanupTarget', () => {
       min_size: '15b',
     });
     expect(hubCleanupTarget({ matching: true }, { ...find, expires: 'never' })).not.toHaveProperty('last_read_before');
+    expect(hubCleanupTarget({ matching: true }, { ...find, kind: 'files' })).toEqual({ q: 'vhubclean', kind: 'files' });
   });
 });
 
