@@ -1,19 +1,27 @@
 ---
 name: cut-release
-description: Cut an upstream Energon GitHub Release via the standing release-please PR. Use when asked to cut a release, tag, publish a GitHub Release, or merge the release-please Release PR. Does not tag or bump versions itself.
+description: Cut an Energon GitHub Release via the standing release-please PR on this checkout. Use when asked to cut a release, tag, publish a GitHub Release, or merge the release-please Release PR. Does not tag or bump versions itself. On a fork, stop.
 ---
 
 # Cut a release
 
-release-please already maintains one standing Release PR on `tmchow/energon` (`version.txt`, `CHANGELOG.md`). Merging that PR is the cut. The next `release-please` run on `main` tags `vX.Y.Z` and publishes the GitHub Release.
+release-please already maintains one standing Release PR (`version.txt`, `CHANGELOG.md`) on the repository that owns the workflow. Merging that PR is the cut. The next `release-please` run on `main` tags `vX.Y.Z` and publishes the GitHub Release.
 
-This skill does not tag, bump, or write changelog entries. It is the SOP for a human or agent asked to cut a release.
+This skill does not tag, bump, or write changelog entries. It is the SOP for a human or agent asked to cut a release. It lives in `.agents/skills/cut-release/`; `.claude/skills/cut-release` and `.cursor/skills/cut-release` are symlinks to it.
 
-The skill lives in `.agents/skills/cut-release/`; `.claude/skills/cut-release` and `.cursor/skills/cut-release` are symlinks to it.
+## This checkout
+
+```
+gh repo view --json isFork,nameWithOwner,url
+git remote -v
+```
+
+If `isFork` is true, or `origin` is not this Energon’s source template, **stop**. A fork merges an upstream GitHub Release (see INSTALL.md). It does not cut one. Do not pass `--repo` at someone else’s coordinates.
+
+If this checkout is the template, `gh` with no `--repo` is enough. The workflow’s `github.repository` guard is what prevents a copied Actions file from tagging a fork.
 
 ## Hard stops
 
-- Canonical repo only: `tmchow/energon`. On a company fork, stop.
 - Do not `git tag` or `gh release create` except the labeled Bootstrap path. Do not invent a semver on a later cut.
 - Do not open a substitute PR. If there is no `autorelease: pending` PR, there is nothing to cut (or bootstrap has not run).
 - Do not invent Operator notes that are not in the Release PR diff.
@@ -23,7 +31,7 @@ The skill lives in `.agents/skills/cut-release/`; `.claude/skills/cut-release` a
 ## Find the PR
 
 ```
-gh pr list --repo tmchow/energon --label "autorelease: pending"
+gh pr list --label "autorelease: pending"
 ```
 
 If none, stop. Either nothing releasable has landed since the last tag, or bootstrap has not run.
@@ -51,7 +59,7 @@ Stop. After they merge, the next `release-please` run on `main` publishes the Gi
 ## Verify
 
 ```
-gh release view --repo tmchow/energon
+gh release view
 ```
 
 The newest release is the new tag, includes the Operator section, and is not a draft. `version.txt` on `main` matches the tag without the `v`.

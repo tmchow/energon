@@ -107,6 +107,10 @@ describe("contribution policy", () => {
     expect(config).toMatch(/"type": "ci",\s*"hidden": true/);
     expect(config).toMatch(/"type": "chore",\s*"hidden": true/);
     expect(readFileSync(join(root, "CONTRIBUTING.md"), "utf8")).toContain("## Releases");
+    const skill = readFileSync(join(root, ".agents/skills/cut-release/SKILL.md"), "utf8");
+    expect(skill).toContain("gh repo view --json isFork,nameWithOwner,url");
+    expect(skill).toContain("gh pr list --label \"autorelease: pending\"");
+    expect(skill).not.toContain("--repo tmchow/energon");
   });
 
   it("lints PR titles as conventional commits without pull_request_target", () => {
