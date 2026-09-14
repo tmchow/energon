@@ -2,8 +2,9 @@
 # Start an isolated local Energon for verification.
 # Usage (from repo root): .agents/skills/verify-energon/bin/launch
 # Env: ENERGON_VERIFY_RUN, ENERGON_VERIFY_PORT (default 18787),
-#      ENERGON_VERIFY_VARS (optional, space-separated KEY:VALUE pairs passed as extra --var,
-#      e.g. "ALLOW_UNLIMITED_TOKENS:false" to drive an instance-policy branch)
+#      ENERGON_VERIFY_VARS (optional KEY:VALUE pairs passed as extra --var.
+#      Space-separated for simple values. Newline-separated when a value has
+#      spaces, e.g. a GitHub-shaped JSON fixture.)
 
 set -euo pipefail
 _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -59,9 +60,16 @@ wrangler_args=(
 if [[ -n "$EMAIL" ]]; then
   wrangler_args+=(--var "DEV_ACCESS_EMAIL:$EMAIL")
 fi
-for extra in ${ENERGON_VERIFY_VARS:-}; do
-  wrangler_args+=(--var "$extra")
-done
+if [[ "${ENERGON_VERIFY_VARS:-}" == *$'\n'* ]]; then
+  while IFS= read -r extra || [[ -n "$extra" ]]; do
+    [[ -z "$extra" ]] && continue
+    wrangler_args+=(--var "$extra")
+  done <<< "$ENERGON_VERIFY_VARS"
+else
+  for extra in ${ENERGON_VERIFY_VARS:-}; do
+    wrangler_args+=(--var "$extra")
+  done
+fi
 
 # doctor and cleanup identify this run by process group: every listener on
 # $PORT must have pgid == $PID. setsid gives that on Linux; macOS has no setsid,

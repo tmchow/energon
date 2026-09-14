@@ -22,11 +22,13 @@ Operators listed on `ADMIN_EMAILS` see when this build is behind the latest publ
 Preconditions:
 
 - This feature needs its own launch. The fixture tag must be a newer semver than the repo `version.txt`.
-- Launch with `ENERGON_VERIFY_EMAIL` set (or the default local identity) and `ENERGON_VERIFY_VARS="ADMIN_EMAILS:$EMAIL UPSTREAM_RELEASE_JSON:{\"tag_name\":\"v1.1.0\",\"html_url\":\"https://example.test/r/v1.1.0\",\"published_at\":\"2026-09-14T00:00:00.000Z\",\"body\":\"## Operator\\n-Restart\"}"` so the doctor identity is an operator and Admin does not call the network. `$EMAIL` must be the address `GET /account/data` reports (`.dev.vars` `DEV_ACCESS_EMAIL` if set, else `dev@example.com`). The JSON value must contain no spaces; launch splits `ENERGON_VERIFY_VARS` on whitespace.
+- Launch with `ENERGON_VERIFY_EMAIL` set (or the default local identity) and newline-separated `ENERGON_VERIFY_VARS` so the JSON may contain spaces:
+  `ENERGON_VERIFY_VARS=$'ADMIN_EMAILS:'"$EMAIL"$'\nUPSTREAM_RELEASE_JSON:{"tag_name":"v1.1.0","html_url":"https://example.test/r/v1.1.0","published_at":"2026-09-14T00:00:00.000Z","body":"## Operator\\n- Restart after deploy"}'`
+  The doctor identity is an operator and Admin does not call the network. `$EMAIL` must be the address `GET /account/data` reports (`.dev.vars` `DEV_ACCESS_EMAIL` if set, else `dev@example.com`).
 - `bin/up` passed. Persist is `$PERSIST` from `state.env`.
 
 - **Default — Operator hub HTML.** `GET $ORIGIN/` as the doctor. HTML contains `href="/admin#admin-update"` and the word `Update` next to Admin. Bootstrap JSON `upstream.status` is `update`, `upstream.latest_tag` is `v1.1.0`.
-- **Default — Operator Admin HTML.** `GET $ORIGIN/admin` as the doctor is `200`. Contains `id="admin-update"`, `1.1.0 is available`, `id="admin-update-operator"`, `Restart`, `id="admin-update-dismiss"`, `Read the release`, `How to update`, and `This Energon ·` plus this build's `version.txt`. `#admin-update` appears before `#admin-health`. Bootstrap `upstream.status` is `update`. The update card class is `en-card en-admin-card` without `en-card--charged`.
+- **Default — Operator Admin HTML.** `GET $ORIGIN/admin` as the doctor is `200`. Contains `id="admin-update"`, `1.1.0 is available`, `id="admin-update-operator"`, `Restart after deploy`, `id="admin-update-dismiss"`, `Read the release`, `How to update`, and `This Energon ·` plus this build's `version.txt`. `#admin-update` appears before `#admin-health`. Bootstrap `upstream.status` is `update`. The update card class is `en-card en-admin-card` without `en-card--charged`.
 - **Extra (admin-upstream-dismiss) — Dismiss in the hub.** Open `$ORIGIN/`. `#who` shows the doctor email. Admin shows Update. Open `/admin`. `#admin-update` is above Health. Click `#admin-update-dismiss`. Card and nav badge hide. Reload `/admin` and `/`: still hidden. Drive when dismiss or localStorage key changes.
 - **Extra (admin-upstream-current) — Current fixture.** Second wrangler: same operator email, `UPSTREAM_RELEASE_JSON` tag equal to `version.txt` (for example `v1.0.0` when the file is `1.0.0`). `GET /admin` has the version kicker and no `#admin-update`. Drive when current/empty chrome changes.
 - **Proof.** Default: hub and Admin HTML plus bootstrap `upstream`. Screenshots only for Extra hub dismiss (`#who` visible).
@@ -35,7 +37,7 @@ Preconditions:
 
 - Launch must pass `ADMIN_EMAILS` matching the doctor email or Admin is `403`.
 - `UPSTREAM_RELEASE_JSON` is a GitHub `releases/latest`-shaped object: `tag_name`, `html_url`, `published_at`, `body`. Without it the Worker calls GitHub; do not do that in verify.
-- `ENERGON_VERIFY_VARS` values cannot contain spaces. Encode Operator newlines as `\\n` inside the JSON string.
+- `ENERGON_VERIFY_VARS` is space-separated for simple values. Use newline-separated pairs when a value has spaces (this fixture). Encode Operator newlines as `\\n` inside the JSON string.
 - Dismiss is `localStorage` only (`energon:dismissed-release:{tag}`). A new tag lights the mark again. There is no D1 row.
 - The card does not deploy or overwrite this Energon. How to update is the public docs upgrade page.
 - Worker tests pin a current fixture. This feature's launch pins an update fixture. Do not reuse a current-pinned process for Default.
