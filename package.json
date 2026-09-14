@@ -33,7 +33,8 @@
     "skill:init": "node scripts/render-skill.mjs --init",
     "build:ui": "node scripts/build-ui.mjs",
     "check:ui": "npm run check --workspace @energon/svelte-tools",
-    "specimen:ui": "node scripts/build-ui.mjs --specimen"
+    "specimen:ui": "node scripts/build-ui.mjs --specimen",
+    "setup:access": "node scripts/setup-access.mjs"
   },
   "dependencies": {
     "fflate": "^0.8.3",

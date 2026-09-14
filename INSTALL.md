@@ -13,7 +13,7 @@ If you only need (2), skip to [Connect an agent](#connect-an-agent).
 
 ## Deploy your own Energon
 
-You need a Cloudflare account (Workers Paid — unzip + 25 MB uploads), a hostname, and a GitHub repo that will be the marketplace teammates install from.
+You need a Cloudflare account (Workers Paid — unzip + 25 MB uploads), two distinct hostnames, and a GitHub repo that will be the marketplace teammates install from.
 
 ### 1. Fork or clone
 
@@ -29,8 +29,9 @@ Do not reuse another Energon’s D1 `database_id` or R2 bucket. The committed `w
 
 ### 2. Create Cloudflare resources (once)
 
+Run `npm install` first. Before creating resources, run `npx wrangler whoami`, confirm the operator’s intended account, and set `account_id` in `wrangler.toml`. If needed, [select the correct local profile](docs/ACCESS-SETUP.md#select-the-account-before-creating-resources).
+
 ```bash
-npm install
 npx wrangler r2 bucket create energon
 npx wrangler d1 create energon
 ```
@@ -89,6 +90,8 @@ Strings only (Wrangler). Committed defaults are company-shaped. Full table: [doc
 If these vars are omitted, code defaults are stricter: required TTL (7d / 30d cap) and `WRITE_POLICY=owner`.
 
 ### 5. Cloudflare Access
+
+For an API-first setup with an existing identity provider, use [Set up Access from the terminal](docs/ACCESS-SETUP.md). It previews the exact account, provider, emails, and resources before `--apply`, and refuses conflicting applications. The dashboard remains an alternative.
 
 The Worker reads `Cf-Access-Authenticated-User-Email`. It does not implement signup.
 

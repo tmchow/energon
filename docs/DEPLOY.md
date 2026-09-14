@@ -154,6 +154,8 @@ Supported hooks are wrangler vars (`FOOTER_TEXT`, TTL, email domains, `WRITE_POL
 
 ## Cloudflare Access
 
+For a repeatable CLI/API setup with an existing provider, follow [Set up Access from the terminal](ACCESS-SETUP.md).
+
 The Worker reads `Cf-Access-Authenticated-User-Email`. It does not implement signup.
 
 - IdP: Google Workspace / Okta / GitHub Enterprise, restricted to your org.

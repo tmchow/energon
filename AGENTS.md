@@ -19,7 +19,7 @@ This file is how to **change this tree**. It is not a product README and not the
 
 - Do not invent a token. Humans mint at `{origin}/tokens` or approve agent connection requests at `/connect`. Never automate human approval.
 - Never default to `overwrite: true`. Never claim a guessed slug that already exists without the human confirming.
-- Do not `wrangler login`, `wrangler deploy`, `npm run db:remote`, stamp `d1_migrations`, or `d1 execute` against production. New schema belongs in `migrations/` first.
+- Development work does not authorize production changes. When an operator explicitly requests installation or deployment of their fork, follow INSTALL.md for account selection, remote migrations, and deployment within that scope. Human sign-in and connection approval remain human steps; never run interactive `wrangler login` in an unattended cloud agent. Never stamp `d1_migrations` or execute ad hoc schema SQL against production. New schema belongs in `migrations/` first.
 - Do not `pkill -f wrangler` / `workerd`. Do not delete `.wrangler/state` (the human's local DB).
 - Do not hand-edit generated `plugins/{name}/` on a fork. Source is `templates/` + `instance-skill.json`. Render with `npm run skill:render`.
 - Do not put the **publish** skill (`templates/skill/`, `plugins/{name}/`) under `.agents/skills` or `.claude/skills` — those autoload it inside this Worker repo. Only `verify-energon` belongs there.
