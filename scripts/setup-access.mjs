@@ -38,7 +38,7 @@ function validateVerificationConfig(input) {
 }
 
 export function cloudflareClient(token) {
-  if (!token?.trim() || /[\r\n]/.test(token)) throw new Error("Set CLOUDFLARE_ACCESS_API_TOKEN in the environment.");
+  if (!token?.trim() || /[\r\n]/.test(token)) throw new Error("Provide a Cloudflare API token through the environment variable named by this command's documentation.");
   return async (path, method = "GET", body) => {
     const response = await fetch(`https://api.cloudflare.com/client/v4${path}`, {
       method, redirect: "error", signal: AbortSignal.timeout(30000),
@@ -48,7 +48,11 @@ export function cloudflareClient(token) {
     let data;
     try { data = await response.json(); } catch { throw new Error(`Cloudflare ${method} ${path}: invalid response (${response.status}).`); }
     // Provider responses can include credentials; never echo API response bodies.
-    if (!response.ok || data.success !== true) throw new Error(`Cloudflare ${method} ${path} failed (${response.status}). Check account scope and Access permissions; rerun to reconcile any partial creation.`);
+    if (!response.ok || data.success !== true) {
+      const permission = path.includes("/dns_records") ? "Check DNS Read permission and the selected zone scope." : "Check token permissions and account/zone scope for this endpoint.";
+      const recovery = method === "GET" ? "This read failed; do not treat it as an empty inventory." : "Inspect the operation before retrying; earlier writes may have succeeded.";
+      throw new Error(`Cloudflare ${method} ${path} failed (${response.status}). ${permission} ${recovery}`);
+    }
     return data;
   };
 }

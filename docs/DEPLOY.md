@@ -125,6 +125,19 @@ Supported customization uses Wrangler vars (`FOOTER_TEXT`, TTL, email domains, `
 
 Use this read-only inventory during [installation preflight](../INSTALL.md#3-inspect-the-account-and-resources) and updates. Alongside Wrangler's D1 and R2 lists, inspect the deployed Worker configuration to match its storage binding IDs with this fork. Listing a Worker name alone does not establish ownership.
 
+For a new installation or changed hostname, run the full inventory below. Create a scoped read-only API token with these permissions:
+
+| Resource scope | Permission | Inventory |
+| --- | --- | --- |
+| Selected account | Workers Scripts Read | Worker scripts, settings, and custom domains |
+| Each selected zone | Zone Read | Zone and account identity |
+| Each selected zone | Workers Routes Read | Routes, including wildcard matches |
+| Each selected zone | DNS Read | Existing hostname records |
+
+Cloudflare documents the accepted permissions for [custom domains](https://developers.cloudflare.com/api/resources/workers/subresources/domains/methods/list/), [zone details](https://developers.cloudflare.com/api/resources/zones/methods/get/), and [DNS records](https://developers.cloudflare.com/api/resources/dns/subresources/records/methods/list/). A working Wrangler login or an Access-only token does not establish DNS Read access. If DNS inventory returns 403, check the token's DNS Read permission and selected zone scope; do not interpret it as an empty zone.
+
+For an update with unchanged hostnames, you can use existing read credentials without adding DNS Read only after verifying the deployed Worker's storage bindings, both custom domains' `service` and `zone_id`, and matching routes against this fork. Read bindings from `GET /accounts/{account_id}/workers/scripts/{worker_name}/settings`; compare the D1 database ID and R2 bucket name with `wrangler.toml`. If ownership is uncertain or any hostname or route will change, use the full inventory. This exception does not authorize replacing DNS records or routes.
+
 Set `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ZONE_ID`, `ENERGON_HUB_HOSTNAME`, and `ENERGON_CONTENT_HOSTNAME` in the environment to the selected account, one hostname's zone, and both hostnames. Run once for each zone if they differ. Use a read-only `CLOUDFLARE_API_TOKEN` that can list Workers, custom domains, zone routes, and DNS records; a credential scoped only to Access cannot do this. The zone ID is available on the zone's Cloudflare overview page. This script also checks that the zone belongs to the selected account.
 
 ```sh

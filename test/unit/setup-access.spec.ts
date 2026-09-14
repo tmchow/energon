@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { setupAccess, validateConfig, verifyAccess } from "../../scripts/setup-access.mjs";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cloudflareClient, setupAccess, validateConfig, verifyAccess } from "../../scripts/setup-access.mjs";
 
 const config = { account_id: "a".repeat(32), hub_hostname: "hub.example.com", content_hostname: "share.example.com", identity_provider_id: "11111111-1111-4111-8111-111111111111", allowed_emails: ["Owner@example.com"] };
 function fixture() {
@@ -207,5 +207,26 @@ describe("existing Access verification", () => {
     const f = await existing();
     f.apps[0].policies = [{ id: "unknown-policy" }];
     await expect(verifyAccess(f.input, f.client)).rejects.toThrow("expected exactly one policy");
+  });
+});
+
+
+describe("Cloudflare client diagnostics", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it.each([
+    ["/zones/zone/dns_records?name=share.example.com", "GET", "DNS Read permission", "earlier writes"],
+    ["/accounts/account/access/apps", "GET", "account/zone scope", "earlier writes"],
+    ["/accounts/account/access/apps", "POST", "earlier writes may have succeeded", "empty inventory"],
+  ])("explains failed %s %s without exposing response data", async (path, method, expected, absent) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      success: false, errors: [{ message: "sensitive response detail" }],
+    }), { status: 403 })));
+    const failure = cloudflareClient("test-token")(path, method);
+    await expect(failure).rejects.toThrow(expected);
+    await expect(failure).rejects.not.toThrow(absent);
+    await expect(failure).rejects.not.toThrow("sensitive response detail");
+    await expect(failure).rejects.not.toThrow("test-token");
+    if (method === "GET") await expect(failure).rejects.toThrow("do not treat it as an empty inventory");
   });
 });

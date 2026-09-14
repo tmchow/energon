@@ -177,7 +177,7 @@ Keep sanitized requests, statuses, URLs, browser results, and workarounds. Recor
 
 Start once this Energon is deployed, public discovery works, and human sign-in is verified. During installation, complete this connection flow and then return to the [publishing acceptance checks](#7-verify-the-installation).
 
-Ask the human for the **origin** (`https://energon.your.co`) and the **GitHub repo** that is the marketplace (usually the company fork). If they only have the origin, `GET {origin}/v1/help` (no auth) names `repo`, `install`, and `env`.
+Start with the **origin** (`https://energon.your.co`). `GET {origin}/v1/help` (no auth) supplies the marketplace's GitHub repository at `identity.repo`, the plugin at `install`, and the token environment variable at `env`. Use those values rather than guessing the repository from the hostname. If an older deployment omits `identity.repo`, ask the operator for the fork's GitHub repository.
 
 ### 1. Add the marketplace and install the skill
 
