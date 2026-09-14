@@ -32,6 +32,8 @@ describe("markdown page shell", () => {
     expect(html).toContain('theme: light ? "neutral" : "dark"');
     expect(html).toContain('securityLevel: "strict"');
     expect(html).toContain("useMaxWidth: false");
+    expect(html).toContain("xyChart: fit");
+    expect(html).not.toContain("xychart: fit");
     expect(html).toContain("scaleLabelColor");
     expect(html).not.toContain("primaryColor:");
   });

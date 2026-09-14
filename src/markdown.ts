@@ -136,7 +136,7 @@ mermaid.initialize({
   packet: fit,
   radar: fit,
   treemap: fit,
-  xychart: fit,
+  xyChart: fit,
   themeVariables: {
     background: light ? "#f6f4fb" : "#070814",
     scaleLabelColor: light ? "#14111f" : "#ece8f8",
