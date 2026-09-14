@@ -106,7 +106,9 @@ describe("signed-in pages", () => {
     const html = await (await req(file.body.url, { headers: { accept: "text/html" } })).text();
     expect(html).toContain("<h1>Brand link</h1>");
     expect(html).toContain('class="en-md"');
+    expect(html).toContain('class="en-md-page"');
     expect(html).toMatch(/color-scheme:\s*light dark/);
+    expect(html).toMatch(/\.en-md \.mermaid\{[^}]*overflow-x:auto/);
     expect(html).not.toMatch(/<a[^>]*class="en-brand"/);
     expect(html).not.toContain('class="en-top');
     expect(html).not.toContain('class="en-card');
@@ -115,6 +117,7 @@ describe("signed-in pages", () => {
     expect(html).not.toContain('<script type="module"');
     const shell = uiPage("notes.md — Energon", { page: "markdown", data: { html: "<h1>Hi</h1>" } });
     expect(shell).toContain('class="en-md"');
+    expect(shell).toContain('class="en-md-page"');
     expect(shell).not.toMatch(/<a[^>]*class="en-brand"/);
     const hub = await (await req("/")).text();
     expect(hub).toMatch(/<a[^>]*class="en-brand"[^>]*href="\/"/);

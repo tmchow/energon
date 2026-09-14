@@ -241,8 +241,17 @@ body.page-markdown {
 @media (prefers-color-scheme: light) {
   body.page-markdown { --glow-rgb: 122, 77, 255; }
 }
-.en-md-wrap { max-width: var(--measure-md); }
-body.page-markdown .en-md { padding: 0; overflow-x: auto; }
+.en-md-page {
+  width: 100%;
+  max-width: none;
+  margin: 0 auto;
+  padding: var(--pad-page-top) var(--pad-page-x) var(--pad-page-bottom);
+}
+body.page-markdown .en-md { padding: 0; overflow: visible; }
+body.page-markdown .en-md > :not(.mermaid) {
+  max-width: var(--measure-md);
+  margin-inline: auto;
+}
 .en-md h4, .en-md h5, .en-md h6 { font-weight: 550; letter-spacing: var(--tracking-title); margin: 18px 0 8px; }
 .en-md h4 { font-size: 16px; } .en-md h5, .en-md h6 { font-size: 15px; }
 .en-md a { color: var(--accent); }
@@ -252,8 +261,25 @@ body.page-markdown .en-md { padding: 0; overflow-x: auto; }
 .en-md th { background: var(--bg-sunken); font-weight: 550; }
 .en-md tbody tr:last-child th, .en-md tbody tr:last-child td { border-bottom: 0; }
 .en-md code:not(pre code) { background: var(--bg-sunken); color: var(--fg-1); border-color: var(--border-1); }
-.en-md pre.mermaid { background: transparent; border: 0; color: inherit; padding: 0; box-shadow: none; overflow: visible; }
-body.page-markdown .en-md .mermaid svg { width: auto; max-width: none; height: auto; }
+.en-md pre.mermaid { background: transparent; border: 0; color: inherit; padding: 0; box-shadow: none; }
+body.page-markdown .en-md .mermaid {
+  display: block;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-2) transparent;
+}
+body.page-markdown .en-md .mermaid::-webkit-scrollbar { height: 8px; }
+body.page-markdown .en-md .mermaid::-webkit-scrollbar-thumb {
+  background: var(--border-2);
+  border-radius: var(--radius-pill);
+}
+body.page-markdown .en-md .mermaid svg { width: auto; max-width: none; height: auto; display: block; }
 .en-md li:has(> input[type="checkbox"]) { list-style: none; }
 .en-md ul:has(> li > input[type="checkbox"]) { padding-left: 0.2em; }
 .en-md input[type="checkbox"] { margin-right: 0.45em; accent-color: var(--accent); }

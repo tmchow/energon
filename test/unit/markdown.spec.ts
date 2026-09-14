@@ -19,6 +19,8 @@ describe("markdown page shell", () => {
     const html = markdownPage({ title: "notes.md", html: "<h1>Hi</h1>", mermaid: false });
     expect(html).toContain("<h1>Hi</h1>");
     expect(html).toContain('class="en-md"');
+    expect(html).toContain('class="en-md-page"');
+    expect(html).not.toContain("en-md-wrap");
     expect(html).not.toMatch(/<a[^>]*class="en-brand"/);
     expect(html).not.toContain('class="en-top');
     expect(html).not.toContain('class="en-card');
@@ -32,9 +34,20 @@ describe("markdown page shell", () => {
     expect(html).toContain('theme: light ? "neutral" : "dark"');
     expect(html).toContain('securityLevel: "strict"');
     expect(html).toContain("useMaxWidth: false");
+    expect(html).toContain("en-md-page");
     expect(html).toContain("xyChart: fit");
     expect(html).not.toContain("xychart: fit");
     expect(html).toContain("scaleLabelColor");
     expect(html).not.toContain("primaryColor:");
+  });
+
+  it("lets mermaid pan inside the figure without stretching the page", () => {
+    const css = readFileSync(resolve("src/ui/styles.css"), "utf8");
+    expect(css).toMatch(/\.en-md-page \{/);
+    expect(css).toMatch(/body\.page-markdown \.en-md > :not\(\.mermaid\) \{[\s\S]*?max-width: var\(--measure-md\)/);
+    expect(css).toMatch(/body\.page-markdown \.en-md \.mermaid \{[\s\S]*?overflow-x: auto/);
+    expect(css).toMatch(/body\.page-markdown \.en-md \{[^}]*overflow: visible/);
+    const built = readFileSync(resolve("src/generated/ui.css"), "utf8");
+    expect(built).toMatch(/\.en-md \.mermaid\{[^}]*overflow-x:auto/);
   });
 });
