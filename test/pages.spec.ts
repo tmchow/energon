@@ -92,11 +92,12 @@ describe("signed-in pages", () => {
   it("shakes the password gate after a wrong phrase", () => {
     const ok = uiPage("Password — gated", { page: "gate", data: { action: "/x", wrong: false, passwordHeader: "X-Energon-Password" } });
     expect(ok).toContain("This link is password-protected.");
-    expect(ok).not.toContain("en-shake");
+    expect(ok).toContain('class="en-card en-gate"');
+    expect(ok).not.toContain("en-gate en-shake");
     expect(ok).not.toContain('<script type="module"');
     const html = uiPage("Password — gated", { page: "gate", data: { action: "/x", wrong: true, passwordHeader: "X-Energon-Password" } });
     expect(html).toContain("That password is wrong.");
-    expect(html).toContain("en-shake");
+    expect(html).toContain("en-gate en-shake");
   });
 
   it("links public Markdown branding to the product site while hub branding stays local", async () => {
