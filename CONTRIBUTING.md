@@ -70,6 +70,14 @@ Follow [DESIGN.md](./DESIGN.md) for UI.
 Do not `wrangler deploy`, stamp `d1_migrations`, or execute D1 against production. New schema
 belongs in `migrations/` first, plus `src/db.ts` and `src/schema.sql` as [AGENTS.md](./AGENTS.md) describes.
 
+## Releases
+
+This section is policy for [`tmchow/energon`](https://github.com/tmchow/energon) only. On a company fork, follow that repo's humans.
+
+A GitHub Release is the operator contract for forks. It is not a deploy and not an upgrade of anyone's Energon. release-please maintains a standing Release PR from Conventional Commit squash titles. Cutting a release means merging that PR after an **Operator** section (migrate D1, new wrangler keys, regenerate the plugin, rollback floor, or an explicit none). Read [`.agents/skills/cut-release/SKILL.md`](./.agents/skills/cut-release/SKILL.md). Do not `git tag` or `gh release create` except that skill's Bootstrap path.
+
+Forks still merge the tag (or `main` at that SHA), keep identity files, migrate, deploy, and verify. See [INSTALL.md](./INSTALL.md) and [Upgrade and recover](https://docs.getenergon.com) / the checkout's upgrade guide.
+
 ## License
 
 By opening a pull request you license the contribution under the [MIT License](./LICENSE).
