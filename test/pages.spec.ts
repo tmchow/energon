@@ -46,6 +46,7 @@ describe("signed-in pages", () => {
     expect(html).toContain('tabindex="-1" aria-hidden="true"');
     expect(html).toContain("A date, 2026-01-01, or an ISO timestamp.");
     expect(html).toContain("Bytes, or a size like 500kb, 1mb, or 2gb.");
+    expect(html).toContain('class="en-seg-pill"');
     expect(html).toContain('aria-label="Expiry filter"');
     expect(html).toContain("Never expires");
     expect(html).not.toContain('id="catalog-last-read"');
@@ -86,6 +87,16 @@ describe("signed-in pages", () => {
     const adminHub = await (await req("/", { headers: access("admin@esperlabs.app") })).text();
     expect(adminHub).toContain('href="/admin"');
     expect(adminHub.indexOf('href="/stats"')).toBeLessThan(adminHub.indexOf('href="/admin"'));
+  });
+
+  it("shakes the password gate after a wrong phrase", () => {
+    const ok = uiPage("Password — gated", { page: "gate", data: { action: "/x", wrong: false, passwordHeader: "X-Energon-Password" } });
+    expect(ok).toContain("This link is password-protected.");
+    expect(ok).not.toContain("en-shake");
+    expect(ok).not.toContain('<script type="module"');
+    const html = uiPage("Password — gated", { page: "gate", data: { action: "/x", wrong: true, passwordHeader: "X-Energon-Password" } });
+    expect(html).toContain("That password is wrong.");
+    expect(html).toContain("en-shake");
   });
 
   it("links public Markdown branding to the product site while hub branding stays local", async () => {

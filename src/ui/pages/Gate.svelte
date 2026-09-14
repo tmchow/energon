@@ -8,7 +8,7 @@
   import Button from '../components/Button.svelte';
   let { data }: { data: GateData } = $props();
 </script>
-<main class="en-gate-page"><Card className="en-gate" tight>
+<main class="en-gate-page"><Card className={data.wrong ? 'en-gate en-shake' : 'en-gate'} tight>
   <div class="en-gate en-gate-inner">
     <span class="en-mark en-mark--breathe" style:--mark-size="35px"><CubeMark size={35} /></span>
     <h1>Energon</h1><p class="en-lede">This link is password-protected.</p>

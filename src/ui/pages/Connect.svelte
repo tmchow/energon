@@ -69,7 +69,7 @@
       <p class="en-connect-agent">Enter the code shown by <strong>{data.connection.label}</strong>.</p>
     {/if}
     {#if !inactive && data.connection}<form id="connect-form" class="en-connect-form" data-request={data.connection.id} onsubmit={decide}>
-      <Field label="Code" htmlFor="connect-code"><input id="connect-code" class="en-input en-connect-code" name="user_code" bind:value={code} oninput={e => code = e.currentTarget.value.replace(/\D/g, '').slice(0, 8)} placeholder="00000000" inputmode="numeric" maxlength="8" autocomplete="one-time-code" spellcheck="false" disabled={busy} /></Field>
+      <Field label="Code" htmlFor="connect-code" className={failed ? 'en-shake' : ''}><input id="connect-code" class="en-input en-connect-code" name="user_code" bind:value={code} oninput={e => code = e.currentTarget.value.replace(/\D/g, '').slice(0, 8)} placeholder="00000000" inputmode="numeric" maxlength="8" autocomplete="one-time-code" spellcheck="false" disabled={busy} /></Field>
       <Field label="Access expires after" htmlFor="connect-ttl"><Select id="connect-ttl" name="ttl" bind:value={ttl} options={data.token_policy.presets.map(p => ({ value: p.id, label: p.label }))} disabled={busy} /></Field>
       <div class="en-connect-actions">
         <Button type="submit" value="approve" variant="primary" block disabled={busy || code.length !== 8}>{busy ? 'Approving…' : 'Approve connection'}</Button>

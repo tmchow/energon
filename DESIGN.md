@@ -97,6 +97,8 @@ Use [the existing icons](src/ui/icons.ts). Add a missing icon in the same 24px g
 
 Retain the existing 120ms hover, 200ms state, and 350ms layout timings. Cube breathing, conduit travel, and the ambient field are specific brand motifs, not a general license for animated decoration. The field's charge follows the pointer; on drag-over it flies behind the drop frame and wanders there while the page goes dark and the frame reads as a cube face. Those are its only two behaviors. Honor reduced motion, keep static states understandable, and never delay access to content for an entrance animation.
 
+When a surface already matches a common interaction, keep those timings and ease, and borrow only the shape of the motion: a sliding active pill on segmented controls, an 80ms (`--dur-intent`) tooltip delay with instant dismiss, a slight scale on dialog open, a cross-fade in a copy-icon slot, and a short horizontal shake on a wrong password or invalid field. Do not import a second motion scale or `t-*` class names. Do not add 3D tilt, particle bursts, shimmer text, page slides, or entrance reveals that delay reading.
+
 ## Choose components by purpose
 
 | Need | Reuse | Design constraint |
