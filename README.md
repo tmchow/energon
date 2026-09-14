@@ -50,18 +50,14 @@ They are not interchangeable.
 
 ### Deploy your own Energon
 
-Fork [`tmchow/energon`](https://github.com/tmchow/energon), then follow [INSTALL.md](./INSTALL.md). You need a Cloudflare account on Workers Paid, a hub hostname and a separate content hostname, Cloudflare Access on the hub, and a D1 database and R2 bucket that no other Energon uses.
+Follow [INSTALL.md](./INSTALL.md), or give your agent this prompt. It can begin before you have a fork or have chosen the installation settings.
 
-```bash
-git clone https://github.com/your-org/energon.git
-cd energon
-npm install
-npx wrangler r2 bucket create energon
-npx wrangler d1 create energon
-npm run skill:init -- --name yourco --origin https://energon.your.co
+```text
+Help me deploy my own Energon from https://github.com/tmchow/energon.
+Read and follow INSTALL.md. I may not have a fork yet.
+Guide me through the choices, suggest sensible defaults, and handle
+setup and verification.
 ```
-
-`skill:init` renders the plugin, marketplace catalogs, and token environment variable for your Energon. Commit them so teammates install from your fork.
 
 ### Connect an agent to an existing Energon
 
@@ -82,19 +78,7 @@ npm run dev
 
 Open <http://127.0.0.1:8787>. Localhost skips Cloudflare Access and signs you in as `dev@example.com`; set `DEV_ACCESS_EMAIL` in `.dev.vars` to change that.
 
-## Give this to an agent
-
-### Deploy Energon
-
-```text
-Read INSTALL.md in this repository and deploy Energon for me or my organization.
-
-Follow INSTALL.md exactly. Ask me for our hub hostname, content hostname, who may mint tokens, and whether coworkers' tokens should overwrite each other's files (WRITE_POLICY=org) or only the creator (owner).
-
-Do not invent a token. Do not reuse another Energon's D1 database_id or R2 bucket. After skill:init, commit the generated plugin and catalogs so teammates install from this fork.
-```
-
-### Connect an agent to an Energon that exists
+## Connection prompt for an existing Energon
 
 ```text
 Read INSTALL.md in this repository, section "Connect an agent", and install Energon for this machine.

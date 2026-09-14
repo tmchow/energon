@@ -1,27 +1,24 @@
-# Deploy your own Energon
+# Energon configuration and operations
 
-One codebase. Each Energon is its own Cloudflare account, D1, R2, Access app, and **rendered skill**. Do not mix two companies’ uploads in one bucket.
+Use [INSTALL.md](../INSTALL.md) for the deployment sequence. This reference owns policy presets, variables, generated-plugin maintenance, and operations for personal and team installations. Keep each Energon's D1 catalog and R2 objects dedicated to that installation.
 
-Start with [INSTALL.md](../INSTALL.md). This page is the deeper reference for vars, expiry, Access, and fork hygiene.
+## Personal and team presets
 
-## Company Energon (this repo’s job)
+Choose the use case before configuring Wrangler. Personal use does not require short-lived content. For personal work that should remain available until deliberately removed, put these strings under `[vars]`:
 
-This tree is meant to be forked and run inside a company. There is no hosted public service here.
+```toml
+ALLOW_UNLIMITED_RETENTION = "true"
+DEFAULT_TTL = "never"
+MAX_TTL = "never"
+WRITE_POLICY = "owner"
+ALLOW_UNLIMITED_TOKENS = "true"
+```
 
-| | This Energon (company) | If you omit the vars |
-| --- | --- | --- |
-| Cloudflare account | Your org | — |
-| Access | Workspace / Okta, locked to your domain | any Access email |
-| `ALLOWED_EMAIL_DOMAINS` | `your.co,your.com` | empty |
-| `ADMIN_EMAILS` | operator emails | empty (no admins) |
-| `ALLOW_UNLIMITED_RETENTION` | `true` (committed) | `false` |
-| `DEFAULT_TTL` / `MAX_TTL` | `never` / `never` | `7d` / `30d` |
-| `WRITE_POLICY` | `org` (committed) | `owner` |
-| Skill | generated for this Energon | generic skill coordinates only; no installable plugin |
+Owner-only writes restrict modifications to the creator; they do not make published links private. Never on the ordinary-token menu is a choice, not the default lifetime: the normal default remains 90 days, and the human chooses a lifetime when minting or approving a connection. Admin tokens cannot use Never.
 
-Code defaults are **strict** when vars are omitted: required TTL, 30-day cap, creator-only writes. The committed `wrangler.toml` opts into company mode. Replace the placeholder D1 id, `PUBLIC_ORIGIN`, and `CONTENT_ORIGIN` before you deploy. `CONTENT_ORIGIN` must be a separate custom hostname; without it, production content publication fails closed.
+For a trusted team whose token holders should be able to update one another's work, use the same retention and token settings with `WRITE_POLICY = "org"`. Choose finite content retention or disable Never for future ordinary tokens when the operator wants those restrictions, independently of personal versus team use.
 
-Auth on the Worker is Cloudflare Access (a verified signed identity). There is no signup in the app.
+The committed `wrangler.toml` uses the team settings. Omitting vars produces different code defaults: required content TTL, a 7-day default, a 30-day cap, and owner-only writes. Set the intended preset explicitly. `ADMIN_EMAILS` defaults to empty, so set the agreed administrator addresses separately. `ALLOWED_EMAIL_DOMAINS` supplements the exact-email Access admission policy; a shared domain alone is not a personal allowlist.
 
 ## Cron cost (every 5 minutes)
 
@@ -49,54 +46,24 @@ API tokens expire on their own clock, separate from content. A human picks a lif
 
 `ADMIN_EMAILS` is a comma list of operator addresses. Only those people can mint an **admin** token from `/tokens` (`scope: admin`). Connect never grants that scope. Admin tokens last at most 7 days (default 1 day) and cannot be never. Admin routes also check that the owner is still on the list, so removing an email strips admin from every token at once. Ordinary `/v1` calls with an admin token still act as that account.
 
-## Skill: init writes the installable package; forks commit it
+## Generated plugin maintenance
 
-The installable skill is the **committed files** under `plugins/{name}/` plus the harness catalogs `skill:init` writes. That is what `/plugin install` reads. Source templates live in `templates/`.
+Installation and first rendering belong in [Configure this fork](../INSTALL.md#4-configure-this-fork). The installable package is the committed `plugins/{name}/` directory and marketplace catalogs; upstream contains only templates and placeholder configuration. The operator's fork must publish the generated package before another agent can install it.
 
-Upstream ships templates and default configuration, with no generated plugin or marketplace catalogs. After you fork, generate the package with a unique name and your real HTTPS hub origin:
+`instance-skill.json` and `templates/` are the sources. Before initialization, `npm run skill:render` and its `--check` form validate templates without generating files. After initialization, render refreshes the package and catalogs; `--check` fails if they drift. Keep the Worker identity variables aligned with the manifest. Do not hand-edit generated files or put the publish skill in `.agents/skills` or `.claude/skills`.
 
-```bash
-npm run skill:init -- --name yourco --origin https://energon.your.co
-```
-
-That sets skill **and** marketplace to `yourco-energon`, token env `YOURCO_ENERGON_TOKEN`, and the GitHub repo from `git remote get-url origin`. `--repo owner/energon` only if origin is still `tmchow/energon`.
-
-It writes `plugins/yourco-energon/`, `.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`, the Copilot/root catalog copies, and `instance-skill.json`. Commit that. Point wrangler `SKILL_NAME`, `MARKETPLACE_NAME`, `MARKETPLACE_REPO`, `TOKEN_ENV`, and `PUBLIC_ORIGIN` at the same values. Set `CONTENT_ORIGIN` to a second custom hostname for published files and sites.
-
-Do not put the skill in `.agents/skills` or `.claude/skills` — those autoload it in this Worker repo. Keep the plugin in `plugins/{name}/` so `claude plugin validate .` treats the fork as a marketplace, not the whole Worker as a plugin.
-
-Choose distinct names for each Energon, including staging and production. Initialization rejects generic `energon` skill, plugin, and marketplace names, and placeholder origins. Matching the skill and marketplace names makes installation easier; uniqueness across Energons prevents collisions.
-
-Before initialization, `npm run skill:render` and its `--check` form validate templates without generating files. After initialization, render refreshes the plugin and catalogs, and `--check` fails if committed files drift from `instance-skill.json` + `templates/`.
-
-Do not ship `{{placeholders}}` in `SKILL.md`. Do not tell a private host to install from `tmchow/energon`. Existing forks using generic names must follow the rename instructions in [INSTALL.md](../INSTALL.md#3-render-this-hosts-skill) before rendering again.
-
-## Cloudflare resources (once per Energon)
-
-Workers Paid is required (unzip + 25 MB uploads).
-
-```bash
-npx wrangler r2 bucket create energon
-npx wrangler d1 create energon
-```
-
-Put the printed D1 `database_id` in `wrangler.toml`. Keep `database_name` and `bucket_name` as `energon` so the existing GitHub Actions deploy job does not need edits.
-
-Then:
-
-- Custom domains → both `[[routes]]` entries in `wrangler.toml` (hub and content)
-- GitHub Actions secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
-- GitHub Actions variable `ENABLE_PRODUCTION_DEPLOY=true` to deploy on push to `main`. Unset = tests only.
-- Do not `wrangler login` from a cloud agent VM. Land on `main`.
+Use distinct names for each installation. For a legacy generic identity, follow the migration guidance in [Configure this fork](../INSTALL.md#4-configure-this-fork); keep `TOKEN_PREFIX` unchanged to preserve existing token values.
 
 ## Instance vars (`wrangler.toml` `[vars]`)
 
 Strings only (Wrangler).
 
-| Var | Company | Default if unset |
+| Var | Example or configuration | Default if unset |
 | --- | --- | --- |
 | `PUBLIC_ORIGIN` | `https://energon.your.co` | `https://energon.example.com` |
-| `CONTENT_ORIGIN` | `https://content.energon.your.co` | `https://content.energon.example.com` |
+| `CONTENT_ORIGIN` | `https://share.your.co` | `https://content.energon.example.com` |
+| `ACCESS_TEAM_DOMAIN` | `your-team.cloudflareaccess.com` (hostname only) | unset; hostname JWT authentication unavailable |
+| `ACCESS_AUD` | hub Access application audience tag | unset; hostname JWT authentication unavailable |
 | `ALLOW_UNLIMITED_RETENTION` | `true` | `false` |
 | `DEFAULT_TTL` | `never` | `7d` (`never` if unlimited is on and this is unset) |
 | `MAX_TTL` | `never` | `30d` (`never` if unlimited) |
@@ -130,7 +97,7 @@ The Worker adds missing columns itself at startup (`ensureSchema`), and `migrati
 1. Apply migrations first: `npx wrangler d1 migrations apply energon --remote` (or let the deploy job do it).
 2. Then deploy the Worker.
 
-If the Worker deployed first, the next `migrations apply` fails with `duplicate column name`. Confirm the column is there (`PRAGMA table_info(tokens)` via the D1 console), then record the migration by hand as a human operator: insert its filename into `d1_migrations` so wrangler stops retrying it. Agents must not do this step.
+If the Worker deployed first, a later migration may fail with `duplicate column name`. Stop deployment and preserve the error, deployed version, migration history, and schema evidence. Compare the complete pending migration with the actual schema and arrange an explicit recovery plan; one existing column does not prove the migration completed. Do not stamp `d1_migrations`, rewrite an applied migration, or run ad hoc schema SQL to skip the failure.
 
 **Rollback floor for token expiry.** Once any token has a non-null `expires_at`, do not roll back below the first build that enforces expiry: an older Worker ignores the column, so every finite-lifetime token, including expired ones, authenticates again. If you must roll back that far, revoke those tokens first:
 
@@ -142,44 +109,33 @@ The same query with `expires_at IS NULL` lists never-expiring tokens, which is w
 
 `MAX_FILE_BYTES` is one file, one zip upload, and one site zip export. Accepts `25mb`, `5mb`, or a raw byte count. `MAX_PLATFORM_BYTES` is the whole-bucket safety valve (default 20 GB).
 
-`FOOTER_TEXT` is one line on signed-in pages. It is escaped as text — not HTML. Leave it empty for no footer. Do not edit `src/hub.html` just to brand a fork.
+`FOOTER_TEXT` is one line on signed-in pages. It is escaped as text — not HTML. Leave it empty for no footer. Use this variable instead of editing hub components to brand a fork.
 
 `WRITE_POLICY` is the default for **new** sites and loose files: `owner` (only `created_by` may PUT/PATCH/DELETE) or `org` (any token on this host). Unset is `owner`. Each object stores its own `write_policy`. Stored NULL is treated as `org`. The creator can `PATCH { "write_policy": "owner" | "org" }`. Anyone with a token can still read via `/v1`.
 
 ## Customize a fork
 
-Keep the diff small so `git merge upstream` stays easy. Worker, hub, `/v1`, template, and docs changes that apply to every Energon belong in a PR against `tmchow/energon`; keep this fork's identity files here. See [CONTRIBUTING.md](../CONTRIBUTING.md).
+Keep the diff small so merging `upstream/main` stays manageable. Worker, hub, `/v1`, template, and docs changes that apply to every Energon belong in a PR against `tmchow/energon`; keep this fork's identity files here. See [CONTRIBUTING.md](../CONTRIBUTING.md).
 
-Supported hooks are wrangler vars (`FOOTER_TEXT`, TTL, email domains, `WRITE_POLICY`) and `instance-skill.json` + `npm run skill:render`. After you merge `upstream/main`, take any **new keys** from `wrangler.example.toml`. Editing `src/hub.html` works but will conflict.
+Before an update, inspect local changes and retain the installation's account ID, D1/R2 bindings, both origins/routes, policy, Access vars, plugin identity, and token prefix. Review upstream changes before merging; do not replace the configured `wrangler.toml` or `instance-skill.json` with upstream placeholders. Compare new keys with `wrangler.example.toml`, apply only the settings needed, and regenerate the plugin after template changes. Review and commit generated changes to the fork.
+
+Supported customization uses Wrangler vars (`FOOTER_TEXT`, TTL, email domains, `WRITE_POLICY`) and the instance manifest. Hub UI source is in `src/ui/`; direct component changes add merge conflicts. Use the updated checkout's [installation checks and migration order](../INSTALL.md#6-commit-and-deploy), then repeat acceptance checks for the upgraded host.
 
 ## Cloudflare Access
 
-For a repeatable CLI/API setup with an existing provider, follow [Set up Access from the terminal](ACCESS-SETUP.md).
+The [Access command contract](ACCESS-SETUP.md) owns credentials, preview/apply syntax, application destinations, and conflict recovery. [INSTALL.md](../INSTALL.md#5-configure-access) places that setup in the deployment workflow.
 
-The Worker verifies the signed `Cf-Access-Jwt-Assertion` from a hostname-based Access application. It does not implement signup.
+Hostname authentication requires `ACCESS_TEAM_DOMAIN` and the hub application's `ACCESS_AUD`. Energon verifies the JWT signature, issuer, audience, expiry, application token type, and user identity; an authenticated-email header alone is not trusted. When sign-in succeeds but the hub reports **Not signed in**, compare those vars with the active hub application and redeploy through the normal workflow.
 
-After creating the hub application, set these non-secret values under `[vars]` in `wrangler.toml`:
+Keep the whole human hub protected, agent paths on the documented bypass, and the content hostname free of Access. Removing a human from Access does not revoke their existing Energon API tokens; follow offboarding below. There is no `PUBLISH_VISIBILITY` var.
 
-```toml
-ACCESS_TEAM_DOMAIN = "your-team.cloudflareaccess.com"
-ACCESS_AUD = "your-hub-application-audience-tag"
-```
+## GitHub deployment automation
 
-Use your Zero Trust team domain (hostname only) and the hub application’s **Application Audience (AUD) Tag**. The Access API returns this tag as `aud` on the application. Do not use the audience from a bypass application. Energon checks the JWT signature, issuer, audience, expiration, and user identity; an email header alone is not authentication. If Google sign-in succeeds but the hub says “Not signed in,” check these two values and redeploy.
+CLI deployment in [INSTALL.md](../INSTALL.md#6-commit-and-deploy) completes installation. For later push-to-main deployment, the fork's `.github/workflows/ci.yml` expects secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, plus repository variable `ENABLE_PRODUCTION_DEPLOY=true`. Unset means tests only. The job runs tests, applies remote D1 migrations, then deploys; pull requests cannot deploy.
 
-Use a hostname-based application for the hub so the content hostname and API bypass paths remain public. Worker-level Access covers all Worker hostnames and is not a substitute for this setup.
+Provision a separate deployment token scoped to the selected account and hostname zones, with permissions for Worker deployment, D1 migrations, R2 access, and custom domains. Use [Cloudflare's current Wrangler token reference](https://developers.cloudflare.com/workers/wrangler/system-environment-variables/#cloudflare_api_token) and inspect the actual workflow when provisioning. The Access-only setup credential is not a deployment credential. Remove it from the agent environment after setup.
 
-- IdP: Google Workspace / Okta / GitHub Enterprise, restricted to your org.
-- Also set `ALLOWED_EMAIL_DOMAINS` so a mis-aimed Access policy cannot mint tokens for random Gmail.
-
-**Paths**
-
-- **Allow** (signed-in): `/`, `/account*`, `/about`, `/stats`, `/admin`, `/setup`, `/tokens`, `/connect`
-- **Bypass** (default): `/v1*`, `/health`, `/llms.txt`, `/auth.md`, `/favicon.svg`, `/static*` on the hub, and `/{handle}/s/*`, `/{handle}/f/*` on the content hostname
-
-Published `/{handle}/s/*` and `/{handle}/f/*` are served from `CONTENT_ORIGIN` and stay on the open internet by default so a share link just opens. Do not put Access on the content hostname; the Worker rejects hub routes there and the separate origin prevents active uploads from reading authenticated hub responses. Leave `/v1*` on Bypass on the hub. There is no `PUBLISH_VISIBILITY` var.
-
-Disable or ignore `*.workers.dev` for humans; the Worker 403s the hub there.
+If resource names differ from the defaults, update the workflow's database name and Wrangler bindings together before enabling deployment. The account secret is an account ID, not a zone ID. Keep automated deployment disabled until configuration has been reviewed.
 
 ## Offboarding a person
 
@@ -191,17 +147,6 @@ There is no transfer-ownership feature, on purpose. Everything you need is alrea
 4. Keep the few things that matter. Anyone with a token can already read anything on this Energon over `/v1`, and Duplicate (the hub More actions menu, or `duplicate_from` on `POST /v1/sites` / `POST /v1/files`) makes an independent copy under the caller's own handle at a new address. That is how ownership moves: the colleague who needs it copies it, then the original expires. There is no bulk transfer because the handle is in the public URL and the R2 key; a copy is a new object with a new owner, which is the honest outcome. Old links to the original stop working when it expires, so tell people the new address.
 5. Free the storage. Back on the same `/admin` preview, choose Set expiry (7 days unless you pick otherwise) or Delete, type the count, confirm. On offboarding the 7-day grace is notice for colleagues who may still hold links; the owner cannot see their catalog any more, so it is not for them. Every preview and execute is recorded in the audit log on `/admin` and `GET /v1/admin/audit`.
 6. Afterwards. Expired objects are purged by the cron within minutes, or run Sweep now on `/admin`. Check the storage health readout there for expired awaiting purge and quota used. The departed handle stays reserved and stays in old URLs; that is harmless.
-
-## Local
-
-```bash
-npm install
-npx wrangler d1 migrations apply energon --local
-# .dev.vars: PUBLIC_ORIGIN=http://127.0.0.1:8787
-#            CONTENT_ORIGIN=http://127.0.0.1:8787
-#            DEV_ACCESS_EMAIL=you@your.co
-npm run dev
-```
 
 ## What you should not do
 
