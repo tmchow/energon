@@ -34,7 +34,12 @@ If this checkout is the template, `gh` with no `--repo` is enough. The workflow�
 gh pr list --label "autorelease: pending"
 ```
 
-If none, stop. Either nothing releasable has landed since the last tag, or bootstrap has not run.
+If none, stop. Check Actions “Release Please” before assuming nothing is releasable:
+
+- `GitHub Actions is not permitted to create or approve pull requests` — a human must enable that in Settings → Actions → General. The workflow cannot grant it.
+- `You do not have permission to create labels` — `.github/workflows/release-please.yml` is missing `issues: write`.
+
+Otherwise nothing releasable has landed since the last tag, or bootstrap has not run.
 
 ## Read the diff
 

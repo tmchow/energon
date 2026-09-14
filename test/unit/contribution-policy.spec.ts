@@ -106,6 +106,12 @@ describe("contribution policy", () => {
     expect(workflow).not.toMatch(/^[ \t]*pull_request[ \t]*:/m);
     expect(/^[ \t]*pull_request_target[ \t]*:/m.test(workflow)).toBe(false);
     expect(workflow).not.toContain("wrangler deploy");
+    expect(workflow).toContain("contents: write");
+    expect(workflow).toContain("pull-requests: write");
+    expect(workflow).toContain("issues: write");
+    expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toContain(
+      "An explicit `permissions` block without `issues: write` is none",
+    );
     const ci = readFileSync(join(workflowsDir, "ci.yml"), "utf8");
     expect(ci).toMatch(/^permissions:\n  contents: read$/m);
     const config = readFileSync(join(root, "release-please-config.json"), "utf8");

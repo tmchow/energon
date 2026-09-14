@@ -26,6 +26,7 @@ This file is how to **change this tree**. It is not a product README and not the
 - Do not put the **publish** skill (`templates/skill/`, `plugins/{name}/`) under `.agents/skills` or `.claude/skills` — those autoload it inside this Worker repo. Only `verify-energon` and `cut-release` belong there.
 - Skills under `.agents/skills/` ship on every fork. Do not write `tmchow/energon` or `--repo owner/name` into them. Resolve this checkout (`gh repo view`, `git remote`). The canonical name belongs in the Actions `github.repository` guard, CONTRIBUTING, and INSTALL's `upstream` remote — not in a skill an agent will run from `yourco/energon`.
 - Do not `git tag` or `gh release create` to cut a release (except the labeled Bootstrap path in cut-release). Merge the standing Release PR after a human adds **Operator**. Do not `wrangler deploy` as part of a release. `ENABLE_PRODUCTION_DEPLOY` stays a fork's own production.
+- `release-please.yml` must keep `contents: write`, `pull-requests: write`, and `issues: write`. An explicit `permissions` block without `issues: write` is none, so the first run cannot create `autorelease: pending` and cut-release cannot find the PR. The repo must also allow GitHub Actions to create and approve pull requests; the workflow cannot grant that.
 - Fork PRs against `tmchow/energon` are welcome. Fill the PR template. Keep fork identity (wrangler ids, generated plugins, catalogs) off the PR. Do not add a `pull_request_target` workflow that checks out PR code. On a company fork, follow that repo's humans. [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## Pull requests
@@ -60,6 +61,7 @@ When you triage a PR, run **How to test** as written. If the steps are missing, 
 | `plugins/{name}/` | Generated only after a fork runs `npm run skill:init`; absent upstream. |
 | `.agents/skills/verify-energon/` | Isolated local hub + `/v1` user-path verification. Source of truth; `.claude/skills/` and `.cursor/skills/` are symlinks to it. Do not put `tmchow/energon` in these files. |
 | `.agents/skills/cut-release/` | SOP for cutting a GitHub Release via the standing release-please PR on this checkout. Source of truth; `.claude/skills/` and `.cursor/skills/` are symlinks to it. Do not put `tmchow/energon` in these files. |
+| `.github/workflows/release-please.yml` | Canonical-only Release PR. Needs `contents: write`, `pull-requests: write`, and `issues: write` (labels). Never deploy. |
 
 ## Schema
 

@@ -74,6 +74,8 @@ belongs in `migrations/` first, plus `src/db.ts` and `src/schema.sql` as [AGENTS
 
 A GitHub Release is the operator contract for forks. It is not a deploy and not an upgrade of anyone's Energon. release-please maintains a standing Release PR on the source template (the checkout that is not a GitHub fork). Cutting a release means merging that PR after an **Operator** section (migrate D1, new wrangler keys, regenerate the plugin, rollback floor, or an explicit none). Read [`.agents/skills/cut-release/SKILL.md`](./.agents/skills/cut-release/SKILL.md). The skill resolves this checkout; it does not hard-code a GitHub owner. Do not `git tag` or `gh release create` except that skill's Bootstrap path.
 
+The workflow needs `issues: write` so it can create `autorelease: pending`. The repo must also allow GitHub Actions to create and approve pull requests.
+
 On a company fork, stop and merge an upstream release instead. The Actions workflow is what names the canonical repository so a copied file cannot tag the fork. See [INSTALL.md](./INSTALL.md) and [Upgrade and recover](https://docs.getenergon.com) / the checkout's upgrade guide.
 
 ## License
