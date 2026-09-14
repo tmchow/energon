@@ -90,7 +90,18 @@ If these vars are omitted, code defaults are stricter: required TTL (7d / 30d ca
 
 ### 5. Cloudflare Access
 
-The Worker reads `Cf-Access-Authenticated-User-Email`. It does not implement signup.
+The Worker verifies the signed `Cf-Access-Jwt-Assertion` from a hostname-based Access application. It does not implement signup.
+
+After creating the hub application, set these non-secret values under `[vars]` in `wrangler.toml`:
+
+```toml
+ACCESS_TEAM_DOMAIN = "your-team.cloudflareaccess.com"
+ACCESS_AUD = "your-hub-application-audience-tag"
+```
+
+Use your Zero Trust team domain (hostname only) and the hub application’s **Application Audience (AUD) Tag**. The Access API returns this tag as `aud` on the application. Do not use the audience from a bypass application. Energon checks the JWT signature, issuer, audience, expiration, and user identity; an email header alone is not authentication. If Google sign-in succeeds but the hub says “Not signed in,” check these two values and redeploy.
+
+Use a hostname-based application for the hub so the content hostname and API bypass paths remain public. Worker-level Access covers all Worker hostnames and is not a substitute for this setup.
 
 - IdP: Google Workspace / Okta / GitHub Enterprise, restricted to your org.
 - Also set `ALLOWED_EMAIL_DOMAINS` so a mis-aimed Access policy cannot mint tokens for random Gmail.
