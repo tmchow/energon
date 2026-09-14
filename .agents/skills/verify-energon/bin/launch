@@ -24,7 +24,11 @@ DIR="$VERIFY_ROOT/$RUN"
 PERSIST="$DIR/persist"
 LOG="$DIR/wrangler.log"
 INSPECTOR_PORT=$((PORT + 1000))
-EMAIL="${ENERGON_VERIFY_EMAIL:-dev@example.com}"
+EMAIL="${ENERGON_VERIFY_EMAIL:-}"
+if [[ -n "$EMAIL" ]]; then
+  [[ "$EMAIL" =~ ^[^[:space:]@]+@[^[:space:]@]+$ ]] || die "ENERGON_VERIFY_EMAIL must be an email address"
+  EMAIL="$(printf '%s' "$EMAIL" | tr '[:upper:]' '[:lower:]')"
+fi
 
 mkdir -p "$DIR" "$PERSIST" "$EVIDENCE_ROOT/$RUN"
 printf '%s\n' "$RUN" >"$CURRENT_FILE"
@@ -52,6 +56,9 @@ wrangler_args=(
   --var "CONTENT_ORIGIN:${ORIGIN}"
   --show-interactive-dev-session false
 )
+if [[ -n "$EMAIL" ]]; then
+  wrangler_args+=(--var "DEV_ACCESS_EMAIL:$EMAIL")
+fi
 for extra in ${ENERGON_VERIFY_VARS:-}; do
   wrangler_args+=(--var "$extra")
 done
@@ -78,7 +85,7 @@ fi
   printf 'LOG=%s\n' "$LOG"
   printf 'PID=%s\n' "$PID"
   printf 'INSPECTOR_PORT=%s\n' "$INSPECTOR_PORT"
-  printf 'EMAIL=%s\n' "$EMAIL"
+  printf 'EMAIL=%q\n' "$EMAIL"
   printf 'EVIDENCE=%s\n' "$EVIDENCE_ROOT/$RUN"
   printf 'REPO_ROOT=%s\n' "$REPO_ROOT"
   # Space-separated pairs; quote so `source state.env` does not run the second pair as a command.

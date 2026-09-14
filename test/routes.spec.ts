@@ -351,7 +351,7 @@ describe("hub account API", () => {
     expect(done.body).toEqual({ ok: true, target: "all", executed: true, revoked: count });
     expect((await json("/v1/whoami", { headers: auth(secrets[0]) })).status).toBe(401);
     expect((await json("/v1/whoami", { headers: auth(secrets[count - 1]) })).status).toBe(401);
-  });
+  }, 15_000); // Fixture setup mints 105 tokens over HTTP, which can exceed 5s on CI.
 
   it("mints admin tokens only for ADMIN_EMAILS and keeps connect at account scope", async () => {
     const refused = await json("/account/tokens", {

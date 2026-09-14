@@ -24,15 +24,18 @@ set -a; source "/tmp/energon-verify/$(cat /tmp/energon-verify/current)/state.env
 
 ## Launch
 
-Localhost skips Cloudflare Access. Identity is `DEV_ACCESS_EMAIL` from `.dev.vars`, else `dev@example.com`. The handle is the email local-part (`dev` for the default). Published URLs are `/{handle}/s/{id}/{slug}/` and `/{handle}/f/{id}/{filename}`. Site API keys by id: `/v1/sites/{id}`.
+Localhost skips Cloudflare Access. Set `ENERGON_VERIFY_EMAIL` to choose the local identity; launch passes it as `DEV_ACCESS_EMAIL`. Without it, Wrangler uses the configured `DEV_ACCESS_EMAIL` or the app default `dev@example.com`. Doctor records the actual email in `state.env`. The handle is the email local-part (`dev` for the default). Published URLs are `/{handle}/s/{id}/{slug}/` and `/{handle}/f/{id}/{filename}`. Site API keys by id: `/v1/sites/{id}`.
 
 Never use the default `.wrangler/state` directory. Never attach to an already-running server unless `bin/doctor` says that process is this run's pid.
 
 ```
 export ENERGON_VERIFY_RUN=my-run          # optional; launch generates one
 export ENERGON_VERIFY_PORT=18787          # default; stays off 8787
+export ENERGON_VERIFY_EMAIL=dev@your.co   # for a fork restricted to your.co
 .agents/skills/verify-energon/bin/up      # usual start (launch + doctor + ready)
 ```
+
+If this fork sets `ALLOWED_EMAIL_DOMAINS`, use an email in one of those domains. This identity is local only and does not require a production token. Keep `DEV_ACCESS_EMAIL` overrides in `ENERGON_VERIFY_VARS` consistent with the requested email; inspect local configuration if the reported identity differs. Doctor stops on a rejected domain or an unexpected identity instead of minting a token for a different user.
 
 `bin/launch` alone is for debugging a failed boot. After a successful `bin/up`, source `state.env` and drive.
 
@@ -97,6 +100,7 @@ Use the environment's browser tools only for Extra hub bullets. Prefer `#id` ove
 - Choose files: click `Choose files`, then set files on `#filepick`.
 - One file stages a loose file (`#stage-loose`). A folder or zip stages a site (`#stage-slug`).
 - Nothing is written until `Publish`. `#messages` then contains the public URL.
+- If browser automation denies file selection before staging, check that browser tool's local-file permissions. Report the staging path as unverified until it runs; API publishing does not prove staging/cancel behavior.
 
 ## Evidence
 

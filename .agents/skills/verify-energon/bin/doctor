@@ -97,10 +97,20 @@ fi
 
 account="$(cat "$fetch_dir/account.json" 2>/dev/null || true)"
 email="$(json_get "$account" "email" 2>/dev/null || true)"
-if [[ -n "$email" && "$email" != "null" ]]; then
-  ok "signed in as $email"
+account_code="$(cat "$fetch_dir/account.code")"
+if [[ "$account_code" == "200" && -n "$email" && "$email" != "null" ]]; then
+  if [[ -n "${EMAIL:-}" && "$email" != "$EMAIL" ]]; then
+    bad "localhost identity is $email, expected $EMAIL. Check DEV_ACCESS_EMAIL in ENERGON_VERIFY_VARS and local configuration before relaunching."
+  else
+    ok "signed in as $email"
+  fi
 else
-  bad "GET /account/data has no email (localhost identity missing)"
+  error="$(json_get "$account" "error" 2>/dev/null || true)"
+  bad "GET /account/data -> $account_code $error (localhost identity unavailable)"
+  if [[ "$error" == "forbidden_domain" ]]; then
+    domains="$(json_get "$help_json" "retention.allowed_email_domains" 2>/dev/null || true)"
+    say "Allowed domains: $domains. Relaunch with ENERGON_VERIFY_EMAIL set to an email in an allowed domain. Check DEV_ACCESS_EMAIL in local configuration; do not loosen the fork's admission policy."
+  fi
 fi
 
 handle="$(python3 -c '
@@ -122,12 +132,13 @@ if [[ "$fail" -ne 0 ]]; then
   exit 1
 fi
 
-python3 - "$(state_file)" "$handle" "$env_name" "$prefix" <<'PY'
+python3 - "$(state_file)" "$handle" "$env_name" "$prefix" "$email" <<'PY'
 from pathlib import Path
-import sys
+import sys, shlex
 path, handle = Path(sys.argv[1]), sys.argv[2]
-lines = [ln for ln in path.read_text().splitlines() if not ln.startswith(("HANDLE=", "TOKEN_ENV=", "TOKEN_PREFIX="))]
+lines = [ln for ln in path.read_text().splitlines() if not ln.startswith(("HANDLE=", "TOKEN_ENV=", "TOKEN_PREFIX=", "EMAIL="))]
 lines.append(f"HANDLE={handle}")
+lines.append(f"EMAIL={shlex.quote(sys.argv[5])}")
 lines.extend([f"TOKEN_ENV={sys.argv[3]}", f"TOKEN_PREFIX={sys.argv[4]}"])
 path.write_text("\n".join(lines) + "\n")
 PY
