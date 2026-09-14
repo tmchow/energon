@@ -92,6 +92,16 @@ describe("signed-in pages", () => {
     expect(adminHub.indexOf('href="/stats"')).toBeLessThan(adminHub.indexOf('href="/admin"'));
   });
 
+  it("links public Markdown branding to the product site while hub branding stays local", async () => {
+    const token = await mint("markdown-brand");
+    const file = await json("/v1/files", { method: "POST", headers: { authorization: `Bearer ${token}`, "X-Filename": "brand.md", "content-type": "text/markdown" }, body: "# Brand link" });
+    const html = await (await req(file.body.url, { headers: { accept: "text/html" } })).text();
+    expect(html).toMatch(/<a[^>]*class="en-brand"[^>]*href="https:\/\/getenergon.com"/);
+    expect(html).toContain("Brand link");
+    const hub = await (await req("/")).text();
+    expect(hub).toMatch(/<a[^>]*class="en-brand"[^>]*href="\/"/);
+  });
+
   it("renders catalog rows and the next-page control from real account data", async () => {
     const token = await mint("svelte-catalog", "svelte-catalog@esperlabs.app");
     for (const filename of ["svelte-one.md", "svelte-two.md"]) {
