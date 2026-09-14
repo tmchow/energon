@@ -117,7 +117,7 @@
 {#snippet auditCounts(event: AdminAuditEvent)}{event.executed ? `${event.applied ?? 0} applied` : `${event.eligible ?? 0} eligible`}{#if event.bytes != null}{' · '}{formatBytes(event.bytes)}{/if}{/snippet}
 
 <main class="en-wrap">
-  <PageTitle kicker={kicker} title="Admin." wide>
+  <PageTitle kicker={kicker} title="Admin" wide>
     <p class="en-lede">Check this Energon, retire unused work, and revoke tokens. Set a short expiry on sites and files nobody marked, across every account. The owner sees Expires in their catalog and can push it back. Deleting is an explicit choice. Every preview and execute is recorded.</p>
   </PageTitle>
   <div id="admin-messages">{#if error}<Flash tone="err">{error}</Flash>{/if}{#if notice}<Flash tone="ok">{notice}</Flash>{/if}</div>
