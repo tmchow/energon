@@ -121,13 +121,66 @@ Before an update, inspect local changes and retain the installation's account ID
 
 Supported customization uses Wrangler vars (`FOOTER_TEXT`, TTL, email domains, `WRITE_POLICY`) and `instance-skill.json`. Hub UI source is in `src/ui/`; direct component changes add merge conflicts. Use the updated checkout's [installation checks and migration order](../INSTALL.md#6-commit-and-deploy), then repeat acceptance checks for the upgraded Energon.
 
+## Inventory Workers and hostnames
+
+Use this read-only inventory during [installation preflight](../INSTALL.md#3-inspect-the-account-and-resources) and updates. Alongside Wrangler's D1 and R2 lists, inspect the deployed Worker configuration to match its storage binding IDs with this fork. Listing a Worker name alone does not establish ownership.
+
+Set `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ZONE_ID`, `ENERGON_HUB_HOSTNAME`, and `ENERGON_CONTENT_HOSTNAME` in the environment to the selected account, one hostname's zone, and both hostnames. Run once for each zone if they differ. Use a read-only `CLOUDFLARE_API_TOKEN` that can list Workers, custom domains, zone routes, and DNS records; a credential scoped only to Access cannot do this. The zone ID is available on the zone's Cloudflare overview page. This script also checks that the zone belongs to the selected account.
+
+```sh
+node --input-type=module <<'JS'
+import { cloudflareClient } from './scripts/setup-access.mjs';
+const account = process.env.CLOUDFLARE_ACCOUNT_ID;
+const zone = process.env.CLOUDFLARE_ZONE_ID;
+const hosts = [process.env.ENERGON_HUB_HOSTNAME, process.env.ENERGON_CONTENT_HOSTNAME];
+if (![account, zone].every(id => /^[a-f0-9]{32}$/.test(id ?? '')) || hosts.some(host => !host || /[/:\s]/.test(host))) throw new Error('Set the selected account, zone, and bare hostnames.');
+const client = cloudflareClient(process.env.CLOUDFLARE_API_TOKEN);
+const zoneInfo = (await client(`/zones/${zone}`)).result;
+if (zoneInfo.account?.id !== account) throw new Error('Zone belongs to another account.');
+const inventories = [
+  [`/accounts/${account}/workers/scripts`, ['id']],
+  [`/accounts/${account}/workers/domains`, ['id', 'hostname', 'service', 'environment', 'zone_id']],
+  [`/zones/${zone}/workers/routes`, ['id', 'pattern', 'script']],
+  ...hosts.map(host => [`/zones/${zone}/dns_records?name=${encodeURIComponent(host)}`, ['id', 'name', 'type', 'content', 'proxied'], true]),
+];
+for (const [path, fields, paginated] of inventories) {
+  for (let page = 1; ; page++) {
+    const data = await client(paginated ? `${path}&page=${page}&per_page=100` : path);
+    if (!Array.isArray(data.result)) throw new Error(`Invalid inventory: ${path}`);
+    if (!paginated && (data.result_info?.total_pages > 1 || data.result_info?.total_count > data.result.length)) throw new Error(`Incomplete inventory: ${path}; inspect the API pagination before continuing.`);
+    for (const item of data.result) console.log(JSON.stringify({ path, ...Object.fromEntries(fields.map(key => [key, item[key]])) }));
+    if (!paginated || (data.result_info?.total_pages ? page >= data.result_info.total_pages : data.result.length < 100)) break;
+  }
+}
+JS
+```
+
+Review matching custom domains, wildcard routes, and DNS records before deploying. Failed or incomplete inventory is not proof a hostname is available. Do not replace an existing route or record to make a deployment succeed without establishing that it belongs to this Energon. Inspect Access separately through the [Access command contract](ACCESS-SETUP.md).
+
 ## Cloudflare Access
 
-The [Access command contract](ACCESS-SETUP.md) owns credentials, preview/apply syntax, application destinations, and conflict recovery. [INSTALL.md](../INSTALL.md#5-configure-access) places that setup in the deployment workflow.
+The [Access command contract](ACCESS-SETUP.md) owns credentials, preview/apply and read-only verification syntax, application destinations, and conflict recovery. [INSTALL.md](../INSTALL.md#5-configure-access) places that setup in the deployment workflow.
 
 Hostname authentication requires `ACCESS_TEAM_DOMAIN` and the hub application's `ACCESS_AUD`. Energon verifies the JWT signature, issuer, audience, expiry, application token type, and user identity; an authenticated-email header alone is not trusted. When sign-in succeeds but the hub reports **Not signed in**, compare those vars with the active hub application and redeploy through the normal workflow.
 
 Keep the whole human hub protected, agent paths on the documented bypass, and the content hostname free of Access. Removing a human from Access does not revoke their existing Energon API tokens; follow offboarding below. There is no `PUBLISH_VISIBILITY` var.
+
+## Enable CI in a new fork
+
+GitHub can leave inherited workflows disabled even when repository Actions permissions say they are enabled. Open the fork's **Actions** tab and, if offered, enable inherited workflows there. Do this before the configured commit is pushed or a PR is opened. A missing run is not a passing check.
+
+From the configured fork, inspect actual workflow and run state:
+
+```sh
+gh workflow list --all
+gh run list --limit 10
+```
+
+If a listed CI workflow is individually disabled, use `gh workflow enable ci.yml` after the fork's one-time enablement. A 404 before that first enablement does not establish that the committed workflow file is missing; inspect the Actions tab.
+
+Enabling workflows does not replay old events. The checked-in CI runs on pushes to `main` and PR opened, synchronized, or reopened events; it has no manual `workflow_dispatch` trigger. Push the next intended commit after enablement, or reopen the relevant owned PR when appropriate, then confirm its new head has a CI run and inspect the result with `gh run view RUN_ID`. Do not use `gh workflow run ci.yml` or create empty commits to compensate for an unverified setup. Scheduled fuzzing is separate from PR CI and may remain disabled in a fork.
+
+Keep `ENABLE_PRODUCTION_DEPLOY` unset while establishing CI. Enabling tests and enabling production deployment are separate decisions.
 
 ## GitHub deployment automation
 

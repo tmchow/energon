@@ -5,6 +5,11 @@ export interface AccessConfig {
   identity_provider_id: string;
   allowed_emails: string[];
 }
+export interface AccessVerificationConfig extends AccessConfig {
+  hub_application_id: string;
+  bypass_application_id: string;
+}
+export function verifyAccess(config: unknown, client: AccessClient): Promise<{ verified: true; applied: false; ACCESS_TEAM_DOMAIN: string; ACCESS_AUD: string; application_ids: string[]; policy_ids: string[] }>;
 export type AccessClient = (path: string, method?: string, body?: unknown) => Promise<{ result: unknown; result_info?: { total_pages?: number } }>;
 export interface AccessPlan {
   account_id: string;

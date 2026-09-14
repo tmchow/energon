@@ -16,10 +16,10 @@ Normal Wrangler OAuth does not provide the Access administration permissions thi
 
 Scope this credential to the selected account, with:
 
-- **Access: Apps and Policies — Edit**
+- **Access: Apps and Policies — Read** for preview or verification; **Edit** for apply
 - **Access: Organizations, Identity Providers, and Groups — Read**
 
-The preview reads the organization, provider inventory, applications, and reusable policies. Any failed read stops setup. Successful reads do not prove write permission: a denied create stops apply and reports the failed operation. The command does not retry writes automatically. After correcting permissions, rerun it to reconcile already-created resources.
+Preview reads the organization, provider inventory, applications, and reusable policies. Verification reads the organization, providers, applications, and policies attached to the selected applications. Any failed read stops setup. Successful reads do not prove write permission: a denied create stops apply and reports the failed operation. The command does not retry writes automatically. After correcting permissions, rerun it to reconcile already-created resources.
 
 For ongoing deployment credentials, see [GitHub deployment automation](DEPLOY.md#github-deployment-automation). Do not reuse this Access-only credential as the deployment token.
 
@@ -65,6 +65,49 @@ npm run setup:access -- --config /path/to/access-setup.json
 
 Review the account ID, selected provider, allowed emails, and create/reuse actions. No resources change without `--apply`. If an existing app covers either hostname (including a matching wildcard), setup stops. Worker-level Access destinations also require manual review because they may protect all Worker hostnames. The tool never deletes or rewrites another app to make room.
 
+## Verify an existing configuration
+
+Use this mode for ordinary updates or an installation created through the dashboard or another tool. It selects existing applications by ID and ignores display names. It never creates, updates, or deletes resources, and cannot be combined with `--apply`. A Read credential is sufficient; there is no need to grant Edit for an update check.
+
+Inventory application IDs with `GET /accounts/{account_id}/access/apps`. From the repository root, this prints only IDs, names, and public destinations using the same environment credential:
+
+```sh
+node --input-type=module <<'JS'
+import { cloudflareClient } from './scripts/setup-access.mjs';
+const account = process.env.CLOUDFLARE_ACCOUNT_ID;
+if (!/^[a-f0-9]{32}$/.test(account ?? '')) throw new Error('Set the selected account ID.');
+const client = cloudflareClient(process.env.CLOUDFLARE_ACCESS_API_TOKEN);
+for (let page = 1; ; page++) {
+  const data = await client(`/accounts/${account}/access/apps?page=${page}&per_page=100`);
+  if (!Array.isArray(data.result)) throw new Error('Invalid application inventory.');
+  for (const { id, name, domain, destinations } of data.result) console.log(JSON.stringify({ id, name, domain, destinations }));
+  if (data.result_info?.total_pages ? page >= data.result_info.total_pages : data.result.length < 100) break;
+}
+JS
+```
+
+Match the hub hostname and its six public bypass paths to the intended applications. Add their distinct IDs to a copy of the JSON configuration above:
+
+```json
+{
+  "account_id": "0123456789abcdef0123456789abcdef",
+  "hub_hostname": "energon.your.co",
+  "content_hostname": "share.your.co",
+  "identity_provider_id": "11111111-1111-4111-8111-111111111111",
+  "allowed_emails": ["owner@your.co"],
+  "hub_application_id": "22222222-2222-4222-8222-222222222222",
+  "bypass_application_id": "33333333-3333-4333-8333-333333333333"
+}
+```
+
+```sh
+npm run setup:access -- --config /path/to/access-verify.json --verify
+```
+
+Verification reads each selected application and all pages of its attached policies, including reusable and application-specific policies. It requires the same security settings as setup: self-hosted applications, 24-hour sessions, the exact hub/provider/email allow policy, and exactly one public bypass policy covering the six paths below. Array ordering and display names may differ. Additional policies, policy overrides, WARP or preflight bypasses, unexpected destinations, and other overlapping hostname or Worker-level applications are refused.
+
+On success, JSON includes `verified: true`, `applied: false`, `application_ids`, `policy_ids`, `ACCESS_TEAM_DOMAIN`, and the hub's `ACCESS_AUD`. Compare these with the installation record and Wrangler vars. A failure identifies the application or policy ID and differing fields; inspect those settings and the intended policy before making any changes. Failure does not authorize recreation or deletion. Creation preview/apply reject the verification-only ID fields, so keep the two configuration files separate when both are needed.
+
 ## Apply and record the results
 
 ```sh
@@ -84,6 +127,6 @@ Rerunning with the same inputs reuses matching resources without writes. After a
 
 ## Return to installation
 
-After the read-only preview, return to [Configure this fork](../INSTALL.md#4-configure-this-fork). After apply and readback, return to [Configure Access](../INSTALL.md#5-configure-access) to copy the values, then continue through commit, migration, deployment, and acceptance checks. This command does not perform those steps.
+After the read-only preview, return to [Configure this fork](../INSTALL.md#4-configure-this-fork). After verification, return to [Update an existing Energon](../INSTALL.md#update-an-existing-energon). After apply and readback, return to [Configure Access](../INSTALL.md#5-configure-access) to copy the values, then continue through commit, migration, deployment, and acceptance checks. This command does not perform those steps.
 
 Cloudflare references: [API tokens](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/), [Access applications API](https://developers.cloudflare.com/api/resources/zero_trust/subresources/access/subresources/applications/), [Access policies API](https://developers.cloudflare.com/api/resources/zero_trust/subresources/access/subresources/policies/).

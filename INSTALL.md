@@ -6,6 +6,17 @@ Use this file from the checkout you will deploy. The documentation website expla
 
 ## Deploy your own Energon
 
+### Update an existing Energon
+
+An ordinary update does not need new storage, a new plugin identity, or recreated Access applications. Start with the configured fork and preserve its account, bindings, origins, policy, Access vars, plugin identity, and token prefix while [reviewing and merging upstream changes](docs/DEPLOY.md#customize-a-fork).
+
+1. Confirm the account and [inventory the existing resources](#3-inspect-the-account-and-resources). Match the deployed Worker and its bindings to this fork; do not adopt resources based on their names alone.
+2. [Verify the existing Access applications by ID](docs/ACCESS-SETUP.md#verify-an-existing-configuration) using a read-only credential. Compare the returned team domain and hub audience with the configured vars. Different display names are supported; security differences stop verification. Do not run creation/apply to repair a mismatch without reviewing the reported settings.
+3. Render the existing plugin, run checks, and [commit and deploy](#6-commit-and-deploy). Confirm [fork CI is enabled and actually runs](docs/DEPLOY.md#enable-ci-in-a-new-fork). Apply pending migrations before deploying.
+4. Repeat [installation acceptance](#7-verify-the-installation), including human sign-in and real publishing. Reuse an existing valid agent token; request human approval only if a new connection is needed.
+
+If the deployment predates a command used here, merge that command into the configured fork first. Return to first-install setup below only for resources that are genuinely missing and whose creation is authorized.
+
 ### 1. Choose the installation
 
 Start by inspecting the current checkout, Git remotes, GitHub authentication, and available Cloudflare authentication. Reuse answers and authorization the operator has already supplied. Ask only for missing choices that cannot be established from that state:
@@ -54,11 +65,11 @@ npx wrangler r2 bucket list
 npx wrangler d1 list
 ```
 
-Inspect existing Worker names, storage bindings, custom domains, DNS routes, and Access applications. Both hostname zones must belong to the selected account. A matching name is a conflict to investigate, not permission to adopt storage or replace another Worker. Never reuse another Energon's D1 database or R2 bucket. For an existing installation, prove its bindings belong to this fork before reusing them.
+Use the [Worker and hostname inventory commands](docs/DEPLOY.md#inventory-workers-and-hostnames) to inspect existing Worker names, storage bindings, custom domains, DNS routes, and Access applications. Both hostname zones must belong to the selected account. A matching name is a conflict to investigate, not permission to adopt storage or replace another Worker. Never reuse another Energon's D1 database or R2 bucket. For an existing installation, prove its bindings belong to this fork before reusing them.
 
 Complete first-time Zero Trust enrollment and identity-provider configuration if needed. Prefer the operator's chosen existing provider; Google Workspace does not require falling back to email PIN. These human/account setup steps are outside the installer command.
 
-Follow [Access setup prerequisites and preview](docs/ACCESS-SETUP.md#provide-a-scoped-setup-credential): provision the separate Access credential, save the account/provider/hostname/email inputs, and run its read-only plan. Resolve failed reads and existing-application conflicts before creating storage. Successful reads do not prove later write permission.
+For a new installation, follow [Access setup prerequisites and preview](docs/ACCESS-SETUP.md#provide-a-scoped-setup-credential): provision the separate Access credential, save the account/provider/hostname/email inputs, and run its read-only plan. Resolve failed reads and existing-application conflicts before creating storage. Successful reads do not prove later write permission. For an existing deployment, use [verification by application ID](docs/ACCESS-SETUP.md#verify-an-existing-configuration) instead of the creation plan.
 
 ### 4. Configure this fork
 
@@ -99,7 +110,7 @@ For an already initialized fork, preserve its plugin name, origins, and token pr
 
 ### 5. Configure Access
 
-Return to the saved plan and follow [Apply and record the results](docs/ACCESS-SETUP.md#apply-and-record-the-results). The command creates or reuses the matching hub and public-path applications; it never rewrites conflicting applications. Keep the returned resource IDs with the installation record.
+For an existing deployment, use [read-only verification](docs/ACCESS-SETUP.md#verify-an-existing-configuration) and preserve its applications. For a new installation, return to the saved plan and follow [Apply and record the results](docs/ACCESS-SETUP.md#apply-and-record-the-results). The command creates or reuses the matching hub and public-path applications; it never rewrites conflicting applications. Keep the returned resource IDs with the installation record.
 
 Copy the returned `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` into `[vars]`. The audience must belong to the hub application, not its bypass application. Energon verifies the signed hostname Access JWT before trusting an identity; an email header alone is not authentication.
 
@@ -120,7 +131,7 @@ npm test
 
 Worker tests use isolated fixtures; do not change their test identities to match this installation. Review `git status` and the diff for secrets and accidental unrelated changes. Commit the intended `wrangler.toml`, `instance-skill.json`, generated `plugins/` package, and all generated marketplace catalogs (`marketplace.json`, `.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`, `.github/plugin/marketplace.json`). Include deliberate workflow changes if resource names changed. Do not commit `.dev.vars`, credentials, or local Cloudflare state.
 
-Push those commits to the operator's fork and verify the generated package is present on the branch its marketplace installs from, normally `main`. Follow the fork's PR policy if required. A local-only plugin cannot be installed by another agent. Keep automated production deployment disabled until configuration and account selection have been checked.
+Ensure [inherited Actions workflows are enabled](docs/DEPLOY.md#enable-ci-in-a-new-fork), then push those commits to the operator's fork and verify the generated package is present on the branch its marketplace installs from, normally `main`. Follow the fork's PR policy if required. A local-only plugin cannot be installed by another agent. Keep automated production deployment disabled until configuration and account selection have been checked.
 
 Apply migrations before deploying the Worker, using the configured database name if it differs:
 
