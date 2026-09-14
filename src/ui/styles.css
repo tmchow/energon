@@ -68,8 +68,8 @@
 .en-catalog-kind { flex: none; color: var(--fg-3); position: relative; }
 #catalog .en-table-wrap { overflow: visible; }
 [data-tip] { position: relative; }
-[data-tip]::after { content: attr(data-tip); position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translate(-50%, 3px) scale(0.98); padding: 4px 8px; border-radius: var(--radius-1); border: 1px solid var(--border-2); background: var(--bg-raised); color: var(--fg-1); font: 500 12px/1.2 var(--font-sans); white-space: nowrap; pointer-events: none; opacity: 0; visibility: hidden; z-index: 30; transition: opacity var(--dur-hover) var(--ease-out), transform var(--dur-hover) var(--ease-out), visibility 0s linear var(--dur-hover); }
-[data-tip]:hover::after, [data-tip]:focus::after { opacity: 1; visibility: visible; transform: translate(-50%, 0) scale(1); transition-delay: var(--dur-intent); }
+[data-tip]::after { content: attr(data-tip); position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translate(-50%, 3px) scale(0.98); padding: 4px 8px; border-radius: var(--radius-1); border: 1px solid var(--border-2); background: var(--bg-raised); color: var(--fg-1); font: 500 12px/1.2 var(--font-sans); white-space: nowrap; pointer-events: none; opacity: 0; visibility: hidden; z-index: 30; transition: none; }
+[data-tip]:hover::after, [data-tip]:focus::after { opacity: 1; visibility: visible; transform: translate(-50%, 0) scale(1); transition: opacity var(--dur-hover) var(--ease-out) var(--dur-intent), transform var(--dur-hover) var(--ease-out) var(--dur-intent), visibility 0s linear var(--dur-intent); }
 @media (hover: none) { [data-tip]::after { display: none; } }
 @media (max-width: 720px) {
   .en-filters-toggle { margin-left: 0; width: 100%; justify-content: center; min-height: 44px; }
