@@ -6,9 +6,18 @@ Use this file from the checkout you will deploy. The documentation website expla
 
 ## Deploy your own Energon
 
+Installation is two parts:
+
+1. **First deploy** — fork or clone, configure this Energon, and take the Worker live with Wrangler on the operator's machine (steps 1–7). Enabling GitHub Actions so tests run is part of this; those checks do not deploy.
+2. **Automatic updates (optional)** — after the first deploy is verified, connect the fork so a push to `main` migrates D1 and deploys the Worker. See [After the first deploy](#after-the-first-deploy-optional-automatic-updates).
+
+An already-running Energon uses [Update an existing Energon](#update-an-existing-energon).
+
 ### Update an existing Energon
 
-An ordinary update does not need new storage, a new plugin identity, or recreated Access applications. Start with the configured fork and preserve its account, bindings, origins, policy, Access vars, plugin identity, and token prefix while [reviewing and merging upstream changes](docs/DEPLOY.md#customize-a-fork). If this checkout has [`.agents/skills/update-from-upstream/SKILL.md`](.agents/skills/update-from-upstream/SKILL.md), follow that skill; the steps below remain the procedure when the skill is absent or the operator is working by hand. Before any remote migrate, record a D1 Time Travel bookmark (`npx wrangler d1 time-travel info` with this fork's database name). Do not create, delete, empty, or rebind the live D1 or R2. If [GitHub deployment automation](docs/DEPLOY.md#github-deployment-automation) is on (`ENABLE_PRODUCTION_DEPLOY=true`), a push or merge to this fork's `main` *is* the deploy (tests, remote D1 migrations, Worker). Put the upstream release on a branch or PR first; do not use GitHub “Sync fork” onto `main`. A data backup with no upgrade is [`.agents/skills/backup-this-energon/SKILL.md`](.agents/skills/backup-this-energon/SKILL.md).
+An ordinary update does not need new storage, a new plugin identity, or recreated Access applications. Start with the configured fork and preserve its account, bindings, origins, policy, Access vars, plugin identity, and token prefix while [reviewing and merging upstream changes](docs/DEPLOY.md#customize-a-fork). If this checkout has [`.agents/skills/update-from-upstream/SKILL.md`](.agents/skills/update-from-upstream/SKILL.md), follow that skill; the steps below remain the procedure when the skill is absent or the operator is working by hand.
+
+Detect whether automatic updates are on (`ENABLE_PRODUCTION_DEPLOY=true` plus the Cloudflare Actions secrets). If they are, merging to `main` migrates D1 and deploys the Worker — ask before doing that. If they are not, updating the fork does not change the live Worker; land the release, then ask if they want to deploy (laptop Wrangler, or turn on [automatic updates](#after-the-first-deploy-optional-automatic-updates)). Before any remote migrate, record a D1 Time Travel bookmark (`npx wrangler d1 time-travel info` with this fork's database name). Do not create, delete, empty, or rebind the live D1 or R2. Do not use GitHub “Sync fork”. A data backup with no upgrade is [`.agents/skills/backup-this-energon/SKILL.md`](.agents/skills/backup-this-energon/SKILL.md).
 
 1. Confirm the account and [inventory the existing resources](#3-inspect-the-account-and-resources). Match the deployed Worker and its bindings to this fork; do not adopt resources based on their names alone.
 2. [Verify the existing Access applications by ID](docs/ACCESS-SETUP.md#verify-an-existing-configuration) using a read-only credential. Compare the returned team domain and hub audience with the configured vars. Different display names are supported; security differences stop verification. Do not run creation/apply to repair a mismatch without reviewing the reported settings.
@@ -131,7 +140,7 @@ npm test
 
 Worker tests use isolated fixtures; do not change their test identities to match this installation. Review `git status` and the diff for secrets and accidental unrelated changes. Commit the intended `wrangler.toml`, `instance-skill.json`, generated `plugins/` package, and all generated marketplace catalogs (`marketplace.json`, `.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`, `.github/plugin/marketplace.json`). Include deliberate workflow changes if resource names changed. Do not commit `.dev.vars`, credentials, or local Cloudflare state.
 
-Ensure [inherited Actions workflows are enabled](docs/DEPLOY.md#enable-ci-in-a-new-fork), then push those commits to the operator's fork and verify the generated package is present on the branch its marketplace installs from, normally `main`. Follow the fork's PR policy if required. A local-only plugin cannot be installed by another agent. Keep automated production deployment disabled until configuration and account selection have been checked.
+Ensure [inherited Actions workflows are enabled](docs/DEPLOY.md#enable-ci-in-a-new-fork), then push those commits to the operator's fork and verify the generated package is present on the branch its marketplace installs from, normally `main`. Follow the fork's PR policy if required. A local-only plugin cannot be installed by another agent. Leave `ENABLE_PRODUCTION_DEPLOY` unset for this first deploy so Actions is tests only.
 
 Apply migrations before deploying the Worker, using the configured database name if it differs:
 
@@ -141,8 +150,6 @@ npx wrangler deploy
 ```
 
 Stop on a migration failure. Never stamp `d1_migrations` or execute ad hoc schema SQL to bypass it; see [Migration recovery](docs/DEPLOY.md#migrations-after-a-deploy). Do not deploy from an unrelated checkout or account. Record the deployed commit, account, resource IDs, origins, and plugin coordinates without secrets.
-
-For later push-to-main deployment, see [GitHub deployment automation](docs/DEPLOY.md#github-deployment-automation). The optional job runs migrations before deployment; PR checks never deploy.
 
 ### 7. Verify the installation
 
@@ -170,6 +177,17 @@ Follow [Connect an agent](#connect-an-agent). The human must approve the connect
 5. Confirm an unauthenticated write cannot change the bytes. Delete only fixtures created for this check when cleanup is authorized, then confirm those links stop serving their content.
 
 Keep sanitized requests, statuses, URLs, browser results, and workarounds. Record paths not tested, including cross-account owner-only writes or expiry when they were not exercised. Completion means the intended human is recognized, the plugin can be installed from the configured fork, and real published bytes load and update on the content origin. Deployment or health alone does not establish completion.
+
+### After the first deploy: optional automatic updates
+
+The Worker is already live from step 6. Later code changes can use the same laptop Wrangler commands, or this fork can update the Worker on every push to `main`. That second path is optional and is a separate decision from enabling CI tests.
+
+1. Keep [fork CI](docs/DEPLOY.md#enable-ci-in-a-new-fork) enabled so tests run on pull requests and on `main`.
+2. Add repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` (the account ID, not a zone ID). Provision a deploy token scoped to the selected account and hostname zones. The Access setup credential is not a deployment token. See [GitHub deployment automation](docs/DEPLOY.md#github-deployment-automation).
+3. Set the repository variable `ENABLE_PRODUCTION_DEPLOY=true`.
+4. A later push or merge to `main` then runs tests, remote D1 migrations, and `wrangler deploy`. Pull requests never deploy.
+
+Leave the variable unset to keep Actions as tests only. To catch up to a published upstream release after that, use [`.agents/skills/update-from-upstream/SKILL.md`](.agents/skills/update-from-upstream/SKILL.md) when this checkout has it.
 
 ---
 

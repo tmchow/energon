@@ -138,10 +138,16 @@ describe("contribution policy", () => {
     expect(update).toContain("If `isFork` is false");
     expect(update).toContain("time-travel info");
     expect(update).toContain("Do not create, delete, empty, or rebind");
-    expect(update).toContain("unless the operator explicitly opted in");
     expect(update).toContain("ENABLE_PRODUCTION_DEPLOY");
     expect(update).toContain("push or merge to `main` is the deploy");
+    expect(update).toContain("Auto-deploy on");
+    expect(update).toContain("Auto-deploy off");
+    expect(update).toContain("unless the operator opted in");
     expect(update).not.toMatch(/automatically deploy|deploy automatically|default to deploy/i);
+
+    const install = readFileSync(join(root, "INSTALL.md"), "utf8");
+    expect(install).toContain("Installation is two parts:");
+    expect(install).toContain("After the first deploy: optional automatic updates");
 
     const backup = readFileSync(join(root, ".agents/skills/backup-this-energon/SKILL.md"), "utf8");
     expect(backup).toContain("wrangler.toml");

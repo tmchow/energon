@@ -197,7 +197,7 @@ Keep `ENABLE_PRODUCTION_DEPLOY` unset while establishing CI. Enabling tests and 
 
 ## GitHub deployment automation
 
-CLI deployment in [INSTALL.md](../INSTALL.md#6-commit-and-deploy) completes installation. For later push-to-main deployment, the fork's `.github/workflows/ci.yml` expects secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, plus repository variable `ENABLE_PRODUCTION_DEPLOY=true`. Unset means tests only. The job runs tests, applies remote D1 migrations, then deploys; pull requests cannot deploy.
+CLI deployment in [INSTALL.md](../INSTALL.md#6-commit-and-deploy) is part 1: the first live Worker. Part 2 is optional: after that deploy is verified, the fork can update the Worker on every push to `main`. See [After the first deploy](../INSTALL.md#after-the-first-deploy-optional-automatic-updates). The fork's `.github/workflows/ci.yml` expects secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, plus repository variable `ENABLE_PRODUCTION_DEPLOY=true`. Unset means tests only. The job runs tests, applies remote D1 migrations, then deploys; pull requests cannot deploy.
 
 Provision a separate deployment token scoped to the selected account and hostname zones, with permissions for Worker deployment, D1 migrations, R2 access, and custom domains. Use [Cloudflare's current Wrangler token reference](https://developers.cloudflare.com/workers/wrangler/system-environment-variables/#cloudflare_api_token) and inspect the actual workflow when provisioning. The Access-only setup credential is not a deployment credential. Remove it from the agent environment after setup.
 
