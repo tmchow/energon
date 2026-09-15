@@ -29,13 +29,14 @@ Do this before landing anything on `main`.
 
 | Signal | Meaning |
 | --- | --- |
-| `gh variable get ENABLE_PRODUCTION_DEPLOY` is `true` and `.github/workflows/ci.yml` still has the stock deploy job | Auto-deploy is **on**. A push or merge to `main` is the deploy: tests, remote D1 migrations, `wrangler deploy`. |
-| Variable unset or missing | Auto-deploy is **off**. Updating the fork does not change the live Worker. |
+| `gh variable get ENABLE_PRODUCTION_DEPLOY` prints `true` and `.github/workflows/ci.yml` still has the stock deploy job | Auto-deploy is **on**. A push or merge to `main` is the deploy: tests, remote D1 migrations, `wrangler deploy`. |
+| The get **succeeds** and the value is empty or not `true` | Auto-deploy is **off**. Updating the fork does not change the live Worker. |
+| The get **fails** (404, auth, or no output you can trust) | **Unclear.** GitHub uses 404 for both “unset” and “cannot read Actions variables.” Do not treat this as off. |
 | `gh secret list` shows `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` | Actions *can* deploy if the variable is on. Do not print secret values. |
 | `npx wrangler whoami` matches `wrangler.toml` `account_id` | This machine can do the INSTALL.md CLI deploy. |
 | whoami missing, another account, or a cloud agent | Do not `wrangler login`. CLI deploy waits for the operator laptop. |
 | Workflow or database name edited away from stock `ci.yml` | Read the fork’s workflow. Do not assume the stock job. |
-| No readable signal | Say unclear. Ask how this Energon’s Worker is updated. Do not invent a method. |
+| No readable signal | **Unclear.** Ask how this Energon’s Worker is updated. Do not invent a method. |
 
 Also inventory-match the deployed Worker’s D1 and R2 bindings to this `wrangler.toml` before any remote command (INSTALL.md “Inspect the account and resources”). A matching name is not ownership.
 
@@ -43,8 +44,8 @@ Also inventory-match the deployed Worker’s D1 and R2 bindings to this `wrangle
 
 - Do not replace `wrangler.toml`, `instance-skill.json`, generated `plugins/`, or marketplace catalogs with upstream placeholders.
 - Do not create, delete, empty, or rebind live D1 or R2. An ordinary update keeps this Energon’s existing account, database, and bucket.
-- If auto-deploy is **on**, do not merge or push to `main` unless the operator opted in after you said that will migrate D1 and deploy the Worker.
-- If auto-deploy is **off**, do not run remote migrations or `wrangler deploy` unless they asked to deploy after the fork was updated.
+- If auto-deploy is **on** or **unclear**, do not merge or push to `main` unless the operator opted in after you said that *might* migrate D1 and deploy the Worker (will, if the variable is on).
+- If auto-deploy is **off**, do not run remote migrations or `wrangler deploy` unless they asked to deploy after the fork was updated. Turning the variable on after `main` already has the commit does not deploy that commit (`ci.yml` has no `workflow_dispatch`).
 - Do not stamp `d1_migrations` or run ad hoc production SQL.
 - Do not run interactive `wrangler login` in an unattended cloud agent.
 - Do not require an R2 copy. Record a D1 Time Travel bookmark before any remote migrate.
@@ -82,14 +83,14 @@ Use the D1 `database_name` from this fork’s `wrangler.toml` if it differs. Do 
 
 ## Phase 2 — Land the update
 
-**Auto-deploy on.** Say there is a newer release on the branch, and merging it to `main` will migrate D1 and deploy the Worker. Ask if that is what they want.
+**Auto-deploy on, or unclear.** Say there is a newer release on the branch, and merging it to `main` will deploy if `ENABLE_PRODUCTION_DEPLOY` is on (and might, if you could not read the variable). Ask if they want that.
 
-- Yes: record the Time Travel bookmark (below), then merge the PR / push to `main`. That merge *is* the deploy. Do not also run local `wrangler deploy`. Confirm the Actions deploy job and then INSTALL.md health/help probes.
+- Yes: record the Time Travel bookmark (below), then merge the PR / push to `main`. If auto-deploy is on, that merge *is* the deploy — do not also run local `wrangler deploy`; confirm the Actions job and INSTALL.md health/help probes. If it was unclear and Actions does not deploy, treat the rest as auto-off (ask about laptop Wrangler).
 - No: leave the update on the branch or PR. The Worker stays on the current deploy.
 
-**Auto-deploy off.** Merging to `main` updates the fork (and the plugin marketplace, which usually tracks `main`). It does not change the live Worker. Land the branch on `main` after checks pass. Then ask if they want to deploy.
+**Auto-deploy off** (successful read, value not `true`). Merging to `main` updates the fork (and the plugin marketplace, which usually tracks `main`). It does not change the live Worker. Land the branch on `main` after checks pass. Then ask if they want to deploy **this** release with laptop Wrangler.
 
-- Yes: record the Time Travel bookmark, then laptop Wrangler from INSTALL.md (`d1 migrations apply --remote`, then `wrangler deploy`) only if `whoami` matches this `account_id`. Or they can turn on automatic updates (INSTALL.md “After the first deploy”) and push again.
+- Yes: record the Time Travel bookmark, then INSTALL.md CLI (`d1 migrations apply --remote`, then `wrangler deploy`) only if `whoami` matches this `account_id`. Automatic updates (INSTALL.md “After the first deploy”) apply to **later** pushes to `main`. Enabling the variable now does not redeploy this commit.
 - No: the fork is updated; the Worker is unchanged. Print that so a later “ok, deploy” turn can resume.
 
 If the path is custom, follow the fork’s humans / workflow text, still migrate-before-deploy.
@@ -107,4 +108,4 @@ Write down the bookmark and time. Do not run `time-travel restore`. Stop on migr
 
 ## Verify
 
-The release tag is on the fork. `wrangler.toml` and `instance-skill.json` still match this Energon. `skill:render --check` is green. If auto-deploy was on, `main` moved only after they opted in. If they asked to deploy, health/help match this Energon and the bookmark from before migrate is recorded.
+The release tag is on the fork. `wrangler.toml` and `instance-skill.json` still match this Energon. `skill:render --check` is green. If auto-deploy was on or unclear, `main` moved only after they opted in. If they asked to deploy, health/help match this Energon and the bookmark from before migrate is recorded.

@@ -140,7 +140,9 @@ describe("contribution policy", () => {
     expect(update).toContain("Do not create, delete, empty, or rebind");
     expect(update).toContain("ENABLE_PRODUCTION_DEPLOY");
     expect(update).toContain("push or merge to `main` is the deploy");
-    expect(update).toContain("Auto-deploy on");
+    expect(update).toContain("Do not treat this as off");
+    expect(update).toContain("does not redeploy this commit");
+    expect(update).toContain("Auto-deploy on, or unclear");
     expect(update).toContain("Auto-deploy off");
     expect(update).toContain("unless the operator opted in");
     expect(update).not.toMatch(/automatically deploy|deploy automatically|default to deploy/i);
