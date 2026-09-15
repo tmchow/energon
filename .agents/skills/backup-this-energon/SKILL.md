@@ -7,8 +7,6 @@ description: Capture a restore point for this Energon's data (D1 Time Travel boo
 
 This skill captures **data**, not the Worker (the Worker is reinstalled from git). Catalog state lives in D1. Published bytes live in R2. Either side alone leaves incomplete links.
 
-It lives in `.agents/skills/backup-this-energon/`; `.claude/skills/backup-this-energon` and `.cursor/skills/backup-this-energon` are symlinks to it.
-
 The long-form recovery contract and restore runbook are the checkout’s disaster-recovery / “Back up and restore D1 and R2” guide. This skill is the capture SOP. It does not walk restore.
 
 An ordinary upgrade does not require this skill. Time Travel plus “do not pave live R2” is enough for that path (`update-from-upstream`).

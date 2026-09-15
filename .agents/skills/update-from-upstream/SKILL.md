@@ -7,8 +7,6 @@ description: Merge a published upstream Energon release into this fork, preserve
 
 This is the fork-side SOP for catching up to a published GitHub Release. It is the inverse of cut-release: a fork merges an upstream release; it does not cut one.
 
-The skill lives in `.agents/skills/update-from-upstream/`; `.claude/skills/update-from-upstream` and `.cursor/skills/update-from-upstream` are symlinks to it.
-
 A GitHub Release is the operator contract (Operator notes: D1, wrangler keys, plugin regen, rollback floor). Merging it is not a deploy. Do not merge unreleased `main`.
 
 When this file is absent (an older fork), follow INSTALL.md “Update an existing Energon” and the checkout’s upgrade guide.
