@@ -47,6 +47,8 @@ Otherwise nothing releasable has landed since the last tag, or bootstrap has not
 
 Expect only `version.txt`, `CHANGELOG.md`, and `.release-please-manifest.json`. If the changelog is hidden-type noise (`docs`, `ci`, `chore`, `test`, `style`, `refactor`) with no `feat`, `fix`, `perf`, `revert`, or breaking change, do not cut.
 
+`version.txt` is the plugin version source. This PR updates it before operators generate the release's plugin. Do not regenerate plugins on this canonical checkout (it has none). Deployment repositories regenerate after they merge this release so manifests match the new `version.txt`. Plugin versions follow Energon releases even when skill copy is unchanged.
+
 ## Write Operator
 
 Edit the Release PR body. Keep the generated lists. Add:
@@ -55,7 +57,7 @@ Edit the Release PR body. Keep the generated lists. Add:
 ## Operator
 - D1: <new migrations or none>
 - wrangler.example.toml: <new keys or none>
-- Plugin: regenerate / unchanged
+- Plugin: regenerate after merge (version follows version.txt)
 - Rollback floor: <token expiry or none>
 ```
 

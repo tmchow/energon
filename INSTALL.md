@@ -25,7 +25,7 @@ Before landing, inspect Actions variables and the actual workflows in the verifi
 
 1. Confirm the account and [inventory the existing resources](#3-inspect-the-account-and-resources). Match the deployed Worker and its bindings to this deployment repository; do not adopt resources based on their names alone.
 2. [Verify the existing Access applications by ID](docs/ACCESS-SETUP.md#verify-an-existing-configuration) using a read-only credential. Compare the returned team domain and hub audience with the configured vars. Different display names are supported; security differences stop verification. Do not run creation/apply to repair a mismatch without reviewing the reported settings.
-3. Render the existing plugin, run checks, and [commit and deploy](#6-commit-and-deploy). When the operator asks for the deploy and this checkout has [`.agents/skills/deploy-this-energon/SKILL.md`](.agents/skills/deploy-this-energon/SKILL.md), follow that skill. Confirm [deployment repository CI is enabled and actually runs](docs/DEPLOY.md#enable-ci-in-a-new-deployment-repository). Apply pending migrations before deploying.
+3. Render the existing plugin, run checks, and [commit and deploy](#6-commit-and-deploy). `npm run skill:render` stamps the merged `version.txt` into the generated plugin and marketplace manifests; commit those generated files. Landing this repository or deploying the Worker does not update plugins already installed on agent machines; after the marketplace has the new package, [refresh installed plugins](#refresh-an-installed-plugin). When the operator asks for the deploy and this checkout has [`.agents/skills/deploy-this-energon/SKILL.md`](.agents/skills/deploy-this-energon/SKILL.md), follow that skill. Confirm [deployment repository CI is enabled and actually runs](docs/DEPLOY.md#enable-ci-in-a-new-deployment-repository). Apply pending migrations before deploying.
 4. Repeat [installation acceptance](#7-verify-the-installation), including human sign-in and real publishing. Reuse an existing valid agent token; request human approval only if a new connection is needed.
 
 If the deployment predates a command used here, merge that command into the configured deployment repository first. Return to first-install setup below only for resources that are genuinely missing and whose creation is authorized.
@@ -136,7 +136,7 @@ custom_domain = true
 
 Wrangler attaches these domains during deployment. Use the actual hostnames already checked during preflight. Separate origins prevent published active content from inheriting the hub's authenticated context.
 
-For an already initialized deployment repository, preserve its plugin name, origins, and token prefix. Refresh generated files with `npm run skill:render` after merging template changes. If it still uses a rejected generic identity, choose a unique name, rerun `skill:init` with the same deployed origin, update Wrangler's identity vars, and have users replace the old plugin and token environment name. Existing token values remain valid when `TOKEN_PREFIX` is unchanged.
+For an already initialized deployment repository, preserve its plugin name, origins, and token prefix. Refresh generated files with `npm run skill:render` after merging template changes or a new `version.txt`. Generated plugin versions follow the Energon release in `version.txt`; there is no per-instance plugin version. If it still uses a rejected generic identity, choose a unique name, rerun `skill:init` with the same deployed origin, update Wrangler's identity vars, and have users replace the old plugin and token environment name. Existing token values remain valid when `TOKEN_PREFIX` is unchanged.
 
 ### 5. Configure Access
 
@@ -340,6 +340,46 @@ curl -sS {origin}/v1/whoami -H "Authorization: Bearer $YOURCO_ENERGON_TOKEN"
 ```
 
 Then they can say: “Put this folder on Energon as lunch-poll” or “Hand this screenshot to the other chat.”
+
+<a id="refresh-an-installed-plugin"></a>
+
+### Refresh an installed plugin
+
+Updating the deployment repository or deploying the Worker does not update plugins already installed on agent machines. Claude Code and Codex copy the plugin into a versioned local cache and skip the update when the reported version is unchanged. That is why generated manifests follow `version.txt` instead of staying at `1.0.0`.
+
+After this Energon lands a release, `npm run skill:render` stamps the new `version.txt` into the committed plugin. Clients with GitHub read access then refresh. Use the marketplace and plugin names from `GET {origin}/v1/help` (examples below use `yourco-energon`).
+
+**Skills CLI**
+
+```
+npx skills update yourco-energon -g
+```
+
+**Claude Code**
+
+```
+claude plugin marketplace update yourco-energon
+claude plugin update yourco-energon@yourco-energon
+```
+
+Then `/reload-plugins` in an open session, or start a new session. An install that still reports `1.0.0` moves once the marketplace plugin version is no longer `1.0.0`. `/plugin update` compares the version string, not git contents; a hardcoded `1.0.0` leaves the cached copy in place. Third-party marketplaces have auto-update off by default; enable it in `/plugin` → Marketplaces if you want Claude Code to pull new versions in the background after startup.
+
+**Codex**
+
+Git marketplaces refresh on startup. To refresh now:
+
+```
+codex plugin marketplace upgrade yourco-energon
+codex plugin add yourco-energon@yourco-energon
+```
+
+Codex stores each version at `~/.codex/plugins/cache/<marketplace>/<plugin>/<version>/`. A new version is a new cache directory. Re-adding after a marketplace upgrade is what moves an existing `1.0.0` install onto the release version.
+
+**Cursor, Grok, Copilot**
+
+Use that client's marketplace refresh and plugin update (or reinstall) after the deployment repository has the new generated plugin.
+
+Private repositories still need GitHub read access for updates. If the client installed from a local clone instead of the marketplace, pull that clone and reinstall the skill from `plugins/{plugin}/skills/{skill}/` as in [Private repository access](#private-repository-access).
 
 ### Only if they asked to pin the plugin in a repo
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
  * templates/ is the source. plugins/ is a render of those templates.
+ * Generated plugin version comes from version.txt (the Energon release).
  *
  * Upstream validates templates without generating a plugin or catalogs.
  *
@@ -51,6 +52,7 @@ const OSS_DEFAULTS = {
 };
 
 const SAFE_IDENTIFIER = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const PRODUCT_VERSION = /^\d+\.\d+\.\d+$/;
 const IDENTIFIER_FIELDS = ["skill", "plugin", "marketplace"];
 
 function hasPath(path) {
@@ -153,6 +155,24 @@ export function orgFromBrand(brand) {
 
 function instancePath(root) {
   return join(root, "instance-skill.json");
+}
+
+export function readProductVersion(root = SCRIPT_ROOT) {
+  const path = join(root, "version.txt");
+  let raw;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch (err) {
+    if (err && err.code === "ENOENT") {
+      throw new Error("version.txt is missing; generated plugin version follows the Energon release in version.txt");
+    }
+    throw err;
+  }
+  const version = String(raw).trim();
+  if (!PRODUCT_VERSION.test(version)) {
+    throw new Error(`version.txt must be a x.y.z triple, got ${JSON.stringify(version)}`);
+  }
+  return version;
 }
 
 function loadInstance(root) {
@@ -279,7 +299,7 @@ function parseArgs(argv, root) {
   return { opts: out, prev };
 }
 
-function varsFrom(opts) {
+function varsFrom(opts, version) {
   let host = opts.origin;
   try {
     host = new URL(opts.origin).host;
@@ -299,6 +319,7 @@ function varsFrom(opts) {
     MARKETPLACE_REPO: opts.marketplaceRepo,
     MARKETPLACE_URL: opts.marketplaceUrl,
     INSTALL_LINE: `${opts.plugin}@${opts.marketplace}`,
+    VERSION: version,
   };
 }
 
@@ -529,7 +550,7 @@ function writeMarketplaces(root, opts, vars, check, dirty, required) {
 
 export function runRender(argv, { root = SCRIPT_ROOT } = {}) {
   const { opts, prev } = parseArgs(argv, root);
-  const vars = varsFrom(opts);
+  const vars = varsFrom(opts, readProductVersion(root));
   const dirty = [];
   const catalogsRequired = opts.init || (opts.updateMarketplace && !isPlaceholder(opts));
 
