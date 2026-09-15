@@ -94,7 +94,11 @@ describe("contribution policy", () => {
     expect(agents).toContain("When you triage a PR, run **How to test** as written");
     expect(agents).toContain("Conventional Commit");
     expect(agents).toContain(".agents/skills/cut-release/SKILL.md");
-    expect(agents).toContain("Only `verify-energon` and `cut-release` belong there");
+    expect(agents).toContain(".agents/skills/update-from-upstream/SKILL.md");
+    expect(agents).toContain(".agents/skills/backup-this-energon/SKILL.md");
+    expect(agents).toContain(
+      "Only `verify-energon`, `cut-release`, `update-from-upstream`, and `backup-this-energon` belong there",
+    );
     expect(agents).toContain("Do not put the **publish** skill");
   });
 
@@ -126,6 +130,24 @@ describe("contribution policy", () => {
     const skill = readFileSync(join(root, ".agents/skills/cut-release/SKILL.md"), "utf8");
     expect(skill).toContain("gh repo view --json isFork,nameWithOwner,url");
     expect(skill).toContain("gh pr list --label \"autorelease: pending\"");
+  });
+
+  it("ships fork update and backup skills that resolve this checkout", () => {
+    const update = readFileSync(join(root, ".agents/skills/update-from-upstream/SKILL.md"), "utf8");
+    expect(update).toContain("gh repo view --json isFork,parent,nameWithOwner,url");
+    expect(update).toContain("If `isFork` is false");
+    expect(update).toContain("time-travel info");
+    expect(update).toContain("Do not create, delete, empty, or rebind");
+    expect(update).toContain("unless the operator explicitly opted in");
+    expect(update).not.toMatch(/automatically deploy|deploy automatically|default to deploy/i);
+
+    const backup = readFileSync(join(root, ".agents/skills/backup-this-energon/SKILL.md"), "utf8");
+    expect(backup).toContain("wrangler.toml");
+    expect(backup).toContain("time-travel info");
+    expect(backup).toContain("PASTE_FROM_WRANGLER_D1_CREATE");
+    expect(backup).toContain("Do not restore");
+    expect(backup).toContain("incomplete");
+    expect(backup).not.toMatch(/automatically restore|restore automatically/i);
   });
 
   it("does not hard-code tmchow/energon in shipped skills", () => {

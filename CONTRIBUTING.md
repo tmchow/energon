@@ -76,7 +76,7 @@ A GitHub Release is the operator contract for forks. It is not a deploy and not 
 
 The workflow needs `issues: write` so it can create `autorelease: pending`. The repo must also allow GitHub Actions to create and approve pull requests.
 
-On a company fork, stop and merge an upstream release instead. The Actions workflow is what names the canonical repository so a copied file cannot tag the fork. See [INSTALL.md](./INSTALL.md) and [Upgrade and recover](https://docs.getenergon.com) / the checkout's upgrade guide.
+On a company fork, stop and merge an upstream release instead. The Actions workflow is what names the canonical repository so a copied file cannot tag the fork. When this checkout has it, follow [`.agents/skills/update-from-upstream/SKILL.md`](.agents/skills/update-from-upstream/SKILL.md). See [INSTALL.md](./INSTALL.md) and [Upgrade and recover](https://docs.getenergon.com) / the checkout's upgrade guide.
 
 ## License
 
