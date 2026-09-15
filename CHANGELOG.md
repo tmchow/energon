@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.5.0](https://github.com/tmchow/energon/compare/v1.4.0...v1.5.0) (2026-09-15)
+
+
+### Features
+
+* **setup:** advertise npx skills add install ([#109](https://github.com/tmchow/energon/issues/109)) ([2a2b626](https://github.com/tmchow/energon/commit/2a2b62635224317fda8a0132045823d3ae72641e))
+
+
+### Bug Fixes
+
+* **hub:** stop blocking paint on Google Fonts import ([#120](https://github.com/tmchow/energon/issues/120)) ([84dec07](https://github.com/tmchow/energon/commit/84dec0725de834c15ef9db8b11c6702b90396fda))
+* **skill:** let generated plugins follow Energon releases ([#122](https://github.com/tmchow/energon/issues/122)) ([9017881](https://github.com/tmchow/energon/commit/9017881d33993bcb537fa368fddbfd79d7bf89a7))
+
 ## [1.4.0](https://github.com/tmchow/energon/compare/v1.3.0...v1.4.0) (2026-09-15)
 
 
