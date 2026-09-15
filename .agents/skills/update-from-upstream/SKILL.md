@@ -7,7 +7,9 @@ description: Merge a published upstream Energon release into this fork, preserve
 
 This is the fork-side SOP for catching up to a published GitHub Release. It is the inverse of cut-release: a fork merges an upstream release; it does not cut one.
 
-A GitHub Release is the operator contract (Operator notes: D1, wrangler keys, plugin regen, rollback floor). Merging it is not a deploy. Do not merge unreleased `main`.
+A GitHub Release is the operator contract (Operator notes: D1, wrangler keys, plugin regen, rollback floor). Do not merge unreleased `main`.
+
+Merging the release onto a **branch or PR is not live**. Pull requests never deploy. If this fork set `ENABLE_PRODUCTION_DEPLOY` and the Cloudflare Actions secrets, a **push or merge to `main` is the deploy**: tests, remote D1 migrations, then `wrangler deploy`. That is the intended later path once the fork is connected. GitHub “Sync fork” onto `main` is the same trigger, and it merges unreleased `main` — do not use it.
 
 When this file is absent (an older fork), follow INSTALL.md “Update an existing Energon” and the checkout’s upgrade guide.
 
@@ -25,7 +27,7 @@ Reuse a remote named `upstream` if present. Otherwise add one from `parent.url`.
 
 ## Hard stops
 
-- Do not merge onto `main` as the default. Work on a branch. A push to `main` may be a deploy if this fork set `ENABLE_PRODUCTION_DEPLOY`.
+- Do not merge onto `main` as the default. Work on a branch and open a PR. On a connected fork, merging that PR to `main` *is* the Cloudflare deploy — only after the operator opts in and you have recorded the D1 Time Travel bookmark.
 - Do not replace `wrangler.toml`, `instance-skill.json`, generated `plugins/`, or marketplace catalogs with upstream placeholders.
 - Do not create, delete, empty, or rebind live D1 or R2. An ordinary update keeps this Energon’s existing account, database, and bucket. Do not walk first-install resource creation.
 - Do not apply remote migrations or `wrangler deploy` unless the operator explicitly opted in after you named this fork’s deploy path.
@@ -62,7 +64,7 @@ npm test
 
 Use the D1 `database_name` from this fork’s `wrangler.toml` if it is not the example name. Do not apply remote migrations in this phase.
 
-6. Report: this `version.txt` vs the tag, Operator notes, identity files that stayed, plugin regen status, pending `migrations/` files, and that the update is on the branch (and a fork PR if this repo wants one). **It is not live.**
+6. Report: this `version.txt` vs the tag, Operator notes, identity files that stayed, plugin regen status, pending `migrations/` files, and that the update is on the branch (and a fork PR if this repo wants one). The Worker is not live yet. If this fork auto-deploys from `main`, say that merging the PR will migrate D1 and deploy.
 
 ## Phase 2 — Discover deploy, then ask
 
@@ -70,8 +72,8 @@ Do not prescribe one deploy command. Discover how **this** fork already deploys,
 
 | Signal | Meaning |
 | --- | --- |
-| `gh variable get ENABLE_PRODUCTION_DEPLOY` is `true` and `.github/workflows/ci.yml` still has the stock deploy job | Merge/push to `main` is the deploy: tests, remote migrations, `wrangler deploy`. |
-| Variable unset or missing | CI is test-only. Merging the update does not go live. |
+| `gh variable get ENABLE_PRODUCTION_DEPLOY` is `true` and `.github/workflows/ci.yml` still has the stock deploy job | This is the expected connected-fork path. Merging the update PR (or any push to `main`) deploys: tests, remote migrations, `wrangler deploy`. |
+| Variable unset or missing | CI is test-only. Updating `main` does not go live until they enable the variable (INSTALL.md / docs/DEPLOY.md). |
 | `gh secret list` shows `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` | Actions *can* deploy if the variable is on. Do not print secret values. |
 | `npx wrangler whoami` matches `wrangler.toml` `account_id` | This machine can do the INSTALL.md CLI path. |
 | whoami missing, another account, or a cloud agent | Do not `wrangler login`. Finish auth on the operator laptop or use this fork’s existing CI. |

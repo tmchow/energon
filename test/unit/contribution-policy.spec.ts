@@ -139,6 +139,8 @@ describe("contribution policy", () => {
     expect(update).toContain("time-travel info");
     expect(update).toContain("Do not create, delete, empty, or rebind");
     expect(update).toContain("unless the operator explicitly opted in");
+    expect(update).toContain("ENABLE_PRODUCTION_DEPLOY");
+    expect(update).toContain("push or merge to `main` is the deploy");
     expect(update).not.toMatch(/automatically deploy|deploy automatically|default to deploy/i);
 
     const backup = readFileSync(join(root, ".agents/skills/backup-this-energon/SKILL.md"), "utf8");
