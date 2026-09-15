@@ -148,9 +148,31 @@ describe("contribution policy", () => {
     expect(update).toContain("deployment is on or unknown");
     expect(update).toContain("unless the operator authorized");
     expect(update).not.toMatch(/automatically deploy|deploy automatically|default to deploy/i);
+    expect(update).toContain("node scripts/deployment-repo.mjs landing-path --deploy off");
+    expect(update).toContain("Never squash, rebase away upstream history, or force-push");
+    expect(update).toContain("The temporary local branch is not a PR");
+    expect(update).toContain("`policy unknown` means the policy read failed");
+    expect(update).toContain("Reuse existing authorization");
+    expect(update).toContain("updated source, not an updated Energon");
+    expect(update).toContain("contributions to upstream still go through the upstream PR process");
+    expect(update).not.toMatch(/reviewable (release )?update/i);
+
+    const repoDoc = readFileSync(join(root, "docs/DEPLOYMENT-REPOSITORY.md"), "utf8");
+    expect(repoDoc).toContain("### Choose how to land");
+    expect(repoDoc).toContain("### Verify what landed");
+    expect(repoDoc).toContain("node scripts/deployment-repo.mjs landing-path --deploy off");
+    expect(repoDoc).toContain("| `push-main` |");
+    expect(repoDoc).toContain("| `pull-request` |");
+    expect(repoDoc).toContain("| `blocked` |");
+    expect(repoDoc).toContain("Do not assume \"unprotected\" and do not assume \"PR required\"");
+    expect(repoDoc).toContain("Never squash, rebase away upstream commits, or force-push");
+    expect(repoDoc).toContain("always use the process in [CONTRIBUTING.md](../CONTRIBUTING.md)");
 
     const install = readFileSync(join(root, "INSTALL.md"), "utf8");
     expect(install).toContain("Installation is two parts:");
+    expect(install).toContain("That section owns the landing decision");
+    expect(install).toContain("reuse authorization already given");
+    expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toContain("A failed policy read is unknown, not a default");
     expect(install).toContain("After the first deploy: optional automatic updates");
 
     const deploy = readFileSync(join(root, ".agents/skills/deploy-this-energon/SKILL.md"), "utf8");

@@ -26,17 +26,39 @@ git merge-base HEAD "refs/remotes/upstream/releases/$RELEASE_TAG"
 
 If the repository is shallow, fetch its missing history from the verified upstream before retrying ancestry. If there is still no common ancestor, stop: a file-only/template copy requires a separately reviewed migration. Do not use `--allow-unrelated-histories`, reset to upstream, or mirror-push. If the release ref already exists with different contents, inspect the moved tag rather than forcing the fetch.
 
-Create a new update branch from the deployment's current branch after confirming it is the intended base. Record its pre-merge commit and the fetched release commit. Merge the fetched ref on that branch. If already contained, report the release as incorporated; do not create an empty update.
+Create a temporary local update branch from the deployment's current branch after confirming it is the intended base. Record its pre-merge commit and the fetched release commit. Merge the fetched ref on that branch with a regular merge so upstream ancestry stays in history. Never squash, rebase away upstream commits, or force-push: the next update's ancestry check depends on this merge. If already contained, report the release as incorporated; do not create an empty update.
 
-Resolve conflicts by preserving this installation's account, D1/R2 bindings, origins/routes, Access settings, policy, plugin identity, token prefix, and deliberate customizations. Review both versions of changed code. Compare new configuration keys with `wrangler.example.toml`; do not blanket-select either side of a conflicted configuration file. Regenerate plugins from the resolved templates and `instance-skill.json`. If intent is unclear, leave the conflict on the update branch and ask about that specific customization.
+Resolve conflicts by preserving this installation's account, D1/R2 bindings, origins/routes, Access settings, policy, plugin identity, token prefix, and deliberate customizations. Review both versions of changed code. Compare new configuration keys with `wrangler.example.toml`; do not blanket-select either side of a conflicted configuration file. Regenerate plugins from the resolved templates and `instance-skill.json`. If intent is unclear, that conflict is an unresolved human decision: leave it on the branch, land through a pull request, and ask about that specific customization.
 
-Run the checkout's local checks in [INSTALL.md](../INSTALL.md#6-commit-and-deploy), plus affected user paths through verify-energon. Present the diff, release commit, retained identity, pending migrations, and results for review. Commit or push the update branch only within the operator's request and repository rules. A code update request prepares a reviewable update; it does not automatically accept upstream code onto `main`.
+Run the checkout's local checks in [INSTALL.md](../INSTALL.md#6-commit-and-deploy), plus affected user paths through verify-energon. Record the diff, release commit, retained identity, pending migrations, and results; they go in the report or the PR body.
+
+### Choose how to land
+
+An update request includes landing the update by the path this repository's policy allows. Inspect that policy from three sources: the repository's written instructions (`AGENTS.md`, `CONTRIBUTING.md`, or equivalent), classic branch protection, and rulesets on the landing branch. The helper reads the last two through the GitHub API for the verified origin and combines them with what you learned from the instructions, the operator, the merge, and the deployment check below:
+
+```sh
+node scripts/deployment-repo.mjs landing-path --deploy off
+```
+
+Pass what applies: `--instructions-require-pr` when the repository's instructions require one, `--review` when the operator asked for review, `--decision "<customization>"` for each conflict you could not settle, `--deploy on|off|unknown` from the deployment check (with `--deploy-detail "<error>"` for a failed read), and `--authorized` when the operator already authorized the deployment consequence. `branch-policy [BRANCH]` prints the policy read alone. Land by the returned `path`; every `reasons` entry goes in the report or PR body.
+
+| `path` | Land by |
+| --- | --- |
+| `push-main` | Push the merged commit to `main` directly. The temporary local branch needs no PR. Policy is known and allows it, the instructions do not require review, nothing is unresolved, and deployment is off or already authorized. |
+| `pull-request` | Open a pull request from the update branch and follow the repository's review flow. Returned when protection or a ruleset requires a PR, status checks, signed commits, or restricted pushes; when the instructions require a PR; when the operator asked for review; or when a conflict needs a human decision. Name any open decision in the PR. Merge with a merge commit, never squash. |
+| `blocked` | Do not land. `policy unknown` means the read failed: report the failure it names (permission, network, wrong repository) and resolve it. Do not assume "unprotected" and do not assume "PR required". `linear history is required` means a regular merge cannot land on this branch at all; ask the operator, because squashing would erase upstream ancestry. `deployment behavior unknown` and `has not authorized` are the deployment consequence below. |
+
+`gh api` returns `Branch not protected` for a branch with no classic protection; the helper reports that as known and unprotected, not as a failure. Any other error is unknown. Upstream contribution PRs against the canonical repository are unaffected by this table; they always use the process in [CONTRIBUTING.md](../CONTRIBUTING.md).
+
+### Deployment consequence
 
 Before landing, inspect the deployment repository's actual workflows, Actions variables, and secret names. Use explicit `--repo "$DEPLOYMENT_REPO"` for `gh variable`, `gh secret`, `gh workflow`, `gh run`, and PR operations. Read repository variables with `gh variable list --json name,value --repo "$DEPLOYMENT_REPO"`. An explicit repository-level `ENABLE_PRODUCTION_DEPLOY=false` disables the stock deploy job. A missing entry does not rule out an inherited organization variable; establish that value before treating deployment as off. A failed read leaves deployment behavior unknown. Custom workflows may deploy independently of this variable.
 
-For the stock workflow, `ENABLE_PRODUCTION_DEPLOY=true` makes a push or merge to `main` run tests, migrate D1, and deploy. If deployment is enabled or unknown, explain the possible live change and obtain deployment authority before landing. Reuse explicit authorization already supplied. When deployment is off, landing still updates the private plugin marketplace; CLI migration/deploy requires deployment authority separately. Record a D1 Time Travel bookmark immediately before remote migrations. Stop on migration failure and follow [migration recovery](DEPLOY.md#migrations-after-a-deploy).
+For the stock workflow, `ENABLE_PRODUCTION_DEPLOY=true` makes a push or merge to `main` run tests, migrate D1, and deploy. If deployment is enabled or unknown, explain the possible live change and obtain deployment authority before landing. Reuse explicit authorization already supplied: an operator who asked for the update after that consequence was explained has authorized it, and should not be asked again at each step. When deployment is off, landing still updates the private plugin marketplace; CLI migration/deploy requires deployment authority separately. Record a D1 Time Travel bookmark immediately before remote migrations. Stop on migration failure and follow [migration recovery](DEPLOY.md#migrations-after-a-deploy).
 
-When authorized to land, use the repository's normal reviewed merge flow and check the exact resulting commit's Actions run. Enabling deployment after a commit was pushed does not replay the push. Verify the live installation through [INSTALL.md](../INSTALL.md#7-verify-the-installation) after deployment, and report source, plugin, and Worker versions separately if they differ.
+### Verify what landed
+
+After the push or merge, confirm the remote landing branch is at the exact merged commit (`git ls-remote origin refs/heads/main`) and check that commit's Actions run with `gh run list --repo "$DEPLOYMENT_REPO" --commit <sha>`. Enabling deployment after a commit was pushed does not replay the push. When the run deployed, verify the live installation through [INSTALL.md](../INSTALL.md#7-verify-the-installation). Report updated source and verified live deployment as separate facts, and report source, plugin, and Worker versions separately if they differ. A pushed `main` whose deployment did not run or was not checked is an updated source, not an updated Energon.
 
 ## Migrate an existing public fork
 
