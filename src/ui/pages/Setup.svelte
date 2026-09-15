@@ -14,6 +14,7 @@
   <div class="en-stack en-setup-stack">
     <Card title="Marketplace" hint="Use the form your agent tool asks for">
       <p class="en-muted-copy">Add this repo as a plugin marketplace, then install <code>{data.identity.plugin}</code> (<code>{data.identity.plugin}@{data.identity.marketplace}</code>) at user (global) scope.</p>
+      <p class="en-muted-copy">If this repository is private, your agent tool needs GitHub read access to install and update the plugin. This is separate from approving its Energon connection. If the tool cannot load a private marketplace, use a local copy of the generated publish skill or the <a href="/v1/help">HTTP API</a>.</p>
       <CopyRow label="GitHub repo" value={data.identity.repo || 'your-org/energon'} />
       <CopyRow label="Repo URL" value={data.identity.repo ? `https://github.com/${data.identity.repo}` : data.identity.origin} />
     </Card>

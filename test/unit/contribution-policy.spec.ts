@@ -128,23 +128,24 @@ describe("contribution policy", () => {
     expect(config).toMatch(/"type": "chore",\s*"hidden": true/);
     expect(readFileSync(join(root, "CONTRIBUTING.md"), "utf8")).toContain("## Releases");
     const skill = readFileSync(join(root, ".agents/skills/cut-release/SKILL.md"), "utf8");
-    expect(skill).toContain("gh repo view --json isFork,nameWithOwner,url");
-    expect(skill).toContain("gh pr list --label \"autorelease: pending\"");
+    expect(skill).toContain("node scripts/deployment-repo.mjs inspect");
+    expect(skill).toContain("canonical: true");
+    expect(skill).toContain('gh pr list --repo "$RELEASE_REPO" --label "autorelease: pending"');
   });
 
-  it("ships fork update and backup skills that resolve this checkout", () => {
+  it("ships deployment update and backup skills that resolve this checkout", () => {
     const update = readFileSync(join(root, ".agents/skills/update-from-upstream/SKILL.md"), "utf8");
-    expect(update).toContain("gh repo view --json isFork,parent,nameWithOwner,url");
-    expect(update).toContain("If `isFork` is false");
+    expect(update).toContain("node scripts/deployment-repo.mjs inspect");
+    expect(update).toContain("`isFork: false` is valid");
+    expect(update).toContain("docs/DEPLOYMENT-REPOSITORY.md");
     expect(update).toContain("time-travel info");
     expect(update).toContain("Do not create, delete, empty, or rebind");
     expect(update).toContain("ENABLE_PRODUCTION_DEPLOY");
     expect(update).toContain("push or merge to `main` is the deploy");
-    expect(update).toContain("Do not treat this as off");
+    expect(update).toContain("do not treat this as off");
     expect(update).toContain("does not redeploy this commit");
-    expect(update).toContain("Auto-deploy on, or unclear");
-    expect(update).toContain("Auto-deploy off");
-    expect(update).toContain("unless the operator opted in");
+    expect(update).toContain("deployment is on or unknown");
+    expect(update).toContain("unless the operator authorized");
     expect(update).not.toMatch(/automatically deploy|deploy automatically|default to deploy/i);
 
     const install = readFileSync(join(root, "INSTALL.md"), "utf8");
@@ -163,7 +164,7 @@ describe("contribution policy", () => {
   it("does not hard-code tmchow/energon in shipped skills", () => {
     const agents = readFileSync(join(root, "AGENTS.md"), "utf8");
     expect(agents).toMatch(
-      /Skills under `\.agents\/skills\/` ship on every fork[\s\S]*Do not write `tmchow\/energon`/,
+      /Skills under `\.agents\/skills\/` ship in every deployment repository[\s\S]*Do not hard-code destination repository coordinates/,
     );
     expect(agents).toContain("Do not put `tmchow/energon` in these files.");
     for (const file of walkFiles(join(root, ".agents/skills"))) {

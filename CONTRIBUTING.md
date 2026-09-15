@@ -1,15 +1,17 @@
 # Contributing
 
-This repository is the Energon source you fork and run for yourself or your organization.
+This repository is the Energon source you copy into a private deployment repository and run for yourself or your organization.
 [getenergon.com](https://getenergon.com) explains the project; there is no hosted public service there.
 
 **Issues and pull requests are welcome** against [`tmchow/energon`](https://github.com/tmchow/energon).
 Small, focused patches that follow this file are the ones that land. Merge is not promised:
 the maintainer may request changes, squash, edit, or reimplement the idea instead of merging as-is.
 
-On a company fork, follow that repo's humans. This file is policy for `tmchow/energon` only.
+On a company deployment repository, follow that repo's humans. This file is policy for `tmchow/energon` only.
 
 Security reports: see [SECURITY.md](./SECURITY.md). Do not file those as public issues or pull requests.
+
+Public GitHub forks remain supported for contributing improvements. Use a clean contribution branch based on upstream; never push private deployment history or company customizations into a public contribution fork.
 
 ## What belongs upstream
 
@@ -19,13 +21,13 @@ Send PRs that help every Energon:
 - Skill **templates** (`templates/`), render scripts, docs that apply to every host
 - Bug fixes with a reproduction or a failing test
 
-Keep your deployed Energon's identity on the fork. Do **not** include:
+Keep your deployed Energon's identity in the private deployment repository. Do **not** include:
 
 - `wrangler.toml` database ids, origins, or account-specific vars
 - `.dev.vars`, live tokens, Access JWTs, or other people’s files
 - Generated `plugins/`, marketplace catalogs, or an `instance-skill.json` pointed at a real origin
 
-Those files are how a fork becomes *your* Energon. Upstream stays a template.
+Those files are how a deployment repository becomes *your* Energon. Upstream stays a template.
 
 ## Before you open a PR
 
@@ -72,11 +74,11 @@ belongs in `migrations/` first, plus `src/db.ts` and `src/schema.sql` as [AGENTS
 
 ## Releases
 
-A GitHub Release is the operator contract for forks. It is not a deploy and not an upgrade of anyone's Energon. release-please maintains a standing Release PR on the source template (the checkout that is not a GitHub fork). Cutting a release means merging that PR after an **Operator** section (migrate D1, new wrangler keys, regenerate the plugin, rollback floor, or an explicit none). Read [`.agents/skills/cut-release/SKILL.md`](./.agents/skills/cut-release/SKILL.md). The skill resolves this checkout; it does not hard-code a GitHub owner. Do not `git tag` or `gh release create` except that skill's Bootstrap path.
+A GitHub Release is the operator contract for deployment repositories. It is not a deploy and not an upgrade of anyone's Energon. release-please maintains a standing Release PR on the source template (`tmchow/energon`, identified by its origin and the workflow guard). Cutting a release means merging that PR after an **Operator** section (migrate D1, new wrangler keys, regenerate the plugin, rollback floor, or an explicit none). Read [`.agents/skills/cut-release/SKILL.md`](./.agents/skills/cut-release/SKILL.md). The skill resolves this checkout; it does not hard-code a GitHub owner. Do not `git tag` or `gh release create` except that skill's Bootstrap path.
 
 The workflow needs `issues: write` so it can create `autorelease: pending`. The repo must also allow GitHub Actions to create and approve pull requests.
 
-On a company fork, stop and merge an upstream release instead. The Actions workflow is what names the canonical repository so a copied file cannot tag the fork. When this checkout has it, follow [`.agents/skills/update-from-upstream/SKILL.md`](.agents/skills/update-from-upstream/SKILL.md). See [INSTALL.md](./INSTALL.md) and [Upgrade and recover](https://docs.getenergon.com) / the checkout's upgrade guide.
+On a company deployment repository, stop and merge an upstream release instead. The Actions workflow is what names the canonical repository so a copied file cannot publish upstream releases from a deployment repository. When this checkout has it, follow [`.agents/skills/update-from-upstream/SKILL.md`](.agents/skills/update-from-upstream/SKILL.md). See [INSTALL.md](./INSTALL.md) and [Upgrade and recover](https://docs.getenergon.com) / the checkout's upgrade guide.
 
 ## License
 

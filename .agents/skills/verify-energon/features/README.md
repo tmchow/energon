@@ -8,7 +8,7 @@ This directory is the maintained source for verifying the user-facing behavior o
 - Origin is `http://127.0.0.1:$PORT` (default port `18787`). `GET /v1/help` `hub`, `content_origin`, and the origin of `openapi` must equal that origin. `GET /v1/openapi.json` (no auth) is the `/v1` contract with `servers[0].url` set to that origin; use it to check a route's request shape or `error` code before reporting a product bug.
 - Doctor (inside `bin/up`) requires pid ownership of the port, hub HTML, and a signed-in email. Do not re-run it between features.
 - `bin/up` mints `$TOKEN` when `state.env` has none. Use `bin/mint-token` only for a second label. Do not invent a token. Hub POSTs under `/account` need `-H "origin: $ORIGIN"`.
-- Set `ENERGON_VERIFY_EMAIL` to an email allowed by the fork's `ALLOWED_EMAIL_DOMAINS`; launch passes it as `DEV_ACCESS_EMAIL`. Without it, Wrangler uses the configured local identity or `dev@example.com`. Doctor records the actual email and handle in `state.env`; use those values when driving.
+- Set `ENERGON_VERIFY_EMAIL` to an email allowed by the deployment's `ALLOWED_EMAIL_DOMAINS`; launch passes it as `DEV_ACCESS_EMAIL`. Without it, Wrangler uses the configured local identity or `dev@example.com`. Doctor records the actual email and handle in `state.env`; use those values when driving.
 - Never drive a run that was not started by this verification launch.
 
 ## Driving conventions

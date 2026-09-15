@@ -10,38 +10,38 @@ This file is how to **change this tree**. It is not a product README and not the
 | Add, change, or review UI layout, styling, copy, or interactions | Read and follow [DESIGN.md](./DESIGN.md). Use [docs/design/README.md](./docs/design/README.md) for implementation and verification. |
 | Publish or fetch against a live Energon | the installed plugin skill; `GET {origin}/v1/help` and `{origin}/llms.txt`. Never invent a token. |
 | Deploy your own Energon or connect an agent | [INSTALL.md](./INSTALL.md) |
-| Deploy vars, Access, fork hygiene | [docs/DEPLOY.md](./docs/DEPLOY.md) |
+| Deploy vars, Access, deployment repository maintenance | [docs/DEPLOY.md](./docs/DEPLOY.md) |
 | Domain terms (purge claim, write claim, this Energon) | [CONCEPTS.md](./CONCEPTS.md) |
 | Why something is built the way it is, or a bug that was already solved once (quota drift, purge races, edge cache and `last_read_at`) | `docs/solutions/`; read the matching file before redesigning or re-debugging |
 | Open a PR against `tmchow/energon` | [CONTRIBUTING.md](./CONTRIBUTING.md); fill [`.github/PULL_REQUEST_TEMPLATE.md`](./.github/PULL_REQUEST_TEMPLATE.md) |
 | Cut an upstream GitHub Release | [`.agents/skills/cut-release/SKILL.md`](./.agents/skills/cut-release/SKILL.md). A release is not a deploy. |
-| Update a fork from an upstream release | [`.agents/skills/update-from-upstream/SKILL.md`](./.agents/skills/update-from-upstream/SKILL.md). Merge a published release; land on `main` only after asking if that fork auto-deploys. |
+| Update a deployment repository from an upstream release | [`.agents/skills/update-from-upstream/SKILL.md`](./.agents/skills/update-from-upstream/SKILL.md). Merge a published release; land on `main` only after asking if that repository auto-deploys. |
 | Back up this Energon's data | [`.agents/skills/backup-this-energon/SKILL.md`](./.agents/skills/backup-this-energon/SKILL.md). D1 bookmark / export and R2 copy. Does not restore. |
 
 ## Hard stops
 
 - Do not invent a token. Humans mint at `{origin}/tokens` or approve agent connection requests at `/connect`. Never automate human approval.
 - Never default to `overwrite: true`. Never claim a guessed slug that already exists without the human confirming.
-- Development work does not authorize production changes. When an operator explicitly requests installation or deployment of their fork, follow INSTALL.md for account selection, remote migrations, and deployment within that scope. Human sign-in and connection approval remain human steps; never run interactive `wrangler login` in an unattended cloud agent. Never stamp `d1_migrations` or execute ad hoc schema SQL against production. New schema belongs in `migrations/` first.
+- Development work does not authorize production changes. When an operator explicitly requests installation or deployment of their deployment repository, follow INSTALL.md for account selection, remote migrations, and deployment within that scope. Human sign-in and connection approval remain human steps; never run interactive `wrangler login` in an unattended cloud agent. Never stamp `d1_migrations` or execute ad hoc schema SQL against production. New schema belongs in `migrations/` first.
 - Do not `pkill -f wrangler` / `workerd`. Do not delete `.wrangler/state` (the human's local DB).
-- Do not hand-edit generated `plugins/{name}/` on a fork. Source is `templates/` + `instance-skill.json`. Render with `npm run skill:render`.
+- Do not hand-edit generated `plugins/{name}/` in a deployment repository. Source is `templates/` + `instance-skill.json`. Render with `npm run skill:render`.
 - Do not put the **publish** skill (`templates/skill/`, `plugins/{name}/`) under `.agents/skills` or `.claude/skills` — those autoload it inside this Worker repo. Only `verify-energon`, `cut-release`, `update-from-upstream`, and `backup-this-energon` belong there.
-- Skills under `.agents/skills/` ship on every fork. Do not write `tmchow/energon` or `--repo owner/name` into them. Resolve this checkout (`gh repo view`, `git remote`). The canonical name belongs in the Actions `github.repository` guard, CONTRIBUTING, and INSTALL's `upstream` remote — not in a skill an agent will run from `yourco/energon`.
-- Do not `git tag` or `gh release create` to cut a release (except the labeled Bootstrap path in cut-release). Merge the standing Release PR after a human adds **Operator**. Do not `wrangler deploy` as part of a release. `ENABLE_PRODUCTION_DEPLOY` stays a fork's own production.
+- Skills under `.agents/skills/` ship in every deployment repository. Do not hard-code destination repository coordinates in them. Resolve origin and upstream with `scripts/deployment-repo.mjs inspect`; use the returned repository explicitly for GitHub operations. The canonical identity belongs in that helper and the Actions `github.repository` guard. A non-fork repository is not necessarily upstream.
+- Do not `git tag` or `gh release create` to cut a release (except the labeled Bootstrap path in cut-release). Merge the standing Release PR after a human adds **Operator**. Do not `wrangler deploy` as part of a release. `ENABLE_PRODUCTION_DEPLOY` stays a deployment repository's own production.
 - `release-please.yml` must keep `contents: write`, `pull-requests: write`, and `issues: write`. An explicit `permissions` block without `issues: write` is none, so the first run cannot create `autorelease: pending` and cut-release cannot find the PR. The repo must also allow GitHub Actions to create and approve pull requests; the workflow cannot grant that.
-- Fork PRs against `tmchow/energon` are welcome. Fill the PR template. Keep fork identity (wrangler ids, generated plugins, catalogs) off the PR. Do not add a `pull_request_target` workflow that checks out PR code. On a company fork, follow that repo's humans. [CONTRIBUTING.md](./CONTRIBUTING.md).
+- Fork PRs against `tmchow/energon` are welcome. Fill the PR template. Keep deployment identity (wrangler ids, generated plugins, catalogs) off the PR. Do not add a `pull_request_target` workflow that checks out PR code. On a company deployment repository, follow that repo's humans. [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## Pull requests
 
-`tmchow/energon` accepts issues and PRs, including from forks. [CONTRIBUTING.md](./CONTRIBUTING.md) is the policy. Same-repo PRs from the owner use the same template. On a company fork, that fork's humans set policy.
+`tmchow/energon` accepts issues and PRs, including from forks. [CONTRIBUTING.md](./CONTRIBUTING.md) is the policy. Same-repo PRs from the owner use the same template. On a company deployment repository, that repository's humans set policy.
 
 When you open a PR:
 
 - Use [`.github/PULL_REQUEST_TEMPLATE.md`](./.github/PULL_REQUEST_TEMPLATE.md) as the body. Keep and fill the required headings (What, Why, Verify, How to test, Risk, Authorship). Verify needs Tests **and** verify-energon. How to test is numbered steps a triage agent can run without asking you. Add extra `##` sections when they help a reviewer. Do not delete required sections or replace the body with a commit dump. Do not paste secrets.
 - Authorship: name the actual model (for example `Cursor Grok 4.6`, not `Cursor` or `an AI`). "None" is valid when a person wrote the patch.
-- Title is a Conventional Commit (`feat(hub): show expiry on the catalog row`). Squash merge uses that title as the commit on `main`. CI (`.github/workflows/pr-title.yml`) checks it. Do not prefix every commit on the branch. Those squash titles are the release-please input: `feat`, `fix`, `perf`, and breaking (`!`) are what forks see in a GitHub Release.
+- Title is a Conventional Commit (`feat(hub): show expiry on the catalog row`). Squash merge uses that title as the commit on `main`. CI (`.github/workflows/pr-title.yml`) checks it. Do not prefix every commit on the branch. Those squash titles are the release-please input: `feat`, `fix`, `perf`, and breaking (`!`) are what operators see in a GitHub Release.
 - One concern per PR. Do not mix formatting or drive-by refactors with a behavior change.
-- Do not include fork identity: `wrangler.toml` database ids and origins, `.dev.vars`, `plugins/`, marketplace catalogs, or an `instance-skill.json` pointed at a real origin.
+- Do not include deployment identity: `wrangler.toml` database ids and origins, `.dev.vars`, `plugins/`, marketplace catalogs, or an `instance-skill.json` pointed at a real origin.
 - Behavior, schema, or `/v1` changes: prefer an issue first unless the owner asked for the patch.
 - Match the Tests table. For hub, `/v1`, gate, token, or public URL changes, read [`.agents/skills/verify-energon/SKILL.md`](./.agents/skills/verify-energon/SKILL.md), drive the matching feature, and name that file in Verify. Green CI is not proof. `n/a` only when the change has no user path (say why). See [Verify like a user](#verify-like-a-user).
 - CI on a PR cannot deploy. Do not add `pull_request_target` jobs that check out the PR head.
@@ -60,10 +60,10 @@ When you triage a PR, run **How to test** as written. If the steps are missing, 
 | `src/db.ts`, `src/schema.sql`, `migrations/` | Schema (see below) |
 | `src/catalog.ts`, `src/handles.ts`, `src/urls.ts`, `src/http.ts`, `src/policy.ts`, `src/instance.ts`, `src/expire.ts`, `src/cache.ts`, `src/zip.ts`, `src/markdown.ts`, `src/mime.ts`, `src/memorable.ts`, `src/slugs.ts`, `src/config.ts` | Helpers — prefer `test:unit` |
 | `templates/`, `scripts/render-skill.mjs`, `instance-skill.json` | Skill / plugin source |
-| `plugins/{name}/` | Generated only after a fork runs `npm run skill:init`; absent upstream. |
+| `plugins/{name}/` | Generated only after a deployment repository runs `npm run skill:init`; absent upstream. |
 | `.agents/skills/verify-energon/` | Isolated local hub + `/v1` user-path verification. Source of truth; `.claude/skills/` and `.cursor/skills/` are symlinks to it. Do not put `tmchow/energon` in these files. |
 | `.agents/skills/cut-release/` | SOP for cutting a GitHub Release via the standing release-please PR on this checkout. Source of truth; `.claude/skills/` and `.cursor/skills/` are symlinks to it. Do not put `tmchow/energon` in these files. |
-| `.agents/skills/update-from-upstream/` | SOP for merging a published upstream release into a configured fork. Source of truth; `.claude/skills/` and `.cursor/skills/` are symlinks to it. Do not put `tmchow/energon` in these files. |
+| `.agents/skills/update-from-upstream/` | SOP for merging a published upstream release into a configured deployment repository. Source of truth; `.claude/skills/` and `.cursor/skills/` are symlinks to it. Do not put `tmchow/energon` in these files. |
 | `.agents/skills/backup-this-energon/` | SOP for capturing this Energon's D1/R2 data. Source of truth; `.claude/skills/` and `.cursor/skills/` are symlinks to it. Do not put `tmchow/energon` in these files. |
 | `.github/workflows/release-please.yml` | Canonical-only Release PR. Needs `contents: write`, `pull-requests: write`, and `issues: write` (labels). Never deploy. |
 
@@ -130,6 +130,6 @@ Skip that pass for internal refactors, tests-only, migrations with no user path 
 
 ## Skill templates
 
-Edit `templates/skill/` and `templates/plugin/`, then `npm run skill:render` (validates templates upstream; regenerates the plugin on initialized forks). `npm run skill:render -- --check` must stay green (`test:unit` runs it). Do not ship `{{placeholders}}` in committed `SKILL.md`.
+Edit `templates/skill/` and `templates/plugin/`, then `npm run skill:render` (validates templates upstream; regenerates the plugin on initialized deployment repositories). `npm run skill:render -- --check` must stay green (`test:unit` runs it). Do not ship `{{placeholders}}` in committed `SKILL.md`.
 
 On a real host, `npm run skill:init` writes `plugins/{name}/` and marketplace catalogs — see INSTALL.md. This upstream tree contains no generated plugin or marketplace catalogs.

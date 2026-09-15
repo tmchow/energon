@@ -2,7 +2,9 @@
 
 Agent-native publishing for documents, prototypes, and working files. Use the plugin to publish, read as reference, revise at the same URL when permitted, or make an independent copy. People can also upload directly through the host's browser hub without installing this plugin.
 
-Install this plugin from **this {{PRODUCT}} repo** (the fork you instantiated), not from a placeholder host. Claude Code and [Agent Plugins](https://agent-plugins.org/) hosts use the same marketplace. Install at user (global) scope unless the human asked for a project-level install.
+Install this plugin from **this {{PRODUCT}} repo** (your deployment repository), not from a placeholder host. Claude Code and [Agent Plugins](https://agent-plugins.org/) hosts use the same marketplace. Install at user (global) scope unless the human asked for a project-level install.
+
+Private repositories require GitHub read access in the installing client, including for updates. Keep GitHub credentials separate from the Energon API token. If a client cannot install a private marketplace, follow [Private repository access](../../INSTALL.md#private-repository-access) for a local-skill installation or direct API access. Never put credentials in repository URLs or make the repository public to install the plugin.
 
 After the host exists, ask your agent to connect: it reads {{ORIGIN}}/auth.md, shows you a link and code, and saves the approved token as the env named in `GET {{ORIGIN}}/v1/help`. For CI, create a token at {{ORIGIN}}/tokens and store it under that name.
 

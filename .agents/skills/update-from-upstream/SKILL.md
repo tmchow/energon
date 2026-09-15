@@ -1,111 +1,37 @@
 ---
 name: update-from-upstream
-description: Merge a published upstream Energon release into this fork, keep wrangler.toml, instance-skill.json, and the generated plugin, then land it according to whether this fork auto-deploys from main. Use when asked to update, upgrade, merge upstream, or catch up to a newer release. On the source template, stop.
+description: Update this Energon from a published upstream release while preserving its configuration and customizations. Use when asked to upgrade or catch up a deployment repository. Does not cut upstream releases or migrate repository ownership.
 ---
 
 # Update from upstream
 
-This is the fork-side SOP for catching up to a published GitHub Release. It is the inverse of cut-release: a fork merges an upstream release; it does not cut one.
+Prepare a reviewable release update in this deployment repository. Independent private copies and legacy GitHub forks use the same update flow. A code update, landing on main, and deploying the Worker are distinct actions.
 
-A GitHub Release is the operator contract (Operator notes: D1, wrangler keys, plugin regen, rollback floor). Merge that **tag**, not unreleased `main`. Do not use GitHub “Sync fork”.
+Done means the selected published release is incorporated on an update branch, this Energon's configuration and customizations survive, local checks pass, and the operator has the diff and any deployment consequences. When landing or deployment was requested, complete that authorized work and verify the resulting source and live versions. Otherwise leave the update ready for review.
 
-When this file is absent (an older fork), follow INSTALL.md “Update an existing Energon” and the checkout’s upgrade guide.
+## Resolve this checkout
 
-## This checkout
+Read this checkout's AGENTS.md and INSTALL.md. Run commands from the repository root:
 
-```
-gh repo view --json isFork,parent,nameWithOwner,url
-git remote -v
+```sh
+node scripts/deployment-repo.mjs inspect
 git status --short
 ```
 
-If `isFork` is false, **stop**. This is the source template. Cut a release there; do not merge this repo into itself.
+The helper resolves origin explicitly and returns the repository, canonical identity, visibility, and upstream coordinates. Continue only when the helper returns `canonical: false`. If it returns `canonical: true`, this is the public release source: stop here without preparing an update. `isFork: false` is valid for an independent deployment repository; it does not identify the source template. If inspection fails, resolve the reported identity or access problem before changing branches or remotes. Do not switch to another repository because GitHub cannot read this one.
 
-Reuse a remote named `upstream` if present. Otherwise add one from `parent.url`. Do not pass a hard-coded `--repo owner/name`. Do not overwrite dirty work or replace this fork’s `wrangler.toml`, `instance-skill.json`, or generated `plugins/`.
+Read `docs/DEPLOYMENT-REPOSITORY.md`, section **Review an upstream release**, before fetching or merging. That file owns release selection, ancestry checks, conflict handling, GitHub targeting, and landing/deployment evidence. Follow its procedure. Use the verified origin repository for deployment variables, secrets, workflows, runs, and PRs; use the verified upstream only for release reads. Do not rely on GitHub fork-parent metadata or GitHub Sync fork.
 
-## Discover how this fork updates the Worker
+If this older checkout lacks the helper or reference, follow INSTALL.md **Update an existing Energon** using explicit origin and upstream identities. Stop if the available instructions cannot establish those identities or shared Git ancestry; do not improvise a destructive reset.
 
-Do this before landing anything on `main`.
+## Preserve the installation
 
-| Signal | Meaning |
-| --- | --- |
-| `gh variable get ENABLE_PRODUCTION_DEPLOY` prints `true` and `.github/workflows/ci.yml` still has the stock deploy job | Auto-deploy is **on**. A push or merge to `main` is the deploy: tests, remote D1 migrations, `wrangler deploy`. |
-| The get **succeeds** and the value is empty or not `true` | Auto-deploy is **off**. Updating the fork does not change the live Worker. |
-| The get **fails** (404, auth, or no output you can trust) | **Unclear.** GitHub uses 404 for both “unset” and “cannot read Actions variables.” Do not treat this as off. |
-| `gh secret list` shows `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` | Actions *can* deploy if the variable is on. Do not print secret values. |
-| `npx wrangler whoami` matches `wrangler.toml` `account_id` | This machine can do the INSTALL.md CLI deploy. |
-| whoami missing, another account, or a cloud agent | Do not `wrangler login`. CLI deploy waits for the operator laptop. |
-| Workflow or database name edited away from stock `ci.yml` | Read the fork’s workflow. Do not assume the stock job. |
-| No readable signal | **Unclear.** Ask how this Energon’s Worker is updated. Do not invent a method. |
+Do not replace `wrangler.toml`, `instance-skill.json`, generated `plugins/`, or marketplace catalogs with upstream placeholders. Preserve deliberate code customizations when resolving conflicts. Regenerate the plugin from the resolved sources.
 
-Also inventory-match the deployed Worker’s D1 and R2 bindings to this `wrangler.toml` before any remote command (INSTALL.md “Inspect the account and resources”). A matching name is not ownership.
+Do not create, delete, empty, or rebind live D1 or R2. Do not stamp `d1_migrations` or run ad hoc production SQL. Do not run interactive `wrangler login` in an unattended cloud agent.
 
-## Hard stops
+Before landing on main, establish whether the actual workflows can deploy. With the stock workflow and `ENABLE_PRODUCTION_DEPLOY=true`, a push or merge to `main` is the deploy. A failed variables read is unknown; do not treat this as off. If deployment is on or unknown, do not land unless the operator authorized the possible migration and deployment after that consequence was explained. Reuse existing authorization. When the actual workflows are confirmed not to deploy on landing, do not run remote migrations or deploy without deployment authority. Enabling the variable later does not redeploy this commit.
 
-- Do not replace `wrangler.toml`, `instance-skill.json`, generated `plugins/`, or marketplace catalogs with upstream placeholders.
-- Do not create, delete, empty, or rebind live D1 or R2. An ordinary update keeps this Energon’s existing account, database, and bucket.
-- If auto-deploy is **on** or **unclear**, do not merge or push to `main` unless the operator opted in after you said that *might* migrate D1 and deploy the Worker (will, if the variable is on).
-- If auto-deploy is **off**, do not run remote migrations or `wrangler deploy` unless they asked to deploy after the fork was updated. Turning the variable on after `main` already has the commit does not deploy that commit (`ci.yml` has no `workflow_dispatch`).
-- Do not stamp `d1_migrations` or run ad hoc production SQL.
-- Do not run interactive `wrangler login` in an unattended cloud agent.
-- Do not require an R2 copy. Record a D1 Time Travel bookmark before any remote migrate.
+Before any authorized remote migrate, inventory-match the live bindings and record a D1 Time Travel bookmark with `npx wrangler d1 time-travel info <database_name>`. Stop on migration failure. A durable D1 export and R2 copy is `backup-this-energon`; it is not required for an ordinary update.
 
-## Phase 1 — Merge the release onto a branch
-
-1. Resolve the parent from `gh repo view`. Fetch tags from `upstream`.
-2. Read the target release (latest, or the tag the operator named):
-
-```
-parent=$(gh repo view --json parent --jq .parent.nameWithOwner)
-gh release view --repo "$parent"
-```
-
-Stop if there is no published release. Read the **Operator** section. Do not invent notes that are not there.
-
-3. Create a branch. Merge that **tag**.
-4. On conflict, keep this fork’s `wrangler.toml` (account, bindings, origins, routes, Access, policy, token prefix), `instance-skill.json`, `plugins/`, and marketplace catalogs. Compare new keys only against `wrangler.example.toml`. Copy needed keys, not upstream placeholders.
-5. After the merge:
-
-```
-npm install
-npx wrangler d1 migrations apply <database_name> --local
-npm run skill:render
-npm run skill:render -- --check
-npx wrangler types
-npm run typecheck
-npm run lint
-npm test
-```
-
-Use the D1 `database_name` from this fork’s `wrangler.toml` if it differs. Do not apply remote migrations here.
-
-6. Report this `version.txt` vs the tag, Operator notes, that `wrangler.toml` and `instance-skill.json` still match this Energon, plugin regen, and pending `migrations/` files. The Worker is not live yet.
-
-## Phase 2 — Land the update
-
-**Auto-deploy on, or unclear.** Say there is a newer release on the branch, and merging it to `main` will deploy if `ENABLE_PRODUCTION_DEPLOY` is on (and might, if you could not read the variable). Ask if they want that.
-
-- Yes: record the Time Travel bookmark (below), then merge the PR / push to `main`. If auto-deploy is on, that merge *is* the deploy — do not also run local `wrangler deploy`; confirm the Actions job and INSTALL.md health/help probes. If it was unclear and Actions does not deploy, treat the rest as auto-off (ask about laptop Wrangler).
-- No: leave the update on the branch or PR. The Worker stays on the current deploy.
-
-**Auto-deploy off** (successful read, value not `true`). Merging to `main` updates the fork (and the plugin marketplace, which usually tracks `main`). It does not change the live Worker. Land the branch on `main` after checks pass. Then ask if they want to deploy **this** release with laptop Wrangler.
-
-- Yes: record the Time Travel bookmark, then INSTALL.md CLI (`d1 migrations apply --remote`, then `wrangler deploy`) only if `whoami` matches this `account_id`. Automatic updates (INSTALL.md “After the first deploy”) apply to **later** pushes to `main`. Enabling the variable now does not redeploy this commit.
-- No: the fork is updated; the Worker is unchanged. Print that so a later “ok, deploy” turn can resume.
-
-If the path is custom, follow the fork’s humans / workflow text, still migrate-before-deploy.
-
-A durable R2 copy or a D1 export beyond the Time Travel window is `backup-this-energon`. Do not require it here.
-
-## Before any remote migrate
-
-```
-npx wrangler d1 info <database_name>
-npx wrangler d1 time-travel info <database_name>
-```
-
-Write down the bookmark and time. Do not run `time-travel restore`. Stop on migration failure.
-
-## Verify
-
-The release tag is on the fork. `wrangler.toml` and `instance-skill.json` still match this Energon. `skill:render --check` is green. If auto-deploy was on or unclear, `main` moved only after they opted in. If they asked to deploy, health/help match this Energon and the bookmark from before migrate is recorded.
+Report the release tag and commit, update branch or PR, preserved identity and customizations, conflict decisions, local verification, pending migrations, and whether the Worker and marketplace changed. Report blocked paths as blocked, including private plugin access that was not exercised on the intended client.

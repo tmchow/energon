@@ -48,11 +48,11 @@ API tokens expire on their own clock, separate from content. A human picks a lif
 
 ## Generated plugin maintenance
 
-Installation and first rendering belong in [Configure this fork](../INSTALL.md#4-configure-this-fork). The installable package is the committed `plugins/{name}/` directory and marketplace catalogs; upstream contains only templates and placeholder configuration. The operator's fork must publish the generated package before another agent can install it.
+Installation and first rendering belong in [Configure this deployment repository](../INSTALL.md#4-configure-this-deployment-repository). The installable package is the committed `plugins/{name}/` directory and marketplace catalogs; upstream contains only templates and placeholder configuration. The operator's deployment repository must publish the generated package before another agent can install it.
 
 `instance-skill.json` and `templates/` are the sources. Before initialization, `npm run skill:render` and its `--check` form validate templates without generating files. After initialization, render refreshes the package and catalogs; `--check` fails if they drift. Keep the Worker identity variables aligned with the manifest. Do not hand-edit generated files or put the publish skill in `.agents/skills` or `.claude/skills`.
 
-Use distinct names for each installation. For a legacy generic identity, follow the migration guidance in [Configure this fork](../INSTALL.md#4-configure-this-fork); keep `TOKEN_PREFIX` unchanged to preserve existing token values.
+Use distinct names for each installation. For a legacy generic identity, follow the migration guidance in [Configure this deployment repository](../INSTALL.md#4-configure-this-deployment-repository); keep `TOKEN_PREFIX` unchanged to preserve existing token values.
 
 ## Instance vars (`wrangler.toml` `[vars]`)
 
@@ -109,21 +109,25 @@ The same query with `expires_at IS NULL` lists never-expiring tokens, which is w
 
 `MAX_FILE_BYTES` is one file, one zip upload, and one site zip export. Accepts `25mb`, `5mb`, or a raw byte count. `MAX_PLATFORM_BYTES` is the whole-bucket safety valve (default 20 GB).
 
-`FOOTER_TEXT` is one line on signed-in pages. It is escaped as text — not HTML. Leave it empty for no footer. Use this variable instead of editing hub components to brand a fork.
+`FOOTER_TEXT` is one line on signed-in pages. It is escaped as text — not HTML. Leave it empty for no footer. Use this variable instead of editing hub components to brand a deployment repository.
 
 `WRITE_POLICY` is the default for **new** sites and loose files: `owner` (only `created_by` may PUT/PATCH/DELETE) or `org` (any token on this host). Unset is `owner`. Each object stores its own `write_policy`. Stored NULL is treated as `org`. The creator can `PATCH { "write_policy": "owner" | "org" }`. Anyone with a token can still read via `/v1`.
 
-## Customize a fork
+<a id="customize-a-fork"></a>
 
-Keep the diff small so merging `upstream/main` stays manageable. Worker, hub, `/v1`, template, and docs changes that apply to every Energon belong in a PR against `tmchow/energon`; keep this fork's identity files here. See [CONTRIBUTING.md](../CONTRIBUTING.md).
+## Customize a deployment repository
 
-Before an update, inspect local changes and retain the installation's account ID, D1/R2 bindings, both origins/routes, policy, Access vars, plugin identity, and token prefix. Review upstream changes before merging; do not replace the configured `wrangler.toml` or `instance-skill.json` with upstream placeholders. Compare new keys with `wrangler.example.toml`, apply only the settings needed, and regenerate the plugin after template changes. Review and commit generated changes to the fork. If this checkout has [`.agents/skills/update-from-upstream/SKILL.md`](../.agents/skills/update-from-upstream/SKILL.md), follow that skill. For a D1 Time Travel bookmark or an independent R2 copy without an upgrade, see [`.agents/skills/backup-this-energon/SKILL.md`](../.agents/skills/backup-this-energon/SKILL.md) and [Back up and restore D1 and R2](https://docs.getenergon.com/operate/disaster-recovery).
+Keep the diff small so merging published upstream releases stays manageable. Follow the release selection and merge procedure below; do not merge unreleased `upstream/main` for routine upgrades. Worker, hub, `/v1`, template, and docs changes that apply to every Energon belong in a PR against `tmchow/energon`; keep this deployment repository's identity files here. See [CONTRIBUTING.md](../CONTRIBUTING.md).
+
+Before an update, inspect local changes and retain the installation's account ID, D1/R2 bindings, both origins/routes, policy, Access vars, plugin identity, and token prefix. Review upstream changes before merging; do not replace the configured `wrangler.toml` or `instance-skill.json` with upstream placeholders. Compare new keys with `wrangler.example.toml`, apply only the settings needed, and regenerate the plugin after template changes. Review and commit generated changes to the deployment repository. If this checkout has [`.agents/skills/update-from-upstream/SKILL.md`](../.agents/skills/update-from-upstream/SKILL.md), follow that skill. For a D1 Time Travel bookmark or an independent R2 copy without an upgrade, see [`.agents/skills/backup-this-energon/SKILL.md`](../.agents/skills/backup-this-energon/SKILL.md) and [Back up and restore D1 and R2](https://docs.getenergon.com/operate/disaster-recovery).
 
 Supported customization uses Wrangler vars (`FOOTER_TEXT`, TTL, email domains, `WRITE_POLICY`) and `instance-skill.json`. Hub UI source is in `src/ui/`; direct component changes add merge conflicts. Use the updated checkout's [installation checks and migration order](../INSTALL.md#6-commit-and-deploy), then repeat acceptance checks for the upgraded Energon.
 
+See [Review an upstream release](DEPLOYMENT-REPOSITORY.md#review-an-upstream-release) for release selection, ancestry checks, and a reviewable update branch. To move a public fork, follow [Migrate an existing public fork](DEPLOYMENT-REPOSITORY.md#migrate-an-existing-public-fork); preserve the running resources.
+
 ## Inventory Workers and hostnames
 
-Use this read-only inventory during [installation preflight](../INSTALL.md#3-inspect-the-account-and-resources) and updates. Alongside Wrangler's D1 and R2 lists, inspect the deployed Worker configuration to match its storage binding IDs with this fork. Listing a Worker name alone does not establish ownership.
+Use this read-only inventory during [installation preflight](../INSTALL.md#3-inspect-the-account-and-resources) and updates. Alongside Wrangler's D1 and R2 lists, inspect the deployed Worker configuration to match its storage binding IDs with this deployment repository. Listing a Worker name alone does not establish ownership.
 
 For a new installation or changed hostname, run the full inventory below. Create a scoped read-only API token with these permissions:
 
@@ -136,7 +140,7 @@ For a new installation or changed hostname, run the full inventory below. Create
 
 Cloudflare documents the accepted permissions for [custom domains](https://developers.cloudflare.com/api/resources/workers/subresources/domains/methods/list/), [zone details](https://developers.cloudflare.com/api/resources/zones/methods/get/), and [DNS records](https://developers.cloudflare.com/api/resources/dns/subresources/records/methods/list/). A working Wrangler login or an Access-only token does not establish DNS Read access. If DNS inventory returns 403, check the token's DNS Read permission and selected zone scope; do not interpret it as an empty zone.
 
-For an update with unchanged hostnames, you can use existing read credentials without adding DNS Read only after verifying the deployed Worker's storage bindings, both custom domains' `service` and `zone_id`, and matching routes against this fork. Read bindings from `GET /accounts/{account_id}/workers/scripts/{worker_name}/settings`; compare the D1 database ID and R2 bucket name with `wrangler.toml`. If ownership is uncertain or any hostname or route will change, use the full inventory. This exception does not authorize replacing DNS records or routes.
+For an update with unchanged hostnames, you can use existing read credentials without adding DNS Read only after verifying the deployed Worker's storage bindings, both custom domains' `service` and `zone_id`, and matching routes against this deployment repository. Read bindings from `GET /accounts/{account_id}/workers/scripts/{worker_name}/settings`; compare the D1 database ID and R2 bucket name with `wrangler.toml`. If ownership is uncertain or any hostname or route will change, use the full inventory. This exception does not authorize replacing DNS records or routes.
 
 Set `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ZONE_ID`, `ENERGON_HUB_HOSTNAME`, and `ENERGON_CONTENT_HOSTNAME` in the environment to the selected account, one hostname's zone, and both hostnames. Run once for each zone if they differ. Use a read-only `CLOUDFLARE_API_TOKEN` that can list Workers, custom domains, zone routes, and DNS records; a credential scoped only to Access cannot do this. The zone ID is available on the zone's Cloudflare overview page. This script also checks that the zone belongs to the selected account.
 
@@ -178,26 +182,28 @@ Hostname authentication requires `ACCESS_TEAM_DOMAIN` and the hub application's 
 
 Keep the whole human hub protected, agent paths on the documented bypass, and the content hostname free of Access. Removing a human from Access does not revoke their existing Energon API tokens; follow offboarding below. There is no `PUBLISH_VISIBILITY` var.
 
-## Enable CI in a new fork
+<a id="enable-ci-in-a-new-fork"></a>
 
-GitHub can leave inherited workflows disabled even when repository Actions permissions say they are enabled. Open the fork's **Actions** tab and, if offered, enable inherited workflows there. Do this before the configured commit is pushed or a PR is opened. A missing run is not a passing check.
+## Enable CI in a new deployment repository
 
-From the configured fork, inspect actual workflow and run state:
+GitHub can leave inherited workflows disabled even when repository Actions permissions say they are enabled. Open the deployment repository's **Actions** tab and, if offered, enable inherited workflows there. Do this before the configured commit is pushed or a PR is opened. A missing run is not a passing check.
+
+From the configured deployment repository, inspect actual workflow and run state:
 
 ```sh
 gh workflow list --all
 gh run list --limit 10
 ```
 
-If a listed CI workflow is individually disabled, use `gh workflow enable ci.yml` after the fork's one-time enablement. A 404 before that first enablement does not establish that the committed workflow file is missing; inspect the Actions tab.
+If a listed CI workflow is individually disabled, use `gh workflow enable ci.yml` after the deployment repository's one-time enablement. A 404 before that first enablement does not establish that the committed workflow file is missing; inspect the Actions tab.
 
-Enabling workflows does not replay old events. The checked-in CI runs on pushes to `main` and PR opened, synchronized, or reopened events; it has no manual `workflow_dispatch` trigger. Push the next intended commit after enablement, or reopen the relevant owned PR when appropriate, then confirm its new head has a CI run and inspect the result with `gh run view RUN_ID`. Do not use `gh workflow run ci.yml` or create empty commits to compensate for an unverified setup. Scheduled fuzzing is separate from PR CI and may remain disabled in a fork.
+Enabling workflows does not replay old events. The checked-in CI runs on pushes to `main` and PR opened, synchronized, or reopened events; it has no manual `workflow_dispatch` trigger. Push the next intended commit after enablement, or reopen the relevant owned PR when appropriate, then confirm its new head has a CI run and inspect the result with `gh run view RUN_ID`. Do not use `gh workflow run ci.yml` or create empty commits to compensate for an unverified setup. Scheduled fuzzing is separate from PR CI and may remain disabled in a deployment repository.
 
-Keep `ENABLE_PRODUCTION_DEPLOY` unset while establishing CI. Enabling tests and enabling production deployment are separate decisions.
+Keep the repository variable `ENABLE_PRODUCTION_DEPLOY=false` while establishing CI. Enabling tests and enabling production deployment are separate decisions.
 
 ## GitHub deployment automation
 
-CLI deployment in [INSTALL.md](../INSTALL.md#6-commit-and-deploy) is part 1: the first live Worker. Part 2 is optional: after that deploy is verified, the fork can update the Worker on every push to `main`. See [After the first deploy](../INSTALL.md#after-the-first-deploy-optional-automatic-updates). The fork's `.github/workflows/ci.yml` expects secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, plus repository variable `ENABLE_PRODUCTION_DEPLOY=true`. Unset means tests only. The job runs tests, applies remote D1 migrations, then deploys; pull requests cannot deploy.
+CLI deployment in [INSTALL.md](../INSTALL.md#6-commit-and-deploy) is part 1: the first live Worker. Part 2 is optional: after that deploy is verified, the deployment repository can update the Worker on every push to `main`. See [After the first deploy](../INSTALL.md#after-the-first-deploy-optional-automatic-updates). The deployment repository's `.github/workflows/ci.yml` expects secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, plus repository variable `ENABLE_PRODUCTION_DEPLOY=true`. An explicit repository-level `false` means tests only; a missing value may inherit an organization variable. The job runs tests, applies remote D1 migrations, then deploys; pull requests cannot deploy.
 
 Provision a separate deployment token scoped to the selected account and hostname zones, with permissions for Worker deployment, D1 migrations, R2 access, and custom domains. Use [Cloudflare's current Wrangler token reference](https://developers.cloudflare.com/workers/wrangler/system-environment-variables/#cloudflare_api_token) and inspect the actual workflow when provisioning. The Access-only setup credential is not a deployment credential. Remove it from the agent environment after setup.
 

@@ -16,6 +16,8 @@ function installBlock(id: InstanceIdentity): string {
   const url = marketplaceUrl(id);
   return `Add the plugin marketplace at ${url} (${repo}) and install ${id.plugin} at user (global) scope, using your normal plugin install flow. Do not install at project or workspace scope unless I ask.
 
+If this repository is private, verify GitHub read access from this environment first. Keep GitHub credentials separate from the Energon token. If private marketplace installation is unavailable, use an authenticated local copy of the generated publish skill or follow ${id.origin}/v1/help and ${id.origin}/llms.txt directly. Never make the repository public to install it.
+
 Then read ${id.origin}/auth.md. If ${id.tokenEnv} is already set, use it. Otherwise connect with a code: show me the link and code, wait for my approval, then save the delivered token as ${id.tokenEnv} where this environment keeps secrets, readable only by me. Do not invent a token.`;
 }
 

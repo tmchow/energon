@@ -5,7 +5,7 @@ description: Capture a restore point for this Energon's data (D1 Time Travel boo
 
 # Back up this Energon
 
-This skill captures **data**, not the Worker (the Worker is reinstalled from git). Catalog state lives in D1. Published bytes live in R2. Either side alone leaves incomplete links.
+This skill captures **data**. Recovery also needs the configured deployment repository and its private GitHub access; the public upstream alone cannot recreate company customizations. Catalog state lives in D1. Published bytes live in R2. Either side alone leaves incomplete links.
 
 The long-form recovery contract and restore runbook are the checkout’s disaster-recovery / “Back up and restore D1 and R2” guide. This skill is the capture SOP. It does not walk restore.
 
@@ -70,7 +70,7 @@ If they have no backup remote, stop after the bookmark (and optional export) and
 
 ## 4. Manifest
 
-Record one generation: D1 bookmark and/or export path, R2 snapshot path, start/end time, object count, byte count, verification result, source commit, operator. A continuously changing Energon cannot promise a transactional D1-plus-R2 snapshot. If they need zero skew, they must pause mutating `/v1` first (see the disaster-recovery guide).
+Record one generation: D1 bookmark and/or export path, R2 snapshot path, start/end time, object count, byte count, verification result, deployment repository coordinates, source commit, operator. Verify that the recovery operator can read the private repository containing the configured source and generated plugin. Record how Actions and Cloudflare credentials will be re-provisioned without copying their values into the manifest. A Git copy does not back up D1 or R2; a data generation alone does not preserve uncommitted source changes. A continuously changing Energon cannot promise a transactional D1-plus-R2 snapshot. If they need zero skew, they must pause mutating `/v1` first (see the disaster-recovery guide).
 
 ## Verify
 

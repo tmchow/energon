@@ -50,11 +50,12 @@ They are not interchangeable.
 
 ### Deploy your own Energon
 
-Follow [INSTALL.md](./INSTALL.md), or give your agent this prompt. It can begin before you have a fork or have chosen the installation settings.
+Follow [INSTALL.md](./INSTALL.md), or give your agent this prompt. It can begin before you have a deployment repository or have chosen the installation settings.
 
 ```text
 Help me deploy my own Energon from https://github.com/tmchow/energon.
-Read and follow INSTALL.md. I may not have a fork yet.
+Read and follow INSTALL.md. Create an independent private deployment
+repository with upstream Git history if I do not have one yet.
 Guide me through the choices, suggest sensible defaults, and handle
 setup and verification.
 ```
@@ -101,14 +102,14 @@ npm run lint         # oxlint
 npm run test:unit    # Node tests, no Miniflare
 npm run test:worker  # boots the Worker and drives it over SELF.fetch
 npm test             # both suites
-npm run skill:render # validate templates; regenerate the plugin on an initialized fork
+npm run skill:render # validate templates; regenerate the plugin on an initialized deployment repository
 ```
 
 `npm run deploy` and `npm run db:remote` touch production and are for a human-authorized flow only.
 
 ## Contributing
 
-[Issues](https://github.com/tmchow/energon/issues/new/choose) and pull requests are welcome against `tmchow/energon`, including from forks. Read [CONTRIBUTING.md](./CONTRIBUTING.md) and fill the PR template. Keep your deployed Energon's identity (wrangler ids, origins, generated plugin) on your fork.
+[Issues](https://github.com/tmchow/energon/issues/new/choose) and pull requests are welcome against `tmchow/energon`, including from forks. Read [CONTRIBUTING.md](./CONTRIBUTING.md) and fill the PR template. Keep your deployed Energon's identity (wrangler ids, origins, generated plugin) in your deployment repository.
 
 Report vulnerabilities privately per [SECURITY.md](./SECURITY.md). Do not put secrets or customer content in a public issue.
 

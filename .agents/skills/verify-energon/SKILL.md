@@ -31,11 +31,11 @@ Never use the default `.wrangler/state` directory. Never attach to an already-ru
 ```
 export ENERGON_VERIFY_RUN=my-run          # optional; launch generates one
 export ENERGON_VERIFY_PORT=18787          # default; stays off 8787
-export ENERGON_VERIFY_EMAIL=dev@your.co   # for a fork restricted to your.co
+export ENERGON_VERIFY_EMAIL=dev@your.co   # for a deployment restricted to your.co
 .agents/skills/verify-energon/bin/up      # usual start (launch + doctor + ready)
 ```
 
-If this fork sets `ALLOWED_EMAIL_DOMAINS`, use an email in one of those domains. This identity is local only and does not require a production token. Keep `DEV_ACCESS_EMAIL` overrides in `ENERGON_VERIFY_VARS` consistent with the requested email; inspect local configuration if the reported identity differs. Doctor stops on a rejected domain or an unexpected identity instead of minting a token for a different user.
+If this deployment sets `ALLOWED_EMAIL_DOMAINS`, use an email in one of those domains. This identity is local only and does not require a production token. Keep `DEV_ACCESS_EMAIL` overrides in `ENERGON_VERIFY_VARS` consistent with the requested email; inspect local configuration if the reported identity differs. Doctor stops on a rejected domain or an unexpected identity instead of minting a token for a different user.
 
 `bin/launch` alone is for debugging a failed boot. After a successful `bin/up`, source `state.env` and drive.
 
