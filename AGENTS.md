@@ -15,7 +15,7 @@ This file is how to **change this tree**. It is not a product README and not the
 | Why something is built the way it is, or a bug that was already solved once (quota drift, purge races, edge cache and `last_read_at`) | `docs/solutions/`; read the matching file before redesigning or re-debugging |
 | Open a PR against `tmchow/energon` | [CONTRIBUTING.md](./CONTRIBUTING.md); fill [`.github/PULL_REQUEST_TEMPLATE.md`](./.github/PULL_REQUEST_TEMPLATE.md) |
 | Cut an upstream GitHub Release | [`.agents/skills/cut-release/SKILL.md`](./.agents/skills/cut-release/SKILL.md). A release is not a deploy. |
-| Update a fork from an upstream release | [`.agents/skills/update-from-upstream/SKILL.md`](./.agents/skills/update-from-upstream/SKILL.md). Merge a published release; deploy only after opt-in. |
+| Update a fork from an upstream release | [`.agents/skills/update-from-upstream/SKILL.md`](./.agents/skills/update-from-upstream/SKILL.md). Merge a published release; land on `main` only after asking if that fork auto-deploys. |
 | Back up this Energon's data | [`.agents/skills/backup-this-energon/SKILL.md`](./.agents/skills/backup-this-energon/SKILL.md). D1 bookmark / export and R2 copy. Does not restore. |
 
 ## Hard stops
