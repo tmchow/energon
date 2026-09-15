@@ -18,19 +18,21 @@ export const PRIVATE_HTML_HEADERS = {
   "content-security-policy": "frame-ancestors 'none'",
 };
 
-export function chromeHead(): string {
-  return `<link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
+export function fontLinks(): string {
+  return `<link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preload" as="style" href="${FONT_HREF}" onload="this.onload=null;this.rel='stylesheet'">
-  <noscript><link rel="stylesheet" href="${FONT_HREF}"></noscript>
-  <script>
+  <noscript><link rel="stylesheet" href="${FONT_HREF}"></noscript>`;
+}
+
+export function navPrefetchScript(): string {
+  return `<script>
   document.addEventListener("touchstart", function(){}, {passive:true});
   function navLink(e) {
-    return e.target && e.target.closest && e.target.closest(".app-nav a[href], a.brand");
+    return e.target && e.target.closest && e.target.closest(".en-nav a[href], .app-nav a[href], a.en-brand, a.brand");
   }
   function clearPressed() {
-    document.querySelectorAll(".app-nav a.pressed, a.brand.pressed").forEach(function(el){ el.classList.remove("pressed"); });
+    document.querySelectorAll(".en-nav a.pressed, .app-nav a.pressed, a.en-brand.pressed, a.brand.pressed").forEach(function(el){ el.classList.remove("pressed"); });
   }
   document.addEventListener("pointerdown", (e) => {
     const a = navLink(e);
@@ -51,6 +53,12 @@ export function chromeHead(): string {
   document.addEventListener("pointerup", clearPressed, { capture: true, passive: true });
   document.addEventListener("pointercancel", clearPressed, { capture: true, passive: true });
   </script>`;
+}
+
+export function chromeHead(): string {
+  return `<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  ${fontLinks()}
+  ${navPrefetchScript()}`;
 }
 
 /** Trimmed instance footer. Empty means do not render a chrome line. */

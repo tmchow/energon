@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appFooter, documentShell, instanceFooter } from "../src/chrome";
+import { appFooter, documentShell, fontLinks, instanceFooter, navPrefetchScript } from "../src/chrome";
 import { bakedProductVersion } from "../src/product-version";
 import { uiPage } from "../src/ui-render";
 import type { UpstreamSnapshot } from "../src/page-data";
@@ -15,8 +15,23 @@ describe("signed-in pages", () => {
     expect(html).toContain('class="en-footer"');
     expect(bootstrap(html).data.email).toBe(attack);
     expect(bootstrap(html).footer).toBe(attack);
-    expect(html.match(/<script\b/g)).toHaveLength(2);
+    expect(html.match(/<script\b/g)).toHaveLength(3);
     expect(uiPage("About", { page: "about", data: { email: "dev@example.com" }, footer: "  " })).not.toContain('class="en-footer"');
+  });
+
+  it("loads IBM Plex without a render-blocking Google Fonts import", async () => {
+    const about = uiPage("About", { page: "about", data: { email: "dev@example.com" } });
+    assertNonBlockingFonts(about, { prefetch: true });
+
+    const gate = uiPage("Password — gated", { page: "gate", data: { action: "/x", wrong: false, passwordHeader: "X-Energon-Password" } });
+    assertNonBlockingFonts(gate, { prefetch: false });
+    expect(gate).not.toContain("<script");
+
+    const markdown = uiPage("notes.md — Energon", { page: "markdown", data: { html: "<h1>Hi</h1>" } });
+    assertNonBlockingFonts(markdown, { prefetch: false });
+
+    const html = await (await req("/")).text();
+    assertNonBlockingFonts(html, { prefetch: true });
   });
 
   it("server-renders the hub and supplies hydration data without an inline DOM controller", async () => {
@@ -482,6 +497,14 @@ function bootstrap(html: string) {
   const match = html.match(/<script id="bootstrap" type="application\/json">([\s\S]*?)<\/script>/);
   expect(match).not.toBeNull();
   return JSON.parse(match![1]);
+}
+
+function assertNonBlockingFonts(html: string, opts: { prefetch: boolean }) {
+  expect(html).not.toMatch(/@import[^;]*fonts\.googleapis/);
+  expect(html).not.toContain("family=Michroma");
+  expect(html).toContain(fontLinks());
+  if (opts.prefetch) expect(html).toContain(navPrefetchScript());
+  else expect(html).not.toContain(navPrefetchScript());
 }
 
 function adminPageData() {
