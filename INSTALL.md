@@ -25,7 +25,7 @@ Before landing, inspect Actions variables and the actual workflows in the verifi
 
 1. Confirm the account and [inventory the existing resources](#3-inspect-the-account-and-resources). Match the deployed Worker and its bindings to this deployment repository; do not adopt resources based on their names alone.
 2. [Verify the existing Access applications by ID](docs/ACCESS-SETUP.md#verify-an-existing-configuration) using a read-only credential. Compare the returned team domain and hub audience with the configured vars. Different display names are supported; security differences stop verification. Do not run creation/apply to repair a mismatch without reviewing the reported settings.
-3. Render the existing plugin, run checks, and [commit and deploy](#6-commit-and-deploy). Confirm [deployment repository CI is enabled and actually runs](docs/DEPLOY.md#enable-ci-in-a-new-deployment-repository). Apply pending migrations before deploying.
+3. Render the existing plugin, run checks, and [commit and deploy](#6-commit-and-deploy). When the operator asks for the deploy and this checkout has [`.agents/skills/deploy-this-energon/SKILL.md`](.agents/skills/deploy-this-energon/SKILL.md), follow that skill. Confirm [deployment repository CI is enabled and actually runs](docs/DEPLOY.md#enable-ci-in-a-new-deployment-repository). Apply pending migrations before deploying.
 4. Repeat [installation acceptance](#7-verify-the-installation), including human sign-in and real publishing. Reuse an existing valid agent token; request human approval only if a new connection is needed.
 
 If the deployment predates a command used here, merge that command into the configured deployment repository first. Return to first-install setup below only for resources that are genuinely missing and whose creation is authorized.
@@ -210,7 +210,7 @@ The Worker is already live from step 6. Later code changes can use the same lapt
 3. Set the repository variable `ENABLE_PRODUCTION_DEPLOY=true`.
 4. A later push or merge to `main` then runs tests, remote D1 migrations, and `wrangler deploy`. Pull requests never deploy.
 
-Keep the variable false to keep Actions as tests only. To catch up to a published upstream release after that, use [`.agents/skills/update-from-upstream/SKILL.md`](.agents/skills/update-from-upstream/SKILL.md) when this checkout has it.
+Keep the variable false to keep Actions as tests only. To catch up to a published upstream release after that, use [`.agents/skills/update-from-upstream/SKILL.md`](.agents/skills/update-from-upstream/SKILL.md) when this checkout has it. To deploy accepted code from a laptop while the variable is false, use [`.agents/skills/deploy-this-energon/SKILL.md`](.agents/skills/deploy-this-energon/SKILL.md).
 
 ---
 

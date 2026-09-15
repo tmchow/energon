@@ -95,9 +95,10 @@ describe("contribution policy", () => {
     expect(agents).toContain("Conventional Commit");
     expect(agents).toContain(".agents/skills/cut-release/SKILL.md");
     expect(agents).toContain(".agents/skills/update-from-upstream/SKILL.md");
+    expect(agents).toContain(".agents/skills/deploy-this-energon/SKILL.md");
     expect(agents).toContain(".agents/skills/backup-this-energon/SKILL.md");
     expect(agents).toContain(
-      "Only `verify-energon`, `cut-release`, `update-from-upstream`, and `backup-this-energon` belong there",
+      "Only `verify-energon`, `cut-release`, `update-from-upstream`, `deploy-this-energon`, and `backup-this-energon` belong there",
     );
     expect(agents).toContain("Do not put the **publish** skill");
   });
@@ -151,6 +152,23 @@ describe("contribution policy", () => {
     const install = readFileSync(join(root, "INSTALL.md"), "utf8");
     expect(install).toContain("Installation is two parts:");
     expect(install).toContain("After the first deploy: optional automatic updates");
+
+    const deploy = readFileSync(join(root, ".agents/skills/deploy-this-energon/SKILL.md"), "utf8");
+    expect(deploy).toContain("node scripts/deployment-repo.mjs inspect");
+    expect(deploy).toContain("canonical: false");
+    expect(deploy).toContain("PASTE_FROM_WRANGLER_D1_CREATE");
+    expect(deploy).toContain("Development work does not authorize production changes");
+    expect(deploy).toContain("Never default to deploying");
+    expect(deploy).toContain("time-travel info");
+    expect(deploy).toContain("migrations apply <database_name> --remote");
+    expect(deploy).toContain("ENABLE_PRODUCTION_DEPLOY");
+    expect(deploy).toContain("do not treat this as off");
+    expect(deploy).toContain("Never stamp `d1_migrations`");
+    expect(deploy).toContain("Do not adopt, create, delete, empty, or rebind");
+    expect(deploy).toContain("**Verify the installation**");
+    expect(deploy).not.toMatch(/automatically deploy|deploy automatically/i);
+    expect(install).toContain(".agents/skills/deploy-this-energon/SKILL.md");
+    expect(update).toContain("`deploy-this-energon`");
 
     const backup = readFileSync(join(root, ".agents/skills/backup-this-energon/SKILL.md"), "utf8");
     expect(backup).toContain("wrangler.toml");
