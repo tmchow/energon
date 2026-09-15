@@ -1,6 +1,6 @@
 ---
 name: cut-release
-description: Cut an Energon GitHub Release via the standing release-please PR on this checkout. Use when asked to cut a release, tag, publish a GitHub Release, or merge the release-please Release PR. Does not tag or bump versions itself. On a fork, stop.
+description: Cut an Energon GitHub Release via the standing release-please PR on this checkout. Use when asked to cut a release, tag, publish a GitHub Release, or merge the release-please Release PR. Does not tag or bump versions itself. Only the canonical source repository can cut upstream releases.
 ---
 
 # Cut a release
@@ -11,14 +11,16 @@ This skill does not tag, bump, or write changelog entries. It is the SOP for a h
 
 ## This checkout
 
-```
-gh repo view --json isFork,nameWithOwner,url
+Run from the repository root:
+
+```sh
+node scripts/deployment-repo.mjs inspect
 git remote -v
 ```
 
-If `isFork` is true, or `origin` is not this Energon’s source template, **stop**. A fork merges an upstream GitHub Release (see INSTALL.md). It does not cut one. Do not pass `--repo` at someone else’s coordinates.
+Proceed only when inspection returns `canonical: true` and the release workflow's `github.repository` guard names that same verified origin repository. A non-fork deployment copy is not the source template. On any deployment repository, stop; use `update-from-upstream` for an upgrade instead.
 
-If this checkout is the template, `gh` with no `--repo` is enough. The workflow’s `github.repository` guard is what prevents a copied Actions file from tagging a fork.
+Use the returned `repository` as `RELEASE_REPO` and pass `--repo "$RELEASE_REPO"` to every GitHub read or write in this skill. The workflow guard remains required on copied repositories. If inspection or the guard cannot establish the canonical identity, stop without publishing.
 
 ## Hard stops
 
@@ -31,7 +33,7 @@ If this checkout is the template, `gh` with no `--repo` is enough. The workflow�
 ## Find the PR
 
 ```
-gh pr list --label "autorelease: pending"
+gh pr list --repo "$RELEASE_REPO" --label "autorelease: pending"
 ```
 
 If none, stop. Check Actions “Release Please” before assuming nothing is releasable:
@@ -64,7 +66,7 @@ Stop. After they merge, the next `release-please` run on `main` publishes the Gi
 ## Verify
 
 ```
-gh release view
+gh release view --repo "$RELEASE_REPO"
 ```
 
 The newest release is the new tag, includes the Operator section, and is not a draft. `version.txt` on `main` matches the tag without the `v`.

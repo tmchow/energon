@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
-  import type { AdminAuditEvent, AdminCleanupPreview, AdminCleanupResult, AdminData } from '../types';
+  import type { AdminAuditEvent, AdminCleanupPreview, AdminCleanupResult, AdminData, UpstreamSnapshot } from '../types';
   import { api, jsonBody, errorMessage, RequestError } from '../api';
   import { formatBytes } from '../../config';
   import PageTitle from '../components/PageTitle.svelte';
@@ -17,11 +17,18 @@
   import EmptyState from '../components/EmptyState.svelte';
   import Timestamp from '../components/Timestamp.svelte';
   import AdminHealth from '../components/AdminHealth.svelte';
+  import AdminUpstream from '../components/AdminUpstream.svelte';
   import CleanupReview from '../components/CleanupReview.svelte';
   type Action = 'set_ttl' | 'delete' | 'expire';
   type Kind = 'both' | 'sites' | 'files';
   type Expires = 'any' | 'never';
-  let { data }: { data: AdminData } = $props();
+  let { data, upstream, dismissed = false, onDismiss }: {
+    data: AdminData;
+    upstream?: UpstreamSnapshot;
+    dismissed?: boolean;
+    onDismiss?: () => void;
+  } = $props();
+  const kicker = $derived(upstream?.this_version ? `This Energon · ${upstream.this_version}` : 'This Energon');
   let owner = $state('');
   let q = $state('');
   let createdBy = $state('');
@@ -110,10 +117,11 @@
 {#snippet auditCounts(event: AdminAuditEvent)}{event.executed ? `${event.applied ?? 0} applied` : `${event.eligible ?? 0} eligible`}{#if event.bytes != null}{' · '}{formatBytes(event.bytes)}{/if}{/snippet}
 
 <main class="en-wrap">
-  <PageTitle kicker="This Energon" title="Retire old work." wide>
-    <p class="en-lede">Set a short expiry on sites and files nobody marked, across every account. The owner sees Expires in their catalog and can push it back. Deleting is an explicit choice. Every preview and execute is recorded.</p>
+  <PageTitle kicker={kicker} title="Admin" wide>
+    <p class="en-lede">Check this Energon, retire unused work, and revoke tokens. Set a short expiry on sites and files nobody marked, across every account. The owner sees Expires in their catalog and can push it back. Deleting is an explicit choice. Every preview and execute is recorded.</p>
   </PageTitle>
   <div id="admin-messages">{#if error}<Flash tone="err">{error}</Flash>{/if}{#if notice}<Flash tone="ok">{notice}</Flash>{/if}</div>
+  {#if upstream}<AdminUpstream snapshot={upstream} {dismissed} onDismiss={() => onDismiss?.()} />{/if}
   <AdminHealth health={data.health} />
   <Card title="Find work" className="en-admin-card" charged>
     <form id="admin-filters" class="en-form-stack" onsubmit={(event) => { event.preventDefault(); runPreview(); }}>

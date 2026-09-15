@@ -8,6 +8,7 @@ Discovery documents are the unauthenticated first reads on this Energon: `/v1/he
 - `help-openapi` sets `openapi` to `$ORIGIN/v1/openapi.json` and lists `GET /v1/openapi.json` in `routes`.
 - `openapi` returns OpenAPI 3.1.0 with `servers[0].url` equal to this origin, no token, CORS `*`.
 - `auth` returns public Markdown with this Energon's token env, token prefix, `/tokens` and `/v1/whoami` URLs, credential boundaries, and recovery instructions. `help.auth_url` and token-rejection JSON `auth_url` point to it.
+- `private-install`: `/setup`, help, and llms distinguish GitHub repository access from Energon token approval and offer a local-skill or API fallback.
 - `health` returns `{"ok":true}` at `/health` and `/v1/health`.
 - `llms` returns markdown that links the OpenAPI contract and help.
 
@@ -27,6 +28,7 @@ Preconditions:
 - **Default — llms.** `GET $ORIGIN/llms.txt` is 200 `text/markdown`. Body contains `$ORIGIN/v1/openapi.json`, `$ORIGIN/v1/help`, and `X-Energon-Write-Password`.
 - **Default — Authentication.** `GET $ORIGIN/auth.md` is 200 `text/markdown`, CORS `*`, and names the token env and prefix from help. `HEAD` is 200 with no body; `POST` is 405. Help and llms link `$ORIGIN/auth.md`. `GET $ORIGIN/v1/whoami` without a credential is 401 with `auth_url=$ORIGIN/auth.md` and `tokens_url=$ORIGIN/tokens`.
 - **Extra (openapi errors) — HEAD / 405.** `curl -sS -I "$ORIGIN/v1/openapi.json"` is 200. `POST $ORIGIN/v1/openapi.json` is 405 `method_not_allowed`. Drive when the OpenAPI route or CORS changes.
+- **Extra (private-install) — Setup.** Open `$ORIGIN/setup`. Confirm the Marketplace card and copied install block name this instance and explain private GitHub access, separate credentials, and the local-skill or HTTP API fallback. Capture the page with the signed-in identity visible. Read help and llms without a token and confirm they preserve the same boundary. Actual GitHub access and client installation require the operator checks in INSTALL.md; this local Worker cannot verify them.
 - **Proof.** Save llms excerpt and auth.md plus the 401 whoami JSON. Do not re-download help/openapi unless Extra.
 
 ## Gotchas

@@ -31,11 +31,11 @@ Never use the default `.wrangler/state` directory. Never attach to an already-ru
 ```
 export ENERGON_VERIFY_RUN=my-run          # optional; launch generates one
 export ENERGON_VERIFY_PORT=18787          # default; stays off 8787
-export ENERGON_VERIFY_EMAIL=dev@your.co   # for a fork restricted to your.co
+export ENERGON_VERIFY_EMAIL=dev@your.co   # for a deployment restricted to your.co
 .agents/skills/verify-energon/bin/up      # usual start (launch + doctor + ready)
 ```
 
-If this fork sets `ALLOWED_EMAIL_DOMAINS`, use an email in one of those domains. This identity is local only and does not require a production token. Keep `DEV_ACCESS_EMAIL` overrides in `ENERGON_VERIFY_VARS` consistent with the requested email; inspect local configuration if the reported identity differs. Doctor stops on a rejected domain or an unexpected identity instead of minting a token for a different user.
+If this deployment sets `ALLOWED_EMAIL_DOMAINS`, use an email in one of those domains. This identity is local only and does not require a production token. Keep `DEV_ACCESS_EMAIL` overrides in `ENERGON_VERIFY_VARS` consistent with the requested email; inspect local configuration if the reported identity differs. Doctor stops on a rejected domain or an unexpected identity instead of minting a token for a different user.
 
 `bin/launch` alone is for debugging a failed boot. After a successful `bin/up`, source `state.env` and drive.
 
@@ -45,7 +45,7 @@ Ready when launch prints `verify-energon launch ok` and `GET $ORIGIN/health` is 
 
 Two runs can sit side by side: different `ENERGON_VERIFY_RUN` and `ENERGON_VERIFY_PORT` values, each with its own persist dir. If port 18787 is taken, set another free port — do not reuse 8787 unless doctor proves it is this run.
 
-To drive a policy branch, set `ENERGON_VERIFY_VARS` to space-separated `KEY:VALUE` pairs before launch; each becomes an extra `--var`. Example: `ENERGON_VERIFY_VARS="ALLOW_UNLIMITED_TOKENS:false"` for the strict-tokens recipe. Launch records the pairs as `VARS=` in `state.env`.
+To drive a policy branch, set `ENERGON_VERIFY_VARS` to `KEY:VALUE` pairs before launch; each becomes an extra `--var`. Space-separated for simple values (`ENERGON_VERIFY_VARS="ALLOW_UNLIMITED_TOKENS:false"`). Newline-separated when a value contains spaces (a JSON fixture). Launch records the pairs as `VARS=` in `state.env`.
 
 If launch dies with an origin mismatch, a project `.dev.vars` overrode `--var`. Align `PUBLIC_ORIGIN` and `CONTENT_ORIGIN` with the verification port, or drop those keys from `.dev.vars` for the run.
 

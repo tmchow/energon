@@ -4,7 +4,7 @@
  *
  * Upstream validates templates without generating a plugin or catalogs.
  *
- * A fork runs --init. That writes plugins/{name}/, the harness catalogs, and
+ * A deployment repository runs --init. That writes plugins/{name}/, the harness catalogs, and
  * instance-skill.json. Commit those; that repo is the marketplace.
  *
  *   npm run skill:render
@@ -263,7 +263,7 @@ function parseArgs(argv, root) {
     if (found) out.repo = found;
     if (found === "tmchow/energon" && out.skill !== "energon") {
       console.warn(
-        "origin is still tmchow/energon. Fork first, or pass --repo your-org/energon so install points at this marketplace.",
+        "origin is still tmchow/energon. Create a private deployment repository first, or pass --repo your-org/energon so install points at this marketplace.",
       );
     }
   }

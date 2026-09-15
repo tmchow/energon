@@ -41,6 +41,13 @@ export async function buildUI() {
         // The handoff's glob closes its opening CSS comment; keep the source intact.
         contents: (await readFile(filename, 'utf8')).replace('./**/*.jsx', '*.jsx'), loader: 'css', resolveDir: path.dirname(filename),
       }));
+      builder.onLoad({ filter: /design\/tokens\/fonts\.css$/ }, async ({ path: filename }) => {
+        const source = await readFile(filename, 'utf8');
+        const contents = source.replace(/@import url\("https:\/\/fonts\.googleapis\.com[^"]*"\);\n?/, '');
+        // Hub pages load IBM Plex from chrome.ts (preconnect + display=optional). An @import here is render-blocking.
+        if (contents === source) throw new Error(`expected Google Fonts @import in ${filename}`);
+        return { contents, loader: 'css', resolveDir: path.dirname(filename) };
+      });
     },
   }] });
   await writeFile(path.join(generated, 'ui-manifest.json'), JSON.stringify({ script: asset }));

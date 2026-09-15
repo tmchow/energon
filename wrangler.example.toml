@@ -63,5 +63,5 @@ bucket_name = "energon"
 
 [[rules]]
 type = "Text"
-globs = ["**/*.html", "**/*.svg", "**/*.css", "**/*.client.js"]
+globs = ["**/*.html", "**/*.svg", "**/*.css", "**/*.client.js", "**/*.txt"]
 fallthrough = false

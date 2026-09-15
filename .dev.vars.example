@@ -8,3 +8,5 @@ DEV_ACCESS_EMAIL=dev@example.com
 # ALLOW_UNLIMITED_TOKENS=true
 # ALLOWED_EMAIL_DOMAINS=example.com
 # ADMIN_EMAILS=dev@example.com
+# Optional local GitHub-shaped fixture so Admin does not call the network.
+# UPSTREAM_RELEASE_JSON={"tag_name":"v1.0.0","html_url":"https://example.test/r/v1.0.0","published_at":"2026-09-14T00:00:00.000Z"}

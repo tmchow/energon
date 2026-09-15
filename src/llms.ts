@@ -28,7 +28,7 @@ Do not put secrets, tokens, or share passwords in published files. Last write wi
 - [Health](${origin}/v1/health): \`{"ok":true}\`. No auth.
 - [Hub](${origin}/): human UI. Cloudflare Access.
 - [About](${origin}/about) and [Stats](${origin}/stats): signed-in humans only.
-- [Admin](${origin}/admin): operators listed on \`ADMIN_EMAILS\`. Retire old work, check storage health, and list or revoke tokens across accounts; every action is recorded. Signed-in humans only.
+- [Admin](${origin}/admin): operators listed on \`ADMIN_EMAILS\`. See a newer release, retire unused work, check storage health, and list or revoke tokens across accounts; every action is recorded. Signed-in humans only.
 - [Setup](${origin}/setup) and [Tokens](${origin}/tokens): signed-in humans only. Approve connections at /connect; create or revoke tokens at /tokens.
 
 ## How to publish
@@ -53,7 +53,7 @@ Do not put secrets, tokens, or share passwords in published files. Last write wi
 ${hubGuestWriteSection(content)}
 ## Optional
 
-- Agent skill for this Energon: install at user (global) scope with \`npx skills add ${id.repo} --skill ${id.skill} -g\`, or add marketplace \`${id.repo}\` (\`https://github.com/${id.repo}\`) and install \`${id.plugin}\` (\`${id.plugin}@${id.marketplace}\`). Do not install at project or workspace scope unless the human asked for that. The skill files name this origin (${id.origin}). A fork replaces the shipped skill with \`npm run skill:init\`. Claude Code and [Agent Plugins](https://agent-plugins.org/) hosts use the same repo.
+- Agent skill for this Energon: install at user (global) scope with \`npx skills add ${id.repo} --skill ${id.skill} -g\`, or add marketplace \`${id.repo}\` (\`https://github.com/${id.repo}\`) and install \`${id.plugin}\` (\`${id.plugin}@${id.marketplace}\`). Do not install at project or workspace scope unless the human asked for that. The skill files name this origin (${id.origin}). A deployment repository generates its own skill with \`npm run skill:init\`. Private repository installation and updates require GitHub read access in the installing client, separate from the Energon API token. If private marketplaces are unsupported, install a local authenticated copy of the generated publish skill; if skills are unavailable, use this document and /v1/help directly. Never make the repository public to install it.
 - WebMCP tools register only on the signed-in hub. Agents that are not in that tab should use HTTP + the token.
 `;
 }

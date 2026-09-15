@@ -8,7 +8,7 @@ This directory is the maintained source for verifying the user-facing behavior o
 - Origin is `http://127.0.0.1:$PORT` (default port `18787`). `GET /v1/help` `hub`, `content_origin`, and the origin of `openapi` must equal that origin. `GET /v1/openapi.json` (no auth) is the `/v1` contract with `servers[0].url` set to that origin; use it to check a route's request shape or `error` code before reporting a product bug.
 - Doctor (inside `bin/up`) requires pid ownership of the port, hub HTML, and a signed-in email. Do not re-run it between features.
 - `bin/up` mints `$TOKEN` when `state.env` has none. Use `bin/mint-token` only for a second label. Do not invent a token. Hub POSTs under `/account` need `-H "origin: $ORIGIN"`.
-- Set `ENERGON_VERIFY_EMAIL` to an email allowed by the fork's `ALLOWED_EMAIL_DOMAINS`; launch passes it as `DEV_ACCESS_EMAIL`. Without it, Wrangler uses the configured local identity or `dev@example.com`. Doctor records the actual email and handle in `state.env`; use those values when driving.
+- Set `ENERGON_VERIFY_EMAIL` to an email allowed by the deployment's `ALLOWED_EMAIL_DOMAINS`; launch passes it as `DEV_ACCESS_EMAIL`. Without it, Wrangler uses the configured local identity or `dev@example.com`. Doctor records the actual email and handle in `state.env`; use those values when driving.
 - Never drive a run that was not started by this verification launch.
 
 ## Driving conventions
@@ -69,3 +69,4 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Admin cleanup](./admin-cleanup.md) covers `/admin` for operators on `ADMIN_EMAILS`, `POST /v1/admin/cleanup` with an admin token, owner and `last_read_before` filters, the 7-day `set_ttl` default, `expire_not_own`, and the audit log.
 - [Admin health](./admin-health.md) covers the `/admin` health readout, `GET /v1/admin/health`, and the repair POSTs for quota recompute, sweep now, and unlocking a share gate.
 - [Admin tokens](./admin-tokens.md) covers listing and revoking token metadata across accounts on `/admin`, `GET /v1/admin/tokens`, `POST /v1/admin/tokens/revoke`, owner filter, preview-then-confirm, audit, and `403 forbidden_admin` for account tokens.
+- [Admin upstream release](./admin-upstream.md) covers the Admin **Update** badge, the quiet `/admin#admin-update` card when latest is newer, dismiss in this browser, and muted failed or unknown checks.

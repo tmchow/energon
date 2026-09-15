@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { appFooter, documentShell, instanceFooter } from "../src/chrome";
+import { appFooter, documentShell, fontLinks, instanceFooter, navPrefetchScript } from "../src/chrome";
+import { bakedProductVersion } from "../src/product-version";
 import { uiPage } from "../src/ui-render";
+import type { UpstreamSnapshot } from "../src/page-data";
+import { UPSTREAM_DOCS_UPDATE } from "../src/upstream";
 import { access, assertDomBindings, json, mint, req } from "./helpers";
 
 describe("signed-in pages", () => {
@@ -12,8 +15,23 @@ describe("signed-in pages", () => {
     expect(html).toContain('class="en-footer"');
     expect(bootstrap(html).data.email).toBe(attack);
     expect(bootstrap(html).footer).toBe(attack);
-    expect(html.match(/<script\b/g)).toHaveLength(2);
+    expect(html.match(/<script\b/g)).toHaveLength(3);
     expect(uiPage("About", { page: "about", data: { email: "dev@example.com" }, footer: "  " })).not.toContain('class="en-footer"');
+  });
+
+  it("loads IBM Plex without a render-blocking Google Fonts import", async () => {
+    const about = uiPage("About", { page: "about", data: { email: "dev@example.com" } });
+    assertNonBlockingFonts(about, { prefetch: true });
+
+    const gate = uiPage("Password — gated", { page: "gate", data: { action: "/x", wrong: false, passwordHeader: "X-Energon-Password" } });
+    assertNonBlockingFonts(gate, { prefetch: false });
+    expect(gate).not.toContain("<script");
+
+    const markdown = uiPage("notes.md — Energon", { page: "markdown", data: { html: "<h1>Hi</h1>" } });
+    assertNonBlockingFonts(markdown, { prefetch: false });
+
+    const html = await (await req("/")).text();
+    assertNonBlockingFonts(html, { prefetch: true });
   });
 
   it("server-renders the hub and supplies hydration data without an inline DOM controller", async () => {
@@ -86,6 +104,8 @@ describe("signed-in pages", () => {
     expect(html).not.toContain('href="/admin"');
     const adminHub = await (await req("/", { headers: access("admin@esperlabs.app") })).text();
     expect(adminHub).toContain('href="/admin"');
+    expect(adminHub).not.toContain('href="/admin#admin-update"');
+    expect(adminHub).not.toContain(">Update<");
     expect(adminHub.indexOf('href="/stats"')).toBeLessThan(adminHub.indexOf('href="/admin"'));
   });
 
@@ -205,6 +225,7 @@ describe("signed-in pages", () => {
     expect(setupHtml).toContain("user (global) scope");
     expect(setupHtml).toContain("npx skills add tmchow/energon --skill energon -g");
     expect(setupHtml).toContain("Skills CLI");
+    expect(setupHtml).toContain("If this repository is private");
     expect(setupHtml).toContain("connect with a code");
     expect(setupHtml).toContain("/auth.md");
     expect(setupHtml).not.toContain('class="app-footer"');
@@ -342,7 +363,8 @@ describe("signed-in pages", () => {
     const page = await req("/admin", { headers: access("admin@esperlabs.app") });
     expect(page.status).toBe(200);
     const html = await page.text();
-    expect(html).toContain("Retire old work.");
+    expect(html).toContain(">Admin</h1>");
+    expect(html).toContain("Check this Energon, retire unused work, and revoke tokens.");
     expect(html).toContain('id="admin-health"');
     expect(html).toContain("Quota used is the ledger");
     expect(html).toContain("Expired awaiting purge");
@@ -383,7 +405,71 @@ describe("signed-in pages", () => {
     expect(bootstrap(html).data.health.quota.limit_bytes).toBe(20 * 1024 * 1024 * 1024);
     expect(bootstrap(html).data.health.quota.used_bytes).toBeGreaterThanOrEqual(0);
     expect(bootstrap(html).data.health.expired_awaiting_purge).toBeGreaterThanOrEqual(0);
+    expect(html).toContain(`This Energon · ${bakedProductVersion()}`);
+    expect(html).not.toContain('id="admin-update"');
+    expect(html).not.toContain('href="/admin#admin-update"');
+    expect(html).not.toContain("Could not check for a newer release.");
+    expect(bootstrap(html).upstream.status).toBe("current");
+    expect(bootstrap(html).upstream.this_version).toBe(bakedProductVersion());
     assertDomBindings(html);
+  });
+
+  it("admin update card and nav badge render from an update snapshot", () => {
+    const html = uiPage("Admin — Energon", {
+      page: "admin",
+      data: adminPageData(),
+      upstream: updateSnapshot(),
+    });
+    expect(html).toContain('id="admin-update"');
+    expect(html).toContain("1.1.0 is available");
+    expect(html).toContain("This Energon is 1.0.0.");
+    expect(html).toContain("1.1.0 was released");
+    expect(html).not.toContain("Restart after deploy");
+    expect(html).not.toContain('id="admin-update-operator"');
+    expect(html).toContain('id="admin-update-dismiss"');
+    expect(html).toContain("Read the release");
+    expect(html).toContain("How to update");
+    expect(html).toContain(UPSTREAM_DOCS_UPDATE);
+    expect(html).toContain('href="/admin#admin-update"');
+    expect(html).toMatch(/Admin[\s\S]*Update/);
+    expect(html.indexOf('id="admin-update"')).toBeLessThan(html.indexOf('id="admin-health"'));
+    expect(html).toMatch(/id="admin-update"[^>]*class="en-card en-admin-card"/);
+    expect(html).not.toMatch(/id="admin-update"[^>]*en-card--charged/);
+    expect(html).toContain("This Energon · 1.0.0");
+  });
+
+  it("admin failed and unknown checks stay muted without a nav mark", () => {
+    const failed = uiPage("Admin — Energon", {
+      page: "admin",
+      data: adminPageData(),
+      upstream: {
+        status: "failed",
+        this_version: "1.0.0",
+        latest_tag: null,
+        latest_url: null,
+        published_at: null,
+        docs_url: UPSTREAM_DOCS_UPDATE,
+      },
+    });
+    expect(failed).toContain('id="admin-update-note"');
+    expect(failed).toContain("Could not check for a newer release.");
+    expect(failed).not.toContain('id="admin-update"');
+    expect(failed).not.toContain('href="/admin#admin-update"');
+
+    const unknown = uiPage("Admin — Energon", {
+      page: "admin",
+      data: adminPageData(),
+      upstream: {
+        status: "unknown",
+        this_version: null,
+        latest_tag: "v1.1.0",
+        latest_url: "https://example.test/releases/v1.1.0",
+        published_at: null,
+        docs_url: UPSTREAM_DOCS_UPDATE,
+      },
+    });
+    expect(unknown).toContain("This build has no version. Latest release is 1.1.0.");
+    expect(unknown).not.toContain('href="/admin#admin-update"');
   });
 
   it("FOOTER_TEXT becomes an escaped chrome footer; empty omits it", () => {
@@ -414,4 +500,42 @@ function bootstrap(html: string) {
   const match = html.match(/<script id="bootstrap" type="application\/json">([\s\S]*?)<\/script>/);
   expect(match).not.toBeNull();
   return JSON.parse(match![1]);
+}
+
+function assertNonBlockingFonts(html: string, opts: { prefetch: boolean }) {
+  expect(html).not.toMatch(/@import[^;]*fonts\.googleapis/);
+  expect(html).not.toContain("family=Michroma");
+  expect(html).toContain(fontLinks());
+  if (opts.prefetch) expect(html).toContain(navPrefetchScript());
+  else expect(html).not.toContain(navPrefetchScript());
+}
+
+function adminPageData() {
+  return {
+    email: "admin@esperlabs.app",
+    handle: "admin",
+    admin: true,
+    policy: { presets: [{ id: "7d", label: "7 days" }], default_ttl: "7d", allow_unlimited: false, write_policy: "owner" },
+    health: {
+      quota: { used_bytes: 0, catalog_bytes: 0, limit_bytes: 1 },
+      expired_awaiting_purge: 0,
+      stale_purge_claims: 0,
+      locked_gates: 0,
+      locked_scopes: [],
+      sites: 0,
+      files: 0,
+      people: 0,
+    },
+  };
+}
+
+function updateSnapshot(): UpstreamSnapshot {
+  return {
+    status: "update",
+    this_version: "1.0.0",
+    latest_tag: "v1.1.0",
+    latest_url: "https://example.test/releases/v1.1.0",
+    published_at: "2026-09-14T00:00:00.000Z",
+    docs_url: UPSTREAM_DOCS_UPDATE,
+  };
 }

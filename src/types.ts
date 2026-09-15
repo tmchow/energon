@@ -25,6 +25,8 @@ export interface Env {
   MAX_PLATFORM_BYTES?: string;
   WRITE_POLICY?: string;
   FOOTER_TEXT?: string;
+  /** Test and local override. Production omits this and fetches GitHub. */
+  UPSTREAM_RELEASE_JSON?: string;
 }
 
 export type TokenScope = "account" | "admin";
