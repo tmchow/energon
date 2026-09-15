@@ -68,6 +68,15 @@ describe("update landing path", () => {
       "pushes to the branch are restricted",
     ]);
     expect(decideLandingPath({ policy: checks, deployment: { status: "off" } }).path).toBe("pull-request");
+    const disabledFlags = inspectBranchPolicy(repo, "main", "/tmp", ghFixture({
+      [protectionPath]: JSON.stringify({
+        required_signatures: { enabled: false },
+        required_linear_history: { enabled: false },
+        allow_force_pushes: { enabled: false },
+      }),
+      [rulesPath]: "[]",
+    }).run);
+    expect(disabledFlags).toMatchObject({ requiresPullRequest: false, blocksMergeCommits: false, sources: [] });
     const linear = inspectBranchPolicy(repo, "main", "/tmp", ghFixture({
       [protectionPath]: { error: "HTTP 404: Branch not protected" },
       [rulesPath]: JSON.stringify([{ type: "required_linear_history" }]),

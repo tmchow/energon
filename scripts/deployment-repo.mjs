@@ -61,11 +61,11 @@ export function inspectBranchPolicy(repository, branch = "main", cwd = process.c
   if (failures.length) return { status: "unknown", repository, branch, failures };
   const body = protection.body ?? {};
   const ruleTypes = Array.isArray(rules.body) ? rules.body.map((rule) => rule.type) : [];
-  const has = (field, type) => Boolean(body[field]) || ruleTypes.includes(type);
+  // Classic protection reports some settings as objects that are present when set, others as { enabled }.
   const sources = [];
-  if (has("required_pull_request_reviews", "pull_request")) sources.push("a pull request is required");
-  if (has("required_status_checks", "required_status_checks")) sources.push("status checks must pass before a push lands");
-  if (has("required_signatures", "required_signatures")) sources.push("commits must be signed");
+  if (body.required_pull_request_reviews || ruleTypes.includes("pull_request")) sources.push("a pull request is required");
+  if (body.required_status_checks || ruleTypes.includes("required_status_checks")) sources.push("status checks must pass before a push lands");
+  if (body.required_signatures?.enabled || ruleTypes.includes("required_signatures")) sources.push("commits must be signed");
   if (body.restrictions || ruleTypes.includes("update")) sources.push("pushes to the branch are restricted");
   const blocksMergeCommits = Boolean(body.required_linear_history?.enabled) || ruleTypes.includes("required_linear_history");
   return { status: "known", repository, branch, requiresPullRequest: sources.length > 0, blocksMergeCommits, sources };
