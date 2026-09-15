@@ -15,6 +15,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   brandFromName,
   parseGitHubRepo,
+  readProductVersion,
   runRender,
   tokenEnvFromBrand,
 } from "../../scripts/render-skill.mjs";
@@ -28,10 +29,40 @@ const CATALOG_PATHS = [
 ];
 
 const disposableRoots: string[] = [];
+const TEST_VERSION = "9.9.9";
+
+function writeProductVersion(root: string, version = TEST_VERSION) {
+  writeFileSync(join(root, "version.txt"), `${version}\n`);
+}
+
+function makeTempRoot() {
+  const root = mkdtempSync(join(tmpdir(), "energon-skill-"));
+  disposableRoots.push(root);
+  writeProductVersion(root);
+  return root;
+}
+
+function pluginManifests(root: string, plugin: string) {
+  return {
+    generic: JSON.parse(readFileSync(join(root, "plugins", plugin, "plugin.json"), "utf8")),
+    claude: JSON.parse(readFileSync(join(root, "plugins", plugin, ".claude-plugin", "plugin.json"), "utf8")),
+    codex: JSON.parse(readFileSync(join(root, "plugins", plugin, ".codex-plugin", "plugin.json"), "utf8")),
+  };
+}
+
+function marketplaceVersions(root: string) {
+  return {
+    root: JSON.parse(readFileSync(join(root, "marketplace.json"), "utf8")).plugins[0].version,
+    claude: JSON.parse(readFileSync(join(root, ".claude-plugin", "marketplace.json"), "utf8")).plugins[0].version,
+    github: JSON.parse(readFileSync(join(root, ".github", "plugin", "marketplace.json"), "utf8")).plugins[0].version,
+    agents: JSON.parse(readFileSync(join(root, ".agents", "plugins", "marketplace.json"), "utf8")).plugins[0].version,
+  };
+}
 
 function makeDisposableRepo() {
   const root = mkdtempSync(join(tmpdir(), "energon-render-"));
   disposableRoots.push(root);
+  writeProductVersion(root);
   mkdirSync(join(root, "scripts"), { recursive: true });
   cpSync(resolve("scripts/render-skill.mjs"), join(root, "scripts/render-skill.mjs"));
   cpSync(resolve("templates"), join(root, "templates"), { recursive: true });
@@ -108,8 +139,7 @@ describe("skill brand", () => {
 
 describe("skill:init", () => {
   it("writes a named plugin package and catalogs, not a project-local skill", () => {
-    const root = mkdtempSync(join(tmpdir(), "energon-skill-"));
-    disposableRoots.push(root);
+    const root = makeTempRoot();
     const { dirty } = runRender(
       ["--init", "--name", "yourco", "--origin", "https://energon.your.co", "--repo", "acme/energon"],
       { root },
@@ -126,6 +156,7 @@ describe("skill:init", () => {
     const plugin = JSON.parse(readFileSync(join(pluginDir, "plugin.json"), "utf8"));
     expect(plugin.$schema).toContain("agent-plugins.org");
     expect(plugin.name).toBe("yourco-energon");
+    expect(plugin.version).toBe(TEST_VERSION);
     expect(plugin.homepage).toBe("https://energon.your.co");
     expect(JSON.parse(readFileSync(join(pluginDir, ".claude-plugin", "plugin.json"), "utf8")).logo).toBeUndefined();
     expect(JSON.parse(readFileSync(join(root, ".agents", "plugins", "marketplace.json"), "utf8")).plugins[0].source.path).toBe(
@@ -149,8 +180,7 @@ describe("skill:init", () => {
   });
 
   it("renders no plugin or catalogs before initialization", () => {
-    const root = mkdtempSync(join(tmpdir(), "energon-skill-"));
-    disposableRoots.push(root);
+    const root = makeTempRoot();
     runRender([], { root });
     expect(existsSync(join(root, "plugins"))).toBe(false);
     expect(runRender(["--check"], { root }).dirty).toEqual([]);
@@ -170,8 +200,7 @@ describe("skill:init", () => {
     ["--origin", "https://energon.your.co/path"],
     ["--origin", "not-a-url"],
   ])("rejects unconfigured %s %s before writing", (option, value) => {
-    const root = mkdtempSync(join(tmpdir(), "energon-skill-"));
-    disposableRoots.push(root);
+    const root = makeTempRoot();
     expect(() => runRender([
       "--init", "--name", "yourco", "--origin", "https://energon.your.co", "--repo", "acme/energon", option, value,
     ], { root })).toThrow(/must name this Energon|must be an HTTPS origin/);
@@ -191,8 +220,7 @@ describe("skill:init", () => {
   });
 
   it("requires generic deployed identities to be renamed and supports that migration", () => {
-    const root = mkdtempSync(join(tmpdir(), "energon-skill-"));
-    disposableRoots.push(root);
+    const root = makeTempRoot();
     writeFileSync(join(root, "instance-skill.json"), JSON.stringify({
       skill: "energon", plugin: "energon", marketplace: "energon", origin: "https://energon.your.co",
     }));
@@ -207,8 +235,7 @@ describe("skill:init", () => {
   });
 
   it("reports a stale upstream placeholder without regenerating or changing it", () => {
-    const root = mkdtempSync(join(tmpdir(), "energon-skill-"));
-    disposableRoots.push(root);
+    const root = makeTempRoot();
     const plugin = join(root, "plugins", "energon");
     mkdirSync(plugin, { recursive: true });
     writeFileSync(join(plugin, "SKILL.md"), "legacy placeholder");
@@ -217,8 +244,7 @@ describe("skill:init", () => {
   });
 
   it("throws and writes nothing when --init has --name but no --origin", () => {
-    const root = mkdtempSync(join(tmpdir(), "energon-skill-"));
-    disposableRoots.push(root);
+    const root = makeTempRoot();
     expect(() => runRender(["--init", "--name", "yourco"], { root })).toThrow(
       /--name \(or --skill\) and --origin/,
     );
@@ -228,8 +254,7 @@ describe("skill:init", () => {
   });
 
   it("removes leftover project-local skill links", () => {
-    const root = mkdtempSync(join(tmpdir(), "energon-skill-"));
-    disposableRoots.push(root);
+    const root = makeTempRoot();
     mkdirSync(join(root, ".agents", "skills"), { recursive: true });
     mkdirSync(join(root, ".claude", "skills"), { recursive: true });
     symlinkSync(".", join(root, ".agents", "skills", "energon"));
@@ -241,8 +266,7 @@ describe("skill:init", () => {
   });
 
   it("fails --check when a placeholder tree still has a marketplace catalog", () => {
-    const root = mkdtempSync(join(tmpdir(), "energon-skill-"));
-    disposableRoots.push(root);
+    const root = makeTempRoot();
     mkdirSync(join(root, ".claude-plugin"), { recursive: true });
     writeFileSync(join(root, ".claude-plugin", "marketplace.json"), "{}\n");
     const { dirty } = runRender(["--check"], { root });
@@ -251,14 +275,93 @@ describe("skill:init", () => {
   });
 
   it("rejects placeholder catalog cleanup through a symlinked parent", () => {
-    const root = mkdtempSync(join(tmpdir(), "energon-skill-"));
+    const root = makeTempRoot();
     const outside = mkdtempSync(join(tmpdir(), "energon-outside-"));
-    disposableRoots.push(root, outside);
+    disposableRoots.push(outside);
     writeFileSync(join(outside, "marketplace.json"), "must survive\n");
     symlinkSync(outside, join(root, ".claude-plugin"));
 
     expect(() => runRender(["--check"], { root })).toThrow(/resolves outside/);
     expect(readFileSync(join(outside, "marketplace.json"), "utf8")).toBe("must survive\n");
+  });
+});
+
+describe("plugin version", () => {
+  const initArgs = ["--init", "--name", "yourco", "--origin", "https://energon.your.co", "--repo", "acme/energon"];
+
+  it("reads the checkout version.txt triple", () => {
+    expect(readProductVersion()).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+
+  it("stamps version.txt onto generated plugin and marketplace manifests", () => {
+    const root = makeTempRoot();
+    const { vars } = runRender(initArgs, { root });
+    expect(vars.VERSION).toBe(TEST_VERSION);
+    const manifests = pluginManifests(root, "yourco-energon");
+    expect(manifests.generic.version).toBe(TEST_VERSION);
+    expect(manifests.claude.version).toBe(TEST_VERSION);
+    expect(manifests.codex.version).toBe(TEST_VERSION);
+    expect(marketplaceVersions(root)).toEqual({
+      root: TEST_VERSION,
+      claude: TEST_VERSION,
+      github: TEST_VERSION,
+      agents: TEST_VERSION,
+    });
+    expect(JSON.parse(readFileSync(join(root, "instance-skill.json"), "utf8"))).toMatchObject({
+      skill: "yourco-energon",
+      plugin: "yourco-energon",
+      marketplace: "yourco-energon",
+      origin: "https://energon.your.co",
+      repo: "acme/energon",
+    });
+    expect(JSON.parse(readFileSync(join(root, "instance-skill.json"), "utf8"))).not.toHaveProperty("version");
+  });
+
+  it("fails --check when generated manifests lag version.txt, then render catches up", () => {
+    const root = makeTempRoot();
+    runRender(initArgs, { root });
+    writeProductVersion(root, "1.5.0");
+    const stale = runRender(["--check"], { root }).dirty;
+    expect(stale).toEqual(expect.arrayContaining([
+      join("plugins", "yourco-energon", "plugin.json"),
+      join("plugins", "yourco-energon", ".claude-plugin", "plugin.json"),
+      join("plugins", "yourco-energon", ".codex-plugin", "plugin.json"),
+      "marketplace.json",
+      join(".claude-plugin", "marketplace.json"),
+      join(".github", "plugin", "marketplace.json"),
+      join(".agents", "plugins", "marketplace.json"),
+    ]));
+    expect(pluginManifests(root, "yourco-energon").generic.version).toBe(TEST_VERSION);
+
+    runRender([], { root });
+    expect(runRender(["--check"], { root }).dirty).toEqual([]);
+    expect(pluginManifests(root, "yourco-energon").generic.version).toBe("1.5.0");
+    expect(pluginManifests(root, "yourco-energon").claude.version).toBe("1.5.0");
+    expect(pluginManifests(root, "yourco-energon").codex.version).toBe("1.5.0");
+    expect(marketplaceVersions(root)).toEqual({
+      root: "1.5.0",
+      claude: "1.5.0",
+      github: "1.5.0",
+      agents: "1.5.0",
+    });
+    expect(JSON.parse(readFileSync(join(root, "instance-skill.json"), "utf8"))).toMatchObject({
+      skill: "yourco-energon",
+      repo: "acme/energon",
+    });
+  });
+
+  it("fails clearly when version.txt is missing or invalid and writes nothing", () => {
+    const missing = mkdtempSync(join(tmpdir(), "energon-skill-"));
+    disposableRoots.push(missing);
+    expect(() => runRender(initArgs, { root: missing })).toThrow(/version\.txt is missing/);
+    expect(existsSync(join(missing, "plugins"))).toBe(false);
+
+    for (const value of ["", "v1.4.0", "1.4.0-rc.1", "1.4", "latest"]) {
+      const root = makeTempRoot();
+      writeProductVersion(root, value);
+      expect(() => runRender(initArgs, { root }), value).toThrow(/version\.txt must be a x\.y\.z triple/);
+      expect(existsSync(join(root, "plugins"))).toBe(false);
+    }
   });
 });
 

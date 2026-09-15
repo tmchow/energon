@@ -128,10 +128,15 @@ describe("contribution policy", () => {
     expect(config).toMatch(/"type": "ci",\s*"hidden": true/);
     expect(config).toMatch(/"type": "chore",\s*"hidden": true/);
     expect(readFileSync(join(root, "CONTRIBUTING.md"), "utf8")).toContain("## Releases");
+    expect(readFileSync(join(root, "CONTRIBUTING.md"), "utf8")).toContain(
+      "version.txt` (the plugin version source)",
+    );
     const skill = readFileSync(join(root, ".agents/skills/cut-release/SKILL.md"), "utf8");
     expect(skill).toContain("node scripts/deployment-repo.mjs inspect");
     expect(skill).toContain("canonical: true");
     expect(skill).toContain('gh pr list --repo "$RELEASE_REPO" --label "autorelease: pending"');
+    expect(skill).toContain("`version.txt` is the plugin version source");
+    expect(skill).toContain("Plugin: regenerate after merge (version follows version.txt)");
   });
 
   it("ships deployment update and backup skills that resolve this checkout", () => {
@@ -155,6 +160,9 @@ describe("contribution policy", () => {
     expect(update).toContain("Reuse existing authorization");
     expect(update).toContain("updated source, not an updated Energon");
     expect(update).toContain("contributions to upstream still go through the upstream PR process");
+    expect(update).toContain("npm run skill:render");
+    expect(update).toContain("version.txt");
+    expect(update).toContain("Refresh an installed plugin");
     expect(update).not.toMatch(/reviewable (release )?update/i);
 
     const repoDoc = readFileSync(join(root, "docs/DEPLOYMENT-REPOSITORY.md"), "utf8");
@@ -174,6 +182,9 @@ describe("contribution policy", () => {
     expect(install).toContain("reuse authorization already given");
     expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toContain("A failed policy read is unknown, not a default");
     expect(install).toContain("After the first deploy: optional automatic updates");
+    expect(install).toContain("### Refresh an installed plugin");
+    expect(install).toContain("claude plugin update");
+    expect(install).toContain("codex plugin marketplace upgrade");
 
     const deploy = readFileSync(join(root, ".agents/skills/deploy-this-energon/SKILL.md"), "utf8");
     expect(deploy).toContain("node scripts/deployment-repo.mjs inspect");

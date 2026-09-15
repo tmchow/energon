@@ -132,6 +132,6 @@ Skip that pass for internal refactors, tests-only, migrations with no user path 
 
 ## Skill templates
 
-Edit `templates/skill/` and `templates/plugin/`, then `npm run skill:render` (validates templates upstream; regenerates the plugin on initialized deployment repositories). `npm run skill:render -- --check` must stay green (`test:unit` runs it). Do not ship `{{placeholders}}` in committed `SKILL.md`.
+Edit `templates/skill/` and `templates/plugin/`, then `npm run skill:render` (validates templates upstream; regenerates the plugin on initialized deployment repositories). Generated plugin `version` comes from `version.txt`. `npm run skill:render -- --check` must stay green (`test:unit` runs it). Do not ship `{{placeholders}}` in committed `SKILL.md`.
 
 On a real host, `npm run skill:init` writes `plugins/{name}/` and marketplace catalogs — see INSTALL.md. This upstream tree contains no generated plugin or marketplace catalogs.
