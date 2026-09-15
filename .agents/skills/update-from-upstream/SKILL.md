@@ -1,6 +1,6 @@
 ---
 name: update-from-upstream
-description: Merge a published upstream Energon release into this fork, preserve this Energon's identity, then discover how this fork deploys and walk that path only after the operator opts in. Use when asked to update, upgrade, merge upstream, or catch up to a newer release. On the source template, stop.
+description: Merge a published upstream Energon release into this fork, keep wrangler.toml, instance-skill.json, and the generated plugin, then discover how this fork deploys and walk that path only after the operator opts in. Use when asked to update, upgrade, merge upstream, or catch up to a newer release. On the source template, stop.
 ---
 
 # Update from upstream
@@ -23,7 +23,7 @@ git status --short
 
 If `isFork` is false, **stop**. This is the source template. Cut a release there; do not merge this repo into itself.
 
-Reuse a remote named `upstream` if present. Otherwise add one from `parent.url`. Do not pass a hard-coded `--repo owner/name`. Do not overwrite dirty work or discard this Energon’s identity files.
+Reuse a remote named `upstream` if present. Otherwise add one from `parent.url`. Do not pass a hard-coded `--repo owner/name`. Do not overwrite dirty work or replace this fork’s `wrangler.toml`, `instance-skill.json`, or generated `plugins/`.
 
 ## Hard stops
 
@@ -48,7 +48,7 @@ gh release view --repo "$parent"
 Stop if there is no published release. Read the **Operator** section. Do not invent notes that are not there.
 
 3. Create a branch. Merge that **tag**, not `upstream/main`.
-4. On conflict, keep this fork’s identity: `wrangler.toml` account / bindings / origins / routes / Access / policy / token prefix; `instance-skill.json`; `plugins/` and marketplace catalogs. Compare new keys only against `wrangler.example.toml`. Copy needed keys, not upstream placeholders.
+4. On conflict, keep this fork’s `wrangler.toml` (account, bindings, origins, routes, Access, policy, token prefix), `instance-skill.json`, `plugins/`, and marketplace catalogs. Compare new keys only against `wrangler.example.toml`. Copy needed keys, not upstream placeholders.
 5. After the merge:
 
 ```
@@ -64,7 +64,7 @@ npm test
 
 Use the D1 `database_name` from this fork’s `wrangler.toml` if it is not the example name. Do not apply remote migrations in this phase.
 
-6. Report: this `version.txt` vs the tag, Operator notes, identity files that stayed, plugin regen status, pending `migrations/` files, and that the update is on the branch (and a fork PR if this repo wants one). The Worker is not live yet. If this fork auto-deploys from `main`, say that merging the PR will migrate D1 and deploy.
+6. Report: this `version.txt` vs the tag, Operator notes, that `wrangler.toml` and `instance-skill.json` still match this Energon, plugin regen status, pending `migrations/` files, and that the update is on the branch (and a fork PR if this repo wants one). The Worker is not live yet. If this fork auto-deploys from `main`, say that merging the PR will migrate D1 and deploy.
 
 ## Phase 2 — Discover deploy, then ask
 
@@ -110,4 +110,4 @@ If they did not opt in, the branch/PR is the deliverable. Print the detected nex
 
 ## Verify
 
-The branch has the release tag, identity files still name this Energon, `skill:render --check` is green, and nothing remote ran unless they opted in. If they opted in, health/help match this Energon and the Time Travel bookmark from before migrate is still recorded.
+The branch has the release tag, `wrangler.toml` and `instance-skill.json` still match this Energon, `skill:render --check` is green, and nothing remote ran unless they opted in. If they opted in, health/help match this Energon and the Time Travel bookmark from before migrate is still recorded.
