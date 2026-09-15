@@ -7,7 +7,7 @@ description: Deploy the code already on this checkout to this Energon's configur
 
 Take the source on this checkout live in the operator's account. This is INSTALL.md **Commit and deploy** and **Verify the installation** run against an existing Energon. INSTALL.md owns the commands and acceptance; this skill sequences them and adds the checks that only matter when the Worker already exists.
 
-Done means the intended commit is deployed to the inventory-matched Worker, pending migrations were applied before it, live acceptance passed, and the operator has a record of what changed. Updating the code is `update-from-upstream`. A durable data copy is `backup-this-energon`.
+Done means the intended commit is deployed to the inventory-matched Worker, pending migrations were applied before it, live acceptance passed, and the operator has a record of what changed. To bring in a new upstream release first, use the `update-from-upstream` skill. For a durable data copy before deploying, use the `backup-this-energon` skill.
 
 ## Authorization
 
