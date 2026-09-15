@@ -18,7 +18,7 @@ function installBlock(id: InstanceIdentity): string {
 
 If this repository is private, verify GitHub read access from this environment first. Keep GitHub credentials separate from the Energon token. If private marketplace installation is unavailable, use an authenticated local copy of the generated publish skill or follow ${id.origin}/v1/help and ${id.origin}/llms.txt directly. Never make the repository public to install it.
 
-Then read ${id.origin}/auth.md. If ${id.tokenEnv} is already set, use it. Otherwise connect with a code: show me the link and code, wait for my approval, then save the delivered token as ${id.tokenEnv} where this environment keeps secrets, readable only by me. Do not invent a token.`;
+Then read ${id.origin}/auth.md. If ${id.tokenEnv} is already set, use it. Otherwise connect with a code: show me the link and the code so I can confirm they match, wait for my approval, then save the delivered token as ${id.tokenEnv} where this environment keeps secrets, readable only by me. Do not invent a token.`;
 }
 
 export async function setupResponse(actor: Actor, env: Env): Promise<Response> {

@@ -84,7 +84,7 @@ Open <http://127.0.0.1:8787>. Localhost skips Cloudflare Access and signs you in
 ```text
 Read INSTALL.md in this repository, section "Connect an agent", and install Energon for this machine.
 
-Ask me for our Energon origin (https://...) if it is not already in the environment or INSTALL.md. Install the skill from this Energon's repo at user (global) scope (`npx skills add {owner/repo} --skill {plugin} -g`, or that host's plugin marketplace flow). Then read {origin}/auth.md: if the token env named by GET {origin}/v1/help is set, use it; otherwise connect with a code, show me the link and code, and after I approve, save the token as that env where this environment keeps secrets. If I already use another Energon, this skill has a different name. Install it too, or pin it in this repo. Do not invent a token.
+Ask me for our Energon origin (https://...) if it is not already in the environment or INSTALL.md. Install the skill from this Energon's repo at user (global) scope (`npx skills add {owner/repo} --skill {plugin} -g`, or that host's plugin marketplace flow). Then read {origin}/auth.md: if the token env named by GET {origin}/v1/help is set, use it; otherwise connect with a code, show me the link and code so I can confirm they match, and after I approve, save the token as that env where this environment keeps secrets. If I already use another Energon, this skill has a different name. Install it too, or pin it in this repo. Do not invent a token.
 ```
 
 A running Energon's `/setup` page has the same prompt filled with its own values.

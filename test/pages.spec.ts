@@ -227,6 +227,8 @@ describe("signed-in pages", () => {
     expect(setupHtml).toContain("Skills CLI");
     expect(setupHtml).toContain("If this repository is private");
     expect(setupHtml).toContain("connect with a code");
+    expect(setupHtml).toContain("confirm the code matches");
+    expect(setupHtml).toContain("confirm they match");
     expect(setupHtml).toContain("/auth.md");
     expect(setupHtml).not.toContain('class="app-footer"');
     expect(setup.headers.get("cache-control")).toMatch(/private/);

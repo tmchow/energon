@@ -21,7 +21,7 @@ Before choosing components, identify what someone came to do, what they need to 
 | Hub | Choose work, inspect staging, publish | Existing catalog, search, public URL, expiry, write policy, item actions |
 | Tokens | Mint a token and understand its authority | One-time secret reveal, redacted catalog, expiry, revoke consequence |
 | Setup | A usable instruction for connecting an agent | Details for this Energon and the next step |
-| Connect | Identify the requesting agent and enter its code | Expiry, scope, explicit approve and deny actions |
+| Connect | Identify the requesting agent and confirm its code | Expiry, scope, explicit connect and deny actions; code entry when the link has no code |
 | About | A concrete publishing or reference workflow | What people and agents can do with the same work |
 | Stats | Storage and usage with clear units | Scope, totals, and comparable per-person values |
 | Admin | See this Energon's version and health, then preview a host-wide retirement | A newer release when one exists, owner, name, size, last written, last read, expiry, tokens, and the recorded audit |

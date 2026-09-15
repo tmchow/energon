@@ -1820,7 +1820,7 @@
           "discovery"
         ],
         "summary": "Request a human-approved agent connection",
-        "description": "No bearer token. Does not grant API access. Show the human verification_uri and user_code; they must sign in through Access, enter the code, and approve. Requests expire in ten minutes. Limits: 20 requests per IP and 1000 on this Energon per ten-minute window. All successful responses use Cache-Control: no-store, private. This is an Energon API, not OAuth device authorization.",
+        "description": "No bearer token. Does not grant API access. Show the human verification_uri (it includes user_code as a query parameter) and user_code; they must sign in through Access, confirm the code matches, and approve. The page does not auto-approve. A link without user_code still works: they type the code. Requests expire in ten minutes. Limits: 20 requests per IP and 1000 on this Energon per ten-minute window. All successful responses use Cache-Control: no-store, private. This is an Energon API, not OAuth device authorization.",
         "security": [],
         "requestBody": {
           "required": true,
@@ -5115,7 +5115,8 @@
           },
           "verification_uri": {
             "type": "string",
-            "format": "uri"
+            "format": "uri",
+            "description": "Hub URL for the human. Includes user_code as a query parameter. The approval page confirms the code and does not auto-approve. Omitting user_code still works; the human types the eight-digit code."
           },
           "expires_in": {
             "type": "integer",

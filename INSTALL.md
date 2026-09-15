@@ -267,7 +267,7 @@ Install {plugin} at user (global) scope from https://github.com/{owner/repo} ({o
 
 If this repository is private, verify GitHub read access from this environment first. Keep GitHub credentials separate from the Energon token. If private marketplace installation is unavailable, follow INSTALL.md "Private repository access" for the local-skill or API fallback. Never make the repository public to install it.
 
-Then read {origin}/auth.md. If {TOKEN_ENV} is already set, use it. Otherwise connect with a code: show me the link and code, wait for my approval, then save the delivered token as {TOKEN_ENV} where this environment keeps secrets, readable only by me. Do not invent a token.
+Then read {origin}/auth.md. If {TOKEN_ENV} is already set, use it. Otherwise connect with a code: show me the link and the code so I can confirm they match, wait for my approval, then save the delivered token as {TOKEN_ENV} where this environment keeps secrets, readable only by me. Do not invent a token.
 ```
 
 Signed-in humans can copy a filled block from `{origin}/setup`.
@@ -319,7 +319,7 @@ copilot plugin install yourco-energon@yourco-energon
 
 ### 2. Connect the agent
 
-Ask the agent to connect. It reads `{origin}/auth.md`, uses `{TOKEN_ENV}` if it is already set, and otherwise shows you a verification link and an eight-digit code. Open the link, sign in through Access, enter the code, choose a lifetime, and approve. The token goes directly to the waiting agent, which saves it as `{TOKEN_ENV}` in this machine's secret store or a user-only file and tells you where. It appears on `/tokens` for revocation. There is no public signup.
+Ask the agent to connect. It reads `{origin}/auth.md`, uses `{TOKEN_ENV}` if it is already set, and otherwise shows you a verification link that includes an eight-digit code. Open the link, sign in through Access, confirm the code matches, choose a lifetime, and connect. The token goes directly to the waiting agent, which saves it as `{TOKEN_ENV}` in this machine's secret store or a user-only file and tells you where. It appears on `/tokens` for revocation. There is no public signup.
 
 For CI, scheduled jobs, or a hosted sandbox with a secret store, provision the token yourself:
 

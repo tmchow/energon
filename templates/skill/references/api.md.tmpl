@@ -119,4 +119,4 @@ Limits: 25 MB per file and per zip upload; 20 GB platform cap; optional content 
 
 ## Connect with a code
 
-Read {{ORIGIN}}/auth.md for POST `/v1/connections` and POST `/v1/connections/{id}/token`. No bearer is needed to start; polling requires the private `poll_token`. No file access is granted until a signed-in human enters the agent code and approves. The delivered token is an ordinary account token with the lifetime the human chose; save it as `{{TOKEN_ENV}}` per auth.md. Humans can also create tokens ahead of time on {{ORIGIN}}/tokens for CI and unattended runs.
+Read {{ORIGIN}}/auth.md for POST `/v1/connections` and POST `/v1/connections/{id}/token`. No bearer is needed to start; polling requires the private `poll_token`. No file access is granted until a signed-in human confirms the agent code (from the link or by typing it) and approves. The delivered token is an ordinary account token with the lifetime the human chose; save it as `{{TOKEN_ENV}}` per auth.md. Humans can also create tokens ahead of time on {{ORIGIN}}/tokens for CI and unattended runs.

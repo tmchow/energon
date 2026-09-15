@@ -24,8 +24,14 @@
       }
     }
   }
+  function approveLabel(busy: boolean, confirming: boolean): string {
+    if (busy) return confirming ? 'Connecting…' : 'Approving…';
+    return confirming ? 'Connect this device' : 'Approve connection';
+  }
   let { data }: { data: ConnectData } = $props();
-  let code = $state('');
+  const offered = $derived(data.offered_code);
+  let typed = $state('');
+  const code = $derived(offered ?? typed);
   let ttl = $state(untrack(() => data.token_policy.default));
   let busy = $state(false);
   let status = $state('');
@@ -66,16 +72,20 @@
   <Card charged className="en-connect-card">
     <h1 class="en-connect-title">Connect your agent to <span class="en-connect-host">{data.host}</span></h1>
     {#if data.connection && !inactive}
-      <p class="en-connect-agent">Enter the code shown by <strong>{data.connection.label}</strong>.</p>
+      <p class="en-connect-agent">{#if offered}Confirm this code matches the one shown by <strong>{data.connection.label}</strong>, then connect this device.{:else}Enter the code shown by <strong>{data.connection.label}</strong>.{/if}</p>
+      <form id="connect-form" class="en-connect-form" data-request={data.connection.id} data-offered={offered ? 'true' : 'false'} onsubmit={decide}>
+        {#if offered}
+          <Field label="Code"><p id="connect-offered-code" class="en-connect-offered">{offered}</p></Field>
+        {:else}
+          <Field label="Code" htmlFor="connect-code" className={failed ? 'en-shake' : ''}><input id="connect-code" class="en-input en-connect-code" name="user_code" bind:value={typed} oninput={e => typed = e.currentTarget.value.replace(/\D/g, '').slice(0, 8)} placeholder="00000000" inputmode="numeric" maxlength="8" autocomplete="one-time-code" spellcheck="false" disabled={busy} /></Field>
+        {/if}
+        <Field label="Access expires after" htmlFor="connect-ttl"><Select id="connect-ttl" name="ttl" bind:value={ttl} options={data.token_policy.presets.map(p => ({ value: p.id, label: p.label }))} disabled={busy} /></Field>
+        <div class="en-connect-actions">
+          <Button type="submit" value="approve" variant="primary" block disabled={busy || code.length !== 8}>{approveLabel(busy, Boolean(offered))}</Button>
+          <Button type="submit" value="deny" variant="ghost" block disabled={busy} formnovalidate>{busy ? 'Working…' : 'Deny connection'}</Button>
+        </div>
+      </form>
     {/if}
-    {#if !inactive && data.connection}<form id="connect-form" class="en-connect-form" data-request={data.connection.id} onsubmit={decide}>
-      <Field label="Code" htmlFor="connect-code" className={failed ? 'en-shake' : ''}><input id="connect-code" class="en-input en-connect-code" name="user_code" bind:value={code} oninput={e => code = e.currentTarget.value.replace(/\D/g, '').slice(0, 8)} placeholder="00000000" inputmode="numeric" maxlength="8" autocomplete="one-time-code" spellcheck="false" disabled={busy} /></Field>
-      <Field label="Access expires after" htmlFor="connect-ttl"><Select id="connect-ttl" name="ttl" bind:value={ttl} options={data.token_policy.presets.map(p => ({ value: p.id, label: p.label }))} disabled={busy} /></Field>
-      <div class="en-connect-actions">
-        <Button type="submit" value="approve" variant="primary" block disabled={busy || code.length !== 8}>{busy ? 'Approving…' : 'Approve connection'}</Button>
-        <Button type="submit" value="deny" variant="ghost" block disabled={busy} formnovalidate>{busy ? 'Working…' : 'Deny connection'}</Button>
-      </div>
-    </form>{/if}
     <div id="connect-status" class="en-connect-status" aria-live="polite">{#if status}<Flash tone={failed ? 'err' : 'ok'}>{status}</Flash>{/if}</div>
     <p class="en-connect-meta">{#if !inactive}The agent will act as your account. It can read work on this host, including password-protected links, and publish, update, or delete where you have permission. Approve only a code you asked for. {/if}{metaTail}</p>
   </Card>

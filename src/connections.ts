@@ -75,6 +75,15 @@ export type HumanConnectPage = {
   status: number;
 };
 
+export function parseUserCode(raw: string | null | undefined): string | null {
+  const code = typeof raw === "string" ? raw.trim() : "";
+  return /^[0-9]{8}$/.test(code) ? code : null;
+}
+
+export function connectVerificationUri(origin: string, id: string, userCode: string): string {
+  return `${origin}/connect?request=${encodeURIComponent(id)}&user_code=${encodeURIComponent(userCode)}`;
+}
+
 export async function humanConnectPage(env: Env, id: string): Promise<HumanConnectPage> {
   const row = id
     ? await env.DB.prepare("SELECT id, label, status, expires_at FROM agent_connections WHERE id = ?")
@@ -113,7 +122,7 @@ export async function startConnection(request: Request, env: Env, body: Record<s
   if (!inserted.meta.changes) throw new ApiError(429, "connection_rate_limited", "Too many connection requests. Wait ten minutes before starting another.");
   return secretJson({
     id, poll_token: pollToken, user_code: userCode,
-    verification_uri: `${publicOrigin(env)}/connect?request=${id}`,
+    verification_uri: connectVerificationUri(publicOrigin(env), id, userCode),
     expires_in: CONNECTION_SECONDS, interval: POLL_SECONDS,
   }, 201);
 }
@@ -130,8 +139,8 @@ export async function decideConnection(env: Env, id: string, actor: Actor, body:
   // Deny is available without the agent code so a surprise request can be rejected.
   // Approve still requires the code shown by the agent.
   if (approve) {
-    const code = typeof body.user_code === "string" ? body.user_code.trim() : "";
-    if (!hashesEqual(await sha256Hex(`${id}:${code}`), row.code_hash)) {
+    const code = parseUserCode(typeof body.user_code === "string" ? body.user_code : "");
+    if (!code || !hashesEqual(await sha256Hex(`${id}:${code}`), row.code_hash)) {
       await env.DB.prepare(
         `UPDATE agent_connections SET attempts = attempts + 1, status = CASE WHEN attempts >= 4 THEN 'denied' ELSE status END
          WHERE id = ? AND status = 'pending'`,

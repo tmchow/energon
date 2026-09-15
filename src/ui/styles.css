@@ -142,8 +142,10 @@
 .en-connect-agent { margin: 8px 0 24px; text-align: center; color: var(--fg-3); }
 .en-connect-agent strong { color: var(--fg-1); overflow-wrap: anywhere; }
 .en-connect-form { display: flex; flex-direction: column; gap: 16px; }
-.en-connect-code { height: 56px; font: 500 26px/1 var(--font-mono); letter-spacing: .3em; text-indent: .3em; text-align: center; }
+.en-connect-code, .en-connect-offered { height: 56px; font: 500 26px/1 var(--font-mono); letter-spacing: .3em; text-indent: .3em; }
+.en-connect-code { text-align: center; }
 .en-connect-code::placeholder { color: var(--border-1); }
+.en-connect-offered { display: flex; align-items: center; justify-content: center; margin: 0; color: var(--fg-hot); }
 .en-connect-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
 .en-connect-status { margin-top: 16px; }
 .en-connect-status:empty { display: none; }

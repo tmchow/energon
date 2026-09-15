@@ -41,6 +41,7 @@ export type ConnectData = {
   host: string;
   connection: { id: string; label: string; expires_at: string } | null;
   ended_kind: ConnectEndedKind | null;
+  offered_code: string | null;
   token_policy: TokenPolicy;
 };
 export type GateData = { action: string; wrong: boolean; limited?: boolean; passwordHeader: string };

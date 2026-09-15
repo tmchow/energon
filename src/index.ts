@@ -192,7 +192,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   }
 
   if (path === "/connect" && method === "GET") {
-    return connectResponse(env, await requireHuman(request, env, ctx), url.searchParams.get("request") || "");
+    return connectResponse(env, await requireHuman(request, env, ctx), url.searchParams.get("request") || "", url.searchParams.get("user_code"));
   }
 
   const connectionDecision = path.match(/^\/account\/connections\/([A-Za-z0-9]{24})\/(approve|deny)$/);

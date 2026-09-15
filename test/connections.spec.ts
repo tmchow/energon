@@ -26,8 +26,8 @@ function decide(connection: { id: string; user_code: string }, action = "approve
 describe("agent connections", () => {
   it("requires human approval, delivers one account token, and supports ordinary revocation", async () => {
     const connection = await start();
-    expect(connection.verification_uri).toBe(`https://hub.energon.example.com/connect?request=${connection.id}`);
-    expect(connection.verification_uri).not.toContain(connection.user_code);
+    expect(connection.verification_uri).toBe(`https://hub.energon.example.com/connect?request=${connection.id}&user_code=${connection.user_code}`);
+    expect(connection.verification_uri).toContain(`user_code=${connection.user_code}`);
     expect(connection).not.toHaveProperty("token");
     const waiting = await exchange(connection);
     expect(waiting.status).toBe(202);
@@ -124,11 +124,15 @@ describe("agent connections", () => {
     expect(html).toContain("connect@esperlabs.app");
     expect(html).toContain("password-protected");
     expect(html).toContain("Approve connection");
+    expect(html).toContain("Enter the code shown by");
     expect(html).toContain("hub.energon.example.com");
     expect(html).not.toContain('aria-label="Pages"');
     expect(html).not.toContain('class="en-footer"');
     expect(html).not.toContain(connection.user_code);
     expect(html).toContain('id="connect-code"');
+    expect(html).not.toContain('id="connect-offered-code"');
+    expect(html).not.toContain("Connect this device");
+    expect(html).toContain('data-offered="false"');
     expect(html).toContain('maxlength="8"');
     expect(html).toContain("formnovalidate");
     expect(connection.user_code).toMatch(/^[0-9]{8}$/);
@@ -153,11 +157,45 @@ describe("agent connections", () => {
       id: connection.id, label: row!.label, expires_at: row!.expires_at,
     });
     expect(JSON.parse(bootstrap![1]).data.ended_kind).toBeNull();
+    expect(JSON.parse(bootstrap![1]).data.offered_code).toBeNull();
     for (const secret of [row!.code_hash, row!.poll_hash, connection.user_code, connection.poll_token]) {
       expect(html).not.toContain(secret);
     }
     expect(html).not.toContain("code_hash");
     expect(html).not.toContain("poll_hash");
+  });
+
+  it("confirms an offered code from the query string and still accepts a link without one", async () => {
+    const connection = await start("offered code agent");
+    const offered = await req(`/connect?request=${connection.id}&user_code=${connection.user_code}`, { headers: access("connect@esperlabs.app") });
+    expect(offered.status).toBe(200);
+    const offeredHtml = await offered.text();
+    expect(offeredHtml).toContain(connection.user_code);
+    expect(offeredHtml).toContain('id="connect-offered-code"');
+    expect(offeredHtml).toContain("Connect this device");
+    expect(offeredHtml).toContain("Confirm this code matches");
+    expect(offeredHtml).toContain('data-offered="true"');
+    expect(offeredHtml).not.toContain('id="connect-code"');
+    expect(offeredHtml).not.toContain("Connection approved");
+    const offeredData = JSON.parse(offeredHtml.match(/<script id="bootstrap" type="application\/json">([\s\S]*?)<\/script>/)![1]).data;
+    expect(offeredData.offered_code).toBe(connection.user_code);
+    expect(offeredHtml).not.toContain(connection.poll_token);
+    assertDomBindings(offeredHtml);
+
+    const invalid = await req(`/connect?request=${connection.id}&user_code=abc`, { headers: access("connect@esperlabs.app") });
+    expect(invalid.status).toBe(200);
+    const invalidHtml = await invalid.text();
+    expect(invalidHtml).toContain('id="connect-code"');
+    expect(invalidHtml).not.toContain('id="connect-offered-code"');
+    expect(JSON.parse(invalidHtml.match(/<script id="bootstrap" type="application\/json">([\s\S]*?)<\/script>/)![1]).data.offered_code).toBeNull();
+
+    expect((await decide(connection)).status).toBe(200);
+    const ended = await req(`/connect?request=${connection.id}&user_code=${connection.user_code}`, { headers: access("connect@esperlabs.app") });
+    expect(ended.status).toBe(409);
+    const endedHtml = await ended.text();
+    expect(endedHtml).not.toContain('id="connect-code"');
+    expect(endedHtml).not.toContain('id="connect-offered-code"');
+    expect(JSON.parse(endedHtml.match(/<script id="bootstrap" type="application\/json">([\s\S]*?)<\/script>/)![1]).data.offered_code).toBeNull();
   });
 
   it("rolls back token issuance if consuming the approval fails", async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { connectPageKind, connectPageStatus } from "../../src/connections";
+import { connectPageKind, connectPageStatus, connectVerificationUri, parseUserCode } from "../../src/connections";
 
 const now = "2026-09-08T12:00:00.000Z";
 const later = "2026-09-08T12:10:00.000Z";
@@ -23,5 +23,24 @@ describe("connect page kind", () => {
     expect(connectPageKind({ status: "denied", expires_at: later }, now)).toBe("denied");
     expect(connectPageStatus("approved")).toBe(409);
     expect(connectPageStatus("denied")).toBe(403);
+  });
+});
+
+describe("user code parsing", () => {
+  it("accepts only an eight-digit code", () => {
+    expect(parseUserCode("12345678")).toBe("12345678");
+    expect(parseUserCode(" 12345678 ")).toBe("12345678");
+    expect(parseUserCode(null)).toBeNull();
+    expect(parseUserCode(undefined)).toBeNull();
+    expect(parseUserCode("")).toBeNull();
+    expect(parseUserCode("1234567")).toBeNull();
+    expect(parseUserCode("123456789")).toBeNull();
+    expect(parseUserCode("abcdefgh")).toBeNull();
+    expect(parseUserCode("1234 5678")).toBeNull();
+  });
+
+  it("puts the code on the verification URL", () => {
+    expect(connectVerificationUri("https://hub.example.com", "reqid000000000000000001", "12345678"))
+      .toBe("https://hub.example.com/connect?request=reqid000000000000000001&user_code=12345678");
   });
 });
