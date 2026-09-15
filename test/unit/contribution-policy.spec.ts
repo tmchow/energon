@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, readlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -177,6 +177,55 @@ describe("contribution policy", () => {
     expect(backup).toContain("Do not restore");
     expect(backup).toContain("incomplete");
     expect(backup).not.toMatch(/automatically restore|restore automatically/i);
+  });
+
+  it("keeps shipped skill names, symlinks, and cross-references in sync", () => {
+    const skillsDir = join(root, ".agents/skills");
+    const skillNames = readdirSync(skillsDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
+
+    for (const name of skillNames) {
+      const skill = readFileSync(join(skillsDir, name, "SKILL.md"), "utf8");
+      expect(skill.match(/^name: (.+)$/m)?.[1], `${name}/SKILL.md frontmatter name`).toBe(name);
+    }
+
+    for (const mirror of [".claude/skills", ".cursor/skills"]) {
+      const links = readdirSync(join(root, mirror)).sort();
+      expect(links, `${mirror} entries`).toEqual(skillNames);
+      for (const name of links) {
+        expect(readlinkSync(join(root, mirror, name)), `${mirror}/${name} target`).toBe(
+          `../../.agents/skills/${name}`,
+        );
+      }
+    }
+
+    const agents = readFileSync(join(root, "AGENTS.md"), "utf8");
+    const listed = agents.match(/Only (`[^`]+`(?:, `[^`]+`)*, and `[^`]+`) belong there/)?.[1];
+    expect(listed, "AGENTS.md allowed-skill list").toBeDefined();
+    expect([...listed!.matchAll(/`([^`]+)`/g)].map((m) => m[1]).sort()).toEqual(skillNames);
+    for (const name of skillNames) {
+      expect(agents).toContain(`.agents/skills/${name}/SKILL.md`);
+      expect(agents).toContain(`| \`.agents/skills/${name}/\` |`);
+    }
+
+    const prose = [
+      join(root, "AGENTS.md"),
+      join(root, "INSTALL.md"),
+      join(root, "CONTRIBUTING.md"),
+      ...walkFiles(join(root, "docs")).filter((file) => file.endsWith(".md")),
+      ...walkFiles(skillsDir).filter((file) => file.endsWith(".md")),
+    ];
+    for (const file of prose) {
+      const body = readFileSync(file, "utf8");
+      for (const match of body.matchAll(/`([a-z0-9-]+)` skill\b/g)) {
+        expect(skillNames, `${file} references skill \`${match[1]}\``).toContain(match[1]);
+      }
+      for (const match of body.matchAll(/\.agents\/skills\/([a-z0-9-]+)\//g)) {
+        expect(skillNames, `${file} links .agents/skills/${match[1]}/`).toContain(match[1]);
+      }
+    }
   });
 
   it("does not hard-code tmchow/energon in shipped skills", () => {

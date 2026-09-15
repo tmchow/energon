@@ -100,7 +100,7 @@ Do not run the full suite after every edit. CI (`.github/workflows/ci.yml`) runs
 | Change | Run |
 | --- | --- |
 | Pure helper under `src/` | `npm run test:unit -- test/unit/<name>.spec.ts` |
-| `scripts/check-pr-title.mjs`, PR template, CONTRIBUTING, `release-please.yml`, cut-release, update-from-upstream, deploy-this-energon, backup-this-energon | `npm run test:unit -- test/unit/pr-title.spec.ts test/unit/contribution-policy.spec.ts` |
+| `scripts/check-pr-title.mjs`, PR template, CONTRIBUTING, `release-please.yml`, any `.agents/skills/` name, symlink, or cross-reference | `npm run test:unit -- test/unit/pr-title.spec.ts test/unit/contribution-policy.spec.ts` |
 | `helpBody`, `llms.txt`, markdown HTML | `npm run test:unit -- test/unit/golden.spec.ts` (`UPDATE_GOLDENS=1` to regenerate; review `git diff test/golden/`) |
 | `openapi/v1.json`, a `/v1` route, or an `ApiError` code | `npm run test:unit -- test/unit/openapi-drift.spec.ts` |
 | `templates/`, `scripts/render-skill.mjs`, `instance-skill.json` | `npm run test:unit -- test/unit/skill-render.spec.ts` |

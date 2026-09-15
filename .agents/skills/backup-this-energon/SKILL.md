@@ -9,7 +9,7 @@ This skill captures **data**. Recovery also needs the configured deployment repo
 
 The long-form recovery contract and restore runbook are the checkout’s disaster-recovery / “Back up and restore D1 and R2” guide. This skill is the capture SOP. It does not walk restore.
 
-An ordinary upgrade does not require this skill. Time Travel plus “do not pave live R2” is enough for that path (`update-from-upstream`).
+An ordinary upgrade does not require this skill. Time Travel plus “do not pave live R2” is enough for that path. Use the `update-from-upstream` skill for the upgrade itself.
 
 ## This Energon
 
