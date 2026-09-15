@@ -16,7 +16,7 @@ This file is how to **change this tree**. It is not a product README and not the
 | Open a PR against `tmchow/energon` | [CONTRIBUTING.md](./CONTRIBUTING.md); fill [`.github/PULL_REQUEST_TEMPLATE.md`](./.github/PULL_REQUEST_TEMPLATE.md) |
 | Cut an upstream GitHub Release | [`.agents/skills/cut-release/SKILL.md`](./.agents/skills/cut-release/SKILL.md). A release is not a deploy. |
 | Update a deployment repository from an upstream release | [`.agents/skills/update-from-upstream/SKILL.md`](./.agents/skills/update-from-upstream/SKILL.md). Merge a published release; land on `main` only after asking if that repository auto-deploys. |
-| Deploy the code already on a deployment repository checkout (auto-deploy off, or a laptop deploy) | [`.agents/skills/deploy-this-energon/SKILL.md`](./.agents/skills/deploy-this-energon/SKILL.md). Remote migrations, `wrangler deploy`, live verification. Only on the operator's explicit request. |
+| Deploy the code already on a deployment repository checkout (auto-deploy off, or deploying from the operator's machine) | [`.agents/skills/deploy-this-energon/SKILL.md`](./.agents/skills/deploy-this-energon/SKILL.md). Remote migrations, `wrangler deploy`, live verification. Only on the operator's explicit request. |
 | Back up this Energon's data | [`.agents/skills/backup-this-energon/SKILL.md`](./.agents/skills/backup-this-energon/SKILL.md). D1 bookmark / export and R2 copy. Does not restore. |
 
 ## Hard stops

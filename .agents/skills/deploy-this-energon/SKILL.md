@@ -40,8 +40,8 @@ Follow INSTALL.md **Inspect the account and resources**: `npx wrangler whoami` m
 
 Read the actual workflows and Actions variables in the verified origin repository, as update-from-upstream does. With the stock workflow and `ENABLE_PRODUCTION_DEPLOY=true`, a push or merge to `main` is the deploy; a failed variables read is unknown, so do not treat this as off.
 
-- Deployment on, commit is on `main`: Actions already deploys this commit. Prefer letting that run finish and verifying it. Deploy from the laptop only if the operator wants to bypass or repair a failed run, and say so in the report.
-- Deployment on, commit is not on `main`: a laptop deploy leaves the live Worker ahead of `main`, and the next merge to `main` replaces it without notice. State that consequence and continue only if the operator accepts it.
+- Deployment on, commit is on `main`: Actions already deploys this commit. Prefer letting that run finish and verifying it. Deploy from the operator's machine only if they want to bypass or repair a failed run, and say so in the report.
+- Deployment on, commit is not on `main`: deploying from the operator's machine leaves the live Worker ahead of `main`, and the next merge to `main` replaces it without notice. State that consequence and continue only if the operator accepts it.
 - Deployment off or unknown: this skill is the deploy path. Enabling the variable later does not redeploy this commit.
 
 ## Check, bookmark, migrate, deploy

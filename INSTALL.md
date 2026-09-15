@@ -210,7 +210,7 @@ The Worker is already live from step 6. Later code changes can use the same lapt
 3. Set the repository variable `ENABLE_PRODUCTION_DEPLOY=true`.
 4. A later push or merge to `main` then runs tests, remote D1 migrations, and `wrangler deploy`. Pull requests never deploy.
 
-Keep the variable false to keep Actions as tests only. To catch up to a published upstream release after that, use [`.agents/skills/update-from-upstream/SKILL.md`](.agents/skills/update-from-upstream/SKILL.md) when this checkout has it. To deploy accepted code from a laptop while the variable is false, use [`.agents/skills/deploy-this-energon/SKILL.md`](.agents/skills/deploy-this-energon/SKILL.md).
+Keep the variable false to keep Actions as tests only. To catch up to a published upstream release after that, use [`.agents/skills/update-from-upstream/SKILL.md`](.agents/skills/update-from-upstream/SKILL.md) when this checkout has it. To deploy code from your machine while the variable is false, use [`.agents/skills/deploy-this-energon/SKILL.md`](.agents/skills/deploy-this-energon/SKILL.md).
 
 ---
 
