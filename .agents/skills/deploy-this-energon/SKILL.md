@@ -24,13 +24,15 @@ node scripts/deployment-repo.mjs inspect
 git status --short
 git rev-parse --abbrev-ref HEAD
 git rev-parse HEAD
+git fetch --no-tags origin main
+git merge-base --is-ancestor HEAD origin/main
 ```
 
 Continue only when the helper returns `canonical: false`. If it returns `canonical: true`, this is the public release source with nothing to deploy: stop. `isFork: false` is valid for an independent deployment repository. If inspection fails, resolve the identity or access problem; do not deploy from a checkout whose repository you cannot establish.
 
 **Stop** if `wrangler.toml` is still the unconfigured template: missing `account_id`, example origins, or a placeholder `database_id` (`00000000-0000-4000-8000-000000000001` or `PASTE_FROM_WRANGLER_D1_CREATE`). That is a first install, not a deploy; follow INSTALL.md from **Choose the installation**.
 
-Record the branch and commit you are about to deploy and whether that commit is on `main`. A dirty tree deploys uncommitted edits; report that and get the operator's confirmation before continuing with it.
+Record the branch and commit you are about to deploy and whether that commit is on `main`. On `main` means reachable from `origin/main` after that fetch, which is a zero exit from `git merge-base --is-ancestor`. A commit on local `main` that is not pushed, or on any branch that has not landed, is not on `main`, and Actions has never seen it. A dirty tree deploys uncommitted edits; report that and get the operator's confirmation before continuing with it.
 
 ## Match the account and resources
 
@@ -38,10 +40,10 @@ Follow INSTALL.md **Inspect the account and resources**: `npx wrangler whoami` m
 
 ## Automatic deployment
 
-Read the actual workflows and Actions variables in the verified origin repository, as update-from-upstream does. With the stock workflow and `ENABLE_PRODUCTION_DEPLOY=true`, a push or merge to `main` is the deploy; a failed variables read is unknown, so do not treat this as off.
+Read the actual workflows and Actions variables in the verified origin repository, as update-from-upstream does. With the stock workflow and `ENABLE_PRODUCTION_DEPLOY=true`, a push or merge to `main` is the deploy. A repository-level `ENABLE_PRODUCTION_DEPLOY=false` is off. A missing repository-level variable does not rule out an inherited organization variable; check it with `gh variable list --org <org>` or the organization settings, and treat deployment as unknown until that value is resolved. A failed variables read is unknown; do not treat this as off.
 
-- Deployment on, commit is on `main`: Actions already deploys this commit. Prefer letting that run finish and verifying it. Deploy from the operator's machine only if they want to bypass or repair a failed run, and say so in the report.
-- Deployment on, commit is not on `main`: deploying from the operator's machine leaves the live Worker ahead of `main`, and the next merge to `main` replaces it without notice. State that consequence and continue only if the operator accepts it.
+- Deployment on, commit is on `origin/main`: Actions already deploys this commit. Prefer letting that run finish and verifying it. Deploy from the operator's machine only if they want to bypass or repair a failed run, and say so in the report.
+- Deployment on, commit is not on `origin/main`: deploying from the operator's machine leaves the live Worker ahead of `origin/main`, and the next merge to `main` replaces it without notice. State that consequence and continue only if the operator accepts it.
 - Deployment off or unknown: this skill is the deploy path. Enabling the variable later does not redeploy this commit.
 
 ## Check, bookmark, migrate, deploy
