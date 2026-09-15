@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { appFooter, documentShell, instanceFooter } from "../src/chrome";
+import { bakedProductVersion } from "../src/product-version";
 import { uiPage } from "../src/ui-render";
 import type { UpstreamSnapshot } from "../src/page-data";
 import { UPSTREAM_DOCS_UPDATE } from "../src/upstream";
@@ -386,12 +387,12 @@ describe("signed-in pages", () => {
     expect(bootstrap(html).data.health.quota.limit_bytes).toBe(20 * 1024 * 1024 * 1024);
     expect(bootstrap(html).data.health.quota.used_bytes).toBeGreaterThanOrEqual(0);
     expect(bootstrap(html).data.health.expired_awaiting_purge).toBeGreaterThanOrEqual(0);
-    expect(html).toContain("This Energon · 1.0.0");
+    expect(html).toContain(`This Energon · ${bakedProductVersion()}`);
     expect(html).not.toContain('id="admin-update"');
     expect(html).not.toContain('href="/admin#admin-update"');
     expect(html).not.toContain("Could not check for a newer release.");
     expect(bootstrap(html).upstream.status).toBe("current");
-    expect(bootstrap(html).upstream.this_version).toBe("1.0.0");
+    expect(bootstrap(html).upstream.this_version).toBe(bakedProductVersion());
     assertDomBindings(html);
   });
 

@@ -21,6 +21,17 @@ const release = (over: Partial<GithubRelease> = {}): GithubRelease => ({
   ...over,
 });
 
+function laterThanBaked(over: Partial<GithubRelease> = {}): GithubRelease {
+  const [major] = parseSemver(bakedProductVersion() ?? "0.0.0") ?? [0, 0, 0];
+  const tag = `v${major + 1}.0.0`;
+  return {
+    tag_name: tag,
+    html_url: `https://example.test/releases/${tag}`,
+    published_at: "2026-09-14T00:00:00.000Z",
+    ...over,
+  };
+}
+
 describe("parseSemver", () => {
   it("reads v-prefixed and plain triples", () => {
     expect(parseSemver("1.0.0")).toEqual([1, 0, 0]);
@@ -102,11 +113,12 @@ describe("snapshots", () => {
 
 describe("loadUpstream", () => {
   it("uses UPSTREAM_RELEASE_JSON when set", async () => {
-    const env = { UPSTREAM_RELEASE_JSON: JSON.stringify(release()) } as Env;
+    const latest = laterThanBaked();
+    const env = { UPSTREAM_RELEASE_JSON: JSON.stringify(latest) } as Env;
     const snap = await loadUpstream(env);
     expect(snap.status).toBe("update");
     expect(snap.this_version).toBe(bakedProductVersion());
-    expect(snap.latest_tag).toBe("v1.1.0");
+    expect(snap.latest_tag).toBe(latest.tag_name);
   });
 
   it("fails closed on invalid fixture JSON", async () => {
@@ -117,7 +129,7 @@ describe("loadUpstream", () => {
 
 describe("pageChrome", () => {
   it("loads upstream only for operators", async () => {
-    const env = { FOOTER_TEXT: "cube", UPSTREAM_RELEASE_JSON: JSON.stringify(release()) } as Env;
+    const env = { FOOTER_TEXT: "cube", UPSTREAM_RELEASE_JSON: JSON.stringify(laterThanBaked()) } as Env;
     expect(await pageChrome(env, false)).toEqual({ footer: "cube", upstream: undefined });
     const admin = await pageChrome(env, true);
     expect(admin.footer).toBe("cube");
@@ -127,6 +139,6 @@ describe("pageChrome", () => {
 
 describe("bakedProductVersion", () => {
   it("reads the repo version.txt triple", () => {
-    expect(bakedProductVersion()).toBe("1.0.0");
+    expect(bakedProductVersion()).toMatch(/^\d+\.\d+\.\d+$/);
   });
 });

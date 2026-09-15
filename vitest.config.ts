@@ -1,6 +1,9 @@
+import { readFileSync } from "node:fs";
 import { buildUI } from "./scripts/build-ui.mjs";
 import { cloudflareTest } from "@cloudflare/vitest-plugin";
 import { defineConfig } from "vitest/config";
+
+const bakedVersion = readFileSync(new URL("./version.txt", import.meta.url), "utf8").trim();
 
 await buildUI();
 
@@ -29,8 +32,8 @@ export default defineConfig({
           ADMIN_EMAILS: "admin@esperlabs.app,tok-ops@esperlabs.app",
           // Same tag as version.txt so worker pages stay current and never hit GitHub.
           UPSTREAM_RELEASE_JSON: JSON.stringify({
-            tag_name: "v1.0.0",
-            html_url: "https://example.test/releases/v1.0.0",
+            tag_name: `v${bakedVersion}`,
+            html_url: `https://example.test/releases/v${bakedVersion}`,
             published_at: "2026-09-14T00:00:00.000Z",
           }),
         },
