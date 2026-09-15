@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/tmchow/energon/compare/v1.5.0...v1.6.0) (2026-09-15)
+
+
+### Features
+
+* **connect:** confirm the agent code from the verification link ([#123](https://github.com/tmchow/energon/issues/123)) ([b991ce2](https://github.com/tmchow/energon/commit/b991ce2b41c25eccccd2ca85ee66700a482a2a34))
+
 ## [1.5.0](https://github.com/tmchow/energon/compare/v1.4.0...v1.5.0) (2026-09-15)
 
 
