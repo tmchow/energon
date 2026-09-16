@@ -286,7 +286,7 @@ body.page-markdown .en-md .mermaid .labelBkg {
   padding: 0;
 }
 body.page-markdown .en-md .mermaid span.edgeLabel p {
-  background-color: var(--bg-surface);
+  background-color: light-dark(#ffffff, #2a2548);
   color: var(--fg-1);
   border: 1px solid var(--fg-3);
   border-radius: var(--radius-1);

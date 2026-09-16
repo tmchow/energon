@@ -207,7 +207,7 @@ const MERMAID_THEME_DARK = mermaidTheme({
   border: "#9a93b3",
   borderSoft: "#9a93b3",
   line: "#c8c0de",
-  edgeLabel: "#151a2c",
+  edgeLabel: "#2a2548",
   noteBkg: "#2a2418",
   noteText: "#f3d2a8",
   noteBorder: "#7a6432",

@@ -59,6 +59,7 @@ describe("markdown page shell", () => {
     expect(html).toContain('"primaryTextColor":"#ece8f8"');
     expect(html).toContain('"lineColor":"#c8c0de"');
     expect(html).toContain('"clusterBkg":"#151a2c"');
+    expect(html).toContain('"edgeLabelBackground":"#2a2548"');
     expect(html).toContain('"darkMode":true');
     expect(html).toContain('"useGradient":false');
     expect(html).toContain("g.edgeLabel rect{display:none");
