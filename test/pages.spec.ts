@@ -66,7 +66,10 @@ describe("signed-in pages", () => {
     expect(html).toContain("Bytes, or a size like 500kb, 1mb, or 2gb.");
     expect(html).toContain('class="en-seg-pill"');
     expect(html).toContain('aria-label="Expiry filter"');
-    expect(html).toContain("Never expires");
+    expect(html).toContain(">Any<");
+    expect(html).toContain(">Never<");
+    expect(html).toContain(">24h<");
+    expect(html).toContain(">7d<");
     expect(html).not.toContain('id="catalog-last-read"');
     expect(html).not.toContain("Last read before");
     expect(html).toContain("Reads lag up to about a day.");
@@ -192,8 +195,44 @@ describe("signed-in pages", () => {
     const boot = bootstrap(html);
     expect(boot.data.query).toMatchObject({ sort: "size", expires: { kind: "never" } });
     expect(html).toContain('id="catalog-expires"');
-    expect(html).toContain('aria-pressed="true" class="on">Never expires</button>');
+    expect(html).toContain('aria-pressed="true" class="on">Never</button>');
     expect(html).toContain('<option value="size" selected="">Size</option>');
+  });
+
+  it("hydrates expires_within presets and urgency badges on Expires", async () => {
+    const email = "svelte-expiry@esperlabs.app";
+    const token = await mint("svelte-expiry", email);
+    await json("/v1/files", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "X-Filename": "soon-12h.md", "X-Energon-TTL": "12h", "content-type": "text/markdown" },
+      body: "# soon",
+    });
+    await json("/v1/files", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "X-Filename": "week-3d.md", "X-Energon-TTL": "3d", "content-type": "text/markdown" },
+      body: "# week",
+    });
+    await json("/v1/files", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "X-Filename": "later-14d.md", "X-Energon-TTL": "14d", "content-type": "text/markdown" },
+      body: "# later",
+    });
+    const html = await (await req("/?q=soon-12h&expires_within=24h", { headers: access(email) })).text();
+    const boot = bootstrap(html);
+    expect(boot.data.query).toMatchObject({ q: "soon-12h", expires: { kind: "within", window: "24h" } });
+    expect(boot.data.items).toHaveLength(1);
+    expect(html).toContain('aria-pressed="true" class="on">24h</button>');
+    expect(html).toContain("en-badge--danger");
+    expect(html).toContain("soon-12h.md");
+    const week = await (await req("/?q=week-3d", { headers: access(email) })).text();
+    expect(week).toContain("en-badge--warn");
+    expect(week).toContain("week-3d.md");
+    const later = await (await req("/?q=later-14d", { headers: access(email) })).text();
+    expect(later).toContain("en-badge--ttl");
+    expect(later).toContain("later-14d.md");
+    const seven = await (await req("/?expires_within=7d", { headers: access(email) })).text();
+    expect(bootstrap(seven).data.query).toMatchObject({ expires: { kind: "within", window: "7d" } });
+    expect(seven).toContain('aria-pressed="true" class="on">7d</button>');
   });
 
   it("hydrates last-read sort and changed-since-read from the hub URL", async () => {

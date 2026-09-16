@@ -66,6 +66,7 @@
 .en-filters-chevron { transition: transform var(--dur-hover) var(--ease-out); }
 .en-filters-chevron--open { transform: rotate(180deg); }
 .en-catalog-kind { flex: none; color: var(--fg-3); position: relative; }
+#catalog .en-badge time { text-transform: none; letter-spacing: 0; font-family: var(--font-mono); font-weight: var(--weight-medium); }
 #catalog .en-table-wrap { overflow: visible; }
 [data-tip] { position: relative; }
 [data-tip]::after { content: attr(data-tip); position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translate(-50%, 3px) scale(0.98); padding: 4px 8px; border-radius: var(--radius-1); border: 1px solid var(--border-2); background: var(--bg-raised); color: var(--fg-1); font: 500 12px/1.2 var(--font-sans); white-space: nowrap; pointer-events: none; opacity: 0; visibility: hidden; z-index: 30; transition: none; }

@@ -1716,6 +1716,22 @@ describe("Energon", () => {
       expect(notYet.body.files).toEqual([]);
       expect(notYet.body.total).toBe(0);
 
+      const withinDay = await json("/v1/files?expires_within=24h", { headers: auth(token) });
+      expect(withinDay.status).toBe(200);
+      expect(names(withinDay.body.files)).toEqual(["mid.txt"]);
+      const withinWeek = await json("/v1/files?expires_within=7d", { headers: auth(token) });
+      expect(names(withinWeek.body.files)).toEqual(["mid.txt"]);
+      const malformedWithin = await json("/v1/files?expires_within=soon", { headers: auth(token) });
+      expect(malformedWithin.status).toBe(200);
+      expect(names(malformedWithin.body.files).sort()).toEqual(["huge.txt", "mid.txt", "tiny.txt"]);
+      const neverAndWithin = await json("/v1/files?expires=never&expires_within=24h", { headers: auth(token) });
+      expect(names(neverAndWithin.body.files).sort()).toEqual(["huge.txt", "mid.txt", "tiny.txt"]);
+      const beforeWins = await json(
+        `/v1/files?expires_within=7d&expires_before=${encodeURIComponent(new Date(Date.now() + 3600 * 1000).toISOString())}`,
+        { headers: auth(token) },
+      );
+      expect(beforeWins.body.files).toEqual([]);
+
       const big = await json("/v1/files?min_size=1kb", { headers: auth(token) });
       expect(names(big.body.files).sort()).toEqual(["huge.txt", "mid.txt"]);
       expect(big.body.total).toBe(2);
@@ -1791,6 +1807,25 @@ describe("Energon", () => {
       const filesOnly = await json("/account/data?min_size=1kb&sort=size&kind=files", { headers: { "Cf-Access-Authenticated-User-Email": email } });
       expect(filesOnly.body.total).toBe(2);
       expect(names(filesOnly.body.items)).toEqual(["huge.txt", "mid.txt"]);
+    });
+
+    it("lists files expiring inside 24h via expires_within", async () => {
+      const email = "clean-within@esperlabs.app";
+      const token = await mint("clean-within", email);
+      await upload(token, "keep.txt", "a");
+      await upload(token, "soon.txt", "s", { "X-Energon-TTL": "12h" });
+      await upload(token, "week.txt", "w".repeat(20), { "X-Energon-TTL": "3d" });
+      const day = await json("/v1/files?expires_within=24h", { headers: auth(token) });
+      expect(day.status).toBe(200);
+      expect(names(day.body.files)).toEqual(["soon.txt"]);
+      const week = await json("/v1/files?expires_within=7d", { headers: auth(token) });
+      expect(names(week.body.files).sort()).toEqual(["soon.txt", "week.txt"]);
+      const hub = await json("/account/data?expires_within=24h&kind=files", { headers: access(email) });
+      expect(hub.status).toBe(200);
+      expect(names(hub.body.items)).toEqual(["soon.txt"]);
+      const sites = await json("/v1/sites?expires_within=24h", { headers: auth(token) });
+      expect(sites.status).toBe(200);
+      expect(sites.body.sites).toEqual([]);
     });
 
     it("pages the hub catalog across sites and files with one cursor", async () => {
@@ -2045,6 +2080,8 @@ describe("Energon", () => {
         [{ target: { min_size: "lots" }, action: "delete" }, "bad_query"],
         [{ target: { expires: "soon", updated_before: 12 }, action: "delete" }, "bad_query"],
         [{ target: { expires: "never", expires_before: "2026-01-01" }, action: "delete" }, "bad_query"],
+        [{ target: { expires: "never", expires_within: "24h" }, action: "delete" }, "bad_query"],
+        [{ target: { expires_within: "soon" }, action: "delete" }, "bad_query"],
         [{ target: {}, action: "delete", ttl: "1d" }, "bad_action"],
         [{ target: {}, action: "set_ttl", ttl: "forever-ish" }, "bad_ttl"],
         [{ target: {} }, "bad_action"],

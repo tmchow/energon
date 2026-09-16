@@ -22,7 +22,7 @@ export type HubQuery = {
   scope: string;
   sort: string;
   kind?: 'sites' | 'files';
-  expires?: { kind: 'never' } | { kind: 'before'; at: string };
+  expires?: { kind: 'never' } | { kind: 'before'; at: string } | { kind: 'within'; window: '24h' | '7d' };
   updatedBefore?: string;
   minSize?: number;
   changedSinceRead?: boolean;

@@ -5,6 +5,8 @@ import {
   criteriaSql,
   decodeCursor,
   encodeCursor,
+  expiryUrgency,
+  expiresWithinBefore,
   fileCursorSql,
   involvementSql,
   likeNeedle,
@@ -80,6 +82,27 @@ describe("parseListQuery", () => {
     expect(q("").expires).toBeUndefined();
   });
 
+  it("parses expires_within=24h|7d and ignores malformed windows", () => {
+    expect(q("?expires_within=24h").expires).toEqual({ kind: "within", window: "24h" });
+    expect(q("?expires_within=7d").expires).toEqual({ kind: "within", window: "7d" });
+    expect(q("?expires_within=24H").expires).toEqual({ kind: "within", window: "24h" });
+    expect(q("?expires_within=7D").expires).toEqual({ kind: "within", window: "7d" });
+    expect(q("?expires_within=1d").expires).toBeUndefined();
+    expect(q("?expires_within=soon").expires).toBeUndefined();
+    expect(q("?expires_within=30m").expires).toBeUndefined();
+  });
+
+  it("prefers expires_before over expires_within", () => {
+    expect(q("?expires_within=24h&expires_before=2026-01-01").expires).toEqual({
+      kind: "before",
+      at: "2026-01-01T00:00:00.000Z",
+    });
+  });
+
+  it("omits both expiry filters when expires=never is paired with expires_within", () => {
+    expect(q("?expires=never&expires_within=24h").expires).toBeUndefined();
+  });
+
   it("parses updated_before and min_size (byte sizes via parseByteSize)", () => {
     expect(q("?updated_before=2026-03-01T00:00:00Z").updatedBefore).toBe("2026-03-01T00:00:00.000Z");
     expect(q("?min_size=500mb").minSize).toBe(500 * 1024 * 1024);
@@ -96,6 +119,7 @@ describe("parseListQuery", () => {
     expect(bad.minSize).toBeUndefined();
     expect(bad.sort).toBe("name");
     expect(q("?expires_before=not-a-date").expires).toBeUndefined();
+    expect(q("?expires_within=soon").expires).toBeUndefined();
     expect(q("?min_size=0").minSize).toBeUndefined();
     expect(q("?min_size=-5").minSize).toBeUndefined();
   });
@@ -153,6 +177,15 @@ describe("parseListQuery", () => {
     expect(before.get("expires")).toBeNull();
     expect(before.get("expires_before")).toBe("2026-06-01T00:00:00.000Z");
     expect(before.get("sort")).toBe("age");
+    const within = catalogSearchParams({
+      q: "",
+      scope: "involved",
+      sort: "updated",
+      expires: { kind: "within", window: "24h" },
+    });
+    expect(within.get("expires")).toBeNull();
+    expect(within.get("expires_before")).toBeNull();
+    expect(within.get("expires_within")).toBe("24h");
   });
 
   it("omits both expiry filters when expires and expires_before are both present", () => {
@@ -185,6 +218,19 @@ describe("criteriaFrom", () => {
     const parsed = criteriaFrom({ expires: "never", expires_before: "2026-01-01" });
     expect(parsed.criteria.expires).toBeUndefined();
     expect(parsed.malformed).toEqual(["expires", "expires_before"]);
+  });
+
+  it("flags expires=never paired with expires_within", () => {
+    const parsed = criteriaFrom({ expires: "never", expires_within: "24h" });
+    expect(parsed.criteria.expires).toBeUndefined();
+    expect(parsed.malformed).toEqual(["expires", "expires_within"]);
+  });
+
+  it("reports malformed expires_within so cleanup can 400", () => {
+    expect(criteriaFrom({ expires_within: "soon" })).toEqual({
+      criteria: { scope: "involved", q: "" },
+      malformed: ["expires_within"],
+    });
   });
 });
 
@@ -224,6 +270,16 @@ describe("criteriaSql", () => {
     expect(sql.whereBinds).toEqual([ME, ME, "2026-06-01T00:00:00.000Z"]);
     expect(sql.having).toBe("COALESCE(SUM(f.size), 0) >= ?");
     expect(sql.havingBinds).toEqual([500 * 1024 * 1024]);
+  });
+
+  it("expands expires_within to expires_before at request time", () => {
+    const now = Date.parse("2026-09-16T00:00:00.000Z");
+    const day = criteriaSql("files", q("?expires_within=24h"), ME, undefined, { now });
+    expect(day.where).toBe("(created_by = ? OR COALESCE(last_written_by, created_by) = ?) AND expires_at < ?");
+    expect(day.whereBinds).toEqual([ME, ME, "2026-09-17T00:00:00.000Z"]);
+    expect(expiresWithinBefore("24h", now)).toBe("2026-09-17T00:00:00.000Z");
+    const week = criteriaSql("files", q("?expires_within=7d"), ME, undefined, { now });
+    expect(week.whereBinds).toEqual([ME, ME, "2026-09-23T00:00:00.000Z"]);
   });
 
   it("filters changed_since_read with COALESCE never-read and does not bind a timestamp", () => {
@@ -394,5 +450,22 @@ describe("list helpers", () => {
   it("takePage leaves a cursor when one extra row was fetched", () => {
     expect(takePage([1, 2, 3], 2)).toEqual({ items: [1, 2], hasMore: true });
     expect(takePage([1, 2], 2)).toEqual({ items: [1, 2], hasMore: false });
+  });
+});
+
+describe("expiryUrgency", () => {
+  const now = Date.parse("2026-09-16T00:00:00.000Z");
+
+  it("uses danger within 24h, warn within 7d, and ttl otherwise", () => {
+    expect(expiryUrgency(new Date(now + 12 * 3600_000).toISOString(), now)).toBe("danger");
+    expect(expiryUrgency(new Date(now + 24 * 3600_000).toISOString(), now)).toBe("danger");
+    expect(expiryUrgency(new Date(now + 24 * 3600_000 + 1).toISOString(), now)).toBe("warn");
+    expect(expiryUrgency(new Date(now + 3 * 86400_000).toISOString(), now)).toBe("warn");
+    expect(expiryUrgency(new Date(now + 7 * 86400_000).toISOString(), now)).toBe("warn");
+    expect(expiryUrgency(new Date(now + 7 * 86400_000 + 1).toISOString(), now)).toBe("ttl");
+    expect(expiryUrgency(new Date(now + 14 * 86400_000).toISOString(), now)).toBe("ttl");
+    expect(expiryUrgency(new Date(now - 1000).toISOString(), now)).toBe("danger");
+    expect(expiryUrgency(null, now)).toBeNull();
+    expect(expiryUrgency("not-a-date", now)).toBeNull();
   });
 });

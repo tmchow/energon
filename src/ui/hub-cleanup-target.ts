@@ -2,7 +2,7 @@ export type HubCleanupFind = {
   q: string;
   scope: string;
   kind: 'all' | 'sites' | 'files';
-  expires: 'any' | 'never';
+  expires: 'any' | 'never' | '24h' | '7d';
   expiresBefore: string;
   updatedBefore: string;
   minSize: string;
@@ -19,6 +19,7 @@ export function hubCleanupTarget(pick: HubCleanupPick, find: HubCleanupFind): Re
     if (find.scope !== 'involved') target.scope = find.scope;
     if (find.kind !== 'all') target.kind = find.kind;
     if (find.expires === 'never') target.expires = 'never';
+    else if (find.expires === '24h' || find.expires === '7d') target.expires_within = find.expires;
     else if (find.expiresBefore.trim()) target.expires_before = find.expiresBefore.trim();
     if (find.updatedBefore.trim()) target.updated_before = find.updatedBefore.trim();
     if (find.minSize.trim()) target.min_size = find.minSize.trim();

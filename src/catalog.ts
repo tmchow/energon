@@ -1,4 +1,9 @@
 import { parseByteSize } from "./policy";
+import {
+  expiresWithinBefore,
+  isExpiresWithin,
+  type ExpiresWithin,
+} from "./expiry-windows";
 
 export type ListScope = "involved" | "created" | "edited";
 export type CatalogSort = "updated" | "name" | "size" | "age" | "last_read";
@@ -14,7 +19,10 @@ function lastReadExpr(col: string): string {
 export const DEFAULT_LIST_LIMIT = 25;
 export const MAX_LIST_LIMIT = 50;
 
-export type ExpiresFilter = { kind: "never" } | { kind: "before"; at: string };
+export type { ExpiresWithin, ExpiryUrgency } from "./expiry-windows";
+export { expiryUrgency, expiresWithinBefore, EXPIRES_WITHIN_MS, EXPIRES_WITHIN_WINDOWS } from "./expiry-windows";
+
+export type ExpiresFilter = { kind: "never" } | { kind: "before"; at: string } | { kind: "within"; window: ExpiresWithin };
 
 export type SelectionCriteria = {
   scope: ListScope;
@@ -48,7 +56,7 @@ export type ListPage<T> = {
   next_cursor: string | null;
 };
 
-export const CRITERIA_KEYS = ["scope", "q", "created_by", "expires", "expires_before", "updated_before", "min_size", "owner", "last_read_before"] as const;
+export const CRITERIA_KEYS = ["scope", "q", "created_by", "expires", "expires_before", "expires_within", "updated_before", "min_size", "owner", "last_read_before"] as const;
 export type CriteriaKey = (typeof CRITERIA_KEYS)[number];
 
 export type ParsedCriteria = { criteria: SelectionCriteria; malformed: CriteriaKey[] };
@@ -85,16 +93,37 @@ function timestampFrom(raw: string | undefined, key: CriteriaKey, malformed: Cri
   return iso ?? undefined;
 }
 
-function expiresFrom(neverRaw: string | undefined, beforeRaw: string | undefined, malformed: CriteriaKey[]): ExpiresFilter | undefined {
+function expiresWithinFrom(raw: string | undefined, malformed: CriteriaKey[]): ExpiresWithin | undefined {
+  if (raw === undefined) return undefined;
+  const value = raw.toLowerCase();
+  if (isExpiresWithin(value)) return value;
+  malformed.push("expires_within");
+  return undefined;
+}
+
+function expiresFrom(
+  neverRaw: string | undefined,
+  beforeRaw: string | undefined,
+  withinRaw: string | undefined,
+  malformed: CriteriaKey[],
+): ExpiresFilter | undefined {
   const never = neverRaw === undefined ? undefined : neverRaw.toLowerCase() === "never";
   if (never === false) malformed.push("expires");
   const before = timestampFrom(beforeRaw, "expires_before", malformed);
+  const within = expiresWithinFrom(withinRaw, malformed);
   if (never && before) {
     malformed.push("expires", "expires_before");
+    if (within) malformed.push("expires_within");
+    return undefined;
+  }
+  if (never && within) {
+    malformed.push("expires", "expires_within");
     return undefined;
   }
   if (never) return { kind: "never" };
-  return before ? { kind: "before", at: before } : undefined;
+  // Explicit expires_before wins over expires_within when both are present.
+  if (before) return { kind: "before", at: before };
+  return within ? { kind: "within", window: within } : undefined;
 }
 
 function sizeFrom(raw: string | undefined, malformed: CriteriaKey[]): number | undefined {
@@ -123,7 +152,7 @@ export function criteriaFrom(input: Record<string, unknown>): ParsedCriteria {
   if (createdBy) criteria.createdBy = createdBy;
   const owner = read("owner")?.toLowerCase();
   if (owner) criteria.owner = owner;
-  const expires = expiresFrom(read("expires"), read("expires_before"), malformed);
+  const expires = expiresFrom(read("expires"), read("expires_before"), read("expires_within"), malformed);
   if (expires) criteria.expires = expires;
   const updatedBefore = timestampFrom(read("updated_before"), "updated_before", malformed);
   if (updatedBefore) criteria.updatedBefore = updatedBefore;
@@ -202,6 +231,7 @@ export function catalogSearchParams(input: {
   const params = new URLSearchParams({ q: input.q.trim(), scope: input.scope, sort: input.sort });
   if (input.expires?.kind === "never") params.set("expires", "never");
   else if (input.expires?.kind === "before") params.set("expires_before", input.expires.at);
+  else if (input.expires?.kind === "within") params.set("expires_within", input.expires.window);
   if (input.updatedBefore) params.set("updated_before", input.updatedBefore);
   if (input.lastReadBefore) params.set("last_read_before", input.lastReadBefore);
   if (input.changedSinceRead) params.set("changed_since_read", "1");
@@ -301,12 +331,14 @@ const COLUMNS: Record<CatalogKind, Columns> = {
 
 export type CriteriaSql = { where: string; whereBinds: unknown[]; having: string; havingBinds: unknown[] };
 
-function expiresPredicate(col: string, filter: ExpiresFilter): { sql: string; binds: unknown[] } {
+function expiresPredicate(col: string, filter: ExpiresFilter, now: number): { sql: string; binds: unknown[] } {
   switch (filter.kind) {
     case "never":
       return { sql: `${col} IS NULL`, binds: [] };
     case "before":
       return { sql: `${col} < ?`, binds: [filter.at] };
+    case "within":
+      return { sql: `${col} < ?`, binds: [expiresWithinBefore(filter.window, now)] };
     default:
       return assertNever(filter);
   }
@@ -317,7 +349,7 @@ export function criteriaSql(
   criteria: SelectionCriteria,
   me: string,
   ownerId?: string,
-  opts?: { involve?: boolean },
+  opts?: { involve?: boolean; now?: number },
 ): CriteriaSql {
   const cols = COLUMNS[kind];
   const where: string[] = [];
@@ -343,7 +375,7 @@ export function criteriaSql(
     whereBinds.push(criteria.owner);
   }
   if (criteria.expires) {
-    const expires = expiresPredicate(cols.expires, criteria.expires);
+    const expires = expiresPredicate(cols.expires, criteria.expires, opts?.now ?? Date.now());
     where.push(expires.sql);
     whereBinds.push(...expires.binds);
   }

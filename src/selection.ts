@@ -324,7 +324,7 @@ function tooMany(matched: number, resolved?: Omit<ResolvedSelection, "matched">)
   return new ApiError(
     413,
     "cleanup_too_many",
-    `Cleanup handles at most ${CLEANUP_MAX_ITEMS} eligible objects per call. Narrow the target (q, owner, created_by, expires_before, updated_before, last_read_before, min_size, kind) or pass explicit ids, then retry.`,
+    `Cleanup handles at most ${CLEANUP_MAX_ITEMS} eligible objects per call. Narrow the target (q, owner, created_by, expires_before, expires_within, updated_before, last_read_before, min_size, kind) or pass explicit ids, then retry.`,
     extra,
   );
 }
