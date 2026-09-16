@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.7.0](https://github.com/tmchow/energon/compare/v1.6.0...v1.7.0) (2026-09-16)
+
+
+### Features
+
+* **hub:** expiring-soon presets and urgency on Expires column ([#127](https://github.com/tmchow/energon/issues/127)) ([6afab4c](https://github.com/tmchow/energon/commit/6afab4c1520147a7175b56436b3b11eee5c432e3))
+* **hub:** sort catalog by last read and filter changed since last open ([#128](https://github.com/tmchow/energon/issues/128)) ([18f409a](https://github.com/tmchow/energon/commit/18f409a1255b925b9d505497b2bf236469465810))
+
+
+### Bug Fixes
+
+* **md:** raise mermaid diagram contrast in light and dark ([#129](https://github.com/tmchow/energon/issues/129)) ([6388cff](https://github.com/tmchow/energon/commit/6388cff3daa72f7f1a7b3babe9c9465ecd2f815c))
+* **verify:** mint a matching file for hub catalog paging ([#131](https://github.com/tmchow/energon/issues/131)) ([4b05992](https://github.com/tmchow/energon/commit/4b05992b6049951c8a3c150337d1cdbca1a716ea))
+
 ## [1.6.0](https://github.com/tmchow/energon/compare/v1.5.0...v1.6.0) (2026-09-15)
 
 
