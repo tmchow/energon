@@ -33,7 +33,7 @@ describe("markdown page shell", () => {
   it("loads mermaid with a system light and dark theme", () => {
     const html = markdownPage({ title: "diagram.md", html: '<pre class="mermaid">graph LR</pre>', mermaid: true });
     expect(html).toContain('matchMedia("(prefers-color-scheme: light)")');
-    expect(html).toContain('theme: light ? "neutral" : "dark"');
+    expect(html).toContain('theme: "base"');
     expect(html).toContain('securityLevel: "strict"');
     expect(html).toContain("useMaxWidth: false");
     expect(html).toContain("startOnLoad: false");
@@ -53,8 +53,15 @@ describe("markdown page shell", () => {
     expect(mermaidRuntime).toMatch(/try \{\s*const \{ mountMarkdownExpand \} = await import\("\/static\/md-expand\.mjs"\)/);
     expect(html).toContain("xyChart: fit");
     expect(html).not.toContain("xychart: fit");
-    expect(html).toContain("scaleLabelColor");
-    expect(html).not.toContain("primaryColor:");
+    expect(html).toContain('"scaleLabelColor":"#ece8f8"');
+    expect(html).toContain('"primaryColor":"#2a2548"');
+    expect(html).toContain('"primaryColor":"#ffffff"');
+    expect(html).toContain('"primaryTextColor":"#ece8f8"');
+    expect(html).toContain('"lineColor":"#c8c0de"');
+    expect(html).toContain('"clusterBkg":"#151a2c"');
+    expect(html).toContain('"darkMode":true');
+    expect(html).toContain('"useGradient":false');
+    expect(html).toContain("g.edgeLabel rect{display:none");
   });
 
   it("loads expand without mermaid on table-only pages", () => {
@@ -82,6 +89,7 @@ describe("markdown page shell", () => {
     expect(css).toMatch(/\.en-md-page \{/);
     expect(css).toMatch(/body\.page-markdown \.en-md > :not\(\.mermaid\):not\(\.en-md-figure\) \{[\s\S]*?max-width: var\(--measure-md\)/);
     expect(css).toMatch(/--md-figure: calc\(var\(--measure-md\) \+ 6rem\)/);
+    expect(css).toMatch(/body\.page-markdown \.en-md-diagram-open \{[\s\S]*?background: light-dark\(var\(--paper-2\), var\(--ink-2\)\)/);
     expect(css).toMatch(/body\.page-markdown \.en-md-diagram-preview \{[\s\S]*?min-height: 12\.5rem/);
     expect(css).toMatch(/body\.page-markdown \.en-md-table-preview \{[\s\S]*?overflow-x: auto/);
     expect(css).toMatch(/\.en-md-expand \{/);

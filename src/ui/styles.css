@@ -275,15 +275,33 @@ body.page-markdown .en-md > .en-md-figure {
 .en-md tbody tr:last-child th, .en-md tbody tr:last-child td { border-bottom: 0; }
 .en-md code:not(pre code) { background: var(--bg-sunken); color: var(--fg-1); border-color: var(--border-1); }
 .en-md pre.mermaid { background: transparent; border: 0; color: inherit; padding: 0; box-shadow: none; }
+body.page-markdown .en-md .mermaid .nodeLabel,
+body.page-markdown .en-md .mermaid .cluster-label,
+body.page-markdown .en-md .mermaid .edgeLabel {
+  color: var(--fg-1);
+}
+body.page-markdown .en-md .mermaid .labelBkg {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+body.page-markdown .en-md .mermaid span.edgeLabel p {
+  background-color: var(--bg-surface);
+  color: var(--fg-1);
+  border: 1px solid var(--fg-3);
+  border-radius: var(--radius-1);
+  padding: 1px 6px;
+}
+body.page-markdown .en-md .mermaid span.edgeLabel:empty { display: none; }
 body.page-markdown .en-md-diagram-open {
   display: block;
   position: relative;
   width: 100%;
   margin: 0;
-  padding: 0;
-  border: 1px solid var(--border-1);
+  padding: var(--space-4);
+  border: 1px solid var(--border-2);
   border-radius: var(--radius-2);
-  background: var(--bg-sunken);
+  background: light-dark(var(--paper-2), var(--ink-2));
   color: inherit;
   font: inherit;
   text-align: left;
@@ -332,7 +350,7 @@ body.page-markdown .en-md-diagram-open--clipped .en-md-diagram-preview::after {
   position: absolute;
   inset: 0 0 0 auto;
   width: 40px;
-  background: linear-gradient(to left, var(--bg-sunken), transparent);
+  background: linear-gradient(to left, light-dark(var(--paper-2), var(--ink-2)), transparent);
   pointer-events: none;
 }
 body.page-markdown .en-md-table-preview {

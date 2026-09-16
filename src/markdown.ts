@@ -114,16 +114,119 @@ export async function respondMarkdown(
   );
 }
 
+const MERMAID_FONT = '"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif';
+
+type MermaidPalette = {
+  darkMode: boolean;
+  background: string;
+  node: string;
+  cluster: string;
+  text: string;
+  border: string;
+  borderSoft: string;
+  line: string;
+  edgeLabel: string;
+  noteBkg: string;
+  noteText: string;
+  noteBorder: string;
+};
+
+function mermaidTheme(p: MermaidPalette) {
+  return {
+    darkMode: p.darkMode,
+    background: p.background,
+    primaryColor: p.node,
+    primaryTextColor: p.text,
+    primaryBorderColor: p.border,
+    secondaryColor: p.cluster,
+    secondaryTextColor: p.text,
+    secondaryBorderColor: p.borderSoft,
+    tertiaryColor: p.cluster,
+    tertiaryTextColor: p.text,
+    tertiaryBorderColor: p.borderSoft,
+    lineColor: p.line,
+    textColor: p.text,
+    mainBkg: p.node,
+    nodeBkg: p.node,
+    nodeBorder: p.border,
+    clusterBkg: p.cluster,
+    clusterBorder: p.border,
+    titleColor: p.text,
+    edgeLabelBackground: p.edgeLabel,
+    nodeTextColor: p.text,
+    actorBkg: p.node,
+    actorBorder: p.border,
+    actorTextColor: p.text,
+    actorLineColor: p.line,
+    signalColor: p.line,
+    signalTextColor: p.text,
+    labelBoxBkgColor: p.node,
+    labelBoxBorderColor: p.border,
+    labelTextColor: p.text,
+    labelBackground: p.edgeLabel,
+    arrowheadColor: p.line,
+    noteBkgColor: p.noteBkg,
+    noteTextColor: p.noteText,
+    noteBorderColor: p.noteBorder,
+    scaleLabelColor: p.text,
+    fontFamily: MERMAID_FONT,
+    useGradient: false,
+    dropShadow: "none",
+  };
+}
+
+function mermaidThemeCss(theme: { edgeLabelBackground: string; textColor: string; nodeBorder: string }): string {
+  const bg = theme.edgeLabelBackground;
+  const fg = theme.textColor;
+  const bd = theme.nodeBorder;
+  return `.labelBkg{background:transparent;border:0;padding:0}span.edgeLabel p{background-color:${bg};color:${fg};border:1px solid ${bd};border-radius:4px;padding:1px 6px}span.edgeLabel:empty{display:none}g.edgeLabel rect{display:none}`;
+}
+
+// Mermaid bakes fills at initialize and cannot read CSS variables. Hex matches
+// the design ramp except node/note fills that need extra elevation on dark.
+const MERMAID_THEME_LIGHT = mermaidTheme({
+  darkMode: false,
+  background: "#f6f4fb",
+  node: "#ffffff",
+  cluster: "#d6d0e8",
+  text: "#14111f",
+  border: "#6b6486",
+  borderSoft: "#8c85a6",
+  line: "#3a3452",
+  edgeLabel: "#ffffff",
+  noteBkg: "#fff4d6",
+  noteText: "#14111f",
+  noteBorder: "#ecd08a",
+});
+const MERMAID_THEME_DARK = mermaidTheme({
+  darkMode: true,
+  background: "#0d1220",
+  node: "#2a2548",
+  cluster: "#151a2c",
+  text: "#ece8f8",
+  border: "#9a93b3",
+  borderSoft: "#9a93b3",
+  line: "#c8c0de",
+  edgeLabel: "#151a2c",
+  noteBkg: "#2a2418",
+  noteText: "#f3d2a8",
+  noteBorder: "#7a6432",
+});
+const MERMAID_THEME_LIGHT_JSON = JSON.stringify(MERMAID_THEME_LIGHT);
+const MERMAID_THEME_DARK_JSON = JSON.stringify(MERMAID_THEME_DARK);
+const MERMAID_THEME_LIGHT_CSS_JSON = JSON.stringify(mermaidThemeCss(MERMAID_THEME_LIGHT));
+const MERMAID_THEME_DARK_CSS_JSON = JSON.stringify(mermaidThemeCss(MERMAID_THEME_DARK));
+
 // Run mermaid before loading expand. A failed expand import must not leave
 // fences as source. Mount after run so every SVG is wrapped, not only the first.
-function mermaidRuntimeHead(): string {
-  return `<script type="module">
+const MERMAID_RUNTIME_HEAD = `<script type="module">
 import mermaid from "${MERMAID_SCRIPT_PATH}";
 const light = matchMedia("(prefers-color-scheme: light)").matches;
 const fit = { useMaxWidth: false };
+const theme = light ? ${MERMAID_THEME_LIGHT_JSON} : ${MERMAID_THEME_DARK_JSON};
 mermaid.initialize({
   startOnLoad: false,
-  theme: light ? "neutral" : "dark",
+  theme: "base",
   securityLevel: "strict",
   flowchart: fit,
   sequence: fit,
@@ -147,10 +250,8 @@ mermaid.initialize({
   radar: fit,
   treemap: fit,
   xyChart: fit,
-  themeVariables: {
-    background: light ? "#f6f4fb" : "#070814",
-    scaleLabelColor: light ? "#14111f" : "#ece8f8",
-  },
+  themeVariables: theme,
+  themeCSS: light ? ${MERMAID_THEME_LIGHT_CSS_JSON} : ${MERMAID_THEME_DARK_CSS_JSON},
 });
 try {
   await mermaid.run({ querySelector: ".en-md pre.mermaid" });
@@ -164,6 +265,9 @@ try {
   /* diagrams stay as inline SVG without the overlay */
 }
 </script>`;
+
+function mermaidRuntimeHead(): string {
+  return MERMAID_RUNTIME_HEAD;
 }
 
 function expandHead(): string {
