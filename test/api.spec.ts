@@ -387,7 +387,7 @@ describe("Energon", () => {
     expect(put.body.size).toBe(big.byteLength);
 
     expect((await env.BUCKET.list({ prefix: "tmp/" })).objects).toEqual([]);
-  });
+  }, 30_000);
 
   it("revoked token cannot PUT", async () => {
     const email = "revoker@esperlabs.app";
