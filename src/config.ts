@@ -2,7 +2,12 @@ export const PRODUCT = "Energon";
 export const DEFAULT_PUBLIC_ORIGIN = "https://energon.example.com";
 export const TOKEN_PREFIX = "ee_live_";
 export const ENV_TOKEN = "ENERGON_TOKEN";
-export const MAX_FILE_BYTES = 25 * 1024 * 1024;
+export const MAX_FILE_BYTES = 100 * 1024 * 1024;
+/** Zips unpack and pack in memory, so their cap stays well under the Worker's 128 MB isolate limit. */
+export const MAX_ZIP_BYTES = 25 * 1024 * 1024;
+/** Bodies and rollback snapshots up to this size stay in memory; larger ones are staged under TMP_PREFIX in R2. */
+export const IN_MEMORY_BYTES = 25 * 1024 * 1024;
+export const TMP_PREFIX = "tmp/";
 export const MAX_PLATFORM_BYTES = 20 * 1024 * 1024 * 1024;
 export const MAX_IMPORT_FILES = 200;
 export const TOKEN_SECRET_LEN = 32;
@@ -26,6 +31,10 @@ export const SLUG_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 
 export function siteKey(handle: string, id: string, path: string): string {
   return `sites/${handle}/${id}/${path}`;
+}
+
+export function tmpKey(kind: "uploads" | "snapshots"): string {
+  return `${TMP_PREFIX}${kind}/${crypto.randomUUID()}`;
 }
 
 export function fileKey(id: string, filename: string): string {

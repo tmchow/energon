@@ -43,6 +43,7 @@ import {
   putSiteFile,
   serveSite,
 } from "./sites";
+import { sweepStaleTmp, withUpload } from "./upload";
 import { isSiteId, sitePublicUrl } from "./urls";
 import { dispatchV1 } from "./v1-routes";
 import type { Env } from "./types";
@@ -74,6 +75,7 @@ export default {
     await remapLegacySiteR2(env, ctx);
     await sweepExpired(env, ctx);
     await purgeConnections(env);
+    await sweepStaleTmp(env.BUCKET);
   },
 };
 
@@ -306,23 +308,22 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   const accountPut = path.match(/^\/account\/sites\/([^/]+)\/files\/(.+)$/);
   if (accountPut && method === "PUT") {
     const actor = await requireHuman(request, env, ctx);
-    const bytes = await readBodyCapped(request, instancePolicy(env).fileBytes, publicOrigin(env));
-    const result = await putSiteFile(
+    const result = await withUpload(request, env.BUCKET, instancePolicy(env).fileBytes, publicOrigin(env), (upload) => putSiteFile(
       env,
       ctx,
       actor,
       decodeURIComponent(accountPut[1]),
       accountPut[2],
-      bytes,
+      upload,
       request.headers.get("content-type"),
-    );
+    ));
     return json({ url: result.url, api_url: result.api_url, path: result.path, size: result.size }, result.created ? 201 : 200);
   }
 
   const accountImport = path.match(/^\/account\/sites\/([^/]+)\/import$/);
   if (accountImport && method === "POST") {
     const actor = await requireHuman(request, env, ctx);
-    const bytes = await readBodyCapped(request, instancePolicy(env).fileBytes, publicOrigin(env));
+    const bytes = await readBodyCapped(request, instancePolicy(env).zipBytes, publicOrigin(env));
     const result = await importSiteZip(env, ctx, actor, decodeURIComponent(accountImport[1]), bytes);
     return json(result);
   }

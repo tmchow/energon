@@ -35,7 +35,7 @@ import {
   assertStorageRoom,
   basename,
   contentOrigin,
-  readBodyCapped,
+  discardR2Snapshots,
   releaseStorage,
   restoreR2Object,
   snapshotR2Object,
@@ -46,7 +46,21 @@ import { contentTypeFor } from "./mime";
 import { instancePolicy } from "./policy";
 import { assertFilePath, assertSlug, fileCount, getSiteById, siteFileUpsert } from "./sites";
 import type { Env, SiteRow, WriteAuthority } from "./types";
+import { putUpload, withUpload, type Upload } from "./upload";
 import { filePublicUrl, isFileId, isSiteId, sitePublicUrl, urlFilename } from "./urls";
+
+type GuestLooseRow = {
+  id: string;
+  handle: string | null;
+  filename: string;
+  size: number;
+  content_type: string;
+  expires_at: string | null;
+  created_by: string;
+  last_written_by: string | null;
+  updated_at: string | null;
+  write_password_hash: string | null;
+};
 
 const FORBIDDEN_PUT_HEADERS = [
   "x-filename",
@@ -116,18 +130,7 @@ async function guestLoose(
      FROM loose_files WHERE id = ?`,
   )
     .bind(target.id)
-    .first<{
-      id: string;
-      handle: string | null;
-      filename: string;
-      size: number;
-      content_type: string;
-      expires_at: string | null;
-      created_by: string;
-      last_written_by: string | null;
-      updated_at: string | null;
-      write_password_hash: string | null;
-    }>();
+    .first<GuestLooseRow>();
   if (!row || (row.handle && row.handle !== target.handle)) throw notFoundFile();
   if (isPurgeClaimed(row.last_written_by) || isExpired(row.expires_at)) throw expiredError("file");
 
@@ -148,9 +151,22 @@ async function guestLoose(
   }
   if (filenameSeg !== urlFilename(row.filename)) throw notFoundFile();
 
+  return withUpload(request, env.BUCKET, instancePolicy(env).fileBytes, contentOrigin(env), (upload) =>
+    guestPutLoose(env, ctx, request, target, row, authority, objectPath, upload));
+}
+
+async function guestPutLoose(
+  env: Env,
+  ctx: ExecutionContext,
+  request: Request,
+  target: LooseTarget,
+  row: GuestLooseRow,
+  authority: WriteAuthority,
+  objectPath: string,
+  upload: Upload,
+): Promise<Response> {
   const policy = instancePolicy(env);
-  const bytes = await readBodyCapped(request, policy.fileBytes, contentOrigin(env));
-  if (bytes.byteLength > policy.fileBytes) throw tooLarge(bytes.byteLength, "", policy.fileBytes);
+  if (upload.size > policy.fileBytes) throw tooLarge(upload.size, "", policy.fileBytes);
 
   if (isWriteClaimed(row.last_written_by) && !isStaleClaim(row.updated_at)) {
     throw new ApiError(409, "file_busy", "Another write is in progress; retry this replacement.");
@@ -179,16 +195,16 @@ async function guestLoose(
   let wroteObject = false;
   const ts = new Date().toISOString();
   try {
-    reserved = await assertStorageRoom(env.DB, bytes.byteLength, row.size, policy.platformBytes);
+    reserved = await assertStorageRoom(env.DB, upload.size, row.size, policy.platformBytes);
     previousState = await snapshotR2Object(env.BUCKET, key);
-    await env.BUCKET.put(key, bytes, { httpMetadata: { contentType: row.content_type } });
+    await putUpload(env.BUCKET, key, upload, { httpMetadata: { contentType: row.content_type } });
     wroteObject = true;
     const updated = await env.DB.prepare(
       `UPDATE loose_files
        SET size = ?, updated_at = ?, written_via = ?
        WHERE id = ? AND last_written_by = ? AND write_password_hash = ?`,
     )
-      .bind(bytes.byteLength, ts, WRITTEN_VIA_WRITE_PASSWORD, row.id, claim.token, authority.hash)
+      .bind(upload.size, ts, WRITTEN_VIA_WRITE_PASSWORD, row.id, claim.token, authority.hash)
       .run();
     if (!d1Changed(updated)) {
       throw new ApiError(409, "file_write_lost", "The file changed during replacement; retry.");
@@ -201,8 +217,10 @@ async function guestLoose(
       await releaseStorage(env.DB, reserved);
     }
     throw err;
+  } finally {
+    await discardR2Snapshots(env.BUCKET, [previousState]);
   }
-  await releaseStorage(env.DB, row.size - bytes.byteLength);
+  await releaseStorage(env.DB, row.size - upload.size);
   await env.DB.prepare(`UPDATE loose_files SET last_written_by = ? WHERE id = ? AND last_written_by = ?`)
     .bind(claim.restoreWriter, row.id, claim.token)
     .run()
@@ -216,7 +234,7 @@ async function guestLoose(
     {
       url: filePublicUrl(env, handle, row.id, row.filename),
       filename: row.filename,
-      size: bytes.byteLength,
+      size: upload.size,
       content_type: row.content_type,
     },
     200,
@@ -272,6 +290,8 @@ async function guestSite(
   return guestPutSitePath(env, ctx, request, site, path, authority, objectPath, writer);
 }
 
+type GuestSiteFileRow = { size: number; content_type: string; updated_at: string; last_written_by: string };
+
 async function guestPutSitePath(
   env: Env,
   ctx: ExecutionContext,
@@ -286,7 +306,7 @@ async function guestPutSitePath(
     `SELECT size, content_type, updated_at, last_written_by FROM site_files WHERE site_id = ? AND path = ?`,
   )
     .bind(site.id, path)
-    .first<{ size: number; content_type: string; updated_at: string; last_written_by: string }>();
+    .first<GuestSiteFileRow>();
   if (!existing) {
     const count = await fileCount(env, site.id);
     if (count >= MAX_IMPORT_FILES) {
@@ -297,18 +317,33 @@ async function guestPutSitePath(
       );
     }
   }
+  return withUpload(request, env.BUCKET, instancePolicy(env).fileBytes, contentOrigin(env), (upload) =>
+    writeGuestSitePath(env, ctx, request, site, path, authority, objectPath, writer, existing, upload));
+}
+
+async function writeGuestSitePath(
+  env: Env,
+  ctx: ExecutionContext,
+  request: Request,
+  site: SiteRow,
+  path: string,
+  authority: WriteAuthority,
+  objectPath: string,
+  writer: string,
+  existing: GuestSiteFileRow | null,
+  upload: Upload,
+): Promise<Response> {
   const policy = instancePolicy(env);
-  const bytes = await readBodyCapped(request, policy.fileBytes, contentOrigin(env));
-  if (bytes.byteLength > policy.fileBytes) throw tooLarge(bytes.byteLength, "", policy.fileBytes);
-  const contentType = contentTypeFor(path, bytes, request.headers.get("content-type"));
+  if (upload.size > policy.fileBytes) throw tooLarge(upload.size, "", policy.fileBytes);
+  const contentType = contentTypeFor(path, upload.head, request.headers.get("content-type"));
   const key = siteKey(site.handle, site.id, path);
   const ts = new Date().toISOString();
   const previous = await snapshotR2Object(env.BUCKET, key);
-  const reserved = await assertStorageRoom(env.DB, bytes.byteLength, existing?.size ?? 0, policy.platformBytes);
+  const reserved = await assertStorageRoom(env.DB, upload.size, existing?.size ?? 0, policy.platformBytes);
   try {
-    await env.BUCKET.put(key, bytes, { httpMetadata: { contentType } });
+    await putUpload(env.BUCKET, key, upload, { httpMetadata: { contentType } });
     const wrote = await env.DB.batch([
-      siteFileUpsert(env, site.id, path, bytes.byteLength, contentType, ts, writer),
+      siteFileUpsert(env, site.id, path, upload.size, contentType, ts, writer),
       env.DB.prepare(
         `UPDATE sites SET updated_at = ?, written_via = ? WHERE id = ? AND write_password_hash = ? AND last_written_by NOT LIKE ?`,
       ).bind(ts, WRITTEN_VIA_WRITE_PASSWORD, site.id, authority.hash, PURGE_CLAIM_LIKE),
@@ -343,15 +378,17 @@ async function guestPutSitePath(
     }
     await releaseStorage(env.DB, reserved);
     throw err;
+  } finally {
+    await discardR2Snapshots(env.BUCKET, [previous]);
   }
-  await releaseStorage(env.DB, (existing?.size ?? 0) - bytes.byteLength);
+  await releaseStorage(env.DB, (existing?.size ?? 0) - upload.size);
   await clearGateAttempts(env, writeGateScopes(request, objectPath));
   await purgeContent(ctx, [sitePrefix(site.handle, site.id)]);
   return guestJson(
     {
       url: sitePublicUrl(env, site.handle, site.id, site.slug, path),
       path,
-      size: bytes.byteLength,
+      size: upload.size,
       content_type: contentType,
     },
     existing ? 200 : 201,

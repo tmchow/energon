@@ -51,11 +51,12 @@ describe("Energon", () => {
     expect(body.env).toBe("ENERGON_TOKEN");
     expect(body.content_origin).toBe("https://energon.example.com");
     expect(body.account).toContain("/account");
-    expect(body.limits.file_bytes).toBe(25 * 1024 * 1024);
+    expect(body.limits.file_bytes).toBe(100 * 1024 * 1024);
     expect(body.limits.zip_bytes).toBe(25 * 1024 * 1024);
     expect(body.limits.platform_bytes).toBe(20 * 1024 * 1024 * 1024);
     expect(body.limits.max_import_files).toBe(200);
-    expect(body.retention.file_bytes).toBe(25 * 1024 * 1024);
+    expect(body.retention.file_bytes).toBe(100 * 1024 * 1024);
+    expect(body.retention.zip_bytes).toBe(25 * 1024 * 1024);
     expect(body.retention.allow_unlimited).toBe(true);
     expect(body.retention.default_ttl).toBe("never");
     expect(body.retention.presets.some((p: { id: string; label: string }) => p.id === "90d" && p.label === "3 months")).toBe(
@@ -316,17 +317,76 @@ describe("Energon", () => {
     expect(await page.text()).toContain("root");
   });
 
-  it("26 MB file is 413 mentioning the 25 MB cap", async () => {
+  it("101 MB file is 413 mentioning the 100 MB cap", async () => {
     const token = await mint("big");
     const site_big_site = await createSite(token, "big-site");
     const tooBig = await json(`/v1/sites/${site_big_site.id}/files/huge.bin`, {
       method: "PUT",
-      headers: auth(token, { "content-length": String(26 * 1024 * 1024) }),
+      headers: auth(token, { "content-length": String(101 * 1024 * 1024) }),
       body: "x",
     });
     expect(tooBig.status).toBe(413);
     expect(tooBig.body.error).toBe("too_large");
+    expect(tooBig.body.message).toContain("100 MB");
+  });
+
+  it("26 MB zip import is 413 mentioning the 25 MB zip cap", async () => {
+    const token = await mint("big-zip");
+    const site = await createSite(token, "big-zip-site");
+    const tooBig = await json(`/v1/sites/${site.id}/import`, {
+      method: "POST",
+      headers: auth(token, { "content-type": "application/zip", "content-length": String(26 * 1024 * 1024) }),
+      body: "x",
+    });
+    expect(tooBig.status).toBe(413);
     expect(tooBig.body.message).toContain("25 MB");
+  });
+
+  it("26 MB multipart upload is 413 pointing at raw bodies", async () => {
+    const token = await mint("big-multipart");
+    const tooBig = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "content-type": "multipart/form-data; boundary=x", "content-length": String(26 * 1024 * 1024) }),
+      body: "x",
+    });
+    expect(tooBig.status).toBe(413);
+    expect(tooBig.body.message).toContain("X-Filename");
+  });
+
+  it("stages raw uploads over 25 MB through R2 and cleans up after", async () => {
+    const token = await mint("staged");
+    const big = new Uint8Array(26 * 1024 * 1024);
+    big.set([0x25, 0x50, 0x44, 0x46], 0);
+    big[big.length - 1] = 7;
+    const created = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "x-filename": "big.bin" }),
+      body: big,
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.size).toBe(big.byteLength);
+    expect(created.body.content_type).toBe("application/pdf");
+
+    const replacement = big.slice();
+    replacement[0] = 0;
+    const replaced = await json(`/v1/files/${created.body.id}`, {
+      method: "PUT",
+      headers: auth(token),
+      body: replacement,
+    });
+    expect(replaced.status).toBe(200);
+    const stored = await env.BUCKET.get(`files/${created.body.id}/big.bin`);
+    const bytes = new Uint8Array(await stored!.arrayBuffer());
+    expect(bytes.byteLength).toBe(big.byteLength);
+    expect(bytes[0]).toBe(0);
+    expect(bytes[bytes.length - 1]).toBe(7);
+
+    const site = await createSite(token, "staged-site");
+    const put = await json(`/v1/sites/${site.id}/files/video.bin`, { method: "PUT", headers: auth(token), body: big });
+    expect(put.status).toBe(201);
+    expect(put.body.size).toBe(big.byteLength);
+
+    expect((await env.BUCKET.list({ prefix: "tmp/" })).objects).toEqual([]);
   });
 
   it("revoked token cannot PUT", async () => {

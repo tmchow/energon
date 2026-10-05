@@ -37,7 +37,7 @@ Start by inspecting the current checkout, Git remotes, GitHub authentication, an
 | Choice | What to establish |
 | --- | --- |
 | Deployment repository | The GitHub user or organization and a new repository name. Create an independent private repository before committing instance settings. |
-| Cloudflare | The intended account name and ID, with Workers Paid enabled for unzip and 25 MB uploads. Installation needs permission to create dedicated storage and deploy a Worker. |
+| Cloudflare | The intended account name and ID, with Workers Paid enabled for unzip and large uploads. Installation needs permission to create dedicated storage and deploy a Worker. |
 | Identity | Exact allowed sign-in emails, administrator emails, and preferred identity provider. For personal use, the owner can be both the sole allowed user and administrator. Confirm that choice rather than deriving it from a cloud account email alone. |
 | Hostnames | Two distinct hostnames in Cloudflare-managed zones the operator controls: one for the hub and one for content. Short siblings such as `energon.your.co` and `share.your.co` work; nesting is unnecessary. |
 | Policy | Personal or team use, plus any requested retention or token restrictions. Use the [personal or team preset](docs/DEPLOY.md#personal-and-team-presets) once that use is known. |

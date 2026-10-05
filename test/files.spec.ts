@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createLooseFile, deleteLooseFile, putLooseFile } from "../src/files";
+import { uploadFromBytes } from "../src/upload";
 import type { Actor, Env } from "../src/types";
 
 describe("putLooseFile", () => {
@@ -83,7 +84,7 @@ describe("putLooseFile", () => {
       ctx,
       actor,
       "Abc123",
-      new TextEncoder().encode("replacement"),
+      uploadFromBytes(new TextEncoder().encode("replacement")),
       "new.txt",
       "text/plain",
     );
@@ -156,7 +157,7 @@ describe("putLooseFile", () => {
     } as unknown as ExecutionContext;
     const actor: Actor = { email: "ada@esperlabs.app", via: "token" };
     await expect(
-      putLooseFile(env, ctx, actor, "Abc123", new TextEncoder().encode("replacement"), "notes.txt", "text/plain"),
+      putLooseFile(env, ctx, actor, "Abc123", uploadFromBytes(new TextEncoder().encode("replacement")), "notes.txt", "text/plain"),
     ).rejects.toThrow(/purge rejected/);
   });
 
@@ -223,7 +224,7 @@ describe("putLooseFile", () => {
     const actor: Actor = { email: "ada@esperlabs.app", via: "token" };
 
     await expect(
-      putLooseFile(env, undefined, actor, "Abc123", new TextEncoder().encode("replacement"), "notes.txt", "text/plain"),
+      putLooseFile(env, undefined, actor, "Abc123", uploadFromBytes(new TextEncoder().encode("replacement")), "notes.txt", "text/plain"),
     ).rejects.toThrow("injected D1 failure");
 
     expect(new TextDecoder().decode(objects.get(key)?.bytes)).toBe("original");
@@ -271,7 +272,7 @@ describe("putLooseFile", () => {
     const actor: Actor = { email: "ada@esperlabs.app", via: "token" };
 
     await expect(
-      putLooseFile(env, undefined, actor, "Abc123", new TextEncoder().encode("replacement"), "notes.txt", "text/plain"),
+      putLooseFile(env, undefined, actor, "Abc123", uploadFromBytes(new TextEncoder().encode("replacement")), "notes.txt", "text/plain"),
     ).rejects.toMatchObject({ status: 503, code: "content_origin_not_configured" });
     expect(writes).toBe(0);
   });
@@ -321,7 +322,7 @@ describe("putLooseFile", () => {
     } as unknown as Env;
     const actor: Actor = { email: "ada@esperlabs.app", via: "token" };
     await expect(
-      putLooseFile(env, undefined, actor, "Abc123", new TextEncoder().encode("replacement"), "notes.txt", "text/plain"),
+      putLooseFile(env, undefined, actor, "Abc123", uploadFromBytes(new TextEncoder().encode("replacement")), "notes.txt", "text/plain"),
     ).rejects.toMatchObject({ status: 409, code: "file_busy" });
     expect(quotaIncrements).toBe(0);
   });
@@ -381,7 +382,7 @@ describe("putLooseFile", () => {
     } as unknown as Env;
     const actor: Actor = { email: "ada@esperlabs.app", via: "token" };
     await expect(
-      putLooseFile(env, undefined, actor, "Abc123", new TextEncoder().encode("replacement"), "notes.txt", "text/plain"),
+      putLooseFile(env, undefined, actor, "Abc123", uploadFromBytes(new TextEncoder().encode("replacement")), "notes.txt", "text/plain"),
     ).rejects.toMatchObject({ status: 413, code: "storage_cap" });
     expect(claimReleases).toBe(1);
   });
@@ -420,7 +421,7 @@ describe("createLooseFile", () => {
     } as unknown as Env;
     const actor: Actor = { email: "ada@esperlabs.app", via: "token" };
     await expect(
-      createLooseFile(env, undefined, actor, "notes.txt", new TextEncoder().encode("hi"), "text/plain", undefined, undefined, "nope"),
+      createLooseFile(env, undefined, actor, "notes.txt", uploadFromBytes(new TextEncoder().encode("hi")), "text/plain", undefined, undefined, "nope"),
     ).rejects.toMatchObject({ status: 400, code: "bad_write_policy" });
     expect(quotaIncrements).toBe(0);
   });

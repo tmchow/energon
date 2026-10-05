@@ -45,6 +45,7 @@ import {
   putSiteFile,
 } from "./sites";
 import type { Env } from "./types";
+import { withUpload } from "./upload";
 
 export const V1_PRE_SCHEMA_LITERALS = ["/v1/help", "/v1/openapi.json", "/v1/health"] as const;
 
@@ -197,7 +198,7 @@ export const V1_TOKEN = {
       path: V1_SITE_IMPORT,
       methods: {
         POST: async (c) => {
-          const bytes = await readBodyCapped(c.request, instancePolicy(c.env).fileBytes, publicOrigin(c.env));
+          const bytes = await readBodyCapped(c.request, instancePolicy(c.env).zipBytes, publicOrigin(c.env));
           const result = await importSiteZip(c.env, c.ctx, c.actor, decodeURIComponent(c.params[0]), bytes);
           return json(result);
         },
@@ -216,16 +217,15 @@ export const V1_TOKEN = {
         PUT: async (c) => {
           const id = decodeURIComponent(c.params[0]);
           const filePath = c.params[1];
-          const bytes = await readBodyCapped(c.request, instancePolicy(c.env).fileBytes, publicOrigin(c.env));
-          const result = await putSiteFile(
+          const result = await withUpload(c.request, c.env.BUCKET, instancePolicy(c.env).fileBytes, publicOrigin(c.env), (upload) => putSiteFile(
             c.env,
             c.ctx,
             c.actor,
             id,
             filePath,
-            bytes,
+            upload,
             c.request.headers.get("content-type"),
-          );
+          ));
           return json(
             { url: result.url, api_url: result.api_url, path: result.path, size: result.size, content_type: result.content_type },
             result.created ? 201 : 200,

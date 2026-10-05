@@ -26,7 +26,7 @@ import { isMarkdownName, respondMarkdown } from "./markdown";
 import { maybeUnlockWithWritePassword, passwordEcho, passwordField, passwordHashFromInput, protectContent, assignPasswordStore, hubLinkAccessFields, storedPasswordSecret, writePasswordField, writePasswordHashFromInput } from "./gate";
 import { ensureUser } from "./handles";
 import { mintObjectId } from "./ids";
-import { ApiError, applyIsolation, assertStorageRoom, basename, contentDisposition, copyR2Object, deletePrefix, htmlPage, json, jsonMaybeSecret, nanoid, normalizeRelPath, publicOrigin, releaseStorage, restoreR2Object, secretJson, snapshotR2Object, tooLarge, wantsDownload, type R2ObjectSnapshot } from "./http";
+import { ApiError, applyIsolation, assertStorageRoom, basename, contentDisposition, copyR2Object, deletePrefix, discardR2Snapshots, htmlPage, json, jsonMaybeSecret, nanoid, normalizeRelPath, publicOrigin, releaseStorage, restoreR2Object, secretJson, snapshotR2Object, tooLarge, wantsDownload, type R2ObjectSnapshot } from "./http";
 import { contentTypeFor } from "./mime";
 import {
   OWNER_WRITE_SQL,
@@ -43,6 +43,7 @@ import {
 import { noteRead } from "./reads";
 import type { Actor, Env, SiteFileRow, SiteRow } from "./types";
 import { isSiteId, sitePublicUrl } from "./urls";
+import { putUpload, type Upload } from "./upload";
 import { packZip, unpackZip } from "./zip";
 
 const SITE_SELECT =
@@ -564,12 +565,12 @@ export async function putSiteFile(
   actor: Actor,
   idRaw: string,
   pathRaw: string,
-  bytes: Uint8Array,
+  upload: Upload,
   hintType: string | null,
 ): Promise<{ url: string; api_url: string; created: boolean; path: string; size: number; content_type: string }> {
   const path = assertFilePath(pathRaw);
   const policy = instancePolicy(env);
-  if (bytes.byteLength > policy.fileBytes) throw tooLarge(bytes.byteLength, "", policy.fileBytes);
+  if (upload.size > policy.fileBytes) throw tooLarge(upload.size, "", policy.fileBytes);
   const site = await requireSite(env, actor, idRaw, { ctx, mutate: true });
   const existing = await env.DB.prepare(
     `SELECT size, content_type, updated_at, last_written_by FROM site_files WHERE site_id = ? AND path = ?`,
@@ -586,15 +587,15 @@ export async function putSiteFile(
       );
     }
   }
-  const contentType = contentTypeFor(path, bytes, hintType);
+  const contentType = contentTypeFor(path, upload.head, hintType);
   const key = siteKey(site.handle, site.id, path);
   const ts = new Date().toISOString();
   const previous = await snapshotR2Object(env.BUCKET, key);
-  const reserved = await assertStorageRoom(env.DB, bytes.byteLength, existing?.size ?? 0, policy.platformBytes);
+  const reserved = await assertStorageRoom(env.DB, upload.size, existing?.size ?? 0, policy.platformBytes);
   try {
-    await env.BUCKET.put(key, bytes, { httpMetadata: { contentType } });
+    await putUpload(env.BUCKET, key, upload, { httpMetadata: { contentType } });
     const wrote = await env.DB.batch([
-      siteFileUpsert(env, site.id, path, bytes.byteLength, contentType, ts, actor.email),
+      siteFileUpsert(env, site.id, path, upload.size, contentType, ts, actor.email),
       env.DB.prepare(
         `UPDATE sites SET updated_at = ?, last_written_by = ?, written_via = NULL WHERE id = ? AND last_written_by NOT LIKE ? AND ${OWNER_WRITE_SQL}`,
       ).bind(ts, actor.email, site.id, PURGE_CLAIM_LIKE, ...ownerWriteBinds(actor)),
@@ -619,8 +620,10 @@ export async function putSiteFile(
     await restoreR2State(env.BUCKET, key, previous);
     await releaseStorage(env.DB, reserved);
     throw err;
+  } finally {
+    await discardR2Snapshots(env.BUCKET, [previous]);
   }
-  await releaseStorage(env.DB, (existing?.size ?? 0) - bytes.byteLength);
+  await releaseStorage(env.DB, (existing?.size ?? 0) - upload.size);
 
   const origin = publicOrigin(env);
   await purgeContent(ctx, [sitePrefix(site.handle, site.id)]);
@@ -629,7 +632,7 @@ export async function putSiteFile(
     api_url: `${origin}/v1/sites/${site.id}/files/${path}`,
     created: !existing,
     path,
-    size: bytes.byteLength,
+    size: upload.size,
     content_type: contentType,
   };
 }
@@ -664,9 +667,9 @@ export async function importSiteZip(
   zipBytes: Uint8Array,
 ): Promise<{ id: string; slug: string; url: string; written: string[] }> {
   const policy = instancePolicy(env);
-  if (zipBytes.byteLength > policy.fileBytes) throw tooLarge(zipBytes.byteLength, "", policy.fileBytes);
+  if (zipBytes.byteLength > policy.zipBytes) throw tooLarge(zipBytes.byteLength, "", policy.zipBytes);
   const site = await requireSite(env, actor, idRaw, { ctx, mutate: true });
-  const files = unpackZip(zipBytes, policy.fileBytes);
+  const files = unpackZip(zipBytes, policy.zipBytes);
   const existingRows = await env.DB.prepare(
     `SELECT site_id, path, size, content_type, updated_at, last_written_by FROM site_files WHERE site_id = ?`,
   )
@@ -711,6 +714,8 @@ export async function importSiteZip(
     }
     await releaseStorage(env.DB, reserved);
     throw err;
+  } finally {
+    await discardR2Snapshots(env.BUCKET, snapshots.map((state) => state.snapshot));
   }
   await releaseStorage(env.DB, replacing - additional);
   await purgeContent(ctx, [sitePrefix(site.handle, site.id)]);
@@ -742,12 +747,12 @@ export async function exportSiteZip(
   }
   const policy = instancePolicy(env);
   const total = listed.reduce((n, r) => n + Number(r.size || 0), 0);
-  if (total > policy.fileBytes) {
+  if (total > policy.zipBytes) {
     throw new ApiError(
       413,
       "too_large",
-      `That site is over the ${formatBytes(policy.fileBytes)} export cap (${(total / (1024 * 1024)).toFixed(1)} MB of files). ${PRODUCT} zips at most ${formatBytes(policy.fileBytes)} so a download stays small. Split the site, then retry.`,
-      { limit_bytes: policy.fileBytes, actual_bytes: total },
+      `That site is over the ${formatBytes(policy.zipBytes)} export cap (${(total / (1024 * 1024)).toFixed(1)} MB of files). ${PRODUCT} zips at most ${formatBytes(policy.zipBytes)} so a download stays small. Split the site, then retry.`,
+      { limit_bytes: policy.zipBytes, actual_bytes: total },
     );
   }
   const files: { path: string; bytes: Uint8Array }[] = [];
@@ -762,7 +767,7 @@ export async function exportSiteZip(
     }
     files.push({ path: row.path, bytes: new Uint8Array(await obj.arrayBuffer()) });
   }
-  const zip = packZip(files, policy.fileBytes);
+  const zip = packZip(files, policy.zipBytes);
   noteRead(env, ctx, { table: "sites", id: site.id, last_read_at: site.last_read_at });
   const headers = new Headers();
   headers.set("content-type", "application/zip");
@@ -881,6 +886,8 @@ export async function deleteSiteFile(
     if (!d1Changed(wrote[0] ?? {})) return;
   } catch (err) {
     await rollbackSiteStorage(env, key, previous, err);
+  } finally {
+    await discardR2Snapshots(env.BUCKET, [previous]);
   }
   try {
     await purgeContent(ctx, [sitePrefix(site.handle, site.id)]);

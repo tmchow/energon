@@ -190,7 +190,7 @@ export async function exportOwnedZip(
   }
 
   const policy = instancePolicy(env);
-  assertOwnedExportFits(counts, MAX_IMPORT_FILES, policy.fileBytes);
+  assertOwnedExportFits(counts, MAX_IMPORT_FILES, policy.zipBytes);
 
   const manifest: OwnedExportManifest = {
     exported_at: nowIso(),
@@ -244,7 +244,7 @@ export async function exportOwnedZip(
     entries.push({ path: fileArchivePath(file.id, file.filename), bytes: new Uint8Array(await obj.arrayBuffer()) });
   }
 
-  const zip = packZip(entries, policy.fileBytes + manifestBytes.byteLength, MAX_IMPORT_FILES + 1);
+  const zip = packZip(entries, policy.zipBytes + manifestBytes.byteLength, MAX_IMPORT_FILES + 1);
   for (const site of sites) {
     noteRead(env, ctx, { table: "sites", id: site.id, last_read_at: site.last_read_at });
   }

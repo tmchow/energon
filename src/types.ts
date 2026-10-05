@@ -22,6 +22,7 @@ export interface Env {
   ALLOWED_EMAIL_DOMAINS?: string;
   ADMIN_EMAILS?: string;
   MAX_FILE_BYTES?: string;
+  MAX_ZIP_BYTES?: string;
   MAX_PLATFORM_BYTES?: string;
   WRITE_POLICY?: string;
   FOOTER_TEXT?: string;

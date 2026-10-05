@@ -49,10 +49,26 @@ export async function stageFiles(files: File[], entries: FileSystemEntry[] = [],
   return { kind: 'folder', files: files.map(file => ({ path: file.webkitRelativePath || file.name, file })), slug: slugify(files[0].webkitRelativePath?.split('/')[0] || 'site'), filename: '' };
 }
 
-export async function publish(upload: StagedUpload, options: { password: string; write_password: string; ttl: string; write_policy: string }): Promise<PublishResult> {
+type PublishOptions = { password: string; write_password: string; ttl: string; write_policy: string };
+
+/** Raw bodies go past the server's multipart cap (IN_MEMORY_BYTES). Header values must be printable ASCII to survive as-is. */
+function rawUploadHeaders(file: File, filename: string, options: PublishOptions): Record<string, string> | null {
+  if (![options.password, options.write_password].every(value => /^[\x20-\x7e]*$/.test(value))) return null;
+  const headers: Record<string, string> = { 'content-type': file.type || 'application/octet-stream', 'x-filename': filename };
+  if (options.password) headers['x-energon-set-password'] = options.password;
+  if (options.write_password) headers['x-energon-set-write-password'] = options.write_password;
+  if (options.ttl) headers['x-energon-ttl'] = options.ttl;
+  if (options.write_policy) headers['x-energon-write-policy'] = options.write_policy;
+  return headers;
+}
+
+export async function publish(upload: StagedUpload, options: PublishOptions): Promise<PublishResult> {
   if (upload.kind === 'loose' && upload.file) {
+    const filename = safeFilename(upload.filename, upload.file.name);
+    const headers = rawUploadHeaders(upload.file, filename, options);
+    if (headers) return api('/account/files', { method: 'POST', headers, body: upload.file });
     const form = new FormData();
-    form.set('file', upload.file, safeFilename(upload.filename, upload.file.name));
+    form.set('file', upload.file, filename);
     if (options.password) form.set('password', options.password);
     if (options.write_password) form.set('write_password', options.write_password);
     if (options.ttl) form.set('ttl', options.ttl);
