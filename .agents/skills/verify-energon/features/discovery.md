@@ -25,7 +25,7 @@ Preconditions:
 - Doctor has passed for `$ORIGIN`. Doctor already proves `help`, `help-openapi`, `openapi`, and `health`.
 
 - **Help / OpenAPI / health.** Doctor already proved these. Re-save only if this change is `helpBody`, `openapi/v1.json`, or `/v1/health`.
-- **Default — llms.** `GET $ORIGIN/llms.txt` is 200 `text/markdown`. Body contains `$ORIGIN/v1/openapi.json`, `$ORIGIN/v1/help`, and `X-Energon-Write-Password`.
+- **Default — llms.** `GET $ORIGIN/llms.txt` is 200 `text/markdown`. Body contains `$ORIGIN/v1/openapi.json`, `$ORIGIN/v1/help`, `X-Energon-Write-Password`, and `/v1/grants`.
 - **Default — Authentication.** `GET $ORIGIN/auth.md` is 200 `text/markdown`, CORS `*`, and names the token env and prefix from help. `HEAD` is 200 with no body; `POST` is 405. Help and llms link `$ORIGIN/auth.md`. `GET $ORIGIN/v1/whoami` without a credential is 401 with `auth_url=$ORIGIN/auth.md` and `tokens_url=$ORIGIN/tokens`.
 - **Extra (openapi errors) — HEAD / 405.** `curl -sS -I "$ORIGIN/v1/openapi.json"` is 200. `POST $ORIGIN/v1/openapi.json` is 405 `method_not_allowed`. Drive when the OpenAPI route or CORS changes.
 - **Extra (private-install) — Setup.** Open `$ORIGIN/setup`. Confirm the Marketplace card and copied install block name this instance and explain private GitHub access, separate credentials, and the local-skill or HTTP API fallback. Capture the page with the signed-in identity visible. Read help and llms without a token and confirm they preserve the same boundary. Actual GitHub access and client installation require the operator checks in INSTALL.md; this local Worker cannot verify them.
