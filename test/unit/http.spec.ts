@@ -90,6 +90,14 @@ describe("path and download helpers", () => {
     expect(isolationCsp("application/javascript")).toBeNull();
   });
 
+  it("sandboxes XML types, which browsers can render with script", () => {
+    expect(isolationCsp("application/xml; charset=utf-8")).toContain("sandbox");
+    expect(isolationCsp("text/xml")).toContain("sandbox");
+    expect(isolationCsp("application/atom+xml")).toContain("sandbox");
+    expect(isolationCsp("application/rss+xml")).not.toContain("allow-same-origin");
+    expect(isolationCsp("application/json")).toBeNull();
+  });
+
   it("locks mermaid pages to the serving origin and serves the ESM under /static/mermaid/", () => {
     const csp = mermaidDocumentCsp("https://energon.example.com");
     expect(csp).toContain("sandbox");

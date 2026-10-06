@@ -185,6 +185,33 @@ describe("Energon", () => {
     expect(await file.text()).toBe("# notes");
   });
 
+  it("serves published XML in the same sandbox as HTML", async () => {
+    const token = await mint("xml-sandbox");
+    const xml = '<?xml version="1.0"?><doc xmlns:h="http://www.w3.org/1999/xhtml"><h:script>alert(1)</h:script></doc>';
+    const loose = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "X-Filename": "feed.xml" }),
+      body: xml,
+    });
+    expect(loose.status).toBe(201);
+    const file = await req(new URL(loose.body.url).pathname);
+    expect(file.status).toBe(200);
+    expect(file.headers.get("content-type")).toMatch(/application\/xml/);
+    expect(file.headers.get("content-security-policy")).toContain("sandbox");
+    expect(file.headers.get("content-security-policy")).not.toContain("allow-same-origin");
+
+    const site = await createSite(token, "xml-sandbox");
+    const put = await json(`/v1/sites/${site.body.id}/files/feed.xml`, {
+      method: "PUT",
+      headers: auth(token),
+      body: xml,
+    });
+    expect(put.status).toBe(201);
+    const page = await req(new URL(put.body.url).pathname);
+    expect(page.status).toBe(200);
+    expect(page.headers.get("content-security-policy")).toContain("sandbox");
+  });
+
   it("loose file POST returns a unique URL that downloads", async () => {
     const token = await mint("loose");
     const a = await json("/v1/files", {

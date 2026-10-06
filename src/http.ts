@@ -105,13 +105,14 @@ export function jsonMaybeSecret(data: { password?: unknown; write_password?: unk
   return json(data, status);
 }
 
-/** Unique origin for publisher HTML/SVG so a page cannot read other objects' cookies. */
+/** Unique origin for publisher HTML/SVG/XML so a page cannot read other objects' cookies. */
 export const ACTIVE_DOCUMENT_CSP =
   "sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads allow-top-navigation-by-user-activation";
 
 export function isolationCsp(contentType: string): string | null {
   const type = contentType.split(";")[0].trim().toLowerCase();
-  if (type === "text/html" || type === "application/xhtml+xml" || type === "image/svg+xml") {
+  // Browsers execute XHTML-namespaced script inside any XML document, not only SVG and XHTML.
+  if (type === "text/html" || type === "text/xml" || type === "application/xml" || type.endsWith("+xml")) {
     return ACTIVE_DOCUMENT_CSP;
   }
   return null;
