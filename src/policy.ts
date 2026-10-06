@@ -253,6 +253,32 @@ export function tokenExpired(expiresAt: string | null | undefined, now = Date.no
   return !Number.isFinite(t) || t <= now;
 }
 
+/** Upload-grant lifetimes are a credential policy of their own; no retention or token var changes them. */
+export const GRANT_TTL_CATALOG = ["5m", "15m", "30m", "1h"] as const;
+export const GRANT_DEFAULT_TTL = "15m";
+/** A redeem that arrived before expiry may still claim its lease while it finishes staging the body. */
+export const GRANT_CLAIM_GRACE_SECONDS = 300;
+
+export function resolveGrantExpiresAt(input: unknown, tokenExpiresAt: string | null | undefined, now = new Date()): string {
+  const omitted = input === undefined || input === null || (typeof input === "string" && input.trim() === "");
+  const id = omitted ? GRANT_DEFAULT_TTL : typeof input === "string" ? input.trim().toLowerCase() : "";
+  if (!(GRANT_TTL_CATALOG as readonly string[]).includes(id)) {
+    throw new ApiError(400, "bad_ttl", `expires_in must be one of: ${GRANT_TTL_CATALOG.join(", ")}.`, {
+      presets: [...GRANT_TTL_CATALOG],
+      default_ttl: GRANT_DEFAULT_TTL,
+    });
+  }
+  const own = now.getTime() + (parseDuration(id) ?? 0) * 1000;
+  const tokenEnd = tokenExpiresAt ? Date.parse(tokenExpiresAt) : Number.POSITIVE_INFINITY;
+  return new Date(Math.min(own, tokenEnd)).toISOString();
+}
+
+/** Fails closed like tokenExpired: an unparseable expiry is never claimable. */
+export function grantClaimable(expiresAt: string, now = Date.now()): boolean {
+  const t = Date.parse(expiresAt);
+  return Number.isFinite(t) && now < t + GRANT_CLAIM_GRACE_SECONDS * 1000;
+}
+
 export function policyPublic(policy: InstancePolicy) {
   return {
     allow_unlimited: policy.allowUnlimited,

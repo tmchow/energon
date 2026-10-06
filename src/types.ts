@@ -36,7 +36,7 @@ export type Actor = {
   email: string;
   userId?: string;
   idpSub?: string;
-  via: "token" | "access";
+  via: "token" | "access" | "grant";
   tokenId?: string;
   tokenLabel?: string;
   tokenExpiresAt?: string | null;

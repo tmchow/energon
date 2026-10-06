@@ -29,6 +29,7 @@ import {
   WRITE_CLAIM_LIKE,
   d1Changed,
 } from "./expire";
+import { consumeGrantStatement, grantCommitFailure, GRANT_LEASE_SQL, grantLeaseBinds, type GrantGuard } from "./grant-guard";
 import { ensureHandle, ensureUser } from "./handles";
 import { maybeUnlockWithWritePassword, passwordEcho, passwordField, passwordHashFromInput, protectContent, readSetPasswordHeader, readSetWritePasswordHeader, assignPasswordStore, hubLinkAccessFields, storedPasswordSecret, writePasswordField, writePasswordHashFromInput } from "./gate";
 import { filePublicUrl, isFileId, urlFilename } from "./urls";
@@ -70,7 +71,7 @@ import { noteRead } from "./reads";
 import type { Actor, Env, LooseFileRow } from "./types";
 import { putUpload, readUploadForm, uploadFromFile, withUpload, type Upload } from "./upload";
 
-function assertFilename(raw: string, fallback: string): string {
+export function assertFilename(raw: string, fallback: string): string {
   const filename = basename(raw).slice(0, 180) || fallback;
   if (filename === "." || filename === ".." || filename.includes("/")) {
     throw new ApiError(400, "bad_filename", "Give a simple filename, not a path.");
@@ -89,6 +90,7 @@ export async function createLooseFile(
   ttl?: unknown,
   writePolicy?: unknown,
   writePassword?: string,
+  guard?: GrantGuard,
 ): Promise<Response> {
   const policy = instancePolicy(env);
   if (upload.size > policy.fileBytes) throw tooLarge(upload.size, "", policy.fileBytes);
@@ -106,22 +108,34 @@ export async function createLooseFile(
   const resolved = resolveExpiresAt(policy, ttl);
   const storedWrite = resolveCreateWritePolicy(env, writePolicy);
   const key = fileKey(id, filename);
+  const url = filePublicUrl(env, handle, id, filename);
+  const columns = `id, handle, owner_id, filename, size, content_type, created_at, created_by, updated_at, last_written_by, password_hash, password_secret, expires_at, write_policy, write_password_hash, write_password_secret`;
+  const values = [id, handle, user.id, filename, upload.size, contentType, ts, actor.email, ts, actor.email, stored, storedPasswordSecret(stored, password), resolved.expiresAt, storedWrite, storedWritePw, storedPasswordSecret(storedWritePw, writePassword)];
   const reserved = await assertStorageRoom(env.DB, upload.size, 0, policy.platformBytes);
   try {
     await putUpload(env.BUCKET, key, upload, { httpMetadata: { contentType } });
-    await env.DB.prepare(
-      `INSERT INTO loose_files (id, handle, owner_id, filename, size, content_type, created_at, created_by, updated_at, last_written_by, password_hash, password_secret, expires_at, write_policy, write_password_hash, write_password_secret)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-      .bind(id, handle, user.id, filename, upload.size, contentType, ts, actor.email, ts, actor.email, stored, storedPasswordSecret(stored, password), resolved.expiresAt, storedWrite, storedWritePw, storedPasswordSecret(storedWritePw, writePassword))
-      .run();
+    if (guard) {
+      const now = new Date(ts);
+      const [inserted] = await env.DB.batch([
+        env.DB.prepare(
+          `INSERT INTO loose_files (${columns}) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ${GRANT_LEASE_SQL}`,
+        ).bind(...values, ...grantLeaseBinds(guard, now)),
+        consumeGrantStatement(env, guard, now, { id, url }, `EXISTS (SELECT 1 FROM loose_files WHERE id = ?)`, [id]),
+      ]);
+      if (!d1Changed(inserted)) {
+        throw (await grantCommitFailure(env, guard)) ?? new ApiError(409, "grant_busy", "Another upload holds this grant. Retry after it finishes.");
+      }
+    } else {
+      await env.DB.prepare(`INSERT INTO loose_files (${columns}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(...values)
+        .run();
+    }
   } catch (err) {
     await env.BUCKET.delete(key).catch(() => undefined);
     await releaseStorage(env.DB, reserved);
     throw err;
   }
   const origin = publicOrigin(env);
-  const url = filePublicUrl(env, handle, id, filename);
   const api_url = `${origin}/v1/files/${id}`;
   await purgeContent(ctx, [filePrefix(handle, id)]);
   const body = {
@@ -426,6 +440,7 @@ export async function putLooseFile(
   filenameRaw: string | null,
   hintType: string | null,
   password?: string,
+  guard?: GrantGuard,
 ): Promise<Response> {
   if (!isFileId(id)) {
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
@@ -433,7 +448,7 @@ export async function putLooseFile(
   const policy = instancePolicy(env);
   if (upload.size > policy.fileBytes) throw tooLarge(upload.size, "", policy.fileBytes);
   const existing = await env.DB.prepare(
-    `SELECT id, handle, filename, size, expires_at, created_by, last_written_by, updated_at, write_policy, owner_id, password_hash FROM loose_files WHERE id = ?`,
+    `SELECT id, handle, filename, size, content_type, expires_at, created_by, last_written_by, updated_at, write_policy, owner_id, password_hash FROM loose_files WHERE id = ?`,
   )
     .bind(id)
     .first<{
@@ -448,6 +463,7 @@ export async function putLooseFile(
       write_policy: string | null;
       owner_id: string | null;
       password_hash: string | null;
+      content_type: string | null;
     }>();
   if (!existing) {
     throw new ApiError(
@@ -473,7 +489,8 @@ export async function putLooseFile(
     filename = assertFilename(filenameRaw, existing.filename);
   }
   contentOrigin(env);
-  const contentType = contentTypeFor(filename, upload.head, hintType);
+  // A grant upload never chooses the type: the uploading machine is less trusted than the file's publisher.
+  const contentType = guard && existing.content_type ? existing.content_type : contentTypeFor(filename, upload.head, hintType);
   const ts = new Date().toISOString();
   const hash = await passwordHashFromInput(password);
   const handle = existing.handle || (await ensureHandle(env, actor.email, actor.idpSub));
@@ -519,21 +536,48 @@ export async function putLooseFile(
     ];
     const values: unknown[] = [handle, filename, upload.size, contentType, ts, claim.token];
     assignPasswordStore(assignments, values, hash, password, "password_hash", "password_secret");
-    const updated = await env.DB.prepare(
-      `UPDATE loose_files SET ${assignments.join(", ")} WHERE id = ? AND last_written_by = ?`,
-    )
-      .bind(...values, id, claim.token)
-      .run();
+    const update = `UPDATE loose_files SET ${assignments.join(", ")} WHERE id = ? AND last_written_by = ?`;
+    let updated: D1Result;
+    if (guard) {
+      const now = new Date(ts);
+      const live = `(expires_at IS NULL OR expires_at > ?)`;
+      [updated] = await env.DB.batch([
+        env.DB.prepare(`${update} AND ${live} AND ${GRANT_LEASE_SQL}`).bind(...values, id, claim.token, ts, ...grantLeaseBinds(guard, now)),
+        consumeGrantStatement(
+          env,
+          guard,
+          now,
+          { id, url: filePublicUrl(env, handle, id, filename) },
+          `EXISTS (SELECT 1 FROM loose_files WHERE id = ? AND last_written_by = ? AND ${live})`,
+          [id, claim.token, ts],
+        ),
+      ]);
+    } else {
+      updated = await env.DB.prepare(update).bind(...values, id, claim.token).run();
+    }
     if (!d1Changed(updated)) {
+      const grantProblem = guard ? await grantCommitFailure(env, guard) : null;
+      if (grantProblem) throw grantProblem;
       throw new ApiError(409, "file_write_lost", "The file changed during replacement; retry.");
     }
     metadataCommitted = true;
     if (renamed) await env.BUCKET.delete(oldKey).catch(() => undefined);
   } catch (err) {
     if (!metadataCommitted) {
-      if (wroteObject) await restoreR2Object(env.BUCKET, newKey, renamed ? null : previousState).catch(() => undefined);
-      await restoreLooseFileWriteClaim(env, id, claim).catch(() => undefined);
+      let restoreFailed = false;
+      if (wroteObject) {
+        await restoreR2Object(env.BUCKET, newKey, renamed ? null : previousState).catch(() => {
+          restoreFailed = true;
+        });
+      }
+      await restoreLooseFileWriteClaim(env, id, claim).catch(() => {
+        restoreFailed = true;
+      });
       await releaseStorage(env.DB, reserved);
+      // A grant must not be released for a retry while storage and the catalog may disagree.
+      if (guard && restoreFailed) {
+        throw new ApiError(500, "storage_rollback_failed", "The upload failed and storage could not be restored. Ask for a new grant.");
+      }
     }
     throw err;
   } finally {

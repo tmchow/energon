@@ -101,26 +101,44 @@ export async function requireToken(request: Request, env: Env): Promise<Actor> {
   )
     .bind(tokenHash)
     .first<TokenRow>();
-  if (!row || row.revoked_at) {
+  const rejection = tokenRowRejection(env, row);
+  if (rejection === "missing" || rejection === "revoked") {
     throw unauthorized(
       origin,
       `That API token is missing or revoked. Stop using it. If a human can respond, connect again with a code per ${origin}/auth.md; if not, ask a human to mint a replacement at ${origin}/tokens and store it as ${id.tokenEnv}.`,
       env,
     );
   }
-  if (tokenExpired(row.expires_at)) throw tokenExpiredError(origin, row.expires_at ?? "", env);
-  assertEmailAllowed(env, row.user_email);
-  const user = row.user_id ? await getUserById(env, row.user_id) : await getUser(env, row.user_email);
-  const last = row.last_used_at ? Date.parse(row.last_used_at) : 0;
+  if (rejection === "expired") throw tokenExpiredError(origin, row?.expires_at ?? "", env);
+  if (rejection === "email") assertEmailAllowed(env, row!.user_email);
+  const live = row!;
+  const last = live.last_used_at ? Date.parse(live.last_used_at) : 0;
   if (!Number.isFinite(last) || Date.now() - last > 10 * 60 * 1000) {
     try {
       await env.DB.prepare(`UPDATE tokens SET last_used_at = ? WHERE id = ?`)
-        .bind(new Date().toISOString(), row.id)
+        .bind(new Date().toISOString(), live.id)
         .run();
     } catch {
       // Usage metadata is best-effort and must not make a valid token unusable.
     }
   }
+  return actorForTokenRow(env, live);
+}
+
+type TokenRejection = "missing" | "revoked" | "expired" | "email";
+
+/** The checks every use of a token's authority repeats, in requireToken's order. */
+function tokenRowRejection(env: Env, row: TokenRow | null): TokenRejection | null {
+  if (!row) return "missing";
+  if (row.revoked_at) return "revoked";
+  if (tokenExpired(row.expires_at)) return "expired";
+  const policy = instancePolicy(env);
+  if (!emailAllowed(policy, row.user_email)) return "email";
+  return null;
+}
+
+async function actorForTokenRow(env: Env, row: TokenRow): Promise<Actor> {
+  const user = row.user_id ? await getUserById(env, row.user_id) : await getUser(env, row.user_email);
   const tokenScope = readTokenScope(row.scope);
   return {
     email: user?.email || row.user_email,
@@ -133,6 +151,23 @@ export async function requireToken(request: Request, env: Env): Promise<Actor> {
     tokenScope,
     admin: tokenScope === "admin" && emailIsAdmin(env, row.user_email),
   };
+}
+
+/**
+ * The minting account behind an upload grant, re-derived from its token on every use so revoking or
+ * expiring the token, or dropping the email from the allow-list, ends the grant. Never carries admin scope.
+ */
+export async function grantActor(env: Env, tokenId: string): Promise<{ actor: Actor } | { rejected: TokenRejection }> {
+  const row = await env.DB.prepare(
+    `SELECT id, user_email, user_id, label, token_hash, created_at, last_used_at, revoked_at, expires_at, scope
+     FROM tokens WHERE id = ?`,
+  )
+    .bind(tokenId)
+    .first<TokenRow>();
+  const rejected = tokenRowRejection(env, row);
+  if (rejected || !row) return { rejected: rejected ?? "missing" };
+  const actor = await actorForTokenRow(env, row);
+  return { actor: { ...actor, via: "grant", tokenScope: "account", admin: false } };
 }
 
 export function identitySubFromRequest(request: Request, email: string): string {
