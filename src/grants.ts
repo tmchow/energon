@@ -1,12 +1,15 @@
 import { grantActor, parseBearer } from "./auth";
-import { expiredError, isExpired, isPurgeClaimed } from "./expire";
+import { d1Changed, expiredError, isExpired, isPurgeClaimed } from "./expire";
 import { assertFilename, createLooseFile, putLooseFile } from "./files";
 import { hashesEqual } from "./gate";
-import type { GrantGuard } from "./grant-guard";
+import { GRANT_UPLOAD_PREFIX } from "./grant-protocol";
+import { grantBusy, type GrantGuard } from "./grant-guard";
+import { FORBIDDEN_PUT_HEADERS } from "./guest-write";
 import { ApiError, contentOrigin, json, nanoid, publicOrigin, secretJson, sha256Hex } from "./http";
 import {
   assertCanMutate,
   grantClaimable,
+  grantClaimCutoff,
   instancePolicy,
   resolveCreateWritePolicy,
   resolveExpiresAt,
@@ -25,15 +28,6 @@ const SHA256_RE = /^[0-9a-f]{64}$/i;
 const PURGE_BATCH = 90;
 const PURGE_MAX_BATCHES = 20;
 const RETENTION_MS = 24 * 60 * 60 * 1000;
-
-const FORBIDDEN_REDEEM_HEADERS = [
-  "x-filename",
-  "x-energon-set-password",
-  "x-energon-set-write-password",
-  "x-energon-duplicate-from",
-  "x-energon-ttl",
-  "x-energon-write-policy",
-];
 
 type TargetKind = "new_file" | "file" | "site_path";
 
@@ -72,7 +66,7 @@ async function hashGrantSecret(secret: string): Promise<string> {
 }
 
 function grantUploadUrl(env: Env, id: string): string {
-  return `${contentOrigin(env)}/_grants/${id}`;
+  return `${contentOrigin(env)}${GRANT_UPLOAD_PREFIX}${id}`;
 }
 
 function optionalString(value: unknown, field: string): string | null {
@@ -86,39 +80,45 @@ async function resolveTarget(env: Env, actor: Actor, raw: unknown): Promise<Targ
     throw new ApiError(400, "bad_target", 'target must be an object with type "new_file", "file", or "site_path".');
   }
   const target = raw as Record<string, unknown>;
-  if (target.type === "new_file") {
-    const filename = assertFilename(optionalString(target.filename, "target.filename") ?? "", "");
-    if (!filename) throw new ApiError(400, "bad_filename", "target.filename is required for a new file.");
-    const ttl = optionalString(target.ttl, "target.ttl");
-    const writePolicy = optionalString(target.write_policy, "target.write_policy");
-    resolveExpiresAt(instancePolicy(env), ttl ?? undefined);
-    resolveCreateWritePolicy(env, writePolicy ?? undefined);
-    return { kind: "new_file", filename, ttl, writePolicy };
-  }
-  if (target.type === "file") {
-    const fileId = optionalString(target.id, "target.id") ?? "";
-    const row = isFileId(fileId)
-      ? await env.DB.prepare(
-          `SELECT id, handle, filename, expires_at, created_by, last_written_by, write_policy, owner_id FROM loose_files WHERE id = ?`,
-        )
-          .bind(fileId)
-          .first<{ id: string; handle: string; filename: string; expires_at: string | null; created_by: string; last_written_by: string | null; write_policy: string | null; owner_id: string | null }>()
-      : null;
-    if (!row) throw new ApiError(404, "file_not_found", "No loose file with that id.");
-    if (isPurgeClaimed(row.last_written_by) || isExpired(row.expires_at)) throw expiredError("file");
-    assertCanMutate(actor, row);
-    return { kind: "file", fileId: row.id, url: filePublicUrl(env, row.handle, row.id, row.filename) };
-  }
-  if (target.type === "site_path") {
-    const siteId = optionalString(target.site_id, "target.site_id") ?? "";
-    const path = assertFilePath(optionalString(target.path, "target.path") ?? "");
-    const site = isSiteId(siteId) ? await getSiteById(env, siteId) : null;
-    if (!site) throw new ApiError(404, "site_not_found", "No such site.");
-    if (isPurgeClaimed(site.last_written_by) || isExpired(site.expires_at)) throw expiredError("site");
-    assertCanMutate(actor, site);
-    return { kind: "site_path", siteId: site.id, path, url: sitePublicUrl(env, site.handle, site.id, site.slug, path) };
-  }
+  if (target.type === "new_file") return resolveNewFileTarget(env, target);
+  if (target.type === "file") return resolveFileTarget(env, actor, target);
+  if (target.type === "site_path") return resolveSiteTarget(env, actor, target);
   throw new ApiError(400, "bad_target", 'target.type must be "new_file", "file", or "site_path".');
+}
+
+function resolveNewFileTarget(env: Env, target: Record<string, unknown>): Target {
+  const filename = assertFilename(optionalString(target.filename, "target.filename") ?? "", "");
+  if (!filename) throw new ApiError(400, "bad_filename", "target.filename is required for a new file.");
+  const ttl = optionalString(target.ttl, "target.ttl");
+  const writePolicy = optionalString(target.write_policy, "target.write_policy");
+  resolveExpiresAt(instancePolicy(env), ttl ?? undefined);
+  resolveCreateWritePolicy(env, writePolicy ?? undefined);
+  return { kind: "new_file", filename, ttl, writePolicy };
+}
+
+async function resolveFileTarget(env: Env, actor: Actor, target: Record<string, unknown>): Promise<Target> {
+  const fileId = optionalString(target.id, "target.id") ?? "";
+  const row = isFileId(fileId)
+    ? await env.DB.prepare(
+        `SELECT id, handle, filename, expires_at, created_by, last_written_by, write_policy, owner_id FROM loose_files WHERE id = ?`,
+      )
+        .bind(fileId)
+        .first<{ id: string; handle: string; filename: string; expires_at: string | null; created_by: string; last_written_by: string | null; write_policy: string | null; owner_id: string | null }>()
+    : null;
+  if (!row) throw new ApiError(404, "file_not_found", "No loose file with that id.");
+  if (isPurgeClaimed(row.last_written_by) || isExpired(row.expires_at)) throw expiredError("file");
+  assertCanMutate(actor, row);
+  return { kind: "file", fileId: row.id, url: filePublicUrl(env, row.handle, row.id, row.filename) };
+}
+
+async function resolveSiteTarget(env: Env, actor: Actor, target: Record<string, unknown>): Promise<Target> {
+  const siteId = optionalString(target.site_id, "target.site_id") ?? "";
+  const path = assertFilePath(optionalString(target.path, "target.path") ?? "");
+  const site = isSiteId(siteId) ? await getSiteById(env, siteId) : null;
+  if (!site) throw new ApiError(404, "site_not_found", "No such site.");
+  if (isPurgeClaimed(site.last_written_by) || isExpired(site.expires_at)) throw expiredError("site");
+  assertCanMutate(actor, site);
+  return { kind: "site_path", siteId: site.id, path, url: sitePublicUrl(env, site.handle, site.id, site.slug, path) };
 }
 
 function readMaxBytes(env: Env, raw: unknown): number {
@@ -207,7 +207,7 @@ function ownsGrant(actor: Actor, row: GrantRow): boolean {
   return row.user_email.toLowerCase() === actor.email.toLowerCase();
 }
 
-function derivedState(row: GrantRow, now = Date.now()): string {
+function derivedState(row: GrantRow, now = Date.now()): GrantRow["state"] | "expired" {
   if ((row.state === "unused" || row.state === "uploading") && !grantClaimable(row.expires_at, now)) return "expired";
   return row.state;
 }
@@ -248,11 +248,8 @@ export async function purgeGrants(env: Env, now = Date.now()): Promise<number> {
   return deleted;
 }
 
-function grantJson(data: unknown, status: number, extra?: HeadersInit): Response {
-  return Response.json(data, {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...extra },
-  });
+function grantJson(data: unknown, status: number, extra?: Record<string, string>): Response {
+  return json(data, status, { "cache-control": "no-store", ...extra });
 }
 
 /** Responses on the content origin never point at the hub or /v1: the uploading machine has no token. */
@@ -287,16 +284,12 @@ function grantExpired(): ApiError {
   return new ApiError(410, "grant_expired", "This grant expired. Ask for a new grant.");
 }
 
-function grantBusy(): ApiError {
-  return new ApiError(409, "grant_busy", "Another upload is using this grant. Retry after it finishes.");
-}
-
 function rejectForbiddenHeaders(request: Request): void {
   const ctype = (request.headers.get("content-type") || "").toLowerCase();
   if (ctype.includes("multipart/form-data")) {
     throw new ApiError(400, "bad_content_type", "Upload grants accept raw bytes only.");
   }
-  for (const name of FORBIDDEN_REDEEM_HEADERS) {
+  for (const name of FORBIDDEN_PUT_HEADERS) {
     if (request.headers.get(name) !== null) {
       throw new ApiError(400, "bad_request", `Upload grants do not accept ${name}. Send raw bytes and the Authorization header only.`);
     }
@@ -361,14 +354,13 @@ async function redeemGrant(env: Env, ctx: ExecutionContext, request: Request, ra
 
 async function claimLease(env: Env, row: GrantRow): Promise<GrantGuard> {
   const leaseId = crypto.randomUUID();
-  const now = Date.now();
-  const claimable = new Date(now - 300_000).toISOString();
+  const now = new Date();
   const claimed = await env.DB.prepare(
     `UPDATE upload_grants SET state = 'uploading', lease_id = ?, leased_at = ? WHERE id = ? AND state = 'unused' AND expires_at > ?`,
   )
-    .bind(leaseId, new Date(now).toISOString(), row.id, claimable)
+    .bind(leaseId, now.toISOString(), row.id, grantClaimCutoff(now))
     .run();
-  if (Number(claimed.meta?.changes ?? 0) > 0) return { grantId: row.id, leaseId };
+  if (d1Changed(claimed)) return { grantId: row.id, leaseId };
   const current = await env.DB.prepare(`SELECT state, last_error, result_url FROM upload_grants WHERE id = ?`)
     .bind(row.id)
     .first<Pick<GrantRow, "state" | "last_error" | "result_url">>();
@@ -381,19 +373,21 @@ async function claimLease(env: Env, row: GrantRow): Promise<GrantGuard> {
 async function commit(env: Env, ctx: ExecutionContext, actor: Actor, row: GrantRow, upload: Upload, guard: GrantGuard): Promise<Response> {
   if (row.target_kind === "new_file") {
     const res = await createLooseFile(env, ctx, actor, row.filename ?? "", upload, null, undefined, row.file_ttl ?? undefined, row.file_write_policy ?? undefined, undefined, guard);
-    const body = (await res.json()) as { url: string; id: string; size: number; content_type: string };
-    return grantJson({ ok: true, created: true, url: body.url, id: body.id, size: body.size, content_type: body.content_type }, 201);
+    return looseResult(res, true);
   }
   if (row.target_kind === "file") {
-    const res = await putLooseFile(env, ctx, actor, row.file_id ?? "", upload, null, null, undefined, guard);
-    const body = (await res.json()) as { url: string; id: string; size: number; content_type: string };
-    return grantJson({ ok: true, created: false, url: body.url, id: body.id, size: body.size, content_type: body.content_type }, 200);
+    return looseResult(await putLooseFile(env, ctx, actor, row.file_id ?? "", upload, null, null, undefined, guard), false);
   }
   const result = await putSiteFile(env, ctx, actor, row.site_id ?? "", row.path ?? "", upload, null, guard);
   return grantJson(
     { ok: true, created: result.created, url: result.url, site_id: row.site_id, path: result.path, size: result.size, content_type: result.content_type },
     result.created ? 201 : 200,
   );
+}
+
+async function looseResult(res: Response, created: boolean): Promise<Response> {
+  const body = (await res.json()) as { url: string; id: string; size: number; content_type: string };
+  return grantJson({ ok: true, created, url: body.url, id: body.id, size: body.size, content_type: body.content_type }, created ? 201 : 200);
 }
 
 /** Retryable failures hand the grant back; permanent ones end it with a reason the status read can show. */

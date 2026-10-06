@@ -273,6 +273,11 @@ export function resolveGrantExpiresAt(input: unknown, tokenExpiresAt: string | n
   return new Date(Math.min(own, tokenEnd)).toISOString();
 }
 
+/** Grants whose expires_at is after this instant may still claim a lease. */
+export function grantClaimCutoff(now: Date | number = Date.now()): string {
+  return new Date(new Date(now).getTime() - GRANT_CLAIM_GRACE_SECONDS * 1000).toISOString();
+}
+
 /** Fails closed like tokenExpired: an unparseable expiry is never claimable. */
 export function grantClaimable(expiresAt: string, now = Date.now()): boolean {
   const t = Date.parse(expiresAt);

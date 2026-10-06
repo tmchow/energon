@@ -29,7 +29,7 @@ import {
   WRITE_CLAIM_LIKE,
   d1Changed,
 } from "./expire";
-import { consumeGrantStatement, grantCommitFailure, GRANT_LEASE_SQL, grantLeaseBinds, type GrantGuard } from "./grant-guard";
+import { consumeGrantStatement, grantBusy, grantCommitFailure, GRANT_LEASE_SQL, grantLeaseBinds, type GrantGuard } from "./grant-guard";
 import { ensureHandle, ensureUser } from "./handles";
 import { maybeUnlockWithWritePassword, passwordEcho, passwordField, passwordHashFromInput, protectContent, readSetPasswordHeader, readSetWritePasswordHeader, assignPasswordStore, hubLinkAccessFields, storedPasswordSecret, writePasswordField, writePasswordHashFromInput } from "./gate";
 import { filePublicUrl, isFileId, urlFilename } from "./urls";
@@ -123,7 +123,7 @@ export async function createLooseFile(
         consumeGrantStatement(env, guard, now, { id, url }, `EXISTS (SELECT 1 FROM loose_files WHERE id = ?)`, [id]),
       ]);
       if (!d1Changed(inserted)) {
-        throw (await grantCommitFailure(env, guard)) ?? new ApiError(409, "grant_busy", "Another upload holds this grant. Retry after it finishes.");
+        throw (await grantCommitFailure(env, guard)) ?? grantBusy();
       }
     } else {
       await env.DB.prepare(`INSERT INTO loose_files (${columns}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)

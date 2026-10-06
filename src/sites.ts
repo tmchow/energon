@@ -607,11 +607,11 @@ export async function putSiteFile(
             `UPDATE sites SET updated_at = ?, last_written_by = ?, written_via = NULL WHERE id = ? AND last_written_by NOT LIKE ? AND ${OWNER_WRITE_SQL}`,
           ).bind(ts, actor.email, site.id, PURGE_CLAIM_LIKE, ...ownerWriteBinds(actor)),
         ]);
-    if (!d1Changed(wrote[1] ?? {}) && guard) {
-      // Every guarded statement carries the same predicates, so nothing landed and there is no row to compensate.
-      throw (await grantCommitFailure(env, guard)) ?? (await throwSiteMutationConflict(env, site.id));
-    }
     if (!d1Changed(wrote[1] ?? {})) {
+      if (guard) {
+        // Every guarded statement carries the same predicates, so nothing landed and there is no row to compensate.
+        throw (await grantCommitFailure(env, guard)) ?? (await throwSiteMutationConflict(env, site.id));
+      }
       if (existing) {
         await siteFileUpsert(
           env,
