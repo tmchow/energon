@@ -24,6 +24,7 @@ import { ensureSchema } from "./db";
 import { sweepExpired } from "./expire";
 import { remapLegacySiteR2 } from "./site-r2-migrate";
 import { exportOwnedZip } from "./export";
+import { GRANT_UPLOAD_PATH, purgeGrants, redeemGrantRoute } from "./grants";
 import { guestWrite } from "./guest-write";
 import { CONTENT_ONLY_404_MESSAGE } from "./guest-write-protocol";
 import { ensureUser } from "./handles";
@@ -75,6 +76,7 @@ export default {
     await remapLegacySiteR2(env, ctx);
     await sweepExpired(env, ctx);
     await purgeConnections(env);
+    await purgeGrants(env);
     await sweepStaleTmp(env.BUCKET);
   },
 };
@@ -95,6 +97,17 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
 
   const configuredContentOrigin = dedicatedContentOrigin(env);
   const contentHost = configuredContentOrigin !== null && url.origin === configuredContentOrigin;
+  const grantUpload = GRANT_UPLOAD_PATH.exec(path);
+  if (grantUpload) {
+    if (!contentHost && !isLocalHost(url.hostname)) {
+      // No redirect: Access answers hub paths first, and clients drop Authorization on a cross-host redirect.
+      return configuredContentOrigin
+        ? json({ error: "not_found", message: `Upload grants are redeemed on the content origin: ${configuredContentOrigin}${path}` }, 404)
+        : json({ error: "content_origin_not_configured", message: "Set CONTENT_ORIGIN to a separate custom hostname before serving content." }, 503);
+    }
+    await ensureSchema(env.DB);
+    return redeemGrantRoute(env, ctx, request, decodeURIComponent(grantUpload[1]));
+  }
   if (isPublicContentPath(path)) {
     if (!contentHost && !isLocalHost(url.hostname)) {
       if (!configuredContentOrigin) {

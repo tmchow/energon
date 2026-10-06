@@ -15,6 +15,7 @@ import {
   putLooseFromRequest,
 } from "./files";
 import { contentPatch } from "./gate";
+import { grantStatus, mintGrant } from "./grants";
 import {
   json,
   jsonMaybeSecret,
@@ -55,6 +56,7 @@ export const V1_SITE_IMPORT = /^\/v1\/sites\/([^/]+)\/import$/;
 export const V1_SITE_EXPORT = /^\/v1\/sites\/([^/]+)\/export$/;
 export const V1_SITE_FILE = /^\/v1\/sites\/([^/]+)\/files\/(.+)$/;
 export const V1_SITE_ONE = /^\/v1\/sites\/([^/]+)$/;
+export const V1_GRANT_ONE = /^\/v1\/grants\/([^/]+)$/;
 
 export const V1_HANDSHAKE = {
   auth: "none",
@@ -163,6 +165,18 @@ export const V1_TOKEN = {
       methods: {
         GET: (c) => listLooseJson(c.env, c.actor.email, parseListQuery(c.url), c.actor.userId),
         POST: (c) => postLooseFromRequest(c.env, c.ctx, c.actor, c.request),
+      },
+    },
+    {
+      path: "/v1/grants",
+      methods: {
+        POST: async (c) => mintGrant(c.env, c.actor, await readJson(c.request)),
+      },
+    },
+    {
+      path: V1_GRANT_ONE,
+      methods: {
+        GET: (c) => grantStatus(c.env, c.actor, decodeURIComponent(c.params[0])),
       },
     },
     {

@@ -40,6 +40,10 @@
     {
       "name": "admin",
       "description": "Operator routes. Need a token minted with scope=admin by someone still on ADMIN_EMAILS. They never return published bytes, share passwords, or write passwords. Every action that lists or changes others' content is recorded."
+    },
+    {
+      "name": "grants",
+      "description": "Upload grants let a machine without a token upload one file. A token holder mints a short-lived, single-use grant for one target; any client then PUTs raw bytes to the grant's upload_url on the content origin with the secret in Authorization: Bearer. That upload route is not under /v1."
     }
   ],
   "paths": {
@@ -2819,6 +2823,156 @@
           }
         }
       }
+    },
+    "/v1/grants": {
+      "post": {
+        "operationId": "mintGrant",
+        "tags": [
+          "grants"
+        ],
+        "summary": "Mint a single-use upload grant",
+        "description": "The minting account must be able to write the target now. The upload re-checks that, and fails if the minting token is revoked or expired first. The tokenless client PUTs raw bytes to upload_url with Authorization: Bearer <secret>; success publishes immediately and uses the grant up. Retryable upload failures (busy target, storage cap) leave the grant usable until it expires; a deleted target or lost permission ends it. Read the result with GET /v1/grants/{id}.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantMintRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Grant minted; no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantMinted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad target, lifetime, size, digest, filename, or path.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "x-error-codes": [
+              "bad_json",
+              "bad_target",
+              "bad_ttl",
+              "bad_request",
+              "bad_filename",
+              "bad_path",
+              "bad_write_policy",
+              "ttl_required",
+              "ttl_too_long"
+            ]
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "The minting account cannot write the target, or its email is outside the allowed domains.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "x-error-codes": [
+              "forbidden_write",
+              "forbidden_domain"
+            ]
+          },
+          "404": {
+            "description": "No such file or site.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "x-error-codes": [
+              "file_not_found",
+              "site_not_found"
+            ]
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "410": {
+            "$ref": "#/components/responses/Expired"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "503": {
+            "$ref": "#/components/responses/ContentOriginNotConfigured"
+          }
+        }
+      }
+    },
+    "/v1/grants/{id}": {
+      "get": {
+        "operationId": "getGrant",
+        "tags": [
+          "grants"
+        ],
+        "summary": "Read an upload grant's state and result",
+        "description": "Any token of the minting account may read it; other accounts get 404. Never returns the secret. Rows are deleted 24 hours after expiry, then 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Grant state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenDomain"
+          },
+          "404": {
+            "description": "No grant with that id for this account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "x-error-codes": [
+              "grant_not_found"
+            ]
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2832,7 +2986,7 @@
     "schemas": {
       "Error": {
         "type": "object",
-        "description": "Every non-2xx JSON body. Some codes add fields: token_expired, cleanup_drift, and cleanup_too_many are typed below; too_large and storage_cap add limit_bytes plus actual_bytes or used_bytes; GET /v1/export too_many_files and too_large also add sites, files, and actual_files; bad_ttl, ttl_required, and ttl_too_long add presets and default_ttl or max_ttl; forbidden_domain adds allowed_email_domains; site_not_found adds hint; bad_query adds fields (the malformed cleanup target filters). bad_target comes from POST /v1/cleanup and POST /v1/admin/gates/unlock. bad_action and bad_confirm come only from POST /v1/cleanup. empty_export is GET /v1/export with no owned sites or files. password_required (401) and rate_limited (429) come from the public content gate, not /v1. bad_label, bad_origin, and token_not_found come from the hub /account API. not_found is any unknown route. bad_path is also returned for a URL that is not valid percent-encoding. connection_bad_code and connection_decided come from the human /account/connections API.",
+        "description": "Every non-2xx JSON body. Some codes add fields: token_expired, cleanup_drift, and cleanup_too_many are typed below; too_large and storage_cap add limit_bytes plus actual_bytes or used_bytes; GET /v1/export too_many_files and too_large also add sites, files, and actual_files; bad_ttl, ttl_required, and ttl_too_long add presets and default_ttl or max_ttl; forbidden_domain adds allowed_email_domains; site_not_found adds hint; bad_query adds fields (the malformed cleanup target filters). bad_target comes from POST /v1/cleanup and POST /v1/admin/gates/unlock. bad_action and bad_confirm come only from POST /v1/cleanup. empty_export is GET /v1/export with no owned sites or files. password_required (401) and rate_limited (429) come from the public content gate, not /v1. bad_label, bad_origin, and token_not_found come from the hub /account API. not_found is any unknown route. bad_path is also returned for a URL that is not valid percent-encoding. connection_bad_code and connection_decided come from the human /account/connections API. grant_invalid (404), grant_used (410, adds url), grant_failed (410, adds reason), grant_expired (410), grant_busy (409, retryable), and checksum_mismatch (400) come from the upload grant route on the content origin, PUT {content_origin}/_grants/{id}, not /v1.",
         "required": [
           "error",
           "message"
@@ -2854,12 +3008,13 @@
               "bad_path",
               "bad_query",
               "bad_request",
-              "bad_slug",
               "bad_scope",
+              "bad_slug",
               "bad_target",
               "bad_ttl",
               "bad_write_policy",
               "bad_zip_path",
+              "checksum_mismatch",
               "cleanup_drift",
               "cleanup_too_many",
               "connection_bad_code",
@@ -2874,8 +3029,8 @@
               "empty_export",
               "empty_site",
               "empty_zip",
-              "expired",
               "expire_not_own",
+              "expired",
               "export_failed",
               "file_busy",
               "file_delete_lost",
@@ -2886,6 +3041,12 @@
               "forbidden_domain",
               "forbidden_write",
               "forbidden_write_policy",
+              "grant_busy",
+              "grant_expired",
+              "grant_failed",
+              "grant_invalid",
+              "grant_not_found",
+              "grant_used",
               "handle_failed",
               "id_failed",
               "internal",
@@ -5214,6 +5375,246 @@
         "type": "string",
         "pattern": "^[A-Za-z0-9]{6,12}$",
         "description": "Site capability id minted by POST /v1/sites. Same shape as a loose file id. A slug does not resolve a site."
+      },
+      "GrantTarget": {
+        "description": "Exactly one target. new_file creates a loose file owned by the minting account when the upload lands; file replaces an existing loose file; site_path adds or replaces one path in an existing site.",
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "filename"
+            ],
+            "properties": {
+              "type": {
+                "const": "new_file"
+              },
+              "filename": {
+                "type": "string",
+                "description": "Simple filename, not a path. Fixed at mint."
+              },
+              "ttl": {
+                "$ref": "#/components/schemas/Ttl"
+              },
+              "write_policy": {
+                "$ref": "#/components/schemas/WritePolicy"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "id"
+            ],
+            "properties": {
+              "type": {
+                "const": "file"
+              },
+              "id": {
+                "$ref": "#/components/schemas/FileId"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "site_id",
+              "path"
+            ],
+            "properties": {
+              "type": {
+                "const": "site_path"
+              },
+              "site_id": {
+                "$ref": "#/components/schemas/SiteId"
+              },
+              "path": {
+                "type": "string",
+                "description": "Relative path inside the site. Fixed at mint."
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "GrantMintRequest": {
+        "type": "object",
+        "required": [
+          "target"
+        ],
+        "properties": {
+          "target": {
+            "$ref": "#/components/schemas/GrantTarget"
+          },
+          "expires_in": {
+            "type": "string",
+            "enum": [
+              "5m",
+              "15m",
+              "30m",
+              "1h"
+            ],
+            "default": "15m",
+            "description": "Grant lifetime. Never later than the minting token's own expiry. Content retention and token TTL settings do not apply."
+          },
+          "max_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Largest body the upload may send. Capped at this Energon's per-file limit; defaults to it."
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{64}$",
+            "description": "Expected SHA-256 of the body, hex. A mismatching upload publishes nothing."
+          }
+        },
+        "additionalProperties": false
+      },
+      "GrantMinted": {
+        "type": "object",
+        "description": "Returned once with no-store, private. The secret is never shown again and never appears in a URL.",
+        "required": [
+          "id",
+          "secret",
+          "upload_url",
+          "method",
+          "header",
+          "scheme",
+          "expires_at",
+          "max_bytes",
+          "sha256",
+          "target",
+          "url",
+          "status_url"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "secret": {
+            "type": "string",
+            "description": "Send as Authorization: Bearer <secret> on the upload. Not an API token."
+          },
+          "upload_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "{content_origin}/_grants/{id}."
+          },
+          "method": {
+            "const": "PUT"
+          },
+          "header": {
+            "const": "Authorization"
+          },
+          "scheme": {
+            "const": "Bearer"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "max_bytes": {
+            "type": "integer"
+          },
+          "sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target": {
+            "$ref": "#/components/schemas/GrantTarget"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri",
+            "description": "Public URL the upload will change; null for a new file, whose URL comes from the upload response or GET /v1/grants/{id}."
+          },
+          "status_url": {
+            "type": "string",
+            "format": "uri"
+          }
+        }
+      },
+      "GrantStatus": {
+        "type": "object",
+        "required": [
+          "id",
+          "state",
+          "target",
+          "url",
+          "last_error",
+          "max_bytes",
+          "sha256",
+          "created_at",
+          "consumed_at",
+          "expires_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "unused",
+              "uploading",
+              "consumed",
+              "failed",
+              "expired"
+            ],
+            "description": "expired is derived once expires_at plus a five-minute grace has passed without a consumed upload."
+          },
+          "target": {
+            "$ref": "#/components/schemas/GrantTarget"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri",
+            "description": "Published URL once consumed."
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why a failed grant ended, for example token_revoked or file_not_found."
+          },
+          "max_bytes": {
+            "type": "integer"
+          },
+          "sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "consumed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
       }
     },
     "parameters": {

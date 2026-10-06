@@ -1,4 +1,4 @@
-import { env } from "cloudflare:test";
+import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { grantActor } from "../src/auth";
 import { createLooseFile, putLooseFile } from "../src/files";
@@ -206,5 +206,301 @@ describe("grant guard on the account write paths", () => {
     expect(row).toBeNull();
     expect(await env.BUCKET.get(`sites/${site.handle}/${site.id}/a.txt`)).toBeNull();
     expect(await quotaUsed()).toBe(before);
+  });
+});
+
+const CONTENT = "https://energon.example.com";
+const HUB = "https://hub.energon.example.com";
+
+async function mintGrant(token: string, body: Record<string, unknown>) {
+  return json("/v1/grants", {
+    method: "POST",
+    headers: auth(token, { "content-type": "application/json" }),
+    body: JSON.stringify(body),
+  });
+}
+
+async function redeem(uploadUrl: string, secret: string, body: string | Uint8Array, headers: Record<string, string> = {}) {
+  const res = await SELF.fetch(uploadUrl, { method: "PUT", headers: { authorization: `Bearer ${secret}`, ...headers }, body });
+  const text = await res.text();
+  return { status: res.status, headers: res.headers, text, body: text ? JSON.parse(text) : null };
+}
+
+async function digest(text: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+describe("minting and reading upload grants", () => {
+  it("mints a new-file grant whose secret never appears in the URL", async () => {
+    const token = await mint("mint-new");
+    const minted = await mintGrant(token, { target: { type: "new_file", filename: "report.md" } });
+    expect(minted.status).toBe(201);
+    expect(minted.body.upload_url).toBe(`${CONTENT}/_grants/${minted.body.id}`);
+    expect(minted.body.secret).toMatch(/^grant_[A-Za-z0-9]{43}$/);
+    expect(minted.body.upload_url).not.toContain(minted.body.secret);
+    expect(minted.body).toMatchObject({ method: "PUT", header: "Authorization", scheme: "Bearer", url: null, target: { type: "new_file", filename: "report.md" } });
+    expect(JSON.stringify(minted.body)).not.toMatch(/secret_hash|energon-grant:/);
+  });
+
+  it("refuses an owner-only file the minter does not own and allows an org file", async () => {
+    const owner = await mint("mint-owner", "grace@esperlabs.app");
+    const other = await mint("mint-other", "ada@esperlabs.app");
+    const locked = await json("/v1/files", {
+      method: "POST",
+      headers: auth(owner, { "X-Filename": "locked.txt", "X-Energon-Write-Policy": "owner" }),
+      body: "x",
+    });
+    const open = await json("/v1/files", {
+      method: "POST",
+      headers: auth(owner, { "X-Filename": "open.txt", "X-Energon-Write-Policy": "org" }),
+      body: "x",
+    });
+    expect((await mintGrant(other, { target: { type: "file", id: locked.body.id } })).status).toBe(403);
+    const allowed = await mintGrant(other, { target: { type: "file", id: open.body.id } });
+    expect(allowed.status).toBe(201);
+    expect(allowed.body.url).toBe(open.body.url);
+  });
+
+  it("rejects malformed targets, lifetimes, and digests", async () => {
+    const token = await mint("mint-bad");
+    expect((await mintGrant(token, {})).status).toBe(400);
+    expect((await mintGrant(token, { target: { type: "folder" } })).status).toBe(400);
+    expect((await mintGrant(token, { target: { type: "new_file", filename: "a.txt" }, expires_in: "2h" })).body.error).toBe("bad_ttl");
+    expect((await mintGrant(token, { target: { type: "new_file", filename: "a.txt" }, sha256: "abc" })).status).toBe(400);
+    expect((await mintGrant(token, { target: { type: "new_file", filename: "a.txt", ttl: "forever" } })).body.error).toBe("bad_ttl");
+  });
+
+  it("caps max_bytes at the instance file limit", async () => {
+    const token = await mint("mint-cap");
+    const minted = await mintGrant(token, { target: { type: "new_file", filename: "big.bin" }, max_bytes: 10 * 1024 * 1024 * 1024 });
+    expect(minted.body.max_bytes).toBeLessThan(10 * 1024 * 1024 * 1024);
+  });
+
+  it("never outlives the minting token", async () => {
+    const token = await mint("mint-short", "ada@esperlabs.app", undefined, "1d");
+    const minted = await mintGrant(token, { target: { type: "new_file", filename: "a.txt" }, expires_in: "1h" });
+    const tokenRow = await env.DB.prepare("SELECT expires_at FROM tokens WHERE token_hash = ?").bind(await sha256Hex(token)).first<{ expires_at: string }>();
+    expect(Date.parse(minted.body.expires_at)).toBeLessThanOrEqual(Date.parse(tokenRow!.expires_at));
+  });
+
+  it("keeps grant secrets and API tokens apart, even with an overlapping token prefix", async () => {
+    const token = await mint("mint-apart");
+    const minted = await mintGrant(token, { target: { type: "new_file", filename: "apart.txt" } });
+    expect((await json("/v1/whoami", { headers: auth(minted.body.secret) })).status).toBe(401);
+    expect((await redeem(minted.body.upload_url, token, "x")).body.error).toBe("grant_invalid");
+  });
+
+  it("shows status to any token of the minting account and hides it from others", async () => {
+    const token = await mint("status-a");
+    const second = await mint("status-b");
+    const stranger = await mint("status-c", "grace@esperlabs.app");
+    const minted = await mintGrant(token, { target: { type: "new_file", filename: "s.txt" } });
+    const seen = await json(`/v1/grants/${minted.body.id}`, { headers: auth(second) });
+    expect(seen.status).toBe(200);
+    expect(seen.body).toMatchObject({ state: "unused", url: null, target: { type: "new_file", filename: "s.txt" } });
+    expect(JSON.stringify(seen.body)).not.toContain("secret");
+    expect((await json(`/v1/grants/${minted.body.id}`, { headers: auth(stranger) })).status).toBe(404);
+  });
+});
+
+describe("redeeming upload grants", () => {
+  it("publishes a new loose file owned by the minting account", async () => {
+    const token = await mint("redeem-new");
+    const minted = await mintGrant(token, { target: { type: "new_file", filename: "hello.txt" } });
+    const put = await redeem(minted.body.upload_url, minted.body.secret, "hello from elsewhere");
+    expect(put.status).toBe(201);
+    expect(put.body.url).toMatch(/^https:\/\/energon\.example\.com\/ada\/f\/[A-Za-z0-9]+\/hello\.txt$/);
+    expect(put.text).not.toMatch(/hub|api_url|\/v1/);
+    const got = await SELF.fetch(put.body.url);
+    expect(await got.text()).toBe("hello from elsewhere");
+    const row = await env.DB.prepare("SELECT created_by FROM loose_files WHERE id = ?").bind(put.body.id).first<{ created_by: string }>();
+    expect(row?.created_by).toBe("ada@esperlabs.app");
+    const status = await json(`/v1/grants/${minted.body.id}`, { headers: auth(token) });
+    expect(status.body).toMatchObject({ state: "consumed", url: put.body.url });
+  });
+
+  it("replaces an existing loose file at the same URL", async () => {
+    const token = await mint("redeem-replace");
+    const created = await json("/v1/files", { method: "POST", headers: auth(token, { "X-Filename": "r.txt" }), body: "old" });
+    const minted = await mintGrant(token, { target: { type: "file", id: created.body.id } });
+    const put = await redeem(minted.body.upload_url, minted.body.secret, "new");
+    expect(put.status).toBe(200);
+    expect(put.body.url).toBe(created.body.url);
+    expect(await (await SELF.fetch(created.body.url)).text()).toBe("new");
+  });
+
+  it("keeps the stored type of an extensionless file it replaces", async () => {
+    const token = await mint("redeem-type");
+    const created = await json("/v1/files", { method: "POST", headers: auth(token, { "X-Filename": "NOTES", "content-type": "text/plain" }), body: "a" });
+    const minted = await mintGrant(token, { target: { type: "file", id: created.body.id } });
+    const put = await redeem(minted.body.upload_url, minted.body.secret, "b", { "content-type": "text/html" });
+    expect(put.body.content_type).toBe(created.body.content_type);
+  });
+
+  it("creates a site path, and a second grant replaces it", async () => {
+    const token = await mint("redeem-site");
+    const site = await createSite(token, "redeem-site");
+    const first = await mintGrant(token, { target: { type: "site_path", site_id: site.id, path: "index.html" } });
+    expect((await redeem(first.body.upload_url, first.body.secret, "<p>one</p>")).status).toBe(201);
+    const second = await mintGrant(token, { target: { type: "site_path", site_id: site.id, path: "index.html" } });
+    const put = await redeem(second.body.upload_url, second.body.secret, "<p>two</p>");
+    expect(put.status).toBe(200);
+    expect(await (await SELF.fetch(put.body.url)).text()).toBe("<p>two</p>");
+  });
+
+  it("does not let the uploader choose a script-capable type for an extensionless path", async () => {
+    const token = await mint("redeem-xml");
+    const site = await createSite(token, "redeem-xml");
+    const minted = await mintGrant(token, { target: { type: "site_path", site_id: site.id, path: "feed" } });
+    const put = await redeem(minted.body.upload_url, minted.body.secret, "plain words", { "content-type": "text/xml" });
+    expect(put.body.content_type).not.toMatch(/xml/);
+  });
+
+  it("refuses a second redeem and reports the published URL", async () => {
+    const token = await mint("redeem-twice");
+    const minted = await mintGrant(token, { target: { type: "new_file", filename: "once.txt" } });
+    const first = await redeem(minted.body.upload_url, minted.body.secret, "1");
+    const again = await redeem(minted.body.upload_url, minted.body.secret, "2");
+    expect(again.status).toBe(410);
+    expect(again.body).toMatchObject({ error: "grant_used", url: first.body.url });
+  });
+
+  it("answers a wrong secret and an unknown id identically", async () => {
+    const token = await mint("redeem-invalid");
+    const minted = await mintGrant(token, { target: { type: "new_file", filename: "x.txt" } });
+    const wrong = await redeem(minted.body.upload_url, `grant_${"A".repeat(43)}`, "x");
+    const unknown = await redeem(`${CONTENT}/_grants/${"B".repeat(24)}`, minted.body.secret, "x");
+    expect(wrong.status).toBe(404);
+    expect(wrong.body).toEqual(unknown.body);
+  });
+
+  it("refuses an expired grant", async () => {
+    const token = await mint("redeem-expired");
+    const minted = await mintGrant(token, { target: { type: "new_file", filename: "late.txt" } });
+    await env.DB.prepare("UPDATE upload_grants SET expires_at = ? WHERE id = ?").bind(new Date(Date.now() - 1000).toISOString(), minted.body.id).run();
+    const put = await redeem(minted.body.upload_url, minted.body.secret, "x");
+    expect(put.status).toBe(410);
+    expect(put.body.error).toBe("grant_expired");
+  });
+
+  it("keeps the grant unused when the body is over max_bytes or fails its checksum", async () => {
+    const token = await mint("redeem-limits");
+    const capped = await mintGrant(token, { target: { type: "new_file", filename: "c.txt" }, max_bytes: 3 });
+    expect((await redeem(capped.body.upload_url, capped.body.secret, "four")).status).toBe(413);
+    expect((await json(`/v1/grants/${capped.body.id}`, { headers: auth(token) })).body.state).toBe("unused");
+
+    const checked = await mintGrant(token, { target: { type: "new_file", filename: "d.txt" }, sha256: await digest("right") });
+    const before = (await env.DB.prepare("SELECT used FROM platform_quota WHERE id = 1").first<{ used: number }>())!.used;
+    const bad = await redeem(checked.body.upload_url, checked.body.secret, "wrong");
+    expect(bad.status).toBe(400);
+    expect(bad.body.error).toBe("checksum_mismatch");
+    expect((await env.DB.prepare("SELECT used FROM platform_quota WHERE id = 1").first<{ used: number }>())!.used).toBe(before);
+    const good = await redeem(checked.body.upload_url, checked.body.secret, "right");
+    expect(good.status).toBe(201);
+  });
+
+  it("verifies the digest of a staged body larger than the in-memory limit", async () => {
+    const token = await mint("redeem-staged");
+    const big = new Uint8Array(26 * 1024 * 1024).fill(97);
+    const buf = await crypto.subtle.digest("SHA-256", big);
+    const right = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    const wrong = await mintGrant(token, { target: { type: "new_file", filename: "big-wrong.bin" }, sha256: "0".repeat(64) });
+    const rejected = await redeem(wrong.body.upload_url, wrong.body.secret, big, { "content-length": String(big.byteLength) });
+    expect(rejected.body.error).toBe("checksum_mismatch");
+    const ok = await mintGrant(token, { target: { type: "new_file", filename: "big-right.bin" }, sha256: right });
+    const accepted = await redeem(ok.body.upload_url, ok.body.secret, big, { "content-length": String(big.byteLength) });
+    expect(accepted.status).toBe(201);
+  });
+
+  it("ends the grant when its minting token is revoked", async () => {
+    const token = await mint("redeem-revoked");
+    const minted = await mintGrant(token, { target: { type: "new_file", filename: "r.txt" } });
+    await json("/v1/whoami", { method: "DELETE", headers: auth(token) });
+    const put = await redeem(minted.body.upload_url, minted.body.secret, "x");
+    expect(put.status).toBe(410);
+    expect(put.body).toMatchObject({ error: "grant_failed", reason: "token_revoked" });
+  });
+
+  it("ends the grant when its target is deleted", async () => {
+    const token = await mint("redeem-gone");
+    const created = await json("/v1/files", { method: "POST", headers: auth(token, { "X-Filename": "gone.txt" }), body: "x" });
+    const minted = await mintGrant(token, { target: { type: "file", id: created.body.id } });
+    await json(`/v1/files/${created.body.id}`, { method: "DELETE", headers: auth(token) });
+    const put = await redeem(minted.body.upload_url, minted.body.secret, "y");
+    expect(put.status).toBe(410);
+    expect(put.body.error).toBe("grant_failed");
+    expect((await json(`/v1/grants/${minted.body.id}`, { headers: auth(token) })).body).toMatchObject({ state: "failed", last_error: "file_not_found" });
+  });
+
+  it("publishes once when two redeems race", async () => {
+    const token = await mint("redeem-race");
+    const minted = await mintGrant(token, { target: { type: "new_file", filename: "race-redeem.txt" } });
+    const results = await Promise.all([
+      redeem(minted.body.upload_url, minted.body.secret, "a"),
+      redeem(minted.body.upload_url, minted.body.secret, "b"),
+    ]);
+    expect(results.filter((r) => r.status === 201)).toHaveLength(1);
+    for (const r of results.filter((r) => r.status !== 201)) expect(["grant_busy", "grant_used"]).toContain(r.body.error);
+    const rows = await env.DB.prepare("SELECT COUNT(*) AS n FROM loose_files WHERE filename = 'race-redeem.txt'").first<{ n: number }>();
+    expect(rows?.n).toBe(1);
+  });
+
+  it("rejects metadata headers and non-PUT methods", async () => {
+    const token = await mint("redeem-headers");
+    const minted = await mintGrant(token, { target: { type: "new_file", filename: "h.txt" } });
+    expect((await redeem(minted.body.upload_url, minted.body.secret, "x", { "x-filename": "evil.html" })).status).toBe(400);
+    const options = await SELF.fetch(minted.body.upload_url, { method: "OPTIONS" });
+    expect(options.status).toBe(405);
+    expect(options.headers.get("allow")).toBe("PUT");
+    expect(options.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("points a hub-origin redeem at the content origin instead of redirecting", async () => {
+    const token = await mint("redeem-hub");
+    const minted = await mintGrant(token, { target: { type: "new_file", filename: "hub.txt" } });
+    const res = await SELF.fetch(`${HUB}/_grants/${minted.body.id}`, { method: "PUT", headers: { authorization: `Bearer ${minted.body.secret}` }, body: "x", redirect: "manual" });
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as { message: string }).message).toContain(`${CONTENT}/_grants/${minted.body.id}`);
+  });
+
+  it("reads a stale uploading grant as expired once the grace passes, and never re-leases it", async () => {
+    const token = await mint("redeem-stale");
+    const minted = await mintGrant(token, { target: { type: "new_file", filename: "stale.txt" } });
+    await env.DB.prepare("UPDATE upload_grants SET state = 'uploading', lease_id = 'dead' WHERE id = ?").bind(minted.body.id).run();
+    expect((await redeem(minted.body.upload_url, minted.body.secret, "x")).body.error).toBe("grant_busy");
+    await env.DB.prepare("UPDATE upload_grants SET expires_at = ? WHERE id = ?").bind(new Date(Date.now() - 6 * 60 * 1000).toISOString(), minted.body.id).run();
+    expect((await json(`/v1/grants/${minted.body.id}`, { headers: auth(token) })).body.state).toBe("expired");
+  });
+});
+
+describe("grant sweep", () => {
+  it("deletes grants a day past expiry and keeps newer ones", async () => {
+    const { purgeGrants } = await import("../src/grants");
+    const token = await mint("sweep");
+    const old = await mintGrant(token, { target: { type: "new_file", filename: "old.txt" } });
+    const recent = await mintGrant(token, { target: { type: "new_file", filename: "recent.txt" } });
+    const live = await mintGrant(token, { target: { type: "new_file", filename: "live.txt" } });
+    await env.DB.prepare("UPDATE upload_grants SET expires_at = ? WHERE id = ?").bind(new Date(Date.now() - 25 * 3600 * 1000).toISOString(), old.body.id).run();
+    await env.DB.prepare("UPDATE upload_grants SET expires_at = ? WHERE id = ?").bind(new Date(Date.now() - 23 * 3600 * 1000).toISOString(), recent.body.id).run();
+    await purgeGrants(env);
+    const ids = (await env.DB.prepare("SELECT id FROM upload_grants WHERE id IN (?, ?, ?)").bind(old.body.id, recent.body.id, live.body.id).all<{ id: string }>()).results.map((r) => r.id);
+    expect(ids.sort()).toEqual([recent.body.id, live.body.id].sort());
+  });
+
+  it("drains more expired rows than one batch", async () => {
+    const { purgeGrants } = await import("../src/grants");
+    const token = await mint("sweep-many");
+    const tokenId = await tokenIdFor(token);
+    const past = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+    for (let i = 0; i < 120; i++) {
+      await env.DB.prepare(
+        `INSERT INTO upload_grants (id, secret_hash, token_id, user_email, target_kind, filename, max_bytes, state, created_at, expires_at)
+         VALUES (?, 'x', ?, 'ada@esperlabs.app', 'new_file', 'f', 1, 'unused', ?, ?)`,
+      ).bind(`sweepmany${String(i).padStart(15, "0")}`, tokenId, past, past).run();
+    }
+    await purgeGrants(env);
+    const left = await env.DB.prepare("SELECT COUNT(*) AS n FROM upload_grants WHERE id LIKE 'sweepmany%'").first<{ n: number }>();
+    expect(left?.n).toBe(0);
   });
 });

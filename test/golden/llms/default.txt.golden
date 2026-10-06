@@ -48,6 +48,12 @@ A file write password only replaces that file (including empty). A site write pa
 
 `X-Energon-Write-Password` is not the share-password header. Identical phrases still bind to the header that carried them. The write header unlocks GET. The HTML gate accepts the write password for reading. The gate and cookie never authorize PUT or DELETE.
 
+## Upload grant
+
+Let a machine without a token upload one file. `POST /v1/grants` with `{"target": {"type": "new_file", "filename": "…"}}`, `{"target": {"type": "file", "id": "…"}}`, or `{"target": {"type": "site_path", "site_id": "…", "path": "…"}}`, plus optional `expires_in` (5m, 15m default, 30m, 1h), `max_bytes`, and `sha256`. You must be able to write the target. The response holds `upload_url` (`https://energon.example.com/_grants/{id}`) and a `secret`, shown once.
+
+The other machine sends `PUT` to `upload_url` with `Authorization: Bearer <secret>` and the raw bytes; it reads `https://energon.example.com/llms.txt`. Success publishes at once and uses the grant up. Read the result with `GET /v1/grants/{id}`. Revoking the minting token ends its grants. A grant is a single-use capability, not an account: do not mint the other machine a token.
+
 ## Optional
 
 - Agent skill for this Energon: install at user (global) scope with `npx skills add tmchow/energon --skill energon -g`, or add marketplace `tmchow/energon` (`https://github.com/tmchow/energon`) and install `energon` (`energon@energon`). Do not install at project or workspace scope unless the human asked for that. The skill files name this origin (https://hub.energon.example.com). A deployment repository generates its own skill with `npm run skill:init`. Private repository installation and updates require GitHub read access in the installing client, separate from the Energon API token. If private marketplaces are unsupported, install a local authenticated copy of the generated publish skill; if skills are unavailable, use this document and /v1/help directly. Never make the repository public to install it.

@@ -17,3 +17,17 @@ Wrong or missing write password on PUT or DELETE: 401 naming `X-Energon-Write-Pa
 If the object is gone: 404. If expired: 410. If another write is in progress: 409. Retry 409.
 
 Do not send the share-password header to write. That header does not authorize PUT or DELETE.
+
+# Upload grant
+
+An upload grant lets you upload one file without an account. Whoever gave it to you sent an upload URL (`/_grants/{id}` on this host) and a secret that starts with `grant_`.
+
+Send `PUT` to the upload URL with header `Authorization: Bearer <secret>` and the file as the raw body. Set `Content-Length` for large files. Do not send a filename, password, TTL, or content type header; the grant already fixed the target, and other metadata headers are 400. Never put the secret in a URL.
+
+Success is `201` (new file or path) or `200` (replaced) with the public `url`. The grant is then used up.
+
+- `404 grant_invalid`: wrong id or secret.
+- `410 grant_used`: already used; the body names the published `url`.
+- `410 grant_expired` or `410 grant_failed`: stop and ask for a new grant.
+- `409 grant_busy`, `409 file_busy`, or a `5xx`: retry the same upload.
+- `413 too_large` or `400 checksum_mismatch`: fix the bytes and retry; nothing was published.

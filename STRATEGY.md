@@ -1,6 +1,6 @@
 ---
 name: Energon
-last_updated: 2026-09-04
+last_updated: 2026-10-06
 ---
 
 # Energon Strategy
@@ -31,10 +31,10 @@ It is not a system of record. Code and anything that must be versioned and revie
 
 - Not a repo or system of record. Code and anything that needs versioning and review stays in git. Copies are independent objects; there are no branches, merges, or revision history.
 - Not an org-wide catalog. Listing and search are scoped to what you created, edited, or were involved in; no one can dump another person's catalog. Exception: operators listed on `ADMIN_EMAILS` may list metadata of others' content for maintenance (owner, name, size, last written, last read, expiry), never published bytes or secrets, and every such action is recorded.
-- Not a document editor. People edit in their own tools or through agents. Shared writes happen through in-place replacement under write policy, or through a per-object write password on the public URL; `curl` and `?raw=1` stay the source, last write wins, no merge. Referencing an artifact does not require permission to change it.
+- Not a document editor. People edit in their own tools or through agents. Shared writes happen through in-place replacement under write policy, through a per-object write password on the public URL, or through a single-use upload grant a token holder mints for one file; `curl` and `?raw=1` stay the source, last write wins, no merge. Referencing an artifact does not require permission to change it.
 - Not a hosted public service. `getenergon.com` explains the project but does not provide an Energon account or host files. This repo is what you fork; running Energon requires setup in your own Cloudflare account.
 - Not a general-purpose CDN or app platform. Files and small sites only, no server-side code.
-- Not per-user access control on published links. Links are open by default; a share password is a shared secret, not an ACL.
+- Not per-user access control on published links. Links are open by default; a share password is a shared secret, not an ACL. An upload grant is a short-lived capability to write one target the minter could already write, including another account's `org`-policy object; it is not an ACL either.
 
 _Resist a change when:_ it makes publishing depend on a specific chat product, a specific agent, or infrastructure the operator does not own.
 

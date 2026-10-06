@@ -1,4 +1,5 @@
 import { PRODUCT, formatBytes } from "./config";
+import { grantLlmsSection, hubGrantSection } from "./grant-protocol";
 import { guestWriteLlmsBody, hubGuestWriteSection } from "./guest-write-protocol";
 import { publicOrigin } from "./http";
 import { identityFromEnv } from "./instance";
@@ -51,6 +52,7 @@ Do not put secrets, tokens, or share passwords in published files. Last write wi
 - \`.md\` files: browsers (\`Accept: text/html\`) get a rendered page (GFM + mermaid). \`curl\` and \`?raw=1\` get the markdown source. \`index.md\` is the site homepage when \`index.html\` is missing.
 
 ${hubGuestWriteSection(content)}
+${hubGrantSection(content)}
 ## Optional
 
 - Agent skill for this Energon: install at user (global) scope with \`npx skills add ${id.repo} --skill ${id.skill} -g\`, or add marketplace \`${id.repo}\` (\`https://github.com/${id.repo}\`) and install \`${id.plugin}\` (\`${id.plugin}@${id.marketplace}\`). Do not install at project or workspace scope unless the human asked for that. The skill files name this origin (${id.origin}). A deployment repository generates its own skill with \`npm run skill:init\`. Private repository installation and updates require GitHub read access in the installing client, separate from the Energon API token. If private marketplaces are unsupported, install a local authenticated copy of the generated publish skill; if skills are unavailable, use this document and /v1/help directly. Never make the repository public to install it.
@@ -59,7 +61,7 @@ ${hubGuestWriteSection(content)}
 }
 
 export function contentLlmsTxt(): string {
-  return guestWriteLlmsBody();
+  return `${guestWriteLlmsBody()}\n${grantLlmsSection()}`;
 }
 
 export function llmsResponse(env: Env, kind: "hub" | "content" = "hub"): Response {

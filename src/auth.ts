@@ -7,6 +7,7 @@ import {
   TOKEN_SECRET_LEN,
   formatBytes,
 } from "./config";
+import { helpGrantSop } from "./grant-protocol";
 import { helpGuestWriteSop } from "./guest-write-protocol";
 import { assertNever } from "./catalog";
 import { ApiError, decodeJwtPayload, isLocalHost, isWorkersDev, json, nanoid, publicOrigin, sha256Hex } from "./http";
@@ -534,6 +535,7 @@ export function helpBody(origin: string, env?: Env): unknown {
       `Clean up in bulk with POST /v1/cleanup: target ids or the list filters (expires=never, expires_within=24h|7d, expires_before, updated_before, min_size, q, created_by), action delete, set_ttl (with ttl), or expire (30m grace). Without confirm it is a dry run. Show the human the preview (matched, eligible, skipped, bytes, sample), then resend the same body with its confirm to execute. GET /v1/sites and GET /v1/files take the same filters plus sort=size|age|last_read (and changed_since_read=1, list only) to find candidates first. expires_within windows are computed at request time. GET /v1/export first if they need a copy of what they own; cleanup {} is involvement, which is wider than ownership.`,
       `Operators on ADMIN_EMAILS mint an admin token, then POST /v1/admin/cleanup with the same preview/confirm shape, without involvement scope. Add owner (handle) and last_read_before. set_ttl without ttl is 7d so the owner sees Expires and can push it back. expire is 400 expire_not_own on anyone else's content. delete is explicit. GET /v1/admin/health is the read-only snapshot. POST /v1/admin/quota/recompute, POST /v1/admin/sweep, and POST /v1/admin/gates/unlock repair quota drift, expired leftovers, and locked share gates. GET /v1/admin/tokens lists token metadata across accounts (owner email and handle, label, hint, scope, created, last used, expires, status). Filter with ?owner=handle. Never the secret or the hash. POST /v1/admin/tokens/revoke previews then revokes stale or all tokens for an owner (confirm hash of the sorted ids; 409 token_revoke_drift). The calling admin token is left live. GET /v1/admin/audit lists those actions. Never returns bytes or secrets.`,
       ...helpGuestWriteSop(),
+      ...helpGrantSop(),
     ],
     routes: {
       "GET /llms.txt": "agent-readable overview, no auth",
@@ -562,6 +564,9 @@ export function helpBody(origin: string, env?: Env): unknown {
       "PUT /v1/files/{id}": "replace loose file bytes; same id and URL; optional X-Energon-Set-Password",
       "PATCH /v1/files/{id}": '{ "password"?: string, "write_password"?: string, "ttl"?: string, "write_policy"?: "owner"|"org" } — empty password or write_password clears. ttl resets expiry from now. write_policy and write_password are creator-only.',
       "DELETE /v1/files/{id}": "delete the loose file and its object (no recycle bin)",
+      "POST /v1/grants":
+        '{ "target": { "type": "new_file", "filename", "ttl"?, "write_policy"? } | { "type": "file", "id" } | { "type": "site_path", "site_id", "path" }, "expires_in"?: "5m"|"15m"|"30m"|"1h", "max_bytes"?: number, "sha256"?: hex } — single-use upload grant; returns upload_url on the content origin and a secret (once). The tokenless client PUTs raw bytes there with Authorization: Bearer <secret>.',
+      "GET /v1/grants/{id}": "grant state (unused|uploading|consumed|failed|expired), target, result url, last_error. Any token of the minting account; never the secret.",
       "GET /v1/sites": "sites you created or last wrote. ?scope=created|edited|involved&q=&created_by=&expires=never|expires_before=<iso>|expires_within=24h|7d&updated_before=<iso>&min_size=<bytes|500mb>&sort=updated|name|size|age|last_read&changed_since_read=1&limit=25&cursor=. expires_within windows are computed at request time. Items carry last_read_at (floor; null = never). last_read is never-read first. changed_since_read=1 is updated after last_read_at (never-read counts as changed). Not a cleanup target.",
       "POST /v1/cleanup":
         '{ "target": { "sites"?: [id], "files"?: [id] } or list filters { "scope"?, "q"?, "created_by"?, "expires"?: "never", "expires_before"?, "expires_within"?: "24h"|"7d", "updated_before"?, "last_read_before"?, "owner"?, "min_size"?, "kind"?: "sites"|"files" }, "action": "delete"|"set_ttl"|"expire", "ttl"?: string (set_ttl only), "confirm"?: string } — without confirm: dry run { matched, eligible, skipped: { total, by_reason, sample }, bytes, sample, confirm }. Resend with that confirm to execute { applied, skipped, failed }. Only what you created or last wrote and can write; the rest is skipped. At most 100 eligible per call (413 cleanup_too_many). 409 cleanup_drift carries a fresh preview. {} targets everything you are involved in. No recycle bin.',
