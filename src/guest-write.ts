@@ -338,10 +338,13 @@ async function writeGuestSitePath(
   const contentType = contentTypeFor(path, upload.head, request.headers.get("content-type"));
   const key = siteKey(site.handle, site.id, path);
   const ts = new Date().toISOString();
-  const previous = await snapshotR2Object(env.BUCKET, key);
   const reserved = await assertStorageRoom(env.DB, upload.size, existing?.size ?? 0, policy.platformBytes);
+  let previous: R2ObjectSnapshot | null = null;
+  let wroteObject = false;
   try {
+    previous = await snapshotR2Object(env.BUCKET, key);
     await putUpload(env.BUCKET, key, upload, { httpMetadata: { contentType } });
+    wroteObject = true;
     const wrote = await env.DB.batch([
       siteFileUpsert(env, site.id, path, upload.size, contentType, ts, writer),
       env.DB.prepare(
@@ -368,7 +371,7 @@ async function writeGuestSitePath(
     }
   } catch (err) {
     try {
-      await restoreR2Object(env.BUCKET, key, previous);
+      if (wroteObject) await restoreR2Object(env.BUCKET, key, previous);
     } catch {
       throw new ApiError(
         500,

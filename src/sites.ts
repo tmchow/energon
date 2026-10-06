@@ -590,10 +590,13 @@ export async function putSiteFile(
   const contentType = contentTypeFor(path, upload.head, hintType);
   const key = siteKey(site.handle, site.id, path);
   const ts = new Date().toISOString();
-  const previous = await snapshotR2Object(env.BUCKET, key);
   const reserved = await assertStorageRoom(env.DB, upload.size, existing?.size ?? 0, policy.platformBytes);
+  let previous: R2ObjectSnapshot | null = null;
+  let wroteObject = false;
   try {
+    previous = await snapshotR2Object(env.BUCKET, key);
     await putUpload(env.BUCKET, key, upload, { httpMetadata: { contentType } });
+    wroteObject = true;
     const wrote = await env.DB.batch([
       siteFileUpsert(env, site.id, path, upload.size, contentType, ts, actor.email),
       env.DB.prepare(
@@ -617,7 +620,7 @@ export async function putSiteFile(
       await throwSiteMutationConflict(env, site.id);
     }
   } catch (err) {
-    await restoreR2State(env.BUCKET, key, previous);
+    if (wroteObject) await restoreR2State(env.BUCKET, key, previous);
     await releaseStorage(env.DB, reserved);
     throw err;
   } finally {
@@ -868,10 +871,13 @@ export async function deleteSiteFile(
     throw new ApiError(404, "file_not_found", `No file at ${sitePublicPathHint(site.handle, site.id, site.slug, path)}.`);
   }
   const key = siteKey(site.handle, site.id, path);
-  const previous = await snapshotR2Object(env.BUCKET, key);
-  await env.BUCKET.delete(key);
   const ts = new Date().toISOString();
+  let previous: R2ObjectSnapshot | null = null;
+  let deletedObject = false;
   try {
+    previous = await snapshotR2Object(env.BUCKET, key);
+    await env.BUCKET.delete(key);
+    deletedObject = true;
     const wrote = await env.DB.batch([
       env.DB.prepare(
         `DELETE FROM site_files WHERE site_id = ? AND path = ? AND EXISTS (SELECT 1 FROM sites WHERE id = ? AND last_written_by NOT LIKE ? AND ${OWNER_WRITE_SQL})`,
@@ -885,7 +891,8 @@ export async function deleteSiteFile(
     }
     if (!d1Changed(wrote[0] ?? {})) return;
   } catch (err) {
-    await rollbackSiteStorage(env, key, previous, err);
+    if (deletedObject) await rollbackSiteStorage(env, key, previous, err);
+    throw err;
   } finally {
     await discardR2Snapshots(env.BUCKET, [previous]);
   }

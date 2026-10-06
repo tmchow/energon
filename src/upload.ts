@@ -1,5 +1,5 @@
 import { IN_MEMORY_BYTES, TMP_PREFIX, formatBytes, tmpKey } from "./config";
-import { ApiError, putFromStaged, readBodyCapped, tooLarge } from "./http";
+import { ApiError, capStream, putFromStaged, readBodyCapped, tooLarge } from "./http";
 
 /** Enough leading bytes for contentTypeFor's magic-number sniffing. */
 const HEAD_BYTES = 512;
@@ -106,15 +106,20 @@ export async function putUpload(bucket: R2Bucket, key: string, upload: Upload, o
 export async function readUploadForm(request: Request, maxBytes: number, origin: string): Promise<FormData> {
   const declared = declaredLength(request);
   if (declared !== null && declared > maxBytes) throw tooLarge(declared, origin, maxBytes);
-  if (declared !== null && declared > IN_MEMORY_BYTES) {
-    throw new ApiError(
+  const limit = Math.min(maxBytes, IN_MEMORY_BYTES);
+  const multipartTooLarge = (actual: number) => limit === maxBytes
+    ? tooLarge(actual, origin, maxBytes)
+    : new ApiError(
       413,
       "too_large",
       `Multipart uploads are capped at ${formatBytes(IN_MEMORY_BYTES)}. Send the file as a raw body with header X-Filename instead; raw bodies go up to ${formatBytes(maxBytes)}.`,
-      { limit_bytes: IN_MEMORY_BYTES, actual_bytes: declared },
+      { limit_bytes: IN_MEMORY_BYTES, actual_bytes: actual },
     );
-  }
-  return request.formData();
+  if (declared !== null && declared > limit) throw multipartTooLarge(declared);
+  if (!request.body) return request.formData();
+  // Unsized bodies would otherwise reach formData(), which buffers everything before any size check.
+  const capped = capStream(request.body, limit, multipartTooLarge);
+  return new Response(capped, { headers: { "content-type": request.headers.get("content-type") || "" } }).formData();
 }
 
 /** Removes staged uploads and snapshots left behind by an isolate that died mid-request. */

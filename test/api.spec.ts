@@ -3,6 +3,7 @@ import { unzipSync, zipSync, strToU8 } from "fflate";
 import { describe, expect, it } from "vitest";
 import { MAX_IMPORT_FILES } from "../src/config";
 import { GATE_COOKIE, hashSharePassword, unlockToken } from "../src/gate";
+import { deleteSiteFile } from "../src/sites";
 import { auth, access, createSite, json, mint, mintAdmin, req } from "./helpers";
 
 describe("Energon", () => {
@@ -349,6 +350,51 @@ describe("Energon", () => {
       headers: auth(token, { "content-type": "multipart/form-data; boundary=x", "content-length": String(26 * 1024 * 1024) }),
       body: "x",
     });
+    expect(tooBig.status).toBe(413);
+    expect(tooBig.body.message).toContain("X-Filename");
+  });
+
+  it("removes a staged rollback copy when a site file delete fails", async () => {
+    const token = await mint("staged-snapshot");
+    const site = await createSite(token, "staged-snapshot");
+    const big = new Uint8Array(26 * 1024 * 1024);
+    const put = await json(`/v1/sites/${site.id}/files/big.bin`, { method: "PUT", headers: auth(token), body: big });
+    expect(put.status).toBe(201);
+    const bucket = env.BUCKET as R2Bucket & { delete: R2Bucket["delete"] };
+    const originalDelete = bucket.delete.bind(bucket);
+    bucket.delete = async (keys) => {
+      if (typeof keys === "string" && keys.endsWith("/big.bin")) throw new Error("r2 down");
+      return originalDelete(keys);
+    };
+    try {
+      await expect(deleteSiteFile(env, undefined, { email: "ada@esperlabs.app", via: "token" }, site.id, "big.bin")).rejects.toThrow("r2 down");
+    } finally {
+      bucket.delete = originalDelete;
+    }
+    expect((await env.BUCKET.list({ prefix: "tmp/" })).objects).toEqual([]);
+    const still = await req(`/v1/sites/${site.id}/files/big.bin`, { headers: auth(token) });
+    expect(still.status).toBe(200);
+  }, 30_000);
+
+  it("caps an unsized multipart body at 25 MB before buffering it", async () => {
+    const token = await mint("unsized-multipart");
+    const head = new TextEncoder().encode('--x\r\nContent-Disposition: form-data; name="file"; filename="big.bin"\r\n\r\n');
+    const chunk = new Uint8Array(1024 * 1024);
+    let sent = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent === 0) controller.enqueue(head);
+        if (sent >= 26) return controller.close();
+        sent += 1;
+        controller.enqueue(chunk);
+      },
+    });
+    const tooBig = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "content-type": "multipart/form-data; boundary=x" }),
+      body,
+      duplex: "half",
+    } as RequestInit);
     expect(tooBig.status).toBe(413);
     expect(tooBig.body.message).toContain("X-Filename");
   });

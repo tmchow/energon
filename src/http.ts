@@ -232,15 +232,24 @@ export async function readBodyCapped(
     }
   }
   if (!request.body) return new Uint8Array(0);
+  const capped = capStream(request.body, maxBytes, (received) => tooLarge(received, origin, maxBytes));
+  return new Uint8Array(await new Response(capped).arrayBuffer());
+}
+
+/** Errors the stream with tooBig(received) once more than maxBytes pass, so a reader never buffers past the cap. */
+export function capStream(
+  body: ReadableStream<Uint8Array>,
+  maxBytes: number,
+  tooBig: (received: number) => ApiError,
+): ReadableStream<Uint8Array> {
   let received = 0;
-  const capped = request.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+  return body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
       received += chunk.byteLength;
-      if (received > maxBytes) throw tooLarge(received, origin, maxBytes);
+      if (received > maxBytes) throw tooBig(received);
       controller.enqueue(chunk);
     },
   }));
-  return new Uint8Array(await new Response(capped).arrayBuffer());
 }
 
 export function tooLarge(actual: number, _origin: string, limitBytes = MAX_FILE_BYTES): ApiError {
