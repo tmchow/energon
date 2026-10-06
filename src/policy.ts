@@ -1,4 +1,4 @@
-import { MAX_FILE_BYTES, MAX_PLATFORM_BYTES, PRODUCT, parseByteSize } from "./config";
+import { MAX_FILE_BYTES, MAX_PLATFORM_BYTES, MAX_ZIP_BYTES, PRODUCT, parseByteSize } from "./config";
 
 export { parseByteSize };
 import { ApiError } from "./http";
@@ -38,6 +38,7 @@ export type InstancePolicy = {
   presets: TtlPreset[];
   allowedEmailDomains: string[];
   fileBytes: number;
+  zipBytes: number;
   platformBytes: number;
   writePolicy: WritePolicy;
 };
@@ -116,6 +117,7 @@ export function instancePolicy(
     | "TTL_PRESETS"
     | "ALLOWED_EMAIL_DOMAINS"
     | "MAX_FILE_BYTES"
+    | "MAX_ZIP_BYTES"
     | "MAX_PLATFORM_BYTES"
     | "WRITE_POLICY"
   >,
@@ -154,13 +156,16 @@ export function instancePolicy(
     }
   }
 
+  const fileBytes = parseByteSize(env.MAX_FILE_BYTES) ?? MAX_FILE_BYTES;
   return {
     allowUnlimited,
     defaultTtl,
     maxSeconds,
     presets,
     allowedEmailDomains: csv(env.ALLOWED_EMAIL_DOMAINS),
-    fileBytes: parseByteSize(env.MAX_FILE_BYTES) ?? MAX_FILE_BYTES,
+    fileBytes,
+    // A zip may never smuggle in an entry larger than a single upload could be.
+    zipBytes: Math.min(parseByteSize(env.MAX_ZIP_BYTES) ?? MAX_ZIP_BYTES, fileBytes),
     platformBytes: parseByteSize(env.MAX_PLATFORM_BYTES) ?? MAX_PLATFORM_BYTES,
     writePolicy: parseWritePolicyEnv(env.WRITE_POLICY),
   };
@@ -256,7 +261,7 @@ export function policyPublic(policy: InstancePolicy) {
     presets: policy.presets,
     allowed_email_domains: policy.allowedEmailDomains,
     file_bytes: policy.fileBytes,
-    zip_bytes: policy.fileBytes,
+    zip_bytes: policy.zipBytes,
     platform_bytes: policy.platformBytes,
     write_policy: policy.writePolicy,
   };

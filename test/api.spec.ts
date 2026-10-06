@@ -3,6 +3,7 @@ import { unzipSync, zipSync, strToU8 } from "fflate";
 import { describe, expect, it } from "vitest";
 import { MAX_IMPORT_FILES } from "../src/config";
 import { GATE_COOKIE, hashSharePassword, unlockToken } from "../src/gate";
+import { deleteSiteFile } from "../src/sites";
 import { auth, access, createSite, json, mint, mintAdmin, req } from "./helpers";
 
 describe("Energon", () => {
@@ -51,11 +52,12 @@ describe("Energon", () => {
     expect(body.env).toBe("ENERGON_TOKEN");
     expect(body.content_origin).toBe("https://energon.example.com");
     expect(body.account).toContain("/account");
-    expect(body.limits.file_bytes).toBe(25 * 1024 * 1024);
+    expect(body.limits.file_bytes).toBe(100 * 1024 * 1024);
     expect(body.limits.zip_bytes).toBe(25 * 1024 * 1024);
     expect(body.limits.platform_bytes).toBe(20 * 1024 * 1024 * 1024);
     expect(body.limits.max_import_files).toBe(200);
-    expect(body.retention.file_bytes).toBe(25 * 1024 * 1024);
+    expect(body.retention.file_bytes).toBe(100 * 1024 * 1024);
+    expect(body.retention.zip_bytes).toBe(25 * 1024 * 1024);
     expect(body.retention.allow_unlimited).toBe(true);
     expect(body.retention.default_ttl).toBe("never");
     expect(body.retention.presets.some((p: { id: string; label: string }) => p.id === "90d" && p.label === "3 months")).toBe(
@@ -316,18 +318,122 @@ describe("Energon", () => {
     expect(await page.text()).toContain("root");
   });
 
-  it("26 MB file is 413 mentioning the 25 MB cap", async () => {
+  it("101 MB file is 413 mentioning the 100 MB cap", async () => {
     const token = await mint("big");
     const site_big_site = await createSite(token, "big-site");
     const tooBig = await json(`/v1/sites/${site_big_site.id}/files/huge.bin`, {
       method: "PUT",
-      headers: auth(token, { "content-length": String(26 * 1024 * 1024) }),
+      headers: auth(token, { "content-length": String(101 * 1024 * 1024) }),
       body: "x",
     });
     expect(tooBig.status).toBe(413);
     expect(tooBig.body.error).toBe("too_large");
+    expect(tooBig.body.message).toContain("100 MB");
+  });
+
+  it("26 MB zip import is 413 mentioning the 25 MB zip cap", async () => {
+    const token = await mint("big-zip");
+    const site = await createSite(token, "big-zip-site");
+    const tooBig = await json(`/v1/sites/${site.id}/import`, {
+      method: "POST",
+      headers: auth(token, { "content-type": "application/zip", "content-length": String(26 * 1024 * 1024) }),
+      body: "x",
+    });
+    expect(tooBig.status).toBe(413);
     expect(tooBig.body.message).toContain("25 MB");
   });
+
+  it("26 MB multipart upload is 413 pointing at raw bodies", async () => {
+    const token = await mint("big-multipart");
+    const tooBig = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "content-type": "multipart/form-data; boundary=x", "content-length": String(26 * 1024 * 1024) }),
+      body: "x",
+    });
+    expect(tooBig.status).toBe(413);
+    expect(tooBig.body.message).toContain("X-Filename");
+  });
+
+  it("removes a staged rollback copy when a site file delete fails", async () => {
+    const token = await mint("staged-snapshot");
+    const site = await createSite(token, "staged-snapshot");
+    const big = new Uint8Array(26 * 1024 * 1024);
+    const put = await json(`/v1/sites/${site.id}/files/big.bin`, { method: "PUT", headers: auth(token), body: big });
+    expect(put.status).toBe(201);
+    const bucket = env.BUCKET as R2Bucket & { delete: R2Bucket["delete"] };
+    const originalDelete = bucket.delete.bind(bucket);
+    bucket.delete = async (keys) => {
+      if (typeof keys === "string" && keys.endsWith("/big.bin")) throw new Error("r2 down");
+      return originalDelete(keys);
+    };
+    try {
+      await expect(deleteSiteFile(env, undefined, { email: "ada@esperlabs.app", via: "token" }, site.id, "big.bin")).rejects.toThrow("r2 down");
+    } finally {
+      bucket.delete = originalDelete;
+    }
+    expect((await env.BUCKET.list({ prefix: "tmp/" })).objects).toEqual([]);
+    const still = await req(`/v1/sites/${site.id}/files/big.bin`, { headers: auth(token) });
+    expect(still.status).toBe(200);
+  }, 30_000);
+
+  it("caps an unsized multipart body at 25 MB before buffering it", async () => {
+    const token = await mint("unsized-multipart");
+    const head = new TextEncoder().encode('--x\r\nContent-Disposition: form-data; name="file"; filename="big.bin"\r\n\r\n');
+    const chunk = new Uint8Array(1024 * 1024);
+    let sent = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent === 0) controller.enqueue(head);
+        if (sent >= 26) return controller.close();
+        sent += 1;
+        controller.enqueue(chunk);
+      },
+    });
+    const tooBig = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "content-type": "multipart/form-data; boundary=x" }),
+      body,
+      duplex: "half",
+    } as RequestInit);
+    expect(tooBig.status).toBe(413);
+    expect(tooBig.body.message).toContain("X-Filename");
+  });
+
+  it("stages raw uploads over 25 MB through R2 and cleans up after", async () => {
+    const token = await mint("staged");
+    const big = new Uint8Array(26 * 1024 * 1024);
+    big.set([0x25, 0x50, 0x44, 0x46], 0);
+    big[big.length - 1] = 7;
+    const created = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "x-filename": "big.bin" }),
+      body: big,
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.size).toBe(big.byteLength);
+    expect(created.body.content_type).toBe("application/pdf");
+
+    const replacement = big.slice();
+    replacement[0] = 0;
+    const replaced = await json(`/v1/files/${created.body.id}`, {
+      method: "PUT",
+      headers: auth(token),
+      body: replacement,
+    });
+    expect(replaced.status).toBe(200);
+    const stored = await env.BUCKET.get(`files/${created.body.id}/big.bin`);
+    const bytes = new Uint8Array(await stored!.arrayBuffer());
+    expect(bytes.byteLength).toBe(big.byteLength);
+    expect(bytes[0]).toBe(0);
+    expect(bytes[bytes.length - 1]).toBe(7);
+
+    const site = await createSite(token, "staged-site");
+    const put = await json(`/v1/sites/${site.id}/files/video.bin`, { method: "PUT", headers: auth(token), body: big });
+    expect(put.status).toBe(201);
+    expect(put.body.size).toBe(big.byteLength);
+
+    expect((await env.BUCKET.list({ prefix: "tmp/" })).objects).toEqual([]);
+  }, 30_000);
 
   it("revoked token cannot PUT", async () => {
     const email = "revoker@esperlabs.app";

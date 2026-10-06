@@ -13,7 +13,7 @@
   "auth": "Authorization: Bearer ee_live_<secret>",
   "token_prefix": "ee_live_",
   "limits": {
-    "file_bytes": 26214400,
+    "file_bytes": 104857600,
     "zip_bytes": 26214400,
     "platform_bytes": 21474836480,
     "max_import_files": 200
@@ -83,7 +83,7 @@
       "esperlabs.app",
       "esperlabs.ai"
     ],
-    "file_bytes": 26214400,
+    "file_bytes": 104857600,
     "zip_bytes": 26214400,
     "platform_bytes": 21474836480,
     "write_policy": "org"
@@ -208,7 +208,7 @@
     "GET /v1/sites/{id}": "JSON file listing",
     "DELETE /v1/sites/{id}": "delete site and objects",
     "DELETE /v1/sites/{id}/files/{path}": "delete one path",
-    "POST /v1/files": "multipart field file, or raw body plus X-Filename; or JSON { duplicate_from, filename? }. Optional X-Energon-Set-Password, X-Energon-Set-Write-Password, X-Energon-TTL, X-Energon-Write-Policy, X-Energon-Duplicate-From",
+    "POST /v1/files": "raw body plus X-Filename (up to limits.file_bytes), or multipart field file (25 MB max); or JSON { duplicate_from, filename? }. Optional X-Energon-Set-Password, X-Energon-Set-Write-Password, X-Energon-TTL, X-Energon-Write-Policy, X-Energon-Duplicate-From",
     "GET /v1/files": "loose files you created or last wrote. ?scope=created|edited|involved&q=&created_by=&expires=never|expires_before=<iso>|expires_within=24h|7d&updated_before=<iso>&min_size=<bytes|500mb>&sort=updated|name|size|age|last_read&changed_since_read=1&limit=25&cursor=. expires_within windows are computed at request time. Items carry last_read_at (floor; null = never). last_read is never-read first. changed_since_read=1 is updated after last_read_at (never-read counts as changed). Not a cleanup target.",
     "GET /v1/files/{id}": "raw loose file bytes (token). ?download=1 sets Content-Disposition: attachment",
     "PUT /v1/files/{id}": "replace loose file bytes; same id and URL; optional X-Energon-Set-Password",

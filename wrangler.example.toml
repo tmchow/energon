@@ -32,8 +32,11 @@ ALLOW_UNLIMITED_TOKENS = "true"
 # ALLOWED_EMAIL_DOMAINS = "example.com"
 # Optional line on signed-in pages. Omit or leave empty for no footer.
 # FOOTER_TEXT = "Internal — not for the public internet."
-# File / zip cap. Omit for 25 MB.
-# MAX_FILE_BYTES = "25mb"
+# Single-file cap. Omit for 100 MB. Cloudflare Free and Pro plans reject request bodies over 100 MB.
+# MAX_FILE_BYTES = "100mb"
+# Zip import / export cap, never above MAX_FILE_BYTES. Omit for 25 MB.
+# Zips are handled in Worker memory (128 MB), so keep this at or below about 40 MB.
+# MAX_ZIP_BYTES = "25mb"
 # Whole-bucket safety valve. Omit for 20 GB.
 # MAX_PLATFORM_BYTES = "20gb"
 

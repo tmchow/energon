@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_FILE_BYTES, MAX_PLATFORM_BYTES } from "../../src/config";
+import { MAX_FILE_BYTES, MAX_PLATFORM_BYTES, MAX_ZIP_BYTES } from "../../src/config";
 import {
   emailAllowed,
   emailIsAdmin,
@@ -36,6 +36,7 @@ function env(overrides: Record<string, string | undefined> = {}) {
     ALLOWED_EMAIL_DOMAINS: undefined,
     ADMIN_EMAILS: undefined,
     MAX_FILE_BYTES: undefined,
+    MAX_ZIP_BYTES: undefined,
     MAX_PLATFORM_BYTES: undefined,
     WRITE_POLICY: undefined,
     ...overrides,
@@ -101,6 +102,7 @@ describe("instancePolicy", () => {
     expect(policy.presets.some((p) => p.id === "90d")).toBe(false);
     expect(policy.allowedEmailDomains).toEqual([]);
     expect(policy.fileBytes).toBe(MAX_FILE_BYTES);
+    expect(policy.zipBytes).toBe(MAX_ZIP_BYTES);
     expect(policy.platformBytes).toBe(MAX_PLATFORM_BYTES);
     expect(policy.writePolicy).toBe("owner");
   });
@@ -117,6 +119,12 @@ describe("instancePolicy", () => {
     const policy = instancePolicy(env({ MAX_FILE_BYTES: "5mb", MAX_PLATFORM_BYTES: "2gb" }));
     expect(policy.fileBytes).toBe(5 * 1024 * 1024);
     expect(policy.platformBytes).toBe(2 * 1024 * 1024 * 1024);
+  });
+
+  it("caps zips separately but never above the file cap", () => {
+    expect(instancePolicy(env({ MAX_ZIP_BYTES: "10mb" })).zipBytes).toBe(10 * 1024 * 1024);
+    expect(instancePolicy(env({ MAX_FILE_BYTES: "5mb" })).zipBytes).toBe(5 * 1024 * 1024);
+    expect(instancePolicy(env({ MAX_FILE_BYTES: "5mb", MAX_ZIP_BYTES: "40mb" })).zipBytes).toBe(5 * 1024 * 1024);
   });
 
   it("lets a company host keep content forever and lock email domains", () => {

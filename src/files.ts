@@ -43,7 +43,7 @@ import {
   json,
   jsonMaybeSecret,
   publicOrigin,
-  readBodyCapped,
+  discardR2Snapshots,
   releaseStorage,
   restoreR2Object,
   secretJson,
@@ -68,6 +68,7 @@ import {
 } from "./policy";
 import { noteRead } from "./reads";
 import type { Actor, Env, LooseFileRow } from "./types";
+import { putUpload, readUploadForm, uploadFromFile, withUpload, type Upload } from "./upload";
 
 function assertFilename(raw: string, fallback: string): string {
   const filename = basename(raw).slice(0, 180) || fallback;
@@ -82,7 +83,7 @@ export async function createLooseFile(
   ctx: ExecutionContext | undefined,
   actor: Actor,
   filenameRaw: string,
-  bytes: Uint8Array,
+  upload: Upload,
   hintType: string | null,
   password?: string,
   ttl?: unknown,
@@ -90,13 +91,13 @@ export async function createLooseFile(
   writePassword?: string,
 ): Promise<Response> {
   const policy = instancePolicy(env);
-  if (bytes.byteLength > policy.fileBytes) throw tooLarge(bytes.byteLength, "", policy.fileBytes);
+  if (upload.size > policy.fileBytes) throw tooLarge(upload.size, "", policy.fileBytes);
   const filename = assertFilename(filenameRaw, "file");
   contentOrigin(env);
   const user = await ensureUser(env, actor.email, actor.idpSub);
   const handle = user.handle;
   const id = await mintFileId(env);
-  const contentType = contentTypeFor(filename, bytes, hintType);
+  const contentType = contentTypeFor(filename, upload.head, hintType);
   const ts = new Date().toISOString();
   const hash = await passwordHashFromInput(password);
   const writeHash = await writePasswordHashFromInput(writePassword);
@@ -105,14 +106,14 @@ export async function createLooseFile(
   const resolved = resolveExpiresAt(policy, ttl);
   const storedWrite = resolveCreateWritePolicy(env, writePolicy);
   const key = fileKey(id, filename);
-  const reserved = await assertStorageRoom(env.DB, bytes.byteLength, 0, policy.platformBytes);
+  const reserved = await assertStorageRoom(env.DB, upload.size, 0, policy.platformBytes);
   try {
-    await env.BUCKET.put(key, bytes, { httpMetadata: { contentType } });
+    await putUpload(env.BUCKET, key, upload, { httpMetadata: { contentType } });
     await env.DB.prepare(
       `INSERT INTO loose_files (id, handle, owner_id, filename, size, content_type, created_at, created_by, updated_at, last_written_by, password_hash, password_secret, expires_at, write_policy, write_password_hash, write_password_secret)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-      .bind(id, handle, user.id, filename, bytes.byteLength, contentType, ts, actor.email, ts, actor.email, stored, storedPasswordSecret(stored, password), resolved.expiresAt, storedWrite, storedWritePw, storedPasswordSecret(storedWritePw, writePassword))
+      .bind(id, handle, user.id, filename, upload.size, contentType, ts, actor.email, ts, actor.email, stored, storedPasswordSecret(stored, password), resolved.expiresAt, storedWrite, storedWritePw, storedPasswordSecret(storedWritePw, writePassword))
       .run();
   } catch (err) {
     await env.BUCKET.delete(key).catch(() => undefined);
@@ -129,7 +130,7 @@ export async function createLooseFile(
     id,
     handle,
     filename,
-    size: bytes.byteLength,
+    size: upload.size,
     content_type: contentType,
     password_protected: Boolean(stored),
     password: passwordEcho(password, stored) ?? null,
@@ -261,28 +262,25 @@ async function postLooseJson(
   request: Request,
   origin: string,
 ): Promise<Response> {
-  const text = await request.text();
   const filename = filenameHeader(request);
   const fromHeader = duplicateFromHeader(request);
   // X-Filename means the body is file bytes (including application/json).
   // duplicate_from in that JSON is content, not a copy request, unless the header is set.
   if (filename && !fromHeader) {
-    const bytes = new TextEncoder().encode(text);
-    const policy = instancePolicy(env);
-    if (bytes.byteLength > policy.fileBytes) throw tooLarge(bytes.byteLength, origin, policy.fileBytes);
-    return createLooseFile(
+    return withUpload(request, env.BUCKET, instancePolicy(env).fileBytes, origin, (upload) => createLooseFile(
       env,
       ctx,
       actor,
       filename,
-      bytes,
+      upload,
       "application/json",
       readSetPasswordHeader(request),
       ttlFromRequest(request),
       writePolicyFromRequest(request),
       readSetWritePasswordHeader(request),
-    );
+    ));
   }
+  const text = await request.text();
   let body: Record<string, unknown> | null = null;
   try {
     const parsed: unknown = text ? JSON.parse(text) : {};
@@ -321,7 +319,7 @@ async function postLooseMultipart(
   request: Request,
   origin: string,
 ): Promise<Response> {
-  const form = await request.formData();
+  const form = await readUploadForm(request, instancePolicy(env).fileBytes, origin);
   const formDup = form.get("duplicate_from");
   const from = (typeof formDup === "string" && formDup.trim()) || duplicateFromHeader(request) || "";
   if (from) {
@@ -355,13 +353,12 @@ async function postLooseMultipart(
   }
   const policy = instancePolicy(env);
   if (file.size > policy.fileBytes) throw tooLarge(file.size, origin, policy.fileBytes);
-  const bytes = new Uint8Array(await file.arrayBuffer());
   return createLooseFile(
     env,
     ctx,
     actor,
     file.name,
-    bytes,
+    await uploadFromFile(file),
     file.type || null,
     formPassword(request, form),
     ttlFromRequest(request, form),
@@ -406,19 +403,18 @@ export async function postLooseFromRequest(
       "Raw uploads need header X-Filename (for example notes.md), or send multipart field file.",
     );
   }
-  const bytes = await readBodyCapped(request, instancePolicy(env).fileBytes, origin);
-  return createLooseFile(
+  return withUpload(request, env.BUCKET, instancePolicy(env).fileBytes, origin, (upload) => createLooseFile(
     env,
     ctx,
     actor,
     filename,
-    bytes,
+    upload,
     request.headers.get("content-type"),
     readSetPasswordHeader(request),
     ttlFromRequest(request),
     writePolicyFromRequest(request),
     readSetWritePasswordHeader(request),
-  );
+  ));
 }
 
 export async function putLooseFile(
@@ -426,7 +422,7 @@ export async function putLooseFile(
   ctx: ExecutionContext | undefined,
   actor: Actor,
   id: string,
-  bytes: Uint8Array,
+  upload: Upload,
   filenameRaw: string | null,
   hintType: string | null,
   password?: string,
@@ -435,7 +431,7 @@ export async function putLooseFile(
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
   const policy = instancePolicy(env);
-  if (bytes.byteLength > policy.fileBytes) throw tooLarge(bytes.byteLength, "", policy.fileBytes);
+  if (upload.size > policy.fileBytes) throw tooLarge(upload.size, "", policy.fileBytes);
   const existing = await env.DB.prepare(
     `SELECT id, handle, filename, size, expires_at, created_by, last_written_by, updated_at, write_policy, owner_id, password_hash FROM loose_files WHERE id = ?`,
   )
@@ -477,7 +473,7 @@ export async function putLooseFile(
     filename = assertFilename(filenameRaw, existing.filename);
   }
   contentOrigin(env);
-  const contentType = contentTypeFor(filename, bytes, hintType);
+  const contentType = contentTypeFor(filename, upload.head, hintType);
   const ts = new Date().toISOString();
   const hash = await passwordHashFromInput(password);
   const handle = existing.handle || (await ensureHandle(env, actor.email, actor.idpSub));
@@ -509,9 +505,9 @@ export async function putLooseFile(
   let metadataCommitted = false;
   let wroteObject = false;
   try {
-    reserved = await assertStorageRoom(env.DB, bytes.byteLength, existing.size, policy.platformBytes);
+    reserved = await assertStorageRoom(env.DB, upload.size, existing.size, policy.platformBytes);
     previousState = renamed ? null : await snapshotR2Object(env.BUCKET, oldKey);
-    await env.BUCKET.put(newKey, bytes, { httpMetadata: { contentType } });
+    await putUpload(env.BUCKET, newKey, upload, { httpMetadata: { contentType } });
     wroteObject = true;
     const assignments = [
       "handle = COALESCE(handle, ?)",
@@ -521,7 +517,7 @@ export async function putLooseFile(
       "updated_at = ?",
       "last_written_by = ?",
     ];
-    const values: unknown[] = [handle, filename, bytes.byteLength, contentType, ts, claim.token];
+    const values: unknown[] = [handle, filename, upload.size, contentType, ts, claim.token];
     assignPasswordStore(assignments, values, hash, password, "password_hash", "password_secret");
     const updated = await env.DB.prepare(
       `UPDATE loose_files SET ${assignments.join(", ")} WHERE id = ? AND last_written_by = ?`,
@@ -540,8 +536,10 @@ export async function putLooseFile(
       await releaseStorage(env.DB, reserved);
     }
     throw err;
+  } finally {
+    await discardR2Snapshots(env.BUCKET, [previousState]);
   }
-  await releaseStorage(env.DB, existing.size - bytes.byteLength);
+  await releaseStorage(env.DB, existing.size - upload.size);
   await finalizeLooseFileWriteClaim(env, id, claim.token, actor.email).catch((err) => {
     console.error("loose file write claim release failed", err);
   });
@@ -554,7 +552,7 @@ export async function putLooseFile(
     id,
     handle,
     filename,
-    size: bytes.byteLength,
+    size: upload.size,
     content_type: contentType,
     replaced: true,
     password_protected: hash === undefined ? Boolean(existing.password_hash) : Boolean(hash),
@@ -745,7 +743,8 @@ export async function putLooseFromRequest(
   const origin = publicOrigin(env);
   const ctype = request.headers.get("content-type") || "";
   if (ctype.includes("multipart/form-data")) {
-    const form = await request.formData();
+    const policy = instancePolicy(env);
+    const form = await readUploadForm(request, policy.fileBytes, origin);
     const file = form.get("file");
     if (!(file instanceof File)) {
       throw new ApiError(
@@ -754,23 +753,20 @@ export async function putLooseFromRequest(
         'Send multipart form field "file", or a raw body with optional X-Filename.',
       );
     }
-    const policy = instancePolicy(env);
     if (file.size > policy.fileBytes) throw tooLarge(file.size, origin, policy.fileBytes);
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    return putLooseFile(env, ctx, actor, id, bytes, file.name || null, file.type || null, formPassword(request, form));
+    return putLooseFile(env, ctx, actor, id, await uploadFromFile(file), file.name || null, file.type || null, formPassword(request, form));
   }
   const filename = filenameHeader(request);
-  const bytes = await readBodyCapped(request, instancePolicy(env).fileBytes, origin);
-  return putLooseFile(
+  return withUpload(request, env.BUCKET, instancePolicy(env).fileBytes, origin, (upload) => putLooseFile(
     env,
     ctx,
     actor,
     id,
-    bytes,
+    upload,
     filename,
     request.headers.get("content-type"),
     readSetPasswordHeader(request),
-  );
+  ));
 }
 
 export async function getLooseFile(
@@ -898,6 +894,8 @@ export async function deleteLooseFile(
     }
     await restoreLooseFileWriteClaim(env, id, claim).catch(() => undefined);
     throw failure;
+  } finally {
+    await discardR2Snapshots(env.BUCKET, [previousState]);
   }
   try {
     if (row.handle) await purgeContent(ctx, [filePrefix(row.handle, id)]);

@@ -1,4 +1,4 @@
-import { DEFAULT_PUBLIC_ORIGIN, MAX_FILE_BYTES, MAX_PLATFORM_BYTES, PRODUCT, RESERVED_HANDLES, formatBytes } from "./config";
+import { DEFAULT_PUBLIC_ORIGIN, IN_MEMORY_BYTES, MAX_FILE_BYTES, MAX_PLATFORM_BYTES, PRODUCT, RESERVED_HANDLES, formatBytes, tmpKey } from "./config";
 import type { Env } from "./types";
 
 export class ApiError extends Error {
@@ -231,9 +231,25 @@ export async function readBodyCapped(
       throw tooLarge(n, origin, maxBytes);
     }
   }
-  const buf = new Uint8Array(await request.arrayBuffer());
-  if (buf.byteLength > maxBytes) throw tooLarge(buf.byteLength, origin, maxBytes);
-  return buf;
+  if (!request.body) return new Uint8Array(0);
+  const capped = capStream(request.body, maxBytes, (received) => tooLarge(received, origin, maxBytes));
+  return new Uint8Array(await new Response(capped).arrayBuffer());
+}
+
+/** Errors the stream with tooBig(received) once more than maxBytes pass, so a reader never buffers past the cap. */
+export function capStream(
+  body: ReadableStream<Uint8Array>,
+  maxBytes: number,
+  tooBig: (received: number) => ApiError,
+): ReadableStream<Uint8Array> {
+  let received = 0;
+  return body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      received += chunk.byteLength;
+      if (received > maxBytes) throw tooBig(received);
+      controller.enqueue(chunk);
+    },
+  }));
 }
 
 export function tooLarge(actual: number, _origin: string, limitBytes = MAX_FILE_BYTES): ApiError {
@@ -242,7 +258,7 @@ export function tooLarge(actual: number, _origin: string, limitBytes = MAX_FILE_
   return new ApiError(
     413,
     "too_large",
-    `That upload is over the ${cap} cap (${mb} MB). ${PRODUCT} rejects files and zip uploads larger than ${cap} to avoid bill shock. Shrink it or split it, then retry.`,
+    `That upload is over the ${cap} cap (${mb} MB). ${PRODUCT} rejects uploads larger than ${cap} to avoid bill shock. Shrink it or split it, then retry.`,
     { limit_bytes: limitBytes, actual_bytes: actual },
   );
 }
@@ -324,20 +340,20 @@ export async function assertStorageRoom(
   return 0;
 }
 
+/** Objects over IN_MEMORY_BYTES are copied under TMP_PREFIX instead of held in memory. Pair with discardR2Snapshots. */
 export type R2ObjectSnapshot = {
-  bytes: Uint8Array;
   httpMetadata?: R2HTTPMetadata;
   customMetadata?: Record<string, string>;
-};
+} & ({ bytes: Uint8Array; stagedKey?: undefined } | { stagedKey: string; bytes?: undefined });
 
 export async function snapshotR2Object(bucket: R2Bucket, key: string): Promise<R2ObjectSnapshot | null> {
   const object = await bucket.get(key);
   if (!object) return null;
-  return {
-    bytes: await object.bytes(),
-    httpMetadata: object.httpMetadata,
-    customMetadata: object.customMetadata,
-  };
+  const meta = { httpMetadata: object.httpMetadata, customMetadata: object.customMetadata };
+  if ((object.size ?? 0) <= IN_MEMORY_BYTES) return { bytes: await object.bytes(), ...meta };
+  const stagedKey = tmpKey("snapshots");
+  await bucket.put(stagedKey, object.body, meta);
+  return { stagedKey, ...meta };
 }
 
 /** Put the snapshot back, or delete the key when the prior object was missing. */
@@ -350,10 +366,22 @@ export async function restoreR2Object(
     await bucket.delete(key);
     return;
   }
-  await bucket.put(key, snapshot.bytes, {
-    httpMetadata: snapshot.httpMetadata,
-    customMetadata: snapshot.customMetadata,
-  });
+  const meta = { httpMetadata: snapshot.httpMetadata, customMetadata: snapshot.customMetadata };
+  if (snapshot.stagedKey !== undefined) await putFromStaged(bucket, snapshot.stagedKey, key, meta);
+  else await bucket.put(key, snapshot.bytes, meta);
+}
+
+/** Best effort: the cron sweep removes any staged snapshot this misses. */
+export async function discardR2Snapshots(bucket: R2Bucket, snapshots: (R2ObjectSnapshot | null)[]): Promise<void> {
+  const keys = snapshots.flatMap((snapshot) => (snapshot?.stagedKey ? [snapshot.stagedKey] : []));
+  if (keys.length) await bucket.delete(keys).catch(() => undefined);
+}
+
+/** Streams an object staged under TMP_PREFIX to its real key; the staged copy stays for the caller to remove. */
+export async function putFromStaged(bucket: R2Bucket, stagedKey: string, key: string, options?: R2PutOptions): Promise<void> {
+  const staged = await bucket.get(stagedKey);
+  if (!staged) throw new Error(`Staged object ${stagedKey} is missing from storage.`);
+  await bucket.put(key, staged.body, options);
 }
 
 /** Same-bucket copy. Streams through the Worker once; does not go through the agent. */

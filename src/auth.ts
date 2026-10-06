@@ -1,6 +1,7 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import {
   DEFAULT_PUBLIC_ORIGIN,
+  IN_MEMORY_BYTES,
   MAX_IMPORT_FILES,
   PRODUCT,
   TOKEN_SECRET_LEN,
@@ -458,7 +459,7 @@ export function helpBody(origin: string, env?: Env): unknown {
     token_prefix: id.tokenPrefix,
     limits: {
       file_bytes: policy.fileBytes,
-      zip_bytes: policy.fileBytes,
+      zip_bytes: policy.zipBytes,
       platform_bytes: policy.platformBytes,
       max_import_files: MAX_IMPORT_FILES,
     },
@@ -489,8 +490,8 @@ export function helpBody(origin: string, env?: Env): unknown {
       `Optional share password: pass "password" on POST /v1/sites or PATCH /v1/sites/{id}; X-Energon-Set-Password on POST/PUT /v1/files. Empty string clears. Default is no password — anyone with the link can open it.`,
       `Write responses echo the password you just set so you can copy it. /v1 GET never returns the phrase — only password_protected. To change it, PATCH a new value; to remove it, PATCH "". The signed-in Hub Link access dialog shows stored phrases so a human can copy them again.`,
       `If a password is set, browsers get a form. Agents send header X-Energon-Password on the human URL. Do not put the password in the published file.`,
-      `Optional: zip a folder and POST /v1/sites/{id}/import. GET /v1/sites/{id}/export downloads the site as a zip (same ${formatBytes(policy.fileBytes)} and file-count caps). Empty sites are 400.`,
-      `GET /v1/export downloads every site and loose file you own (owner_id) as one zip, with a manifest.json of ids, names, public URLs, sizes, expiry, and write policy. Share and write passwords are not in the archive. Same ${formatBytes(policy.fileBytes)} and file-count caps; over the cap is 400 too_many_files or 413 too_large with the totals — export per site instead. This is not everything you were involved in. Empty ownership is 400 empty_export. Do this before POST /v1/cleanup {} or retiring an account.`,
+      `Optional: zip a folder and POST /v1/sites/{id}/import. GET /v1/sites/{id}/export downloads the site as a zip (same ${formatBytes(policy.zipBytes)} and file-count caps). Empty sites are 400.`,
+      `GET /v1/export downloads every site and loose file you own (owner_id) as one zip, with a manifest.json of ids, names, public URLs, sizes, expiry, and write policy. Share and write passwords are not in the archive. Same ${formatBytes(policy.zipBytes)} and file-count caps; over the cap is 400 too_many_files or 413 too_large with the totals — export per site instead. This is not everything you were involved in. Empty ownership is 400 empty_export. Do this before POST /v1/cleanup {} or retiring an account.`,
       `A single file is never a zip. GET /v1/files/{id}?download=1 (or the public URL with ?download=1) returns the file with Content-Disposition: attachment.`,
       `One file: POST /v1/files, then PUT /v1/files/{id} to replace it. Same url and api_url. Optional multipart field ttl or header X-Energon-TTL.`,
       `Make a copy: POST /v1/sites {"slug":"new-slug","duplicate_from":"existing-id"} or POST /v1/files {"duplicate_from":"id"} (optional filename). You become created_by. write_policy is this Energon's default. Fresh TTL. Password is not copied. Anyone who can read via /v1 can duplicate. If you already have replacement bytes this turn, POST/PUT those instead.`,
@@ -520,7 +521,7 @@ export function helpBody(origin: string, env?: Env): unknown {
       "GET /v1/sites/{id}": "JSON file listing",
       "DELETE /v1/sites/{id}": "delete site and objects",
       "DELETE /v1/sites/{id}/files/{path}": "delete one path",
-      "POST /v1/files": "multipart field file, or raw body plus X-Filename; or JSON { duplicate_from, filename? }. Optional X-Energon-Set-Password, X-Energon-Set-Write-Password, X-Energon-TTL, X-Energon-Write-Policy, X-Energon-Duplicate-From",
+      "POST /v1/files": `raw body plus X-Filename (up to limits.file_bytes), or multipart field file (${formatBytes(IN_MEMORY_BYTES)} max); or JSON { duplicate_from, filename? }. Optional X-Energon-Set-Password, X-Energon-Set-Write-Password, X-Energon-TTL, X-Energon-Write-Policy, X-Energon-Duplicate-From`,
       "GET /v1/files": "loose files you created or last wrote. ?scope=created|edited|involved&q=&created_by=&expires=never|expires_before=<iso>|expires_within=24h|7d&updated_before=<iso>&min_size=<bytes|500mb>&sort=updated|name|size|age|last_read&changed_since_read=1&limit=25&cursor=. expires_within windows are computed at request time. Items carry last_read_at (floor; null = never). last_read is never-read first. changed_since_read=1 is updated after last_read_at (never-read counts as changed). Not a cleanup target.",
       "GET /v1/files/{id}": "raw loose file bytes (token). ?download=1 sets Content-Disposition: attachment",
       "PUT /v1/files/{id}": "replace loose file bytes; same id and URL; optional X-Energon-Set-Password",

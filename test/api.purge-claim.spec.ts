@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { auth, createSite, json, mint, req } from "./helpers";
+import { uploadFromBytes } from "../src/upload";
 
 describe("TTL purge claims", () => {
   it("blocks replacement while a loose-file deletion owns the write claim", async () => {
@@ -25,7 +26,7 @@ describe("TTL purge claims", () => {
           undefined,
           actor,
           fileId,
-          new TextEncoder().encode("replacement"),
+          uploadFromBytes(new TextEncoder().encode("replacement")),
           "delete-race.txt",
           "text/plain",
         ).catch((error: unknown) => error);
@@ -165,7 +166,7 @@ describe("TTL purge claims", () => {
         undefined,
         { email: "ada@esperlabs.app", via: "token" },
         fileId,
-        new TextEncoder().encode("after"),
+        uploadFromBytes(new TextEncoder().encode("after")),
         "purge-first.txt",
         "text/plain",
       );

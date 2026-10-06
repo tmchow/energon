@@ -25,7 +25,7 @@ The committed `wrangler.toml` uses the team settings. Omitting vars produces dif
 The trigger itself is not a separate product. Each run is a Worker invocation.
 
 - `*/5 * * * *` → 12/hour × 24 × 30 = **8,640 invocations / month**
-- Workers Paid ($5/mo, which you already need for 25 MB uploads): 10 million requests and 30 million CPU-ms included. 8,640 requests is noise.
+- Workers Paid ($5/mo, which you already need for unzip and large uploads): 10 million requests and 30 million CPU-ms included. 8,640 requests is noise.
 - An empty sweep is one D1 `SELECT … LIMIT 100` and returns. You pay R2 deletes only when something actually expired.
 - Cron does **not** retry on failure. Reads still enforce expiry, so a missed sweep does not serve dead content.
 
@@ -79,7 +79,8 @@ Strings only (Wrangler).
 | `MARKETPLACE_NAME` | same as `SKILL_NAME` | `energon` |
 | `MARKETPLACE_REPO` | `your-org/energon` | `tmchow/energon` |
 | `FOOTER_TEXT` | omit, or one company line | empty (no footer) |
-| `MAX_FILE_BYTES` | omit (25 MB) | 25 MB |
+| `MAX_FILE_BYTES` | omit (100 MB) | 100 MB |
+| `MAX_ZIP_BYTES` | omit (25 MB) | 25 MB |
 | `MAX_PLATFORM_BYTES` | omit (20 GB) | 20 GB |
 | `WRITE_POLICY` | `org` | `owner` |
 | `DEV_ACCESS_EMAIL` | `.dev.vars` only | `dev@example.com` |
@@ -90,7 +91,7 @@ The catalog in code is:
 
 The hub shows those that fit under `MAX_TTL`, with human labels (**3 months**, not 90 days), plus **Never** only if unlimited is on. `TTL_PRESETS` is an optional hide-list, not how you invent new windows.
 
-`GET /v1/help` echoes origin, token env, skill, install line, retention, token lifetime policy (`tokens`), and this Energon's file / platform caps.
+`GET /v1/help` echoes origin, token env, skill, install line, retention, token lifetime policy (`tokens`), and this Energon's file / zip / platform caps.
 
 ## Migrations after a deploy
 
@@ -109,7 +110,11 @@ SELECT id, user_email, label, expires_at FROM tokens WHERE expires_at IS NOT NUL
 
 The same query with `expires_at IS NULL` lists never-expiring tokens, which is what to review after setting `ALLOW_UNLIMITED_TOKENS=false`: the flag stops new ones; revoke is the only lever for existing ones.
 
-`MAX_FILE_BYTES` is one file, one zip upload, and one site zip export. Accepts `25mb`, `5mb`, or a raw byte count. `MAX_PLATFORM_BYTES` is the whole-bucket safety valve (default 20 GB).
+`MAX_FILE_BYTES` caps one file upload (default 100 MB). Raw bodies over 25 MB are staged in R2 under `tmp/` instead of held in Worker memory, then removed; the cron sweep deletes anything left there for over an hour. Multipart uploads stay capped at 25 MB because the Worker buffers them; larger files go as a raw body with `X-Filename`. Cloudflare rejects request bodies over 100 MB on Free and Pro plans before the Worker runs, so a higher value only takes effect on Business (200 MB) or Enterprise.
+
+`MAX_ZIP_BYTES` caps one zip import, its extracted total, and one site or account zip export (default 25 MB, never above `MAX_FILE_BYTES`). Zips are unpacked and built in Worker memory, which Cloudflare limits to 128 MB per isolate, so keep it at or below about 40 MB.
+
+Both accept `25mb`, `5mb`, or a raw byte count. `MAX_PLATFORM_BYTES` is the whole-bucket safety valve (default 20 GB).
 
 `FOOTER_TEXT` is one line on signed-in pages. It is escaped as text — not HTML. Leave it empty for no footer. Use this variable instead of editing hub components to brand a deployment repository.
 

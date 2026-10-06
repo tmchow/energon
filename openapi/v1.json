@@ -566,7 +566,7 @@
           "files"
         ],
         "summary": "Upload one file, or duplicate an existing one",
-        "description": "Three request shapes, chosen by content-type. Raw bytes with X-Filename (any content-type other than application/json or multipart/form-data). multipart/form-data with field file, or duplicate_from. application/json with duplicate_from (or with X-Filename, in which case the JSON text is stored as the file). Options come from headers or the matching multipart field; headers win. A .zip stays a zip. To revise later, PUT /v1/files/{id}; do not POST again.",
+        "description": "Three request shapes, chosen by content-type. Raw bytes with X-Filename (any content-type other than application/json or multipart/form-data), up to limits.file_bytes. multipart/form-data with field file, or duplicate_from; multipart bodies are capped at 25 MB, so send larger files raw. application/json with duplicate_from (or with X-Filename, in which case the JSON text is stored as the file). Options come from headers or the matching multipart field; headers win. A .zip stays a zip. To revise later, PUT /v1/files/{id}; do not POST again.",
         "parameters": [
           {
             "$ref": "#/components/parameters/XFilename"
@@ -788,7 +788,7 @@
           "files"
         ],
         "summary": "Replace the bytes; same id and URL",
-        "description": "Raw body (optional X-Filename to rename) or multipart field file. Does not extend expiry and does not change write_policy; use PATCH for those. 404 if the id does not exist; there is no implicit create.",
+        "description": "Raw body (optional X-Filename to rename) or multipart field file (multipart bodies are capped at 25 MB). Does not extend expiry and does not change write_policy; use PATCH for those. 404 if the id does not exist; there is no implicit create.",
         "parameters": [
           {
             "$ref": "#/components/parameters/XFilename"
@@ -2617,7 +2617,7 @@
           "sites"
         ],
         "summary": "Unpack a zip into the site",
-        "description": "Each entry becomes a path (last write wins per path; other paths stay). A single wrapping folder is stripped so index.html lands at the root. Junk entries (__MACOSX, .DS_Store) are skipped. Caps: GET /v1/help limits.zip_bytes for the archive and each extracted file, limits.max_import_files entries. The site must already exist.",
+        "description": "Each entry becomes a path (last write wins per path; other paths stay). A single wrapping folder is stripped so index.html lands at the root. Junk entries (__MACOSX, .DS_Store) are skipped. Caps: GET /v1/help limits.zip_bytes for the archive and for its extracted files combined, limits.max_import_files entries. The site must already exist.",
         "requestBody": {
           "required": true,
           "description": "A zip archive.",
