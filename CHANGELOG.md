@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0](https://github.com/tmchow/energon/compare/v1.7.0...v1.8.0) (2026-10-06)
+
+
+### Features
+
+* raise default file upload cap to 100 MB with a separate 25 MB zip cap ([#132](https://github.com/tmchow/energon/issues/132)) ([43fef4e](https://github.com/tmchow/energon/commit/43fef4e25f88a031aa8e79f31685ae899658bf19))
+
 ## [1.7.0](https://github.com/tmchow/energon/compare/v1.6.0...v1.7.0) (2026-09-16)
 
 
