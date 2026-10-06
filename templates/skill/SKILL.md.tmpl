@@ -43,6 +43,7 @@ Tokens look like `{{TOKEN_PREFIX}}…`. For authentication setup, credential bou
 | One screenshot, PDF, markdown file, or a zip that should stay a zip | **Loose file**. `POST /v1/files` once, then `PUT /v1/files/{id}` to revise. Same URL. |
 | “Give this to the other agent / my other machine / this other chat” | Loose file if it is one file. Site if it is a folder. |
 | “Host this build output” | **Site**, often via zip import |
+| Anything over 25 MB, or a zip over 25 MB | Check the size first: **Scenario L** |
 
 Do **not** create a site for a single screenshot. Do **not** POST a new loose file every time they say “update it” — PUT the same id. Do **not** PUT a new path on a site when they meant to replace `notes.md`.
 
@@ -186,7 +187,7 @@ If the 401 body has `error: token_expired`, the token passed its lifetime. It ca
 
 ## Scenario G — Too big, password, or TTL
 
-413 on a file or zip: over the cap in `GET /v1/help` `limits` (by default **100 MB** per file, **25 MB** per zip). Multipart bodies stop at 25 MB; send a larger file as a raw body with `X-Filename`. Otherwise shrink, split, or put large media elsewhere.
+413 on a file or zip: too big for this Energon. Follow **Scenario L**; do not retry the same upload.
 
 413 `storage_cap`: the 20 GB platform safety valve. Suggest deleting an old site (`DELETE /v1/sites/{id}` — no recycle bin) after they confirm.
 
@@ -308,6 +309,59 @@ curl -sS -X DELETE {{ORIGIN}}/v1/whoami \
 ```
 
 Afterwards every call with that token is `401 unauthorized`, so run it last and unset `{{TOKEN_ENV}}` where you stored it. Tell the human the label you revoked. Skip this when the token is the human's stored `{{TOKEN_ENV}}` for CI or scheduled runs, or when they asked you to keep it. `/v1` cannot revoke any other token; that stays on {{ORIGIN}}/tokens.
+
+## Scenario L — File is too big
+
+They want to publish something large: a video, a dataset, a big PDF, a build output. Check sizes **before** uploading, so you do not push 500 MB only to get a 413.
+
+**The limits:**
+
+| What | Cap | Where it comes from |
+| --- | --- | --- |
+| One file, raw body | `limits.file_bytes` from `GET /v1/help` (100 MB by default) | This Energon's `MAX_FILE_BYTES` |
+| One request of any kind | 100 MB on Cloudflare Free and Pro, 200 MB on Business | Cloudflare, before {{PRODUCT}} sees it. Usually the real ceiling. |
+| Multipart upload (`-F file=@…`) | 25 MB | Fixed. Use a raw body instead. |
+| Upload without `Content-Length` | 25 MB | Fixed. Upload from a file path so curl sets the header. |
+| Zip import, and site or account zip export | `limits.zip_bytes` (25 MB by default) | This Energon's `MAX_ZIP_BYTES` |
+| Whole Energon | `limits.platform_bytes` (20 GB by default) | 413 `storage_cap` |
+
+{{PRODUCT}} has **no chunked or resumable upload**. One file is one request, so nothing over the per-request ceiling can be published as a single file, whatever `limits.file_bytes` says.
+
+1. Get the size (`wc -c < file`) and the caps (`GET /v1/help` → `limits`).
+2. **Up to 25 MB:** publish normally (Scenario B, or a site PUT).
+3. **Over 25 MB, up to the smaller of `limits.file_bytes` and 100 MB:** publish as a raw body from a file path. Do not use `-F`, `-T -`, or a pipe; those either hit the 25 MB multipart cap or drop `Content-Length`.
+
+   ```bash
+   curl -sS {{ORIGIN}}/v1/files \
+     -H "Authorization: Bearer ${{TOKEN_ENV}}" \
+     -H "X-Filename: demo.mp4" \
+     -H "X-Energon-TTL: 7d" \
+     --data-binary @demo.mp4
+   ```
+
+   A 413 whose body is **not** {{PRODUCT}}'s JSON (an HTML page from Cloudflare) means the request hit Cloudflare's plan limit. Treat it as step 4.
+
+4. **Over that:** stop and tell the human the file size and the cap. Do not quietly change their content. Offer these, in this order, and let them choose:
+   - **Shrink it.** Re-encode a video at a lower bitrate or resolution, compress a PDF, resize images, drop build artifacts nobody needs (source maps, raw assets). Re-zipping an already compressed file does not help. Only change the content with their OK, then publish the smaller file and say what you changed.
+   - **Split along natural lines.** A dataset by date range or table, a deck into sections, a recording into chapters. Each piece is an ordinary file under the cap; put them in one site (Scenario A) with an `index.md` that links them in order.
+   - **Split the bytes, for a recipient that will reassemble them.** Only when the recipient is an agent or a technical person, because the pieces cannot be previewed in a browser:
+
+     ```bash
+     split -b 90m -d big.tar.gz big.tar.gz.part-
+     shasum -a 256 big.tar.gz > big.tar.gz.sha256
+     for p in big.tar.gz.part-* big.tar.gz.sha256; do
+       curl -sS -X PUT {{ORIGIN}}/v1/sites/{id}/files/"$p" \
+         -H "Authorization: Bearer ${{TOKEN_ENV}}" \
+         --data-binary @"$p"
+     done
+     ```
+
+     Also PUT an `index.md` that lists the parts and says how to rebuild: download every part, `cat big.tar.gz.part-* > big.tar.gz`, then `shasum -a 256 -c big.tar.gz.sha256`. A site holds at most 200 files.
+   - **Host the large file elsewhere.** If they have company file or video hosting, put it there and publish a short markdown page on {{PRODUCT}} that links to it.
+   - **Raise the cap.** Only the operator can raise `MAX_FILE_BYTES`, and it only helps up to the Cloudflare plan limit (200 MB on Business). Mention it; do not promise it.
+5. **Zip over `limits.zip_bytes`:** do not import it. Unzip locally and PUT each file to the site (Scenario D); each file only has to fit the file cap. To get a big site back out, GET each path from `GET /v1/sites/{id}` instead of the zip export.
+
+Never report a large file as published until the write returned `201` or `200`, and give the human the stored `size` so they can confirm it is the whole file.
 
 ## After you publish
 
