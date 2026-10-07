@@ -29,6 +29,7 @@ import {
   staleClaimCutoff,
   WRITE_CLAIM_LIKE,
   d1Changed,
+  type LooseFileWriteClaim,
 } from "./expire";
 import { consumeGrantStatement, grantBusy, grantCommitFailure, GRANT_LEASE_SQL, grantLeaseBinds, type GrantGuard } from "./grant-guard";
 import { ensureHandle, ensureUser } from "./handles";
@@ -546,40 +547,22 @@ async function commitLooseFileReplacement(
   }
 }
 
-export async function putLooseFile(
+type ReplaceableLooseFile = Pick<
+  LooseFileRow,
+  "id" | "handle" | "filename" | "size" | "content_type" | "expires_at" | "created_by" | "last_written_by" | "updated_at" | "write_policy" | "owner_id" | "password_hash"
+>;
+
+async function loadReplaceableLooseFile(
   env: Env,
   ctx: ExecutionContext | undefined,
   actor: Actor,
   id: string,
-  upload: Upload,
-  filenameRaw: string | null,
-  hintType: string | null,
-  password?: string,
-  guard?: GrantGuard,
-): Promise<Response> {
-  if (!isFileId(id)) {
-    throw new ApiError(404, "file_not_found", "No loose file with that id.");
-  }
-  const policy = instancePolicy(env);
-  if (upload.size > policy.fileBytes) throw tooLarge(upload.size, "", policy.fileBytes);
+): Promise<ReplaceableLooseFile> {
   const existing = await env.DB.prepare(
     `SELECT id, handle, filename, size, content_type, expires_at, created_by, last_written_by, updated_at, write_policy, owner_id, password_hash FROM loose_files WHERE id = ?`,
   )
     .bind(id)
-    .first<{
-      id: string;
-      handle: string | null;
-      filename: string;
-      size: number;
-      expires_at: string | null;
-      created_by: string;
-      last_written_by: string | null;
-      updated_at: string | null;
-      write_policy: string | null;
-      owner_id: string | null;
-      password_hash: string | null;
-      content_type: string | null;
-    }>();
+    .first<ReplaceableLooseFile>();
   if (!existing) {
     throw new ApiError(
       404,
@@ -599,6 +582,70 @@ export async function putLooseFile(
     throw expiredError("file");
   }
   assertCanMutate(actor, existing);
+  return existing;
+}
+
+type LooseFileReplacementState = {
+  id: string;
+  claim: LooseFileWriteClaim;
+  guard: GrantGuard | undefined;
+  newKey: string;
+  renamed: boolean;
+  reserved: StorageReservation | number;
+  previousState: R2ObjectSnapshot | null;
+  metadataCommitted: boolean;
+  wroteObject: boolean;
+  writeStarted: boolean;
+};
+
+/** Returns whether the pre-write snapshot must be retained. */
+async function rollBackLooseFileReplacement(env: Env, err: unknown, state: LooseFileReplacementState): Promise<boolean> {
+  const { id, claim, guard, newKey, renamed, reserved, previousState, wroteObject, writeStarted } = state;
+  let metadataCommitted = state.metadataCommitted;
+  if (typeof reserved !== "number") {
+    const persisted = await env.DB.prepare("SELECT state FROM storage_allocations WHERE id = ?").bind(reserved.id).first<{ state: string }>();
+    metadataCommitted ||= persisted?.state === "released" || persisted?.state === "cleanup_pending";
+  }
+  if (metadataCommitted) return false;
+  let restoreFailed = false;
+  if (wroteObject) {
+    await restoreR2Object(env.BUCKET, newKey, renamed ? null : previousState).catch(() => {
+      restoreFailed = true;
+    });
+  }
+  await restoreLooseFileWriteClaim(env, id, claim).catch(() => {
+    restoreFailed = true;
+  });
+  const uncertainWrite = writeStarted && !wroteObject;
+  if (!restoreFailed && !uncertainWrite) {
+    await releaseStorage(env.DB, reserved);
+    return false;
+  }
+  if (typeof reserved !== "number") await markLegacyReservation(env.DB, reserved, "uncertain", { error: err, snapshotKey: previousState?.stagedKey });
+  // A grant must not be released for a retry while storage and the catalog may disagree.
+  if (guard) {
+    throw new ApiError(500, "storage_rollback_failed", "The upload failed and storage could not be restored. Ask for a new grant.");
+  }
+  return true;
+}
+
+export async function putLooseFile(
+  env: Env,
+  ctx: ExecutionContext | undefined,
+  actor: Actor,
+  id: string,
+  upload: Upload,
+  filenameRaw: string | null,
+  hintType: string | null,
+  password?: string,
+  guard?: GrantGuard,
+): Promise<Response> {
+  if (!isFileId(id)) {
+    throw new ApiError(404, "file_not_found", "No loose file with that id.");
+  }
+  const policy = instancePolicy(env);
+  if (upload.size > policy.fileBytes) throw tooLarge(upload.size, "", policy.fileBytes);
+  const existing = await loadReplaceableLooseFile(env, ctx, actor, id);
   let filename = existing.filename;
   if (filenameRaw) {
     filename = assertFilename(filenameRaw, existing.filename);
@@ -613,7 +660,7 @@ export async function putLooseFile(
   const newKey = fileKey(id, filename);
   const renamed = newKey !== oldKey;
   const claim = await acquireLooseFileReplacementClaim(env, ctx, actor, id, existing);
-  let reserved: Awaited<ReturnType<typeof assertStorageRoom>> | number = 0;
+  let reserved: StorageReservation | number = 0;
   let previousState: R2ObjectSnapshot | null = null;
   let metadataCommitted = false;
   let wroteObject = false;
@@ -640,35 +687,11 @@ export async function putLooseFile(
         });
     }
   } catch (err) {
+    // Stays true if rollback itself throws: the snapshot may be the only copy of the old bytes.
     retainSnapshot = true;
-    if (typeof reserved !== "number") {
-      const persisted = await env.DB.prepare("SELECT state FROM storage_allocations WHERE id = ?").bind(reserved.id).first<{ state: string }>();
-      metadataCommitted ||= persisted?.state === "released" || persisted?.state === "cleanup_pending";
-    }
-    if (metadataCommitted) retainSnapshot = false;
-    if (!metadataCommitted) {
-      let restoreFailed = false;
-      if (wroteObject) {
-        await restoreR2Object(env.BUCKET, newKey, renamed ? null : previousState).catch(() => {
-          restoreFailed = true;
-        });
-      }
-      await restoreLooseFileWriteClaim(env, id, claim).catch(() => {
-        restoreFailed = true;
-      });
-      const uncertainWrite = writeStarted && !wroteObject;
-      if (restoreFailed || uncertainWrite) {
-        retainSnapshot = true;
-        if (typeof reserved !== "number") await markLegacyReservation(env.DB, reserved, "uncertain", { error: err, snapshotKey: previousState?.stagedKey });
-      } else {
-        await releaseStorage(env.DB, reserved);
-        retainSnapshot = false;
-      }
-      // A grant must not be released for a retry while storage and the catalog may disagree.
-      if (guard && (restoreFailed || uncertainWrite)) {
-        throw new ApiError(500, "storage_rollback_failed", "The upload failed and storage could not be restored. Ask for a new grant.");
-      }
-    }
+    retainSnapshot = await rollBackLooseFileReplacement(env, err, {
+      id, claim, guard, newKey, renamed, reserved, previousState, metadataCommitted, wroteObject, writeStarted,
+    });
     throw err;
   } finally {
     if (!retainSnapshot) await discardR2Snapshots(env.BUCKET, [previousState]);
