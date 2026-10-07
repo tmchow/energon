@@ -31,3 +31,5 @@ Success is `201` (new file or path) or `200` (replaced) with the public `url`. T
 - `410 grant_expired` or `410 grant_failed`: stop and ask for a new grant.
 - `409 grant_busy`, `409 file_busy`, or a `5xx`: retry the same upload.
 - `413 too_large` or `400 checksum_mismatch`: fix the bytes and retry; nothing was published.
+
+Whole-site deployment grants use the returned /_deployment-grants/{id} status, files, archive, prepare, and commit URLs with Authorization: Bearer <secret>. Upload declared inputs, prepare until ready, then explicitly commit. The grant is consumed only at commit and cannot change settings.

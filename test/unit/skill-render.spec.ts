@@ -134,6 +134,32 @@ describe("skill template", () => {
 });
 
 describe("skill brand", () => {
+  it.each([false, true])("keeps explicit value options over name defaults (name last: %s)", (nameLast) => {
+    const root = makeTempRoot();
+    const values = [
+      "--skill", "custom-skill", "--plugin", "custom-plugin", "--marketplace", "custom-marketplace",
+      "--origin", "https://first.example.test", "--origin", "https://custom.example.test/",
+      "--token-env", "CUSTOM_TOKEN", "--token-prefix", "custom_", "--product", "Custom Product", "--org", "Custom Org",
+      "--repo", "first/repo", "--marketplace-repo", "custom/repo", "--marketplace-url", "https://custom.example.test/install",
+    ];
+    const name = ["--name", "mybrand"];
+    const { opts } = runRender(["--init", "--check", "--no-marketplace", ...(nameLast ? [...values, ...name] : [...name, ...values])], { root });
+    expect(opts).toMatchObject({
+      name: "mybrand", skill: "custom-skill", plugin: "custom-plugin", marketplace: "custom-marketplace",
+      origin: "https://custom.example.test", tokenEnv: "CUSTOM_TOKEN", tokenPrefix: "custom_", product: "Custom Product", org: "Custom Org",
+      repo: "custom/repo", marketplaceRepo: "custom/repo", marketplaceUrl: "https://custom.example.test/install",
+      init: true, check: true, updateMarketplace: false,
+    });
+  });
+
+  it("preserves argument errors and consumes a following flag as a value", () => {
+    const root = makeTempRoot();
+    expect(() => runRender(["--token-prefix"], { root })).toThrow("missing value for --token-prefix");
+    expect(() => runRender(["toString"], { root })).toThrow("unknown arg: toString");
+    expect(() => runRender(["--unknown"], { root })).toThrow("unknown arg: --unknown");
+    expect(runRender(["--token-prefix", "--check"], { root }).opts).toMatchObject({ tokenPrefix: "--check", check: false });
+  });
+
   it("makes skill and marketplace the same PREFIX-energon name", () => {
     expect(brandFromName("cybertron")).toBe("cybertron-energon");
     expect(brandFromName("cybertron-energon")).toBe("cybertron-energon");

@@ -19,7 +19,7 @@ Reading as reference does not authorize editing. Copies are independent objects,
 
 The API and authenticated hub live on ${origin}. Published content is served from ${content}, which must be a separate hostname in production. There is no public signup. Use \`${id.tokenEnv}\` if set; otherwise follow ${origin}/auth.md to connect with a code a human approves, or, when no human can respond, stop and ask for a token provisioned at ${origin}/tokens. Tokens look like \`${id.tokenPrefix}…\`.
 
-Do not put secrets, tokens, or share passwords in published files. Last write wins on a single path.
+Do not put secrets, tokens, or share passwords in published files. Site writes publish complete snapshots; concurrent content changes can return 409.
 
 ## Start here
 
@@ -47,12 +47,16 @@ Do not put secrets, tokens, or share passwords in published files. Last write wi
 - Retention: this Energon's default is \`${policy.defaultTtl}\`. Allowed: ${presets}. \`PUT\` does not extend expiry. \`PATCH { "ttl": "7d" }\` resets from now. Expired public URLs are \`410\` and then deleted.
 - Who can write: this Energon's default is \`${policy.writePolicy}\` (\`owner\` = the creating account, \`org\` = any token on this host). Set \`write_policy\` on create to override. \`PATCH write_policy\` is creator-only. Anyone with a token can still read via \`/v1\`.
 - Make a copy: \`POST /v1/sites\` with \`duplicate_from\` (source site id) + a new slug, or \`POST /v1/files\` with \`duplicate_from\`. You own the copy. Do not zip a site through context just to fork it. If you already have replacement bytes, POST/PUT those instead.
-- Site zip export: \`GET /v1/sites/{id}/export\` (token). Same ${formatBytes(policy.zipBytes)} / file-count caps as import. A single file is never a zip; \`?download=1\` on a file URL sets \`Content-Disposition: attachment\`.
+- Site zip export: \`GET /v1/sites/{id}/export\` (token). Export cap ${formatBytes(policy.zipExportBytes)} and the file-count cap; ZIP input cap ${formatBytes(policy.zipBytes)}, expanded cap ${formatBytes(policy.zipExtractedBytes)}. A single file is never a zip; \`?download=1\` on a file URL sets \`Content-Disposition: attachment\`.
 - Account zip export: \`GET /v1/export\` (token). Sites you own, each under \`sites/{id}/\`, plus loose files under \`files/{id}/\`, and \`manifest.json\` (ids, names, public URLs, sizes, expiry, write policy). Owned content only (\`owner_id\`), not everything you were involved in. Share and write passwords are omitted. Same caps; over them the body names the totals and tells you to export per site. Empty ownership is \`400 empty_export\`.
 - \`.md\` files: browsers (\`Accept: text/html\`) get a rendered page (GFM + mermaid). \`curl\` and \`?raw=1\` get the markdown source. \`index.md\` is the site homepage when \`index.html\` is missing.
 
 ${hubGuestWriteSection(content)}
 ${hubGrantSection(content)}
+- Atomic folder replacement: read \`content_generation\` from \`GET /v1/sites/{id}\`, then \`POST /v1/sites/{id}/deployments\` with \`expected_version\`, \`idempotency_key\` (Unix milliseconds.UUIDv4), and \`files: [{path,size,sha256,content_type}]\` or an \`archive: {size,sha256,max_extracted_bytes?,max_files?}\` descriptor. PUT declared inputs to the returned session, POST its \`/prepare\` until ready, then explicitly POST \`/commit\`. Omitted files disappear only at commit. Status and identical retries recover lost responses; sessions last one hour and committed receipts seven days.
+- Site listings expose \`content_generation\` and \`version_id\`. \`X-Energon-Site-Version\` identifies one read; stable URLs are not page-wide pinned and no history or rollback API exists. Staging and retired bytes remain quota-charged until safe cleanup after the five-minute grace and active read leases. ZIP import remains a synchronous merge (200); \`Prefer: respond-async\` returns a staged merge (202) requiring prepare and explicit commit.
+- Whole-site handoff: mint \`POST /v1/grants\` target \`{type:"site_deployment",deployment_id}\` for an owned immutable session. The once-shown secret authorizes the returned content-origin \`/_deployment-grants/{id}\` status/files/archive/prepare/commit URLs. It supports multiple steps and is consumed at commit; it cannot change settings. Never place the secret in a URL.
+
 ## Optional
 
 - Agent skill for this Energon: install at user (global) scope with \`npx skills add ${id.repo} --skill ${id.skill} -g\`, or add marketplace \`${id.repo}\` (\`https://github.com/${id.repo}\`) and install \`${id.plugin}\` (\`${id.plugin}@${id.marketplace}\`). Do not install at project or workspace scope unless the human asked for that. The skill files name this origin (${id.origin}). A deployment repository generates its own skill with \`npm run skill:init\`. Private repository installation and updates require GitHub read access in the installing client, separate from the Energon API token. If private marketplaces are unsupported, install a local authenticated copy of the generated publish skill; if skills are unavailable, use this document and /v1/help directly. Never make the repository public to install it.
@@ -61,7 +65,7 @@ ${hubGrantSection(content)}
 }
 
 export function contentLlmsTxt(): string {
-  return `${guestWriteLlmsBody()}\n${grantLlmsSection()}`;
+  return `${guestWriteLlmsBody()}\n${grantLlmsSection()}\nWhole-site deployment grants use the returned /_deployment-grants/{id} status, files, archive, prepare, and commit URLs with Authorization: Bearer <secret>. Upload declared inputs, prepare until ready, then explicitly commit. The grant is consumed only at commit and cannot change settings.\n`;
 }
 
 export function llmsResponse(env: Env, kind: "hub" | "content" = "hub"): Response {

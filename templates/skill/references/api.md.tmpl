@@ -20,8 +20,8 @@ This skill talks only to **{{ORIGIN}}**. Install a separately rendered skill for
 | 404 | `site_not_found` / `file_not_found` | Create the site first; never implicit-create. For files, check the path or id. |
 | 410 | `expired` | Content passed `expires_at`. It is gone or about to be purged. Do not retry the same URL. |
 | 400 | `empty_export` | `GET /v1/export` with no owned sites or files. This zip is ownership, not involvement. |
-| 413 | `too_large` / `storage_cap` | Over the file cap (100 MB default), zip cap (25 MB default), 25 MB multipart cap (send a raw body instead), or 20 GB platform cap. Owned-content export over the cap names the totals and tells you to export per site. Follow SKILL.md Scenario L. |
-| 413 | (HTML page, not JSON) | Cloudflare's per-request limit (100 MB on Free and Pro). There is no chunked upload; follow SKILL.md Scenario L. |
+| 413 | `too_large` / `storage_cap` | Over the file cap (100 MB default), ZIP input cap (100 MiB default), expanded ZIP cap (500 MiB default), or ZIP export cap (25 MiB default), 25 MB multipart cap (send a raw body instead), or 20 GB platform cap. Owned-content export over the cap names the totals and tells you to export per site. Follow SKILL.md Scenario L. |
+| 413 | (HTML page, not JSON) | Cloudflare's per-request limit (100 MB on Free and Pro). Partial file bodies cannot be resumed; follow SKILL.md Scenario L. |
 | 409 | `cleanup_drift` | The cleanup selection changed since the preview. The body is a fresh preview; show it and resend with its `confirm`. |
 | 413 | `cleanup_too_many` | More than 100 eligible objects. Narrow the target (`q`, `created_by`, `expires_before`, `expires_within`, `updated_before`, `min_size`, `kind`) or send explicit ids. |
 
@@ -131,8 +131,27 @@ GET /v1/health        { ok: true }
 GET /v1/openapi.json  OpenAPI 3.1 contract for every route above
 ```
 
-Limits: 100 MB per file and 25 MB per zip by default (`GET /v1/help` `limits` has this Energon's values); multipart bodies 25 MB; Cloudflare caps any one request at 100 MB on Free and Pro, and there is no chunked upload; 20 GB platform cap; optional content TTL per Energon.
+Limits: 100 MB per file, 100 MiB ZIP input, 500 MiB expanded ZIP, and 25 MiB ZIP export by default (`GET /v1/help` `limits` has this Energon's values); multipart bodies 25 MB; Cloudflare caps any one request at 100 MB on Free and Pro, and each input body must fit one request; deployment sessions resume between inputs and preparation steps; 20 GB platform cap; optional content TTL per Energon.
 
 ## Connect with a code
 
 Read {{ORIGIN}}/auth.md for POST `/v1/connections` and POST `/v1/connections/{id}/token`. No bearer is needed to start; polling requires the private `poll_token`. No file access is granted until a signed-in human confirms the agent code (from the link or by typing it) and approves. The delivered token is an ordinary account token with the lifetime the human chose; save it as `{{TOKEN_ENV}}` per auth.md. Humans can also create tokens ahead of time on {{ORIGIN}}/tokens for CI and unattended runs.
+
+## Atomic site deployments
+
+Read `GET /v1/sites/{id}` for `content_generation` and `version_id`. POST `/v1/sites/{id}/deployments` with `expected_version` (the numeric generation), `idempotency_key` (`<unix milliseconds>.<UUIDv4>`), and either `files: [{path,size,sha256,content_type}]` or `archive: {size,sha256,max_extracted_bytes?,max_files?}`. Public deployments replace the complete file set. An identical creation retry returns 200; a new session returns 201.
+
+| Method | Path suffix under `/v1/sites/{id}/deployments/{deploymentId}` | Result |
+| --- | --- | --- |
+| GET | (none) | Status, progress, next_action, and retained commit receipt |
+| PUT | `/files/{path}` | Declared raw bytes; 201 first receipt, 200 matching retry |
+| PUT | `/archive` | Declared ZIP input |
+| POST | `/prepare` | 202 progress or 200 ready; never publishes |
+| POST | `/commit` | 200 complete atomic publication or retained receipt |
+| DELETE | (none) | 204 abort of unpublished session |
+
+Sessions last one hour and receipts seven days. A changed base returns 409 `deployment_conflict`. A changed intent under the same identity returns 409 `idempotency_conflict`. `X-Energon-Site-Version` is a read-only response header, not a requested-version selector. Stable URLs select independently per request; no page-wide pinning, history, or rollback. Old and pending bytes remain quota-charged through safe cleanup (five-minute old-version grace plus active read leases).
+
+`POST /v1/sites/{id}/import` retains its synchronous 200 merge behavior; `Prefer: respond-async` returns a staged merge session (202), requiring prepare and explicit commit. `limits.zip_import_bytes`, `zip_extracted_bytes`, and `zip_export_bytes` are independent; `zip_bytes` remains the input-limit compatibility field.
+
+Whole-site grant: `POST /v1/grants` target `{type:"site_deployment",deployment_id,site_id?}` binds an existing owned session. The result includes `status_url`, `upload_url` (with `{path}`), `archive_url`, `prepare_url`, `commit_url`, and a once-shown `secret`. Use the secret as a bearer on exact content-origin `/_deployment-grants/{id}` URLs. GET status, PUT declared inputs, POST prepare, POST commit; the latter two have no body. Only commit consumes it. No settings, arbitrary proxying, or alternate intent is authorized. Revocation blocks all use; an already committed receipt remains recoverable after ordinary expiry.

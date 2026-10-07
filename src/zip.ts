@@ -44,7 +44,7 @@ function stripWrappingFolder(paths: string[]): (path: string) => string {
   return (p) => p;
 }
 
-function skipZipJunk(path: string): boolean {
+export function skipZipJunk(path: string): boolean {
   const parts = path.replace(/\\/g, "/").split("/");
   if (parts.includes("__MACOSX")) return true;
   const base = parts[parts.length - 1] || "";

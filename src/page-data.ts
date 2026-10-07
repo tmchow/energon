@@ -28,9 +28,10 @@ export type PlatformHeadroom = {
 };
 
 export type AdminHealthSnapshot = {
+  site_conversions?: { enabled: boolean; pending: number; items: Array<{ site_id: string; slug: string; phase: string; last_error: string | null }> };
   quota: {
     used_bytes: number;
-    catalog_bytes: number;
+    catalog_bytes: number; pending_cleanup_bytes?: number; cleanup_failed_allocations?: number;
     limit_bytes: number;
   };
   expired_awaiting_purge: number;

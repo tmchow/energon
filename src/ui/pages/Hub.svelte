@@ -2,7 +2,7 @@
   import { onMount, onDestroy, tick, untrack } from 'svelte';
   import type { AdminCleanupPreview, AdminCleanupResult, CatalogData, CatalogItem, HubData, LinkAccess } from '../types';
   import { api, jsonBody, errorMessage, formatTime, RequestError } from '../api';
-  import { stageFiles, publish, slugify, type StagedUpload, type PublishResult } from '../uploads';
+  import { stageFiles, publish, slugify, pendingImport as loadPendingImport, resumeImport, cancelPendingImport, type PendingImport, type PublishProgress, type StagedUpload, type PublishResult } from '../uploads';
   import { nextNumberedSlug } from "../../slugs";
   import { parseByteSize } from '../../config';
   import { hubCleanupDoneMessage, hubCleanupTarget } from '../hub-cleanup-target';
@@ -58,6 +58,9 @@
   let staged = $state<StagedUpload | null>(null);
   let busy = $state(false);
   let publishing = $state(false);
+  let uploadProgress = $state<PublishProgress | null>(null);
+  let recoverableImport = $state<PendingImport | null>(null);
+  let stageSettingsLocked = $derived(busy || Boolean(staged?.createdSite));
   let stagePassword = $state('');
   let stageWritePassword = $state('');
   let stageAccessOpen = $state(false);
@@ -280,10 +283,10 @@
     } finally { cleanupBusy = false; }
   }
   function resetStage() {
-    stageSequence++; staged = null; stagePassword = ''; stageWritePassword = ''; stageAccessOpen = false;
+    stageSequence++; staged = null; stagePassword = ''; stageWritePassword = ''; stageAccessOpen = false; uploadProgress = null;
   }
   async function choose(files: File[], entries: FileSystemEntry[] = [], folder = false) {
-    if (busy) return;
+    if (busy || recoverableImport) return;
     const sequence = ++stageSequence; busy = true;
     try {
       const next = await stageFiles(files, entries, folder);
@@ -307,12 +310,42 @@
     staged.slug = slugify(staged.slug);
     const upload = staged;
     try {
-      const result = await publish(upload, { password: stagePassword.trim(), write_password: stageWritePassword.trim(), ttl: stageTtl, write_policy: stageWrite });
+      const result = await publish(upload, { password: stagePassword.trim(), write_password: stageWritePassword.trim(), ttl: stageTtl, write_policy: stageWrite }, {
+        onProgress: progress => { uploadProgress = progress; }, onPending: pending => { recoverableImport = pending; },
+      });
       message('Published', 'ok', { ...result, password: result.password || stagePassword.trim() || undefined, write_password: result.write_password || stageWritePassword.trim() || undefined });
       resetStage(); await refresh();
     } catch (error) {
-      message(errorMessage(error), 'err'); await refresh();
+      uploadProgress = { phase: 'committing', text: 'Publication paused.' }; message(errorMessage(error), 'err'); await refresh();
     } finally { busy = false; publishing = false; }
+  }
+  function publicationLabel(): string {
+    if (publishing) {
+      if (uploadProgress?.phase === 'uploading') return 'Uploading…';
+      if (uploadProgress?.phase === 'preparing') return 'Preparing…';
+      return 'Publishing…';
+    }
+    if (busy) return 'Preparing…';
+    if (recoverableImport) return 'Resume publication';
+    return staged?.createdSite ? 'Retry publication' : 'Publish';
+  }
+  async function resumePublication() {
+    if (!recoverableImport || busy) return;
+    busy = true; publishing = true;
+    try {
+      const result = await resumeImport(recoverableImport, {
+        onProgress: progress => { uploadProgress = progress; }, onPending: pending => { recoverableImport = pending; },
+      });
+      message('Published', 'ok', result); resetStage(); await refresh();
+    } catch (error) { uploadProgress = { phase: 'committing', text: 'Publication paused.' }; message(errorMessage(error), 'err'); }
+    finally { busy = false; publishing = false; }
+  }
+  async function cancelPublication() {
+    if (!recoverableImport || busy) return;
+    busy = true;
+    try { await cancelPendingImport(recoverableImport); recoverableImport = null; resetStage(); message('Publication cancelled.'); }
+    catch (error) { message(errorMessage(error), 'err'); }
+    finally { busy = false; }
   }
   function selectTarget(item: CatalogItem) { target = { kind: item.kind, item }; modalError = ''; }
   function deleteItem(item: CatalogItem) { selectTarget(item); confirmAction = 'Delete'; confirmOpen = true; }
@@ -445,6 +478,7 @@
   ] : []);
 
   onMount(() => {
+    recoverableImport = loadPendingImport();
     const unregister = registerHubTools();
     const hasFiles = (event: DragEvent) => event.dataTransfer?.types.includes('Files');
     const enter = (event: DragEvent) => { if (hasFiles(event)) { event.preventDefault(); dragDepth++; } };
@@ -470,9 +504,15 @@
 
 <main class="en-wrap" style:padding-bottom={hasSelection && barHeight ? `calc(var(--pad-page-bottom) + ${barHeight + 24}px)` : undefined}>
   <PageTitle wide title="Publish a document, prototype, or file."><p class="en-lede">Upload here and get a link. Or <a href="/setup">connect your agent</a> to publish for you.</p></PageTitle>
-  <div id="messages" class="en-hub-messages">{#each messages as item (item.id)}<Flash tone={item.tone} password={item.password} writePassword={item.writePassword} onDismiss={() => dismiss(item.id)} action={item.retry ? { label: 'Try again', onclick: () => { dismiss(item.id); item.retry?.(); } } : undefined}>{item.text}{#if item.url} <a href={item.url}>{item.name}</a>{/if}</Flash>{/each}</div>
+  <div id="messages" class="en-hub-messages">{#each messages as item (item.id)}<Flash tone={item.tone} password={item.password} writePassword={item.writePassword} onDismiss={() => dismiss(item.id)} action={item.retry ? { label: 'Try again', onclick: () => { dismiss(item.id); item.retry?.(); } } : undefined}>{item.text}{#if item.url}{' '}<a href={item.url}>{item.name}</a>{/if}</Flash>{/each}</div>
   <div class="en-space-after"><Card charged tight>
-    <DropZone over={dragDepth > 0} {busy} onFiles={() => filepick.click()} onFolder={() => folderpick.click()} children={staged ? stage : undefined} />
+    <DropZone over={dragDepth > 0} busy={busy || Boolean(recoverableImport && !staged)} onFiles={() => filepick.click()} onFolder={() => folderpick.click()} children={staged ? stage : undefined} />
+    {#if recoverableImport && !staged}
+      <div class="en-stage" id="import-recovery">
+        <p class="en-note" role="status">{uploadProgress?.text || `Check or resume publication of “${recoverableImport.slug}”.`}</p>
+        <div class="en-stage-actions"><Button id="import-cancel" disabled={busy} onclick={cancelPublication}>Cancel publication</Button><Button id="import-resume" variant="primary" disabled={busy} onclick={resumePublication}>{busy ? 'Preparing…' : 'Resume publication'}</Button></div>
+      </div>
+    {/if}
     <input bind:this={filepick} id="filepick" class="en-sr-only" type="file" multiple tabindex="-1" aria-hidden="true" onchange={e => picked(e)} />
     <input bind:this={folderpick} id="folderpick" class="en-sr-only" type="file" webkitdirectory tabindex="-1" aria-hidden="true" onchange={e => picked(e, true)} />
   </Card></div>
@@ -523,17 +563,18 @@
 
 {#snippet stage()}{#if staged}
   <form id="stage" class="en-stage" onsubmit={launch}>
-    <div class="en-stage-status" id="stage-status"><Unit size={5} />{staged.kind === 'loose' ? '1 file ready' : `${count(staged.files.length, 'file')} ready`}</div>
-    {#if staged.kind === 'loose'}<div id="stage-loose"><Field label="Filename" htmlFor="stage-filename" note="The last part of the public URL."><UrlField id="stage-filename" prefix={`${contentOrigin}/${handle}/f/{id}/`} bind:value={staged.filename} disabled={busy} /></Field></div>
-    {:else}<div id="stage-site"><Field label="Site slug" htmlFor="stage-slug" note="The last part of the public URL."><UrlField id="stage-slug" prefix={`${contentOrigin}/${handle}/s/{id}/`} suffix="/" bind:value={staged.slug} disabled={busy} /></Field></div>{/if}
-    <Field label="Expiration" htmlFor="stage-ttl" noteId="stage-ttl-note" note={ttlNote}><Select id="stage-ttl" aria-describedby="stage-ttl-note" options={ttlOptions} bind:value={stageTtl} disabled={busy} /></Field>
-    <Field label="Who can write" htmlFor="stage-write" note="Controls who with a token can update or delete this work. It does not grant or deny the write-password door."><Select id="stage-write" aria-label="Who can write" options={writeOptions} bind:value={stageWrite} disabled={busy} /></Field>
+    <div class="en-stage-status" id="stage-status" role="status"><Unit size={5} />{uploadProgress?.text || (staged.kind === 'loose' ? '1 file ready' : staged.kind === 'zip' ? 'ZIP ready' : `${count(staged.files.length, 'file')} ready`)}</div>
+    {#if staged.kind === 'loose'}<div id="stage-loose"><Field label="Filename" htmlFor="stage-filename" note="The last part of the public URL."><UrlField id="stage-filename" prefix={`${contentOrigin}/${handle}/f/{id}/`} bind:value={staged.filename} disabled={stageSettingsLocked} /></Field></div>
+    {:else}<div id="stage-site"><Field label="Site slug" htmlFor="stage-slug" note="The last part of the public URL."><UrlField id="stage-slug" prefix={`${contentOrigin}/${handle}/s/{id}/`} suffix="/" bind:value={staged.slug} disabled={stageSettingsLocked} /></Field></div>{/if}
+    <Field label="Expiration" htmlFor="stage-ttl" noteId="stage-ttl-note" note={ttlNote}><Select id="stage-ttl" aria-describedby="stage-ttl-note" options={ttlOptions} bind:value={stageTtl} disabled={stageSettingsLocked} /></Field>
+    <Field label="Who can write" htmlFor="stage-write" note="Controls who with a token can update or delete this work. It does not grant or deny the write-password door."><Select id="stage-write" aria-label="Who can write" options={writeOptions} bind:value={stageWrite} disabled={stageSettingsLocked} /></Field>
     <details id="stage-access" class="en-stage-access" bind:open={stageAccessOpen}>
       <summary>Link access</summary>
-      <Field label="Share password" htmlFor="stage-password" noteId="stage-password-note" note="Leave empty so anyone with the link can open it. Valid API tokens on this host can read the work even with a share password."><PasswordField id="stage-password" generateId="stage-pw-gen" copyId="stage-pw-copy" words={data.words} bind:value={stagePassword} describedby="stage-password-note" disabled={busy} /></Field>
-      <Field label="Write password" htmlFor="stage-write-password" noteId="stage-write-password-note" note={staged.kind === 'loose' ? 'Replaces this file only. Leave empty to keep guests from writing.' : 'Full control of served bytes, including replacing index.html. Leave empty to keep guests from writing.'}><PasswordField id="stage-write-password" generateId="stage-wpw-gen" copyId="stage-wpw-copy" words={data.words} bind:value={stageWritePassword} describedby="stage-write-password-note" disabled={busy} /></Field>
+      <Field label="Share password" htmlFor="stage-password" noteId="stage-password-note" note="Leave empty so anyone with the link can open it. Valid API tokens on this host can read the work even with a share password."><PasswordField id="stage-password" generateId="stage-pw-gen" copyId="stage-pw-copy" words={data.words} bind:value={stagePassword} describedby="stage-password-note" disabled={stageSettingsLocked} /></Field>
+      <Field label="Write password" htmlFor="stage-write-password" noteId="stage-write-password-note" note={staged.kind === 'loose' ? 'Replaces this file only. Leave empty to keep guests from writing.' : 'Full control of served bytes, including replacing index.html. Leave empty to keep guests from writing.'}><PasswordField id="stage-write-password" generateId="stage-wpw-gen" copyId="stage-wpw-copy" words={data.words} bind:value={stageWritePassword} describedby="stage-write-password-note" disabled={stageSettingsLocked} /></Field>
     </details>
-    <div class="en-stage-actions"><Button id="stage-cancel" onclick={resetStage} disabled={busy}>Cancel</Button><Button type="submit" id="stage-go" variant="primary" disabled={busy}>{publishing ? 'Publishing…' : busy ? 'Preparing…' : 'Publish'}</Button></div>
+    {#if staged.createdSite && !busy}<p class="en-note">Retry continues the same site with these settings.</p>{/if}
+    <div class="en-stage-actions"><Button id="stage-cancel" onclick={() => { if (recoverableImport) void cancelPublication(); else resetStage(); }} disabled={busy}>{recoverableImport ? 'Cancel publication' : 'Cancel'}</Button><Button type="submit" id="stage-go" variant="primary" disabled={busy}>{publicationLabel()}</Button></div>
   </form>
 {/if}{/snippet}
 

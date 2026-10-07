@@ -1,3 +1,9 @@
+import { acquireVersionLease, releaseVersionLease, startVersionLeaseHeartbeat } from "./site-storage";
+import { SITE_FILE_COUNT_SQL, SITE_SIZE_SQL, SITE_FILE_TOTALS_JOIN_SQL } from "./catalog";
+import { publishSiteChanges, snapshotFiles } from "./site-snapshot";
+import { canonicalDeploymentIntent } from "./site-deployments";
+import { withSiteRead } from "./site-reads";
+import { withSiteBodyCache } from "./site-cache";
 import { privateCacheControl, publicCacheControl, purgeContent, siteCacheTag, sitePrefix } from "./cache";
 import {
   composeClauses,
@@ -9,7 +15,7 @@ import {
   type ListQuery,
 } from "./catalog";
 import { brandMark, documentShell, escapeHtml } from "./chrome";
-import { MAX_IMPORT_FILES, PRODUCT, RESERVED_SLUGS, SLUG_RE, formatBytes, siteKey } from "./config";
+import { MAX_IMPORT_FILES, PRODUCT, RESERVED_SLUGS, SLUG_RE, formatBytes } from "./config";
 import {
   d1Changed,
   expiredError,
@@ -26,8 +32,8 @@ import { isMarkdownName, respondMarkdown } from "./markdown";
 import { maybeUnlockWithWritePassword, passwordEcho, passwordField, passwordHashFromInput, protectContent, assignPasswordStore, hubLinkAccessFields, storedPasswordSecret, writePasswordField, writePasswordHashFromInput } from "./gate";
 import { ensureUser } from "./handles";
 import { mintObjectId } from "./ids";
-import { consumeGrantStatement, grantCommitFailure, GRANT_LEASE_SQL, grantLeaseBinds, type GrantGuard } from "./grant-guard";
-import { ApiError, applyIsolation, assertStorageRoom, basename, contentDisposition, copyR2Object, deletePrefix, discardR2Snapshots, htmlPage, json, jsonMaybeSecret, nanoid, normalizeRelPath, publicOrigin, releaseStorage, restoreR2Object, secretJson, snapshotR2Object, tooLarge, wantsDownload, type R2ObjectSnapshot } from "./http";
+import { type GrantGuard } from "./grant-guard";
+import { ApiError, applyIsolation, basename, contentDisposition, htmlPage, json, jsonMaybeSecret, normalizeRelPath, publicOrigin, secretJson, sha256Hex, tooLarge, wantsDownload } from "./http";
 import { contentTypeFor } from "./mime";
 import {
   OWNER_WRITE_SQL,
@@ -44,129 +50,11 @@ import {
 import { noteRead } from "./reads";
 import type { Actor, Env, SiteFileRow, SiteRow } from "./types";
 import { isSiteId, sitePublicUrl } from "./urls";
-import { putUpload, type Upload } from "./upload";
-import { packZip, unpackZip } from "./zip";
+import { type Upload } from "./upload";
+import { packZip } from "./zip";
 
 const SITE_SELECT =
-  `id, handle, slug, owner_id, created_at, updated_at, created_by, last_written_by, password_hash, password_secret, expires_at, write_policy, write_password_hash, write_password_secret, written_via, last_read_at`;
-const D1_BATCH_MAX_STATEMENTS = 100;
-
-type R2State = { key: string; snapshot: R2ObjectSnapshot | null };
-
-async function restoreR2Snapshots(bucket: R2Bucket, states: R2State[]): Promise<void> {
-  let failed = false;
-  for (const { key, snapshot } of states) {
-    try {
-      await restoreR2Object(bucket, key, snapshot);
-    } catch {
-      failed = true;
-    }
-  }
-  if (failed) {
-    throw new ApiError(500, "storage_rollback_failed", "The request failed and storage rollback also failed. Retry after storage recovers.");
-  }
-}
-
-async function restoreR2State(bucket: R2Bucket, key: string, snapshot: R2ObjectSnapshot | null): Promise<void> {
-  await restoreR2Snapshots(bucket, [{ key, snapshot }]);
-}
-
-export function siteFileUpsert(
-  env: Env,
-  siteId: string,
-  path: string,
-  size: number,
-  contentType: string,
-  updatedAt: string,
-  lastWrittenBy: string,
-): D1PreparedStatement {
-  return env.DB.prepare(
-    `INSERT INTO site_files (site_id, path, size, content_type, updated_at, last_written_by)
-     VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT(site_id, path) DO UPDATE SET
-       size = excluded.size,
-       content_type = excluded.content_type,
-       updated_at = excluded.updated_at,
-       last_written_by = excluded.last_written_by`,
-  ).bind(siteId, path, size, contentType, updatedAt, lastWrittenBy);
-}
-
-async function deleteCreatedSiteMetadata(env: Env, id: string): Promise<void> {
-  await env.DB.batch([
-    env.DB.prepare(`DELETE FROM site_files WHERE site_id = ?`).bind(id),
-    env.DB.prepare(`DELETE FROM sites WHERE id = ?`).bind(id),
-  ]);
-}
-
-async function listR2Keys(bucket: R2Bucket, prefix: string): Promise<string[]> {
-  const keys: string[] = [];
-  let cursor: string | undefined;
-  do {
-    const listed = await bucket.list({ prefix, cursor, limit: 1000 });
-    keys.push(...listed.objects.map((object) => object.key));
-    cursor = listed.truncated ? listed.cursor : undefined;
-  } while (cursor);
-  return keys;
-}
-
-async function deleteR2Keys(bucket: R2Bucket, keys: string[]): Promise<void> {
-  for (let i = 0; i < keys.length; i += 1000) {
-    await bucket.delete(keys.slice(i, i + 1000));
-  }
-}
-
-async function restoreSiteFileRows(
-  env: Env,
-  siteId: string,
-  paths: string[],
-  previousRows: Map<string, SiteFileRow>,
-  previousSite: SiteRow,
-): Promise<void> {
-  const pathBatchSize = Math.floor((D1_BATCH_MAX_STATEMENTS - 1) / 2);
-  for (let i = 0; i < paths.length || i === 0; i += pathBatchSize) {
-    const statements: D1PreparedStatement[] = [];
-    for (const path of paths.slice(i, i + pathBatchSize)) {
-      statements.push(env.DB.prepare(`DELETE FROM site_files WHERE site_id = ? AND path = ?`).bind(siteId, path));
-      const previous = previousRows.get(path);
-      if (previous) {
-        statements.push(
-          env.DB.prepare(
-            `INSERT INTO site_files (site_id, path, size, content_type, updated_at, last_written_by)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-          ).bind(
-            previous.site_id,
-            previous.path,
-            previous.size,
-            previous.content_type,
-            previous.updated_at,
-            previous.last_written_by,
-          ),
-        );
-      }
-    }
-    if (i + pathBatchSize >= paths.length) {
-      statements.push(
-        env.DB.prepare(`UPDATE sites SET updated_at = ?, last_written_by = ? WHERE id = ?`).bind(
-          previousSite.updated_at,
-          previousSite.last_written_by,
-          siteId,
-        ),
-      );
-    }
-    await env.DB.batch(statements);
-  }
-}
-
-async function rollbackSiteStorage(
-  env: Env,
-  key: string,
-  snapshot: R2ObjectSnapshot | null,
-  originalError: unknown,
-): Promise<never> {
-  await restoreR2State(env.BUCKET, key, snapshot);
-  throw originalError;
-}
-
+  `id, handle, slug, owner_id, created_at, updated_at, created_by, last_written_by, password_hash, password_secret, expires_at, write_policy, write_password_hash, write_password_secret, written_via, last_read_at, active_version_id, content_generation, lifecycle_state, conversion_state`;
 export function assertSlug(slug: string): string {
   const s = slug.trim().toLowerCase();
   if (!SLUG_RE.test(s)) {
@@ -210,23 +98,6 @@ function safeDecode(path: string): string {
   }
 }
 
-async function writeSite(
-  env: Env,
-  actor: Actor,
-  id: string,
-  assignments: string,
-  values: unknown[],
-): Promise<void> {
-  const updated = await env.DB.prepare(
-    `UPDATE sites SET ${assignments}, written_via = NULL WHERE id = ? AND last_written_by NOT LIKE ? AND ${OWNER_WRITE_SQL}`,
-  )
-    .bind(...values, id, PURGE_CLAIM_LIKE, ...ownerWriteBinds(actor))
-    .run();
-  if (!d1Changed(updated)) {
-    await throwSiteMutationConflict(env, id);
-  }
-}
-
 async function throwSiteMutationConflict(env: Env, id: string): Promise<never> {
   const still = await getSiteById(env, id);
   if (!still || isPurgeClaimed(still.last_written_by) || isExpired(still.expires_at)) {
@@ -240,18 +111,11 @@ async function throwSiteMutationConflict(env: Env, id: string): Promise<never> {
 
 export async function getSiteById(env: Env, id: string): Promise<SiteRow | null> {
   if (!isSiteId(id)) return null;
-  return env.DB.prepare(`SELECT ${SITE_SELECT} FROM sites WHERE id = ?`).bind(id).first<SiteRow>();
+  return env.DB.prepare(`SELECT ${SITE_SELECT} FROM sites WHERE id = ? AND lifecycle_state = 'live'`).bind(id).first<SiteRow>();
 }
 
 async function findSiteForActor(env: Env, id: string): Promise<SiteRow | null> {
   return getSiteById(env, id);
-}
-
-export async function fileCount(env: Env, siteId: string): Promise<number> {
-  const row = await env.DB.prepare(`SELECT COUNT(*) AS n FROM site_files WHERE site_id = ?`)
-    .bind(siteId)
-    .first<{ n: number }>();
-  return Number(row?.n ?? 0);
 }
 
 export function involvedInSite(
@@ -273,6 +137,7 @@ export async function createSite(
   ttl?: unknown,
   writePolicy?: unknown,
   writePassword?: string,
+  lifecycleState = "live",
 ): Promise<{ body: Record<string, unknown>; status: number }> {
   const slug = assertSlug(slugRaw);
   const user = await ensureUser(env, actor.email, actor.idpSub);
@@ -287,12 +152,19 @@ export async function createSite(
   const ts = new Date().toISOString();
   const stored = hash === undefined ? null : hash;
   const storedWritePw = writeHash === undefined ? null : writeHash;
-  await env.DB.prepare(
-    `INSERT INTO sites (id, handle, slug, owner_id, created_at, updated_at, created_by, last_written_by, password_hash, password_secret, expires_at, write_policy, write_password_hash, write_password_secret)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(id, handle, slug, user.id, ts, ts, actor.email, actor.email, stored, storedPasswordSecret(stored, password), resolved.expiresAt, storedWrite, storedWritePw, storedPasswordSecret(storedWritePw, writePassword))
-    .run();
+  const versionId = crypto.randomUUID();
+  const manifestHash = await sha256Hex(canonicalDeploymentIntent({ mode: "replace", files: [] }));
+  // Create the empty snapshot with its pointer so cron cannot mistake a new site for legacy storage.
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO sites (id, handle, slug, owner_id, created_at, updated_at, created_by, last_written_by, password_hash, password_secret, expires_at, write_policy, write_password_hash, write_password_secret, lifecycle_state, active_version_id, conversion_state)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'versioned')`,
+    ).bind(id, handle, slug, user.id, ts, ts, actor.email, actor.email, stored, storedPasswordSecret(stored, password), resolved.expiresAt, storedWrite, storedWritePw, storedPasswordSecret(storedWritePw, writePassword), lifecycleState, versionId),
+    env.DB.prepare(
+      `INSERT INTO site_versions (id, site_id, state, manifest_hash, created_at, sealed_at)
+       VALUES (?, ?, 'active', ?, ?, ?)`,
+    ).bind(versionId, id, manifestHash, ts, ts),
+  ]);
   return {
     status: 201,
     body: {
@@ -363,70 +235,27 @@ export async function duplicateSite(
   writePassword?: string,
 ): Promise<{ body: Record<string, unknown>; status: number }> {
   const source = await requireSite(env, actor, fromIdRaw, { ctx });
-  const files = await env.DB.prepare(
-    `SELECT path, size, content_type FROM site_files WHERE site_id = ? ORDER BY path`,
-  )
-    .bind(source.id)
-    .all<{ path: string; size: number; content_type: string }>();
-  const listed = files.results || [];
-  if (listed.length > MAX_IMPORT_FILES) {
-    throw new ApiError(
-      400,
-      "too_many_files",
-      `That site has ${listed.length} files. ${PRODUCT} copies at most ${MAX_IMPORT_FILES} files. Split the site, then retry.`,
-    );
-  }
-  const total = listed.reduce((n, f) => n + Number(f.size || 0), 0);
-  const reserved = await assertStorageRoom(env.DB, total, 0, instancePolicy(env).platformBytes);
-  let destId = "";
-  const copiedKeys: string[] = [];
+  const lease = source.active_version_id ? await acquireVersionLease(env.DB, source.active_version_id, "duplicate") : null;
+  const controller = new AbortController();
+  const heartbeat = lease ? startVersionLeaseHeartbeat(env.DB, lease, error => controller.abort(error)) : null;
+  let destId: string | undefined;
   try {
-    const created = await createSite(env, actor, newSlugRaw, password, ctx, ttl, writePolicy, writePassword);
+    const files = await snapshotFiles(env, source);
+    if (files.length > MAX_IMPORT_FILES) throw new ApiError(400, "too_many_files", `Copies support at most ${MAX_IMPORT_FILES} files.`);
+    const created = await createSite(env, actor, newSlugRaw, password, ctx, ttl, writePolicy, writePassword, "creating");
     destId = String(created.body.id);
-    const destHandle = String(created.body.handle);
-    const ts = new Date().toISOString();
-    for (const f of listed) {
-      const destinationKey = siteKey(destHandle, destId, f.path);
-      await copyR2Object(env.BUCKET, siteKey(source.handle, source.id, f.path), destinationKey);
-      copiedKeys.push(destinationKey);
-      await env.DB.prepare(
-        `INSERT INTO site_files (site_id, path, size, content_type, updated_at, last_written_by)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-      )
-        .bind(destId, f.path, f.size, f.content_type, ts, actor.email)
-        .run();
-    }
-    if (listed.length) {
-      await writeSite(env, actor, destId, "updated_at = ?, last_written_by = ?", [ts, actor.email]);
-    }
-    return {
-      status: 201,
-      body: {
-        ...created.body,
-        duplicated: true,
-        duplicated_from: source.id,
-        file_count: listed.length,
-      },
-    };
-  } catch (err) {
-    let cleanupError = false;
-    try {
-      await deleteR2Keys(env.BUCKET, copiedKeys);
-    } catch {
-      cleanupError = true;
-    }
-    if (destId) {
-      try {
-        await deleteCreatedSiteMetadata(env, destId);
-      } catch {
-        cleanupError = true;
-      }
-    }
-    if (cleanupError) {
-      throw new ApiError(500, "site_copy_rollback_failed", "The site copy failed and automatic cleanup also failed. Retry after storage recovers.");
-    }
-    await releaseStorage(env.DB, reserved);
-    throw err;
+    const destination = (await env.DB.prepare(`SELECT ${SITE_SELECT} FROM sites WHERE id = ?`).bind(destId).first<SiteRow>())!;
+    heartbeat?.assertActive();
+    await publishSiteChanges(env, destination, { ...actor, activateHidden: true }, files.map(file => ({
+      path: file.path, upload: { size: file.size, head: new Uint8Array(), stagedKey: file.object_key }, contentType: file.content_type,
+    })), sitePublicUrl(env, destination.handle, destination.id, destination.slug), controller.signal);
+    return { status: 201, body: { ...created.body, duplicated: true, duplicated_from: source.id, file_count: files.length } };
+  } catch (error) {
+    if (destId) await env.DB.prepare("UPDATE sites SET lifecycle_state = 'deleted', active_version_id = NULL WHERE id = ? AND lifecycle_state = 'creating'").bind(destId).run();
+    throw error;
+  } finally {
+    heartbeat?.stop();
+    if (lease) await releaseVersionLease(env.DB, lease);
   }
 }
 
@@ -525,7 +354,7 @@ export async function patchSite(
       ? { sql: "1 = 1", binds: [] as unknown[] }
       : { sql: OWNER_WRITE_SQL, binds: [...ownerWriteBinds(actor)] };
     const updated = await env.DB.prepare(
-      `UPDATE sites SET ${update.assignments.join(", ")} WHERE id = ? AND ${notClaimed} AND ${writeGuard.sql}`,
+      `UPDATE sites SET ${update.assignments.join(", ")} WHERE id = ? AND lifecycle_state = 'live' AND ${notClaimed} AND ${writeGuard.sql}`,
     )
       .bind(...update.values, site.id, PURGE_CLAIM_LIKE, ...writeGuard.binds)
       .run();
@@ -608,116 +437,13 @@ export async function putSiteFile(
   const policy = instancePolicy(env);
   if (upload.size > policy.fileBytes) throw tooLarge(upload.size, "", policy.fileBytes);
   const site = await requireSite(env, actor, idRaw, { ctx, mutate: true });
-  const existing = await env.DB.prepare(
-    `SELECT size, content_type, updated_at, last_written_by FROM site_files WHERE site_id = ? AND path = ?`,
-  )
-    .bind(site.id, path)
-    .first<{ size: number; content_type: string; updated_at: string; last_written_by: string }>();
-  if (!existing) {
-    const count = await fileCount(env, site.id);
-    if (count >= MAX_IMPORT_FILES) {
-      throw new ApiError(
-        400,
-        "too_many_files",
-        `That site already has ${MAX_IMPORT_FILES} files. ${PRODUCT} caps a site at ${MAX_IMPORT_FILES} files. Delete some paths, then retry.`,
-      );
-    }
-  }
-  const contentType = contentTypeFor(path, upload.head, hintType);
-  const key = siteKey(site.handle, site.id, path);
-  const ts = new Date().toISOString();
-  const reserved = await assertStorageRoom(env.DB, upload.size, existing?.size ?? 0, policy.platformBytes);
-  let previous: R2ObjectSnapshot | null = null;
-  let wroteObject = false;
-  try {
-    previous = await snapshotR2Object(env.BUCKET, key);
-    await putUpload(env.BUCKET, key, upload, { httpMetadata: { contentType } });
-    wroteObject = true;
-    const wrote = guard
-      ? await env.DB.batch(guardedSiteFileCommit(env, actor, guard, site, path, upload.size, contentType, ts))
-      : await env.DB.batch([
-          siteFileUpsert(env, site.id, path, upload.size, contentType, ts, actor.email),
-          env.DB.prepare(
-            `UPDATE sites SET updated_at = ?, last_written_by = ?, written_via = NULL WHERE id = ? AND last_written_by NOT LIKE ? AND ${OWNER_WRITE_SQL}`,
-          ).bind(ts, actor.email, site.id, PURGE_CLAIM_LIKE, ...ownerWriteBinds(actor)),
-        ]);
-    if (!d1Changed(wrote[1] ?? {})) {
-      if (guard) {
-        // Every guarded statement carries the same predicates, so nothing landed and there is no row to compensate.
-        throw (await grantCommitFailure(env, guard)) ?? (await throwSiteMutationConflict(env, site.id));
-      }
-      if (existing) {
-        await siteFileUpsert(
-          env,
-          site.id,
-          path,
-          existing.size,
-          existing.content_type,
-          existing.updated_at,
-          existing.last_written_by,
-        ).run();
-      } else {
-        await env.DB.prepare(`DELETE FROM site_files WHERE site_id = ? AND path = ?`).bind(site.id, path).run();
-      }
-      await throwSiteMutationConflict(env, site.id);
-    }
-  } catch (err) {
-    if (wroteObject) await restoreR2State(env.BUCKET, key, previous);
-    await releaseStorage(env.DB, reserved);
-    throw err;
-  } finally {
-    await discardR2Snapshots(env.BUCKET, [previous]);
-  }
-  await releaseStorage(env.DB, (existing?.size ?? 0) - upload.size);
-
-  const origin = publicOrigin(env);
-  await purgeContent(ctx, [sitePrefix(site.handle, site.id)]);
-  return {
-    url: sitePublicUrl(env, site.handle, site.id, site.slug, path),
-    api_url: `${origin}/v1/sites/${site.id}/files/${path}`,
-    created: !existing,
-    path,
-    size: upload.size,
-    content_type: contentType,
-  };
-}
-
-function guardedSiteFileCommit(
-  env: Env,
-  actor: Actor,
-  guard: GrantGuard,
-  site: SiteRow,
-  path: string,
-  size: number,
-  contentType: string,
-  ts: string,
-): D1PreparedStatement[] {
-  const now = new Date(ts);
-  const writable = `last_written_by NOT LIKE ? AND (expires_at IS NULL OR expires_at > ?) AND ${OWNER_WRITE_SQL}`;
-  const writableBinds = [PURGE_CLAIM_LIKE, ts, ...ownerWriteBinds(actor)];
-  const lease = grantLeaseBinds(guard, now);
-  return [
-    env.DB.prepare(
-      `INSERT INTO site_files (site_id, path, size, content_type, updated_at, last_written_by)
-       SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM sites WHERE id = ? AND ${writable}) AND ${GRANT_LEASE_SQL}
-       ON CONFLICT(site_id, path) DO UPDATE SET
-         size = excluded.size,
-         content_type = excluded.content_type,
-         updated_at = excluded.updated_at,
-         last_written_by = excluded.last_written_by`,
-    ).bind(site.id, path, size, contentType, ts, actor.email, site.id, ...writableBinds, ...lease),
-    env.DB.prepare(
-      `UPDATE sites SET updated_at = ?, last_written_by = ?, written_via = NULL WHERE id = ? AND ${writable} AND ${GRANT_LEASE_SQL}`,
-    ).bind(ts, actor.email, site.id, ...writableBinds, ...lease),
-    consumeGrantStatement(
-      env,
-      guard,
-      now,
-      { id: site.id, url: sitePublicUrl(env, site.handle, site.id, site.slug, path) },
-      `EXISTS (SELECT 1 FROM sites WHERE id = ? AND ${writable})`,
-      [site.id, ...writableBinds],
-    ),
-  ];
+  const existing = (await snapshotFiles(env, site)).find(file => file.path === path);
+  const contentType = guard && existing?.content_type ? existing.content_type : contentTypeFor(path, upload.head, hintType);
+  const url = sitePublicUrl(env, site.handle, site.id, site.slug, path);
+  await publishSiteChanges(env, site, { ...actor, legacyGrant: guard }, [{ path, upload, contentType }], url);
+  await purgeContent(ctx, [sitePrefix(site.handle, site.id)]).catch(error => console.error("Site cache purge pending", error));
+  return { url, api_url: `${publicOrigin(env)}/v1/sites/${site.id}/files/${path}`, created: !existing,
+    path, size: upload.size, content_type: contentType };
 }
 
 export async function getSiteFile(
@@ -729,7 +455,8 @@ export async function getSiteFile(
 ): Promise<Response> {
   const path = assertFilePath(pathRaw);
   const site = await requireSite(env, actor, idRaw, { ctx });
-  const obj = await env.BUCKET.get(siteKey(site.handle, site.id, path));
+  return withSiteRead(env, site, "api", async snapshot => {
+  const obj = await snapshot.get(path);
   if (!obj) {
     throw new ApiError(404, "file_not_found", `No file at ${sitePublicPathHint(site.handle, site.id, site.slug, path)}.`);
   }
@@ -740,69 +467,7 @@ export async function getSiteFile(
   headers.set("cache-control", "private, no-store");
   if (obj.size != null) headers.set("content-length", String(obj.size));
   return new Response(obj.body, { headers });
-}
-
-export async function importSiteZip(
-  env: Env,
-  ctx: ExecutionContext | undefined,
-  actor: Actor,
-  idRaw: string,
-  zipBytes: Uint8Array,
-): Promise<{ id: string; slug: string; url: string; written: string[] }> {
-  const policy = instancePolicy(env);
-  if (zipBytes.byteLength > policy.zipBytes) throw tooLarge(zipBytes.byteLength, "", policy.zipBytes);
-  const site = await requireSite(env, actor, idRaw, { ctx, mutate: true });
-  const files = unpackZip(zipBytes, policy.zipBytes);
-  const existingRows = await env.DB.prepare(
-    `SELECT site_id, path, size, content_type, updated_at, last_written_by FROM site_files WHERE site_id = ?`,
-  )
-    .bind(site.id)
-    .all<SiteFileRow>();
-  const existingMap = new Map((existingRows.results || []).map((r) => [r.path, r.size]));
-  let additional = 0;
-  let replacing = 0;
-  for (const f of files) {
-    additional += f.bytes.byteLength;
-    replacing += existingMap.get(f.path) ?? 0;
-  }
-  const reserved = await assertStorageRoom(env.DB, additional, replacing, policy.platformBytes);
-
-  const ts = new Date().toISOString();
-  const written: string[] = [];
-  const upserts: D1PreparedStatement[] = [];
-  const previousRows = new Map<string, SiteFileRow>();
-  const snapshots: R2State[] = [];
-  const affectedPaths = files.map((f) => f.path);
-  for (const row of existingRows.results || []) previousRows.set(row.path, row);
-  try {
-    for (const f of files) {
-      const key = siteKey(site.handle, site.id, f.path);
-      const previous = await snapshotR2Object(env.BUCKET, key);
-      snapshots.push({ key, snapshot: previous });
-      const contentType = contentTypeFor(f.path, f.bytes, null);
-      await env.BUCKET.put(key, f.bytes, { httpMetadata: { contentType } });
-      upserts.push(siteFileUpsert(env, site.id, f.path, f.bytes.byteLength, contentType, ts, actor.email));
-      written.push(f.path);
-    }
-    for (let i = 0; i < upserts.length; i += D1_BATCH_MAX_STATEMENTS) {
-      await env.DB.batch(upserts.slice(i, i + D1_BATCH_MAX_STATEMENTS));
-    }
-    await writeSite(env, actor, site.id, "updated_at = ?, last_written_by = ?", [ts, actor.email]);
-  } catch (err) {
-    try {
-      await restoreR2Snapshots(env.BUCKET, snapshots);
-      await restoreSiteFileRows(env, site.id, affectedPaths, previousRows, site);
-    } catch {
-      throw new ApiError(500, "site_import_rollback_failed", "The site import failed and automatic rollback also failed. Retry after storage recovers.");
-    }
-    await releaseStorage(env.DB, reserved);
-    throw err;
-  } finally {
-    await discardR2Snapshots(env.BUCKET, snapshots.map((state) => state.snapshot));
-  }
-  await releaseStorage(env.DB, replacing - additional);
-  await purgeContent(ctx, [sitePrefix(site.handle, site.id)]);
-  return { id: site.id, slug: site.slug, url: sitePublicUrl(env, site.handle, site.id, site.slug), written };
+  });
 }
 
 export async function exportSiteZip(
@@ -812,12 +477,8 @@ export async function exportSiteZip(
   idRaw: string,
 ): Promise<Response> {
   const site = await requireSite(env, actor, idRaw, { ctx });
-  const rows = await env.DB.prepare(
-    `SELECT path, size FROM site_files WHERE site_id = ? ORDER BY path`,
-  )
-    .bind(site.id)
-    .all<{ path: string; size: number }>();
-  const listed = rows.results || [];
+  return withSiteRead(env, site, "export", async snapshot => {
+  const listed = await snapshot.files();
   if (listed.length === 0) {
     throw new ApiError(400, "empty_site", `Site '${site.slug}' has no files to zip.`);
   }
@@ -830,17 +491,17 @@ export async function exportSiteZip(
   }
   const policy = instancePolicy(env);
   const total = listed.reduce((n, r) => n + Number(r.size || 0), 0);
-  if (total > policy.zipBytes) {
+  if (total > policy.zipExportBytes) {
     throw new ApiError(
       413,
       "too_large",
-      `That site is over the ${formatBytes(policy.zipBytes)} export cap (${(total / (1024 * 1024)).toFixed(1)} MB of files). ${PRODUCT} zips at most ${formatBytes(policy.zipBytes)} so a download stays small. Split the site, then retry.`,
-      { limit_bytes: policy.zipBytes, actual_bytes: total },
+      `That site is over the ${formatBytes(policy.zipExportBytes)} export cap (${(total / (1024 * 1024)).toFixed(1)} MB of files). ${PRODUCT} zips at most ${formatBytes(policy.zipExportBytes)} so a download stays small. Split the site, then retry.`,
+      { limit_bytes: policy.zipExportBytes, actual_bytes: total },
     );
   }
   const files: { path: string; bytes: Uint8Array }[] = [];
   for (const row of listed) {
-    const obj = await env.BUCKET.get(siteKey(site.handle, site.id, row.path));
+    const obj = await snapshot.get(row.path);
     if (!obj) {
       throw new ApiError(
         500,
@@ -850,7 +511,7 @@ export async function exportSiteZip(
     }
     files.push({ path: row.path, bytes: new Uint8Array(await obj.arrayBuffer()) });
   }
-  const zip = packZip(files, policy.zipBytes);
+  const zip = packZip(files, policy.zipExportBytes);
   noteRead(env, ctx, { table: "sites", id: site.id, last_read_at: site.last_read_at });
   const headers = new Headers();
   headers.set("content-type", "application/zip");
@@ -859,78 +520,19 @@ export async function exportSiteZip(
   headers.set("cache-control", "no-store");
   headers.set("content-length", String(zip.byteLength));
   return new Response(zip, { headers });
+  });
 }
 
 export async function deleteSite(env: Env, ctx: ExecutionContext | undefined, actor: Actor, idRaw: string, asAdmin = false): Promise<void> {
-  let site: SiteRow;
-  try {
-    site = await requireSite(env, actor, idRaw, { allowExpired: true, mutate: true, ctx, asAdmin });
-  } catch (err) {
-    if (err instanceof ApiError && (err.status === 404 || err.status === 410)) return;
-    throw err;
-  }
-  if (isPurgeClaimed(site.last_written_by)) {
-    try {
-      await purgeExpiredSite(env, ctx, site.handle, site.id);
-    } catch (err) {
-      console.error("purgeExpiredSite failed", err);
-    }
-    return;
-  }
-  const sitePrefixKey = `sites/${site.handle}/${site.id}/`;
-  const listedKeys = await listR2Keys(env.BUCKET, sitePrefixKey);
-  const backupPrefix = `sites/.integrity-backup/${nanoid(16)}/`;
-  const backups: { sourceKey: string; backupKey: string }[] = [];
-  const usage = await env.DB.prepare(
-    `SELECT COALESCE(SUM(size), 0) AS total FROM site_files WHERE site_id = ?`,
-  )
-    .bind(site.id)
-    .first<{ total: number }>();
-  let siteDeleted = false;
-  try {
-    for (const sourceKey of listedKeys) {
-      const backupKey = `${backupPrefix}${sourceKey.slice(sitePrefixKey.length)}`;
-      await copyR2Object(env.BUCKET, sourceKey, backupKey);
-      backups.push({ sourceKey, backupKey });
-    }
-    await deletePrefix(env.BUCKET, `sites/${site.handle}/${site.id}/`);
-    const writeGuard = asAdmin
-      ? { sql: "1 = 1", binds: [] as unknown[] }
-      : { sql: OWNER_WRITE_SQL, binds: [...ownerWriteBinds(actor)] };
-    const wrote = await env.DB.batch([
-      env.DB.prepare(
-        `DELETE FROM site_files WHERE site_id = ? AND EXISTS (SELECT 1 FROM sites WHERE id = ? AND last_written_by NOT LIKE ? AND ${writeGuard.sql})`,
-      ).bind(site.id, site.id, PURGE_CLAIM_LIKE, ...writeGuard.binds),
-      env.DB.prepare(
-        `DELETE FROM sites WHERE id = ? AND last_written_by NOT LIKE ? AND ${writeGuard.sql}`,
-      ).bind(site.id, PURGE_CLAIM_LIKE, ...writeGuard.binds),
-    ]);
-    siteDeleted = d1Changed(wrote[1] ?? {});
-    const still = await getSiteById(env, site.id);
-    if (still) {
-      if (isPurgeClaimed(still.last_written_by) || isExpired(still.expires_at)) {
-        throw expiredError("site");
-      }
-      throw new ApiError(403, "forbidden_write", "Only the creator can write this.");
-    }
-  } catch (err) {
-    try {
-      await Promise.all(backups.map(({ sourceKey, backupKey }) => copyR2Object(env.BUCKET, backupKey, sourceKey)));
-      await deleteR2Keys(env.BUCKET, backups.map(({ backupKey }) => backupKey));
-    } catch {
-      throw new ApiError(500, "site_delete_rollback_failed", "The site deletion failed and automatic rollback also failed. Retry after storage recovers.");
-    }
-    throw err;
-  }
-  try {
-    await deleteR2Keys(env.BUCKET, backups.map(({ backupKey }) => backupKey));
-  } finally {
-    try {
-      await purgeContent(ctx, [sitePrefix(site.handle, site.id)]);
-    } finally {
-      if (siteDeleted) await releaseStorage(env.DB, Number(usage?.total ?? 0));
-    }
-  }
+  const site = await getSiteById(env, idRaw);
+  if (!site) throw new ApiError(404, "site_not_found", "Site not found.");
+  if (!asAdmin) assertCanMutate(actor, site);
+  const now = new Date().toISOString();
+  const changed = await env.DB.prepare(`UPDATE sites SET lifecycle_state = 'deleted', active_version_id = NULL, updated_at = ?
+    WHERE id = ? AND lifecycle_state = 'live' AND ${asAdmin ? "1 = 1" : OWNER_WRITE_SQL}`)
+    .bind(now, site.id, ...(asAdmin ? [] : ownerWriteBinds(actor))).run();
+  if (!d1Changed(changed)) await throwSiteMutationConflict(env, site.id);
+  await purgeContent(ctx, [sitePrefix(site.handle, site.id)]).catch(error => console.error("Site cache purge pending", error));
 }
 
 export async function deleteSiteFile(
@@ -942,45 +544,10 @@ export async function deleteSiteFile(
 ): Promise<void> {
   const path = assertFilePath(pathRaw);
   const site = await requireSite(env, actor, idRaw, { ctx, mutate: true });
-  const existing = await env.DB.prepare(
-    `SELECT path, size FROM site_files WHERE site_id = ? AND path = ?`,
-  )
-    .bind(site.id, path)
-    .first<{ path: string; size: number }>();
-  if (!existing) {
-    throw new ApiError(404, "file_not_found", `No file at ${sitePublicPathHint(site.handle, site.id, site.slug, path)}.`);
-  }
-  const key = siteKey(site.handle, site.id, path);
-  const ts = new Date().toISOString();
-  let previous: R2ObjectSnapshot | null = null;
-  let deletedObject = false;
-  try {
-    previous = await snapshotR2Object(env.BUCKET, key);
-    await env.BUCKET.delete(key);
-    deletedObject = true;
-    const wrote = await env.DB.batch([
-      env.DB.prepare(
-        `DELETE FROM site_files WHERE site_id = ? AND path = ? AND EXISTS (SELECT 1 FROM sites WHERE id = ? AND last_written_by NOT LIKE ? AND ${OWNER_WRITE_SQL})`,
-      ).bind(site.id, path, site.id, PURGE_CLAIM_LIKE, ...ownerWriteBinds(actor)),
-      env.DB.prepare(
-        `UPDATE sites SET updated_at = ?, last_written_by = ?, written_via = NULL WHERE id = ? AND last_written_by NOT LIKE ? AND ${OWNER_WRITE_SQL}`,
-      ).bind(ts, actor.email, site.id, PURGE_CLAIM_LIKE, ...ownerWriteBinds(actor)),
-    ]);
-    if (!d1Changed(wrote[1] ?? {})) {
-      await throwSiteMutationConflict(env, site.id);
-    }
-    if (!d1Changed(wrote[0] ?? {})) return;
-  } catch (err) {
-    if (deletedObject) await rollbackSiteStorage(env, key, previous, err);
-    throw err;
-  } finally {
-    await discardR2Snapshots(env.BUCKET, [previous]);
-  }
-  try {
-    await purgeContent(ctx, [sitePrefix(site.handle, site.id)]);
-  } finally {
-    await releaseStorage(env.DB, existing.size);
-  }
+  if (!(await snapshotFiles(env, site)).some(file => file.path === path))
+    throw new ApiError(404, "file_not_found", `No file at ${path}.`);
+  await publishSiteChanges(env, site, actor, [{ path, delete: true }], sitePublicUrl(env, site.handle, site.id, site.slug));
+  await purgeContent(ctx, [sitePrefix(site.handle, site.id)]).catch(error => console.error("Site cache purge pending", error));
 }
 
 export async function listSiteJson(
@@ -991,14 +558,12 @@ export async function listSiteJson(
 ): Promise<Response> {
   const site = await requireSite(env, actor, idRaw, { ctx });
   const origin = publicOrigin(env);
-  const files = await env.DB.prepare(
-    `SELECT site_id, path, size, content_type, updated_at, last_written_by FROM site_files
-     WHERE site_id = ? ORDER BY path`,
-  )
-    .bind(site.id)
-    .all<SiteFileRow>();
+  return withSiteRead(env, site, "listing", async snapshot => {
+  const files = await snapshot.files();
   return json({
     id: site.id,
+    version_id: site.active_version_id ?? null,
+    content_generation: site.content_generation ?? 0,
     slug: site.slug,
     handle: site.handle,
     url: sitePublicUrl(env, site.handle, site.id, site.slug),
@@ -1012,13 +577,14 @@ export async function listSiteJson(
     expires_at: site.expires_at ?? null,
     last_read_at: site.last_read_at ?? null,
     write_policy: resolveWritePolicy(site.write_policy),
-    files: (files.results || []).map((f) => ({
+    files: files.map((f) => ({
       ...f,
       handle: site.handle,
       slug: site.slug,
       url: sitePublicUrl(env, site.handle, site.id, site.slug, f.path),
       api_url: `${origin}/v1/sites/${site.id}/files/${f.path}`,
     })),
+  });
   });
 }
 
@@ -1063,6 +629,8 @@ export async function listSitesFor(
     last_written_by: string;
     file_count: number;
     size: number;
+    version_id: string | null;
+    content_generation: number;
     password_protected: boolean;
     write_password_protected: boolean;
     written_via: string | null;
@@ -1078,11 +646,11 @@ export async function listSitesFor(
   const countSql = criteria.having
     ? `SELECT COUNT(*) AS n FROM (
          SELECT 1 FROM sites s
-         LEFT JOIN site_files f ON s.id = f.site_id
-         WHERE ${criteria.where}
+         ${SITE_FILE_TOTALS_JOIN_SQL}
+         WHERE s.lifecycle_state = 'live' AND ${criteria.where}
          GROUP BY s.id
          HAVING ${criteria.having})`
-    : `SELECT COUNT(*) AS n FROM sites s WHERE ${criteria.where}`;
+    : `SELECT COUNT(*) AS n FROM sites s WHERE s.lifecycle_state = 'live' AND ${criteria.where}`;
   const countRow = await env.DB.prepare(countSql)
     .bind(...criteria.whereBinds, ...criteria.havingBinds)
     .first<{ n: number }>();
@@ -1090,10 +658,11 @@ export async function listSitesFor(
   const rows = await env.DB.prepare(
     `SELECT s.id, s.handle, s.slug, s.created_at, s.updated_at, s.created_by, s.last_written_by,
             s.password_hash, s.write_password_hash, s.written_via, s.expires_at, s.last_read_at, s.write_policy,
-            COUNT(f.path) AS file_count, COALESCE(SUM(f.size), 0) AS size
+            s.active_version_id AS version_id, s.content_generation,
+            ${SITE_FILE_COUNT_SQL} AS file_count, ${SITE_SIZE_SQL} AS size
      FROM sites s
-     LEFT JOIN site_files f ON s.id = f.site_id
-     WHERE ${clauses.where}
+     ${SITE_FILE_TOTALS_JOIN_SQL}
+     WHERE s.lifecycle_state = 'live' AND ${clauses.where}
      GROUP BY s.id
      ${clauses.having ? `HAVING ${clauses.having}` : ""}
      ORDER BY ${cursor.order}
@@ -1116,6 +685,8 @@ export async function listSitesFor(
       write_policy: string | null;
       file_count: number;
       size: number;
+      version_id: string | null;
+      content_generation: number;
     }>();
   const page = takePage(rows.results || [], query.limit);
   const items = page.items.map((s) => {
@@ -1188,21 +759,49 @@ export async function serveSite(
   // Stamp only when stored bytes are served; 404s and the generated listing do not count.
   const read = () => noteRead(env, ctx, { table: "sites", id: site.id, last_read_at: site.last_read_at });
 
+  return withSiteRead(env, site, "visitor", async snapshot => {
+  if (snapshot.versionId) {
+    const index = pathRaw === "" || pathRaw === "/";
+    let paths: string[];
+    try { paths = index ? ["index.html", "index.md"] : [assertFilePath(pathRaw)]; }
+    catch { return htmlPage("<!doctype html><title>Not found</title><p>Bad path.</p>", 404, { "cache-control": "private, no-store" }); }
+    for (const path of paths) {
+      const file = await snapshot.metadata(path);
+      if (!file) continue;
+      read();
+      const type = index && path === "index.html" ? "text/html; charset=utf-8" : file.content_type;
+      const headers = new Headers({ "content-type": type, "content-length": String(file.size),
+        etag: `"${file.sha256}"`, "x-content-type-options": "nosniff", "cache-control": "private, no-store" });
+      applyIsolation(headers, type);
+      if (!index) headers.set("content-disposition", contentDisposition(wantsDownload(request) ? "attachment" : "inline", basename(path)));
+      return withSiteBodyCache(env, ctx, request, { siteId: site.id, versionId: snapshot.versionId,
+        path, objectKey: file.object_key, representation: "raw", rendererRevision: "1",
+        publicUngated: !site.password_hash && unlocked !== "unlocked", markdown: isMarkdownName(path),
+        download: wantsDownload(request), expiresAt: site.expires_at ?? null, headers }, async () => {
+        const object = await snapshot.get(path);
+        if (!object) throw new ApiError(500, "export_failed", "The selected version is missing a stored file.");
+        if (isMarkdownName(path)) return respondMarkdown(request, object, path);
+        return new Response(object.body, { headers });
+      });
+    }
+    if (index) return htmlPage(await fileListHtml(site, await snapshot.files()), 200, { "cache-control": "private, no-store" });
+    return htmlPage("<!doctype html><title>Not found</title><p>No file at this path.</p>", 404, { "cache-control": "private, no-store" });
+  }
   const remaining = remainingCacheSeconds(site.expires_at);
   const cacheable = !site.password_hash && unlocked !== "unlocked";
   const wantsIndex = pathRaw === "" || pathRaw === "/";
   if (wantsIndex) {
-    const index = await env.BUCKET.get(siteKey(handle, site.id, "index.html"));
+    const index = await snapshot.get("index.html");
     if (index) {
       read();
       return serveObject(index, "text/html; charset=utf-8", cacheable, siteCacheTag(handle, site.id), remaining);
     }
-    const indexMd = await env.BUCKET.get(siteKey(handle, site.id, "index.md"));
+    const indexMd = await snapshot.get("index.md");
     if (indexMd) {
       read();
       return respondMarkdown(request, indexMd, "index.md");
     }
-    return htmlPage(await fileListHtml(env, site), 200, {
+    return htmlPage(await fileListHtml(site, await snapshot.files()), 200, {
       "cache-control": cacheable ? publicCacheControl(remaining) : privateCacheControl(),
       "cache-tag": siteCacheTag(handle, site.id),
     });
@@ -1216,7 +815,7 @@ export async function serveSite(
       "cache-control": "no-store",
     });
   }
-  const obj = await env.BUCKET.get(siteKey(handle, site.id, path));
+  const obj = await snapshot.get(path);
   if (!obj) {
     return htmlPage(
       `<!doctype html><meta charset="utf-8"><title>Not found</title><p>No file at ${escapeHtml(sitePublicPathHint(handle, site.id, slug, path))}.</p>`,
@@ -1231,15 +830,11 @@ export async function serveSite(
     filename: basename(path),
     download: wantsDownload(request),
   });
+  });
 }
 
-async function fileListHtml(env: Env, site: SiteRow): Promise<string> {
-  const files = await env.DB.prepare(
-    `SELECT path, size, content_type, updated_at FROM site_files WHERE site_id = ? ORDER BY path`,
-  )
-    .bind(site.id)
-    .all<{ path: string; size: number; content_type: string; updated_at: string }>();
-  const rows = (files.results || [])
+async function fileListHtml(site: SiteRow, files: SiteFileRow[]): Promise<string> {
+  const rows = files
     .map(
       (f) =>
         `<tr><td><a href="${escapeHtml(f.path)}">${escapeHtml(f.path)}</a></td><td class="num">${escapeHtml(formatBytes(f.size))}</td><td>${escapeHtml(f.content_type)}</td></tr>`,

@@ -1,3 +1,4 @@
+import { mintDeploymentGrant } from "./deployment-grants";
 import { grantActor, parseBearer } from "./auth";
 import { d1Changed, expiredError, isExpired, isPurgeClaimed } from "./expire";
 import { assertFilename, createLooseFile, putLooseFile } from "./files";
@@ -29,7 +30,7 @@ const PURGE_BATCH = 90;
 const PURGE_MAX_BATCHES = 20;
 const RETENTION_MS = 24 * 60 * 60 * 1000;
 
-type TargetKind = "new_file" | "file" | "site_path";
+type TargetKind = "new_file" | "file" | "site_path" | "site_deployment";
 
 type GrantRow = {
   id: string;
@@ -40,6 +41,7 @@ type GrantRow = {
   target_kind: TargetKind;
   file_id: string | null;
   site_id: string | null;
+  deployment_id: string | null;
   path: string | null;
   filename: string | null;
   file_ttl: string | null;
@@ -155,6 +157,7 @@ function newFileTargetJson(filename: string | null, ttl: string | null, writePol
 }
 
 function targetJson(row: GrantRow) {
+  if (row.target_kind === "site_deployment") return { type: "site_deployment", site_id: row.site_id, deployment_id: row.deployment_id };
   if (row.target_kind === "new_file") return newFileTargetJson(row.filename, row.file_ttl, row.file_write_policy);
   if (row.target_kind === "file") return { type: "file", id: row.file_id };
   return { type: "site_path", site_id: row.site_id, path: row.path };
@@ -162,6 +165,7 @@ function targetJson(row: GrantRow) {
 
 export async function mintGrant(env: Env, actor: Actor, body: Record<string, unknown>): Promise<Response> {
   if (!actor.tokenId) throw new ApiError(401, "unauthorized", "Upload grants are minted with an API token.");
+  if (body.target && typeof body.target === "object" && (body.target as Record<string, unknown>).type === "site_deployment") return mintDeploymentGrant(env, actor, body);
   const target = await resolveTarget(env, actor, body.target);
   const maxBytes = readMaxBytes(env, body.max_bytes);
   const sha256 = readSha256(body.sha256);
@@ -259,9 +263,14 @@ export async function purgeGrants(env: Env, now = Date.now()): Promise<number> {
   let deleted = 0;
   for (let i = 0; i < PURGE_MAX_BATCHES; i++) {
     const result = await env.DB.prepare(
-      `DELETE FROM upload_grants WHERE id IN (SELECT id FROM upload_grants WHERE expires_at < ? LIMIT ?)`,
+      `DELETE FROM upload_grants WHERE id IN (SELECT g.id FROM upload_grants g
+        WHERE (g.target_kind != 'site_deployment' AND g.expires_at < ?)
+          OR (g.target_kind = 'site_deployment' AND COALESCE(
+            g.receipt_expires_at, (SELECT d.receipt_expires_at FROM site_deployments d WHERE d.id = g.deployment_id),
+            (SELECT strftime('%Y-%m-%dT%H:%M:%fZ', d.deadline, '+7 days') FROM site_deployments d WHERE d.id = g.deployment_id),
+            strftime('%Y-%m-%dT%H:%M:%fZ', g.expires_at, '+7 days')) <= ?) LIMIT ?)`,
     )
-      .bind(cutoff, PURGE_BATCH)
+      .bind(cutoff, new Date(now).toISOString(), PURGE_BATCH)
       .run();
     const changes = Number(result.meta?.changes ?? 0);
     deleted += changes;
@@ -350,7 +359,7 @@ async function redeemGrant(env: Env, ctx: ExecutionContext, request: Request, ra
   const secret = parseBearer(request);
   if (!GRANT_ID_RE.test(rawId) || !secret) throw invalidGrant();
   const row = await env.DB.prepare(`SELECT * FROM upload_grants WHERE id = ?`).bind(rawId).first<GrantRow>();
-  if (!row || !hashesEqual(await hashGrantSecret(secret), row.secret_hash)) throw invalidGrant();
+  if (!row || row.target_kind === "site_deployment" || !hashesEqual(await hashGrantSecret(secret), row.secret_hash)) throw invalidGrant();
   rejectForbiddenHeaders(request);
   if (row.state === "consumed") throw grantUsed(row);
   if (row.state === "failed") throw grantFailed(row.last_error);
@@ -361,7 +370,7 @@ async function redeemGrant(env: Env, ctx: ExecutionContext, request: Request, ra
   const maxBytes = Math.min(row.max_bytes, instancePolicy(env).fileBytes);
   return withUpload(
     request,
-    env.BUCKET,
+    env,
     maxBytes,
     "",
     async (upload) => {

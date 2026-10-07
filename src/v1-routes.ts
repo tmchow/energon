@@ -20,7 +20,6 @@ import {
   json,
   jsonMaybeSecret,
   publicOrigin,
-  readBodyCapped,
   readJson,
   secretJson,
   wantsDownload,
@@ -38,7 +37,6 @@ import {
   deleteSiteFile,
   exportSiteZip,
   getSiteFile,
-  importSiteZip,
   listSiteJson,
   listSitesJson,
   patchSite,
@@ -47,6 +45,7 @@ import {
 } from "./sites";
 import type { Env } from "./types";
 import { withUpload } from "./upload";
+import { deploymentApi, importSiteArchive } from "./site-deployment-api";
 
 export const V1_PRE_SCHEMA_LITERALS = ["/v1/help", "/v1/openapi.json", "/v1/health"] as const;
 
@@ -57,6 +56,11 @@ export const V1_SITE_EXPORT = /^\/v1\/sites\/([^/]+)\/export$/;
 export const V1_SITE_FILE = /^\/v1\/sites\/([^/]+)\/files\/(.+)$/;
 export const V1_SITE_ONE = /^\/v1\/sites\/([^/]+)$/;
 export const V1_GRANT_ONE = /^\/v1\/grants\/([^/]+)$/;
+export const V1_DEPLOYMENTS = /^\/v1\/sites\/([^/]+)\/deployments$/;
+export const V1_DEPLOYMENT = /^\/v1\/sites\/([^/]+)\/deployments\/([^/]+)$/;
+export const V1_DEPLOYMENT_ACTION = /^\/v1\/sites\/([^/]+)\/deployments\/([^/]+)\/(prepare|commit)$/;
+export const V1_DEPLOYMENT_ARCHIVE = /^\/v1\/sites\/([^/]+)\/deployments\/([^/]+)\/archive$/;
+export const V1_DEPLOYMENT_FILE = /^\/v1\/sites\/([^/]+)\/deployments\/([^/]+)\/files\/(.+)$/;
 
 export const V1_HANDSHAKE = {
   auth: "none",
@@ -133,6 +137,31 @@ export const V1_ADMIN = {
 export const V1_TOKEN = {
   auth: "token",
   routes: [
+    {
+      path: V1_DEPLOYMENTS,
+      methods: { POST: (c) => deploymentApi(c.request, c.env, c.actor, decodeURIComponent(c.params[0])) },
+    },
+    {
+      path: V1_DEPLOYMENT,
+      methods: {
+        GET: (c) => deploymentApi(c.request, c.env, c.actor, decodeURIComponent(c.params[0]), c.params[1]),
+        DELETE: (c) => deploymentApi(c.request, c.env, c.actor, decodeURIComponent(c.params[0]), c.params[1]),
+      },
+    },
+    {
+      path: V1_DEPLOYMENT_ACTION,
+      methods: {
+        POST: (c) => deploymentApi(c.request, c.env, c.actor, decodeURIComponent(c.params[0]), c.params[1], c.params[2]),
+      },
+    },
+    {
+      path: V1_DEPLOYMENT_ARCHIVE,
+      methods: { PUT: (c) => deploymentApi(c.request, c.env, c.actor, decodeURIComponent(c.params[0]), c.params[1], "archive") },
+    },
+    {
+      path: V1_DEPLOYMENT_FILE,
+      methods: { PUT: (c) => deploymentApi(c.request, c.env, c.actor, decodeURIComponent(c.params[0]), c.params[1], "files", decodeURIComponent(c.params[2])) },
+    },
     {
       path: "/v1/whoami",
       methods: {
@@ -212,9 +241,7 @@ export const V1_TOKEN = {
       path: V1_SITE_IMPORT,
       methods: {
         POST: async (c) => {
-          const bytes = await readBodyCapped(c.request, instancePolicy(c.env).zipBytes, publicOrigin(c.env));
-          const result = await importSiteZip(c.env, c.ctx, c.actor, decodeURIComponent(c.params[0]), bytes);
-          return json(result);
+          return importSiteArchive(c.request, c.env, c.actor, decodeURIComponent(c.params[0]), c.ctx);
         },
       },
     },
@@ -231,7 +258,7 @@ export const V1_TOKEN = {
         PUT: async (c) => {
           const id = decodeURIComponent(c.params[0]);
           const filePath = c.params[1];
-          const result = await withUpload(c.request, c.env.BUCKET, instancePolicy(c.env).fileBytes, publicOrigin(c.env), (upload) => putSiteFile(
+          const result = await withUpload(c.request, c.env, instancePolicy(c.env).fileBytes, publicOrigin(c.env), (upload) => putSiteFile(
             c.env,
             c.ctx,
             c.actor,

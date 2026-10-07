@@ -268,7 +268,7 @@ describe("criteriaSql", () => {
     const sql = criteriaSql("sites", q("?expires_before=2026-06-01&min_size=500mb"), ME);
     expect(sql.where).toBe("(s.created_by = ? OR COALESCE(s.last_written_by, s.created_by) = ?) AND s.expires_at < ?");
     expect(sql.whereBinds).toEqual([ME, ME, "2026-06-01T00:00:00.000Z"]);
-    expect(sql.having).toBe("COALESCE(SUM(f.size), 0) >= ?");
+    expect(sql.having).toBe("COALESCE(SUM(COALESCE(vf.size, f.size)), 0) >= ?");
     expect(sql.havingBinds).toEqual([500 * 1024 * 1024]);
   });
 
@@ -380,12 +380,12 @@ describe("list helpers", () => {
 
   it("keeps the site size keyset in HAVING and ties on id so duplicate slugs do not collapse", () => {
     const first = siteCursorSql(q("?sort=size"));
-    expect(first.order).toBe("COALESCE(SUM(f.size), 0) DESC, s.id DESC");
+    expect(first.order).toBe("COALESCE(SUM(COALESCE(vf.size, f.size)), 0) DESC, s.id DESC");
     expect(first.clause).toBe("having");
     const cursor = nextSiteCursor("size", { id: "Ab12Cd", slug: "notes", handle: "ada", updated_at: "t0", size: 10 });
     const next = siteCursorSql({ ...q("?sort=size"), cursor });
     expect(next.clause).toBe("having");
-    expect(next.sql).toBe("(COALESCE(SUM(f.size), 0) < ? OR (COALESCE(SUM(f.size), 0) = ? AND s.id < ?))");
+    expect(next.sql).toBe("(COALESCE(SUM(COALESCE(vf.size, f.size)), 0) < ? OR (COALESCE(SUM(COALESCE(vf.size, f.size)), 0) = ? AND s.id < ?))");
     expect(next.binds).toEqual([10, 10, "Ab12Cd"]);
     const twin = nextSiteCursor("size", { id: "Ef34Gh", slug: "notes", handle: "ada", updated_at: "t0", size: 10 });
     expect(twin).not.toBe(cursor);
@@ -406,7 +406,7 @@ describe("list helpers", () => {
     });
     const composed = composeClauses(criteria, cursor);
     expect(composed.where).toBe(criteria.where);
-    expect(composed.having).toBe(`COALESCE(SUM(f.size), 0) >= ? AND ${cursor.sql}`);
+    expect(composed.having).toBe(`COALESCE(SUM(COALESCE(vf.size, f.size)), 0) >= ? AND ${cursor.sql}`);
     expect(composed.binds).toEqual([ME, ME, 1024, 5, 5, "Ab12Cd"]);
     const plain = composeClauses(criteriaSql("files", q(""), ME), fileCursorSql(q("")));
     expect(plain.having).toBe("");

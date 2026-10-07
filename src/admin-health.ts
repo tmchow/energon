@@ -6,6 +6,8 @@ import { d1Changed, PURGE_CLAIM_LIKE, staleClaimCutoff, sweepExpired } from "./e
 import { instancePolicy } from "./policy";
 import type { Actor, Env } from "./types";
 import type { AdminHealthSnapshot, GateUnlockResult, QuotaRecomputeResult, SweepNowResult } from "./page-data";
+import { storageCleanupStatus } from "./site-storage";
+import { SITE_FILE_COUNT_SQL, SITE_FILE_TOTALS_JOIN_SQL } from "./catalog";
 
 async function count(env: Env, sql: string, ...binds: unknown[]): Promise<number> {
   const stmt = env.DB.prepare(sql);
@@ -15,7 +17,7 @@ async function count(env: Env, sql: string, ...binds: unknown[]): Promise<number
 
 async function countExpired(env: Env, now = Date.now()): Promise<number> {
   const iso = new Date(now).toISOString();
-  const sites = await count(env, `SELECT COUNT(*) AS n FROM sites WHERE expires_at IS NOT NULL AND expires_at <= ?`, iso);
+  const sites = await count(env, `SELECT COUNT(*) AS n FROM sites WHERE lifecycle_state = 'live' AND expires_at IS NOT NULL AND expires_at <= ?`, iso);
   const files = await count(env, `SELECT COUNT(*) AS n FROM loose_files WHERE expires_at IS NOT NULL AND expires_at <= ?`, iso);
   return sites + files;
 }
@@ -27,9 +29,9 @@ export async function loadAdminHealth(env: Env, now = Date.now()): Promise<Admin
     await Promise.all([
       usedStorage(env.DB),
       totalStoredBytes(env.DB),
-      count(env, `SELECT COUNT(*) AS n FROM sites`),
+      count(env, `SELECT COUNT(*) AS n FROM sites WHERE lifecycle_state = 'live'`),
       count(env, `SELECT COUNT(*) AS n FROM loose_files`),
-      count(env, `SELECT COUNT(*) AS n FROM site_files`),
+      count(env, `SELECT ${SITE_FILE_COUNT_SQL} AS n FROM sites s ${SITE_FILE_TOTALS_JOIN_SQL} WHERE s.lifecycle_state = 'live'`),
       count(env, `SELECT COUNT(*) AS n FROM users`),
       countExpired(env, now),
       count(
@@ -49,11 +51,23 @@ export async function loadAdminHealth(env: Env, now = Date.now()): Promise<Admin
         .all<{ scope: string }>(),
     ]);
   const lockedScopes = (locked.results || []).map((row) => row.scope);
+  const cleanup = await storageCleanupStatus(env.DB);
+  const conversions = await env.DB.prepare(`SELECT s.id AS site_id, s.slug, COALESCE(c.phase, 'pending') AS phase, c.last_error
+    FROM sites s LEFT JOIN site_conversions c ON c.site_id = s.id
+    WHERE s.lifecycle_state = 'live' AND s.active_version_id IS NULL
+    ORDER BY c.last_error IS NOT NULL DESC, COALESCE(c.updated_at, s.created_at), s.id LIMIT 25`).all<{ site_id: string; slug: string; phase: string; last_error: string | null }>();
   return {
     quota: {
       used_bytes: usedBytes,
       catalog_bytes: catalogBytes,
       limit_bytes: instancePolicy(env).platformBytes,
+      pending_cleanup_bytes: cleanup.pendingBytes,
+      cleanup_failed_allocations: cleanup.failedAllocations,
+    },
+    site_conversions: {
+      enabled: env.SITE_VERSIONING_ENABLED === "true",
+      pending: await count(env, "SELECT COUNT(*) AS n FROM sites WHERE lifecycle_state = 'live' AND active_version_id IS NULL"),
+      items: conversions.results,
     },
     expired_awaiting_purge: expired,
     stale_purge_claims: staleSites + staleFiles,

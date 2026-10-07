@@ -32,13 +32,12 @@ import { identityFromEnv } from "./instance";
 import { MEMORABLE_WORDS } from "./memorable";
 import { deleteLooseFile, getLooseFile, hubLooseLinkAccess, patchLoose, postLooseFromRequest, putLooseFromRequest, serveLoose } from "./files";
 import { contentPatch } from "./gate";
-import { ApiError, accountOriginRequired, assertTrustedAccountOrigin, contentOrigin, dedicatedContentOrigin, isLocalHost, isMermaidAssetPath, isPublicContentPath, json, jsonMaybeSecret, methodNotAllowed, publicOrigin, readBodyCapped, readJson, secretJson, serveMermaidAsset } from "./http";
+import { ApiError, accountOriginRequired, assertTrustedAccountOrigin, contentOrigin, dedicatedContentOrigin, isLocalHost, isMermaidAssetPath, isPublicContentPath, json, jsonMaybeSecret, methodNotAllowed, publicOrigin, readJson, secretJson, serveMermaidAsset } from "./http";
 import { instancePolicy, policyPublic, tokenPolicy, tokenPolicyPublic, adminTokenPolicy, emailIsAdmin } from "./policy";
 import {
   deleteSite,
   exportSiteZip,
   hubSiteLinkAccess,
-  importSiteZip,
   patchSite,
   postSite,
   putSiteFile,
@@ -46,29 +45,39 @@ import {
 } from "./sites";
 import { sweepStaleTmp, withUpload } from "./upload";
 import { isSiteId, sitePublicUrl } from "./urls";
+import { deploymentApi, importSiteArchive } from "./site-deployment-api";
 import { dispatchV1 } from "./v1-routes";
+import { DEPLOYMENT_GRANT_PATH, redeemDeploymentGrantRoute } from "./deployment-grants";
 import type { Env } from "./types";
 const EMPTY_CATALOG: { items: HubCatalogItem[]; total: number; next_cursor: string | null } = { items: [], total: 0, next_cursor: null };
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const respond = (response: Response) => {
+      if (!/^\/[^/]+\/s\//.test(new URL(request.url).pathname)) return response;
+      const headers = new Headers(response.headers);
+      headers.set("cache-control", "private, no-store");
+      headers.delete("cache-tag");
+      if (request.method === "HEAD") void response.body?.cancel().catch(() => undefined);
+      return new Response(request.method === "HEAD" ? null : response.body, { status: response.status, statusText: response.statusText, headers });
+    };
     try {
-      return await route(request, env, ctx);
+      return respond(await route(request, env, ctx));
     } catch (err) {
       const origin = publicOrigin(env);
-      if (err instanceof ApiError) return err.toResponse(origin);
+      if (err instanceof ApiError) return respond(err.toResponse(origin));
       if (err instanceof URIError) {
-        return new ApiError(400, "bad_path", "That path is not valid URL encoding.").toResponse(origin);
+        return respond(new ApiError(400, "bad_path", "That path is not valid URL encoding.").toResponse(origin));
       }
       console.error(err instanceof Error ? err.stack || err.message : err);
-      return json(
+      return respond(json(
         {
           error: "internal",
           message: `Something went wrong on ${PRODUCT}. Try again, or open ${origin}/v1/help.`,
           hub: `${origin}/account`,
         },
         500,
-      );
+      ));
     }
   },
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
@@ -97,6 +106,10 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
 
   const configuredContentOrigin = dedicatedContentOrigin(env);
   const contentHost = configuredContentOrigin !== null && url.origin === configuredContentOrigin;
+  if (DEPLOYMENT_GRANT_PATH.test(path)) {
+    await ensureSchema(env.DB);
+    return redeemDeploymentGrantRoute(env, request);
+  }
   const grantUpload = GRANT_UPLOAD_PATH.exec(path);
   if (grantUpload) {
     if (!contentHost && !isLocalHost(url.hostname)) {
@@ -322,7 +335,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   const accountPut = path.match(/^\/account\/sites\/([^/]+)\/files\/(.+)$/);
   if (accountPut && method === "PUT") {
     const actor = await requireHuman(request, env, ctx);
-    const result = await withUpload(request, env.BUCKET, instancePolicy(env).fileBytes, publicOrigin(env), (upload) => putSiteFile(
+    const result = await withUpload(request, env, instancePolicy(env).fileBytes, publicOrigin(env), (upload) => putSiteFile(
       env,
       ctx,
       actor,
@@ -334,12 +347,21 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     return json({ url: result.url, api_url: result.api_url, path: result.path, size: result.size }, result.created ? 201 : 200);
   }
 
+  const accountDeployment = path.match(/^\/account\/sites\/([^/]+)\/deployments(?:\/([^/]+)(?:\/(prepare|commit|archive|files)(?:\/(.+))?)?)?$/);
+  if (accountDeployment) {
+    const [, siteId, deploymentId, action, filePath] = accountDeployment;
+    const allowed = !deploymentId ? method === "POST" : !action ? ["GET", "DELETE"].includes(method)
+      : ["prepare", "commit"].includes(action) ? method === "POST"
+      : method === "PUT" && (action === "archive" || Boolean(filePath));
+    if (!allowed || (filePath && action !== "files")) return methodNotAllowed();
+    const actor = await requireHuman(request, env, ctx);
+    return deploymentApi(request, env, actor, decodeURIComponent(siteId), deploymentId && decodeURIComponent(deploymentId), action, filePath === undefined ? undefined : decodeURIComponent(filePath));
+  }
+
   const accountImport = path.match(/^\/account\/sites\/([^/]+)\/import$/);
   if (accountImport && method === "POST") {
     const actor = await requireHuman(request, env, ctx);
-    const bytes = await readBodyCapped(request, instancePolicy(env).zipBytes, publicOrigin(env));
-    const result = await importSiteZip(env, ctx, actor, decodeURIComponent(accountImport[1]), bytes);
-    return json(result);
+    return importSiteArchive(request, env, actor, decodeURIComponent(accountImport[1]), ctx);
   }
 
   const accountExport = path.match(/^\/account\/sites\/([^/]+)\/export$/);

@@ -3,6 +3,38 @@ import { auth, createSite, json, mint, req } from "./helpers";
 import { uploadFromBytes } from "../src/upload";
 
 describe("TTL purge claims", () => {
+  it("rejects a site metadata PATCH if deletion wins after the site was read", async () => {
+    const { env } = await import("cloudflare:test");
+    const token = await mint("site-patch-tombstone");
+    const site = await createSite(token, "site-patch-tombstone");
+    const before = await env.DB.prepare("SELECT expires_at FROM sites WHERE id = ?").bind(site.id).first<{ expires_at: string | null }>();
+    const original = env.DB.prepare.bind(env.DB);
+    let injected = false;
+    env.DB.prepare = ((sql: string) => {
+      const statement = original(sql);
+      if (injected || !sql.startsWith("UPDATE sites SET") || !sql.includes("expires_at = ?")) return statement;
+      const bind = statement.bind.bind(statement);
+      statement.bind = (...args: unknown[]) => {
+        const bound = bind(...args);
+        const run = bound.run.bind(bound);
+        bound.run = async () => {
+          injected = true;
+          await original("UPDATE sites SET lifecycle_state = 'deleted', active_version_id = NULL WHERE id = ?").bind(site.id).run();
+          return run();
+        };
+        return bound;
+      };
+      return statement;
+    }) as typeof env.DB.prepare;
+    try {
+      const result = await json(`/v1/sites/${site.id}`, { method: "PATCH", headers: auth(token), body: JSON.stringify({ ttl: "7d" }) });
+      expect(injected).toBe(true);
+      expect(result.status).toBeGreaterThanOrEqual(400);
+      expect(await env.DB.prepare("SELECT lifecycle_state, expires_at FROM sites WHERE id = ?").bind(site.id).first())
+        .toMatchObject({ lifecycle_state: "deleted", expires_at: before!.expires_at });
+    } finally { env.DB.prepare = original; }
+  });
+
   it("blocks replacement while a loose-file deletion owns the write claim", async () => {
     const { env } = await import("cloudflare:test");
     const { deleteLooseFile, putLooseFile } = await import("../src/files");
@@ -452,7 +484,7 @@ describe("TTL purge claims", () => {
     expect(row?.write_policy).toBe("org");
   });
 
-  it("purge claims before deleting R2 so a concurrent PATCH ttl cannot orphan bytes", async () => {
+  it("site tombstones and loose-file claims prevent revival during cleanup", async () => {
     const { env } = await import("cloudflare:test");
     const { purgeExpiredSite, purgeExpiredFile } = await import("../src/expire");
     const token = await mint("ttl-race");
@@ -482,13 +514,7 @@ describe("TTL purge claims", () => {
     let siteRevive: { status: number; body: { error?: string } } | undefined;
     let fileRevive: { status: number; body: { error?: string } } | undefined;
     bucket.delete = async (key) => {
-      if (siteRevive === undefined) {
-        siteRevive = await json(`/v1/sites/${site_race_site.id}`, {
-          method: "PATCH",
-          headers: auth(token, { "content-type": "application/json" }),
-          body: JSON.stringify({ ttl: "7d" }),
-        });
-      } else if (fileRevive === undefined) {
+      if (fileRevive === undefined) {
         fileRevive = await json(`/v1/files/${fileId}`, {
           method: "PATCH",
           headers: auth(token, { "content-type": "application/json" }),
@@ -499,16 +525,17 @@ describe("TTL purge claims", () => {
     };
     try {
       expect(await purgeExpiredSite(env, undefined, "ada", site_race_site.id)).toBe(true);
+      siteRevive = await json(`/v1/sites/${site_race_site.id}`, { method: "PATCH", headers: auth(token, { "content-type": "application/json" }), body: JSON.stringify({ ttl: "7d" }) });
       expect(await purgeExpiredFile(env, undefined, fileId, "ada", "race.txt")).toBe(true);
     } finally {
       bucket.delete = originalDelete;
     }
 
-    expect(siteRevive?.status).toBe(410);
-    expect(siteRevive?.body.error).toBe("expired");
+    expect(siteRevive?.status).toBe(404);
+    expect(siteRevive?.body.error).toBe("site_not_found");
     expect(fileRevive?.status).toBe(410);
     expect(fileRevive?.body.error).toBe("expired");
-    expect(await env.DB.prepare(`SELECT slug FROM sites WHERE slug = ?`).bind("race-site").first()).toBeNull();
+    expect(await env.DB.prepare(`SELECT lifecycle_state, active_version_id FROM sites WHERE slug = ?`).bind("race-site").first()).toEqual({ lifecycle_state: "deleted", active_version_id: null });
     expect(await env.DB.prepare(`SELECT path FROM site_files WHERE site_id = ?`).bind(site_race_site.id).first()).toBeNull();
     expect(await env.DB.prepare(`SELECT id FROM loose_files WHERE id = ?`).bind(fileId).first()).toBeNull();
     const siteBytes = await req(`/v1/sites/${site_race_site.id}/files/index.html`, { headers: auth(token) });
@@ -517,7 +544,7 @@ describe("TTL purge claims", () => {
     expect(fileBytes.status).toBe(404);
   });
 
-  it("second purger does not delete R2 while another isolate holds a fresh claim", async () => {
+  it("site purge is idempotent and retains bytes while loose-file purge respects a fresh claim", async () => {
     const { env } = await import("cloudflare:test");
     const { PURGE_CLAIM, purgeExpiredSite, purgeExpiredFile } = await import("../src/expire");
     const token = await mint("ttl-held-claim");
@@ -542,6 +569,7 @@ describe("TTL purge claims", () => {
       .bind("2000-01-01T00:00:00.000Z", `${PURGE_CLAIM}:held`, fileId)
       .run();
 
+    expect(await purgeExpiredSite(env, undefined, "ada", site_held_site.id)).toBe(true);
     expect(await purgeExpiredSite(env, undefined, "ada", site_held_site.id)).toBe(false);
     expect(await purgeExpiredFile(env, undefined, fileId, "ada", "held.txt")).toBe(false);
     expect(await env.DB.prepare(`SELECT slug FROM sites WHERE slug = ?`).bind("held-site").first()).toEqual({
@@ -550,7 +578,8 @@ describe("TTL purge claims", () => {
     expect(await env.DB.prepare(`SELECT id FROM loose_files WHERE id = ?`).bind(fileId).first()).toEqual({
       id: fileId,
     });
-    const siteObj = await env.BUCKET.get(`sites/ada/${site_held_site.id}/index.html`);
+    const held = await env.DB.prepare("SELECT object_key FROM site_version_files WHERE version_id IN (SELECT id FROM site_versions WHERE site_id = ?) AND path = 'index.html'").bind(site_held_site.id).first<{ object_key: string }>();
+    const siteObj = await env.BUCKET.get(held!.object_key);
     expect(siteObj).not.toBeNull();
     expect(await siteObj!.text()).toBe("<h1>held</h1>");
     const fileObj = await env.BUCKET.get(`files/${fileId}/held.txt`);
@@ -558,51 +587,18 @@ describe("TTL purge claims", () => {
     expect(await fileObj!.text()).toBe("held");
   });
 
-  it("drops site_files before releasing the sites primary key", async () => {
+  it("tombstones the site before reclaiming its immutable files", async () => {
     const { env } = await import("cloudflare:test");
     const { purgeExpiredSite } = await import("../src/expire");
     const token = await mint("ttl-pk-order");
-
-    const site_pk_order = await createSite(token, "pk-order", { overwrite: false, ttl: "1d" });
-    await json(`/v1/sites/${site_pk_order.id}/files/index.html`, {
-      method: "PUT",
-      headers: auth(token, { "content-type": "text/html" }),
-      body: "<h1>order</h1>",
-    });
-    await env.DB.prepare(`UPDATE sites SET expires_at = ? WHERE slug = ?`)
-      .bind("2000-01-01T00:00:00.000Z", "pk-order")
-      .run();
-
-    const db = env.DB;
-    const originalPrepare = db.prepare.bind(db);
-    let filesWhenSitesDeleted: { path: string } | null | undefined;
-    db.prepare = ((sql: string) => {
-      const stmt = originalPrepare(sql);
-      if (!sql.includes("DELETE FROM sites") || sql.includes("site_files")) return stmt;
-      const origBind = stmt.bind.bind(stmt);
-      return {
-        ...stmt,
-        bind: (...args: unknown[]) => {
-          const bound = origBind(...args);
-          const origRun = bound.run.bind(bound);
-          return Object.assign(bound, {
-            run: async () => {
-              filesWhenSitesDeleted = await originalPrepare(`SELECT path FROM site_files WHERE site_id = ?`)
-                .bind(site_pk_order.id)
-                .first<{ path: string }>();
-              return origRun();
-            },
-          });
-        },
-      };
-    }) as typeof db.prepare;
-    try {
-      expect(await purgeExpiredSite(env, undefined, "ada", site_pk_order.id)).toBe(true);
-    } finally {
-      db.prepare = originalPrepare;
-    }
-    expect(filesWhenSitesDeleted).toBeNull();
-    expect(await env.DB.prepare(`SELECT slug FROM sites WHERE slug = ?`).bind("pk-order").first()).toBeNull();
+    const site = await createSite(token, "pk-order", { ttl: "1d" });
+    await json(`/v1/sites/${site.id}/files/index.html`, { method: "PUT", headers: auth(token), body: "retained" });
+    const file = await env.DB.prepare("SELECT object_key FROM site_version_files WHERE version_id = (SELECT active_version_id FROM sites WHERE id = ?)").bind(site.id).first<{ object_key: string }>();
+    await env.DB.prepare("UPDATE sites SET expires_at = '2000-01-01T00:00:00.000Z' WHERE id = ?").bind(site.id).run();
+    expect(await purgeExpiredSite(env, undefined, "ada", site.id)).toBe(true);
+    expect(await env.DB.prepare("SELECT lifecycle_state, active_version_id FROM sites WHERE id = ?").bind(site.id).first()).toEqual({ lifecycle_state: "deleted", active_version_id: null });
+    expect(await (await env.BUCKET.get(file!.object_key))!.text()).toBe("retained");
+    expect((await req(`/v1/sites/${site.id}/files/index.html`, { headers: auth(token) })).status).toBe(404);
   });
 
   it("DELETE of a claimed site is 200 and POST recreates after a stale claim", async () => {
@@ -627,44 +623,19 @@ describe("TTL purge claims", () => {
     expect(recreated.body.id).not.toBe(site_stale_recreate.id);
   });
 
-  it("site PUT cannot clobber an in-flight purge claim", async () => {
+  it("site PUT cannot revive an expired tombstone", async () => {
     const { env } = await import("cloudflare:test");
     const { purgeExpiredSite } = await import("../src/expire");
     const token = await mint("ttl-put-race");
-
-    const site = await createSite(token, "put-race", { overwrite: false, ttl: "1d" });
-    await json(`/v1/sites/${site.id}/files/index.html`, {
-      method: "PUT",
-      headers: auth(token, { "content-type": "text/html" }),
-      body: "<h1>before</h1>",
-    });
-    await env.DB.prepare(`UPDATE sites SET expires_at = ? WHERE id = ?`)
-      .bind("2000-01-01T00:00:00.000Z", site.id)
-      .run();
-
-    const bucket = env.BUCKET as R2Bucket & { delete: R2Bucket["delete"] };
-    const originalDelete = bucket.delete.bind(bucket);
-    let putDuringPurge: { status: number; body: { error?: string } } | undefined;
-    const idMarker = `/${site.id}/`;
-    bucket.delete = async (key) => {
-      if (putDuringPurge === undefined && String(key).includes(idMarker)) {
-        putDuringPurge = await json(`/v1/sites/${site.id}/files/index.html`, {
-          method: "PUT",
-          headers: auth(token, { "content-type": "text/html" }),
-          body: "<h1>revive</h1>",
-        });
-      }
-      return originalDelete(key);
-    };
-    try {
-      expect(await purgeExpiredSite(env, undefined, "ada", site.id)).toBe(true);
-    } finally {
-      bucket.delete = originalDelete;
-    }
-
-    expect(putDuringPurge?.status).toBe(410);
-    expect(putDuringPurge?.body.error).toBe("expired");
-    expect(await env.DB.prepare(`SELECT slug FROM sites WHERE id = ?`).bind(site.id).first()).toBeNull();
-    expect(await env.BUCKET.get(`sites/ada/${site.id}/index.html`)).toBeNull();
+    const site = await createSite(token, "put-race", { ttl: "1d" });
+    await json(`/v1/sites/${site.id}/files/index.html`, { method: "PUT", headers: auth(token), body: "before" });
+    const file = await env.DB.prepare("SELECT object_key FROM site_version_files WHERE version_id = (SELECT active_version_id FROM sites WHERE id = ?)").bind(site.id).first<{ object_key: string }>();
+    await env.DB.prepare("UPDATE sites SET expires_at = '2000-01-01T00:00:00.000Z' WHERE id = ?").bind(site.id).run();
+    expect(await purgeExpiredSite(env, undefined, "ada", site.id)).toBe(true);
+    const write = await json(`/v1/sites/${site.id}/files/index.html`, { method: "PUT", headers: auth(token), body: "revived" });
+    expect(write.status).toBe(404);
+    expect(write.body.error).toBe("site_not_found");
+    expect(await (await env.BUCKET.get(file!.object_key))!.text()).toBe("before");
+    expect(await env.DB.prepare("SELECT lifecycle_state, active_version_id FROM sites WHERE id = ?").bind(site.id).first()).toEqual({ lifecycle_state: "deleted", active_version_id: null });
   });
 });

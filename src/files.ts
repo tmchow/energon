@@ -21,6 +21,7 @@ import {
   isStaleClaim,
   isWriteClaimed,
   PURGE_CLAIM_LIKE,
+  NO_LOOSE_RECOVERY_SQL,
   purgeExpiredFile,
   restoreLooseFileWriteClaim,
   remainingCacheSeconds,
@@ -37,6 +38,10 @@ import {
   ApiError,
   applyIsolation,
   assertStorageRoom,
+  legacyHandoffStatement,
+  legacyQuotaStatement,
+  markLegacyReservation,
+  type StorageReservation,
   basename,
   contentOrigin,
   contentDisposition,
@@ -69,7 +74,19 @@ import {
 } from "./policy";
 import { noteRead } from "./reads";
 import type { Actor, Env, LooseFileRow } from "./types";
+import { cleanupLegacyReservation } from "./site-storage";
 import { putUpload, readUploadForm, uploadFromFile, withUpload, type Upload } from "./upload";
+
+async function recoverLooseCreation(env: Env, reservation: StorageReservation, wrote: boolean, error: unknown): Promise<void> {
+  const row = await env.DB.prepare("SELECT state FROM storage_allocations WHERE id = ?").bind(reservation.id).first<{ state: string }>();
+  if (row?.state === "released") return;
+  if (!wrote) {
+    await markLegacyReservation(env.DB, reservation, "uncertain", { error });
+    return;
+  }
+  await markLegacyReservation(env.DB, reservation, "cleanup_pending", { error, cleanupKey: reservation.recovery!.targetKey });
+  await cleanupLegacyReservation(env.DB, env.BUCKET, reservation.id).catch(cleanupError => console.error("Loose-file cleanup pending", reservation.id, cleanupError));
+}
 
 export function assertFilename(raw: string, fallback: string): string {
   const filename = basename(raw).slice(0, 180) || fallback;
@@ -111,28 +128,36 @@ export async function createLooseFile(
   const url = filePublicUrl(env, handle, id, filename);
   const columns = `id, handle, owner_id, filename, size, content_type, created_at, created_by, updated_at, last_written_by, password_hash, password_secret, expires_at, write_policy, write_password_hash, write_password_secret`;
   const values = [id, handle, user.id, filename, upload.size, contentType, ts, actor.email, ts, actor.email, stored, storedPasswordSecret(stored, password), resolved.expiresAt, storedWrite, storedWritePw, storedPasswordSecret(storedWritePw, writePassword)];
-  const reserved = await assertStorageRoom(env.DB, upload.size, 0, policy.platformBytes);
+  const reserved = await assertStorageRoom(env.DB, upload.size, 0, policy.platformBytes,
+    { fileId: id, targetKey: key, operation: "create", ownerId: user.id });
+  let wrote = false;
+  await markLegacyReservation(env.DB, reserved, "writing");
   try {
     await putUpload(env.BUCKET, key, upload, { httpMetadata: { contentType } });
+    wrote = true;
+    await markLegacyReservation(env.DB, reserved, "stored");
     if (guard) {
       const now = new Date(ts);
       const [inserted] = await env.DB.batch([
         env.DB.prepare(
           `INSERT INTO loose_files (${columns}) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ${GRANT_LEASE_SQL}`,
         ).bind(...values, ...grantLeaseBinds(guard, now)),
-        consumeGrantStatement(env, guard, now, { id, url }, `EXISTS (SELECT 1 FROM loose_files WHERE id = ?)`, [id]),
+        legacyHandoffStatement(env.DB, reserved),
+        consumeGrantStatement(env, guard, now, { id, url }, `EXISTS (SELECT 1 FROM storage_allocations WHERE id = ? AND state = 'released')`, [reserved.id]),
+        legacyQuotaStatement(env.DB),
       ]);
       if (!d1Changed(inserted)) {
         throw (await grantCommitFailure(env, guard)) ?? grantBusy();
       }
     } else {
-      await env.DB.prepare(`INSERT INTO loose_files (${columns}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(...values)
-        .run();
+      await env.DB.batch([
+        env.DB.prepare(`INSERT INTO loose_files (${columns}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(...values),
+        legacyHandoffStatement(env.DB, reserved),
+        legacyQuotaStatement(env.DB),
+      ]);
     }
   } catch (err) {
-    await env.BUCKET.delete(key).catch(() => undefined);
-    await releaseStorage(env.DB, reserved);
+    await recoverLooseCreation(env, reserved, wrote, err);
     throw err;
   }
   const origin = publicOrigin(env);
@@ -208,19 +233,25 @@ export async function duplicateLooseFile(
   const storedWritePw = writeHash === undefined ? null : writeHash;
   const resolved = resolveExpiresAt(policy, ttl);
   const storedWrite = resolveCreateWritePolicy(env, writePolicy);
-  const reserved = await assertStorageRoom(env.DB, source.size, 0, policy.platformBytes);
   const newKey = fileKey(id, filename);
+  const reserved = await assertStorageRoom(env.DB, source.size, 0, policy.platformBytes,
+    { fileId: id, targetKey: newKey, operation: "duplicate", ownerId: user.id });
+  let wrote = false;
+  await markLegacyReservation(env.DB, reserved, "writing");
   try {
     await copyR2Object(env.BUCKET, fileKey(source.id, source.filename), newKey);
-    await env.DB.prepare(
+    wrote = true;
+    await markLegacyReservation(env.DB, reserved, "stored");
+    await env.DB.batch([env.DB.prepare(
       `INSERT INTO loose_files (id, handle, owner_id, filename, size, content_type, created_at, created_by, updated_at, last_written_by, password_hash, password_secret, expires_at, write_policy, write_password_hash, write_password_secret)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-      .bind(id, handle, user.id, filename, source.size, source.content_type, ts, actor.email, ts, actor.email, stored, storedPasswordSecret(stored, password), resolved.expiresAt, storedWrite, storedWritePw, storedPasswordSecret(storedWritePw, writePassword))
-      .run();
+      .bind(id, handle, user.id, filename, source.size, source.content_type, ts, actor.email, ts, actor.email, stored, storedPasswordSecret(stored, password), resolved.expiresAt, storedWrite, storedWritePw, storedPasswordSecret(storedWritePw, writePassword)),
+      legacyHandoffStatement(env.DB, reserved),
+      legacyQuotaStatement(env.DB),
+    ]);
   } catch (err) {
-    await env.BUCKET.delete(newKey).catch(() => undefined);
-    await releaseStorage(env.DB, reserved);
+    await recoverLooseCreation(env, reserved, wrote, err);
     throw err;
   }
   const origin = publicOrigin(env);
@@ -281,7 +312,7 @@ async function postLooseJson(
   // X-Filename means the body is file bytes (including application/json).
   // duplicate_from in that JSON is content, not a copy request, unless the header is set.
   if (filename && !fromHeader) {
-    return withUpload(request, env.BUCKET, instancePolicy(env).fileBytes, origin, (upload) => createLooseFile(
+    return withUpload(request, env, instancePolicy(env).fileBytes, origin, (upload) => createLooseFile(
       env,
       ctx,
       actor,
@@ -417,7 +448,7 @@ export async function postLooseFromRequest(
       "Raw uploads need header X-Filename (for example notes.md), or send multipart field file.",
     );
   }
-  return withUpload(request, env.BUCKET, instancePolicy(env).fileBytes, origin, (upload) => createLooseFile(
+  return withUpload(request, env, instancePolicy(env).fileBytes, origin, (upload) => createLooseFile(
     env,
     ctx,
     actor,
@@ -517,15 +548,21 @@ export async function putLooseFile(
     }
     throw new ApiError(409, "file_busy", "Another write is in progress; retry this replacement.");
   }
-  let reserved = 0;
+  let reserved: Awaited<ReturnType<typeof assertStorageRoom>> | number = 0;
   let previousState: R2ObjectSnapshot | null = null;
   let metadataCommitted = false;
   let wroteObject = false;
+  let writeStarted = false;
+  let retainSnapshot = false;
   try {
-    reserved = await assertStorageRoom(env.DB, upload.size, existing.size, policy.platformBytes);
-    previousState = renamed ? null : await snapshotR2Object(env.BUCKET, oldKey);
+    reserved = await assertStorageRoom(env.DB, upload.size, existing.size, policy.platformBytes,
+      { fileId: id, targetKey: newKey, operation: "replace", ownerId: existing.owner_id || actor.email, claimToken: claim.token });
+    previousState = renamed ? null : await snapshotR2Object(env, oldKey);
+    await markLegacyReservation(env.DB, reserved, "writing", { snapshotKey: previousState?.stagedKey });
+    writeStarted = true;
     await putUpload(env.BUCKET, newKey, upload, { httpMetadata: { contentType } });
     wroteObject = true;
+    await markLegacyReservation(env.DB, reserved, "stored", { snapshotKey: previousState?.stagedKey });
     const assignments = [
       "handle = COALESCE(handle, ?)",
       "filename = ?",
@@ -543,17 +580,23 @@ export async function putLooseFile(
       const live = `(expires_at IS NULL OR expires_at > ?)`;
       [updated] = await env.DB.batch([
         env.DB.prepare(`${update} AND ${live} AND ${GRANT_LEASE_SQL}`).bind(...values, id, claim.token, ts, ...grantLeaseBinds(guard, now)),
+        legacyHandoffStatement(env.DB, reserved, renamed ? { key: oldKey, bytes: existing.size } : undefined),
         consumeGrantStatement(
           env,
           guard,
           now,
           { id, url: filePublicUrl(env, handle, id, filename) },
-          `EXISTS (SELECT 1 FROM loose_files WHERE id = ? AND last_written_by = ? AND ${live})`,
-          [id, claim.token, ts],
+          `EXISTS (SELECT 1 FROM storage_allocations WHERE id = ? AND state IN ('released', 'cleanup_pending'))`,
+          [reserved.id],
         ),
+        legacyQuotaStatement(env.DB),
       ]);
     } else {
-      updated = await env.DB.prepare(update).bind(...values, id, claim.token).run();
+      [updated] = await env.DB.batch([
+        env.DB.prepare(update).bind(...values, id, claim.token),
+        legacyHandoffStatement(env.DB, reserved, renamed ? { key: oldKey, bytes: existing.size } : undefined),
+        legacyQuotaStatement(env.DB),
+      ]);
     }
     if (!d1Changed(updated)) {
       const grantProblem = guard ? await grantCommitFailure(env, guard) : null;
@@ -561,8 +604,20 @@ export async function putLooseFile(
       throw new ApiError(409, "file_write_lost", "The file changed during replacement; retry.");
     }
     metadataCommitted = true;
-    if (renamed) await env.BUCKET.delete(oldKey).catch(() => undefined);
+    if (renamed) {
+      const reservationId = reserved.id;
+      await cleanupLegacyReservation(env.DB, env.BUCKET, reservationId, new Date(), claim.token)
+        .catch(error => {
+          console.error("Loose-file rename cleanup pending", reservationId, error);
+        });
+    }
   } catch (err) {
+    retainSnapshot = true;
+    if (typeof reserved !== "number") {
+      const persisted = await env.DB.prepare("SELECT state FROM storage_allocations WHERE id = ?").bind(reserved.id).first<{ state: string }>();
+      metadataCommitted ||= persisted?.state === "released" || persisted?.state === "cleanup_pending";
+    }
+    if (metadataCommitted) retainSnapshot = false;
     if (!metadataCommitted) {
       let restoreFailed = false;
       if (wroteObject) {
@@ -573,17 +628,23 @@ export async function putLooseFile(
       await restoreLooseFileWriteClaim(env, id, claim).catch(() => {
         restoreFailed = true;
       });
-      await releaseStorage(env.DB, reserved);
+      const uncertainWrite = writeStarted && !wroteObject;
+      if (restoreFailed || uncertainWrite) {
+        retainSnapshot = true;
+        if (typeof reserved !== "number") await markLegacyReservation(env.DB, reserved, "uncertain", { error: err, snapshotKey: previousState?.stagedKey });
+      } else {
+        await releaseStorage(env.DB, reserved);
+        retainSnapshot = false;
+      }
       // A grant must not be released for a retry while storage and the catalog may disagree.
-      if (guard && restoreFailed) {
+      if (guard && (restoreFailed || uncertainWrite)) {
         throw new ApiError(500, "storage_rollback_failed", "The upload failed and storage could not be restored. Ask for a new grant.");
       }
     }
     throw err;
   } finally {
-    await discardR2Snapshots(env.BUCKET, [previousState]);
+    if (!retainSnapshot) await discardR2Snapshots(env.BUCKET, [previousState]);
   }
-  await releaseStorage(env.DB, existing.size - upload.size);
   await finalizeLooseFileWriteClaim(env, id, claim.token, actor.email).catch((err) => {
     console.error("loose file write claim release failed", err);
   });
@@ -693,7 +754,7 @@ export async function patchLoose(
       values.push(nextWrite);
     }
     const updated = await env.DB.prepare(
-      `UPDATE loose_files SET ${assignments.join(", ")} WHERE id = ? AND ${notClaimed}`,
+      `UPDATE loose_files SET ${assignments.join(", ")} WHERE id = ? AND ${notClaimed} AND ${NO_LOOSE_RECOVERY_SQL}`,
     )
       .bind(...values, id, ...claimGuards)
       .run();
@@ -771,6 +832,9 @@ async function throwLooseFileMutationConflict(env: Env, id: string): Promise<nev
   const current = await env.DB.prepare(`SELECT last_written_by FROM loose_files WHERE id = ?`)
     .bind(id)
     .first<{ last_written_by: string | null }>();
+  const recovery = current && await env.DB.prepare(`SELECT id FROM storage_allocations WHERE kind = 'legacy_reservation'
+    AND state != 'released' AND json_extract(recovery_json, '$.fileId') = ? LIMIT 1`).bind(id).first();
+  if (recovery) throw new ApiError(409, "file_busy", "Storage recovery is pending for this file; ask an administrator to inspect it.");
   if (isWriteClaimed(current?.last_written_by)) {
     throw new ApiError(409, "file_busy", "Another write is in progress; retry this update.");
   }
@@ -801,7 +865,7 @@ export async function putLooseFromRequest(
     return putLooseFile(env, ctx, actor, id, await uploadFromFile(file), file.name || null, file.type || null, formPassword(request, form));
   }
   const filename = filenameHeader(request);
-  return withUpload(request, env.BUCKET, instancePolicy(env).fileBytes, origin, (upload) => putLooseFile(
+  return withUpload(request, env, instancePolicy(env).fileBytes, origin, (upload) => putLooseFile(
     env,
     ctx,
     actor,
@@ -914,7 +978,7 @@ export async function deleteLooseFile(
   let previousState: R2ObjectSnapshot | null = null;
   let storageDeleted = false;
   try {
-    previousState = await snapshotR2Object(env.BUCKET, key);
+    previousState = await snapshotR2Object(env, key);
     await env.BUCKET.delete(key);
     storageDeleted = true;
     const dropped = await env.DB.prepare(`DELETE FROM loose_files WHERE id = ? AND last_written_by = ?`)

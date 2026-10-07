@@ -3,7 +3,8 @@ import { unzipSync, zipSync, strToU8 } from "fflate";
 import { describe, expect, it } from "vitest";
 import { MAX_IMPORT_FILES } from "../src/config";
 import { GATE_COOKIE, hashSharePassword, unlockToken } from "../src/gate";
-import { deleteSiteFile } from "../src/sites";
+import { withD1Trigger } from "./mutation-harness";
+import { sweepSiteStorage } from "../src/site-storage";
 import { auth, access, createSite, json, mint, mintAdmin, req } from "./helpers";
 
 describe("Energon", () => {
@@ -53,11 +54,16 @@ describe("Energon", () => {
     expect(body.content_origin).toBe("https://energon.example.com");
     expect(body.account).toContain("/account");
     expect(body.limits.file_bytes).toBe(100 * 1024 * 1024);
-    expect(body.limits.zip_bytes).toBe(25 * 1024 * 1024);
+    expect(body.limits.zip_bytes).toBe(100 * 1024 * 1024);
+    expect(body.limits.zip_import_bytes).toBe(100 * 1024 * 1024);
+    expect(body.limits.zip_extracted_bytes).toBe(500 * 1024 * 1024);
+    expect(body.limits.zip_export_bytes).toBe(25 * 1024 * 1024);
     expect(body.limits.platform_bytes).toBe(20 * 1024 * 1024 * 1024);
     expect(body.limits.max_import_files).toBe(200);
     expect(body.retention.file_bytes).toBe(100 * 1024 * 1024);
-    expect(body.retention.zip_bytes).toBe(25 * 1024 * 1024);
+    expect(body.retention.zip_bytes).toBe(100 * 1024 * 1024);
+    expect(body.retention.zip_extracted_bytes).toBe(500 * 1024 * 1024);
+    expect(body.retention.zip_export_bytes).toBe(25 * 1024 * 1024);
     expect(body.retention.allow_unlimited).toBe(true);
     expect(body.retention.default_ttl).toBe("never");
     expect(body.retention.presets.some((p: { id: string; label: string }) => p.id === "90d" && p.label === "3 months")).toBe(
@@ -107,8 +113,8 @@ describe("Energon", () => {
     expect(page.status).toBe(200);
     expect(await page.text()).toContain("hello demo");
     expect(page.headers.get("content-type")).toMatch(/text\/html/);
-    expect(page.headers.get("cache-control")).toMatch(/public/);
-    expect(page.headers.get("cache-control")).toMatch(/s-maxage=86400/);
+    expect(page.headers.get("cache-control")).toBe("private, no-store");
+    expect(page.headers.get("x-energon-site-version")).toBeTruthy();
     expect(page.headers.get("content-security-policy")).toContain("sandbox");
     expect(page.headers.get("content-security-policy")).not.toContain("allow-same-origin");
 
@@ -358,16 +364,20 @@ describe("Energon", () => {
     expect(tooBig.body.message).toContain("100 MB");
   });
 
-  it("26 MB zip import is 413 mentioning the 25 MB zip cap", async () => {
+  it("rejects a declared ZIP over the input cap before allocating storage", async () => {
     const token = await mint("big-zip");
     const site = await createSite(token, "big-zip-site");
+    const before = await env.DB.prepare("SELECT used FROM platform_quota WHERE id = 1").first();
     const tooBig = await json(`/v1/sites/${site.id}/import`, {
       method: "POST",
-      headers: auth(token, { "content-type": "application/zip", "content-length": String(26 * 1024 * 1024) }),
-      body: "x",
+      headers: auth(token, { "content-type": "application/zip", "content-length": String(100 * 1024 * 1024 + 1) }),
+      body: "",
     });
     expect(tooBig.status).toBe(413);
-    expect(tooBig.body.message).toContain("25 MB");
+    expect(tooBig.body.error).toBe("too_large");
+    expect(tooBig.body.message).toContain("100 MB");
+    expect(await env.DB.prepare("SELECT used FROM platform_quota WHERE id = 1").first()).toEqual(before);
+    expect(await env.DB.prepare("SELECT id FROM storage_allocations WHERE site_id = ?").bind(site.id).first()).toBeNull();
   });
 
   it("26 MB multipart upload is 413 pointing at raw bodies", async () => {
@@ -381,26 +391,22 @@ describe("Energon", () => {
     expect(tooBig.body.message).toContain("X-Filename");
   });
 
-  it("removes a staged rollback copy when a site file delete fails", async () => {
+  it("keeps a large file and its active version when delete publication fails", async () => {
     const token = await mint("staged-snapshot");
     const site = await createSite(token, "staged-snapshot");
     const big = new Uint8Array(26 * 1024 * 1024);
-    const put = await json(`/v1/sites/${site.id}/files/big.bin`, { method: "PUT", headers: auth(token), body: big });
-    expect(put.status).toBe(201);
-    const bucket = env.BUCKET as R2Bucket & { delete: R2Bucket["delete"] };
-    const originalDelete = bucket.delete.bind(bucket);
-    bucket.delete = async (keys) => {
-      if (typeof keys === "string" && keys.endsWith("/big.bin")) throw new Error("r2 down");
-      return originalDelete(keys);
-    };
-    try {
-      await expect(deleteSiteFile(env, undefined, { email: "ada@esperlabs.app", via: "token" }, site.id, "big.bin")).rejects.toThrow("r2 down");
-    } finally {
-      bucket.delete = originalDelete;
-    }
-    expect((await env.BUCKET.list({ prefix: "tmp/" })).objects).toEqual([]);
+    expect((await json(`/v1/sites/${site.id}/files/big.bin`, { method: "PUT", headers: auth(token), body: big })).status).toBe(201);
+    const before = await env.DB.prepare("SELECT active_version_id FROM sites WHERE id = ?").bind(site.id).first();
+    const result = await withD1Trigger(env.DB, "fail_large_delete", `CREATE TRIGGER fail_large_delete BEFORE UPDATE OF active_version_id ON sites
+      WHEN OLD.id = '${site.id}' BEGIN SELECT RAISE(ABORT, 'delete publication abort'); END`,
+    () => json(`/v1/sites/${site.id}/files/big.bin`, { method: "DELETE", headers: auth(token) }));
+    expect(result.status).toBe(500);
+    expect(await env.DB.prepare("SELECT active_version_id FROM sites WHERE id = ?").bind(site.id).first()).toEqual(before);
     const still = await req(`/v1/sites/${site.id}/files/big.bin`, { headers: auth(token) });
     expect(still.status).toBe(200);
+    const actual = await still.arrayBuffer();
+    expect(actual.byteLength).toBe(big.byteLength);
+    expect(await crypto.subtle.digest("SHA-256", actual)).toEqual(await crypto.subtle.digest("SHA-256", big));
   }, 30_000);
 
   it("caps an unsized multipart body at 25 MB before buffering it", async () => {
@@ -1505,6 +1511,36 @@ describe("Energon", () => {
     expect(hubNames).toEqual(names);
   });
 
+  it("keeps an owned export on its selected version while a new publication commits", async () => {
+    const { exportOwnedZip } = await import("../src/export");
+    const email = "export-snapshot@esperlabs.app";
+    const token = await mint("export-snapshot", email);
+    const site = await createSite(token, "export-snapshot");
+    for (const [path, body] of [["a.txt", "old a"], ["b.txt", "old b"]]) {
+      expect((await req(`/v1/sites/${site.id}/files/${path}`, { method: "PUT", headers: auth(token), body })).status).toBe(201);
+    }
+    const selected = (await env.DB.prepare("SELECT owner_id, active_version_id FROM sites WHERE id = ?").bind(site.id).first<{ owner_id: string; active_version_id: string }>())!;
+    const key = (await env.DB.prepare("SELECT object_key FROM site_version_files WHERE version_id = ? AND path = 'a.txt'").bind(selected.active_version_id).first<{ object_key: string }>())!.object_key;
+    const get = env.BUCKET.get.bind(env.BUCKET);
+    let changed = false;
+    env.BUCKET.get = (async (objectKey: string, options?: R2GetOptions) => {
+      if (!changed && objectKey === key) {
+        changed = true;
+        expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM site_operation_leases WHERE version_id = ? AND operation = 'owned-export'").bind(selected.active_version_id).first())?.n).toBe(1);
+        expect((await req(`/v1/sites/${site.id}/files/a.txt`, { method: "PUT", headers: auth(token), body: "new a" })).status).toBe(200);
+      }
+      return get(objectKey, options);
+    }) as R2Bucket["get"];
+    let response: Response;
+    try { response = await exportOwnedZip(env, undefined, { email, userId: selected.owner_id, via: "access" }); }
+    finally { env.BUCKET.get = get; }
+    expect(changed).toBe(true);
+    const files = unzipSync(new Uint8Array(await response.arrayBuffer()));
+    expect(new TextDecoder().decode(files[`sites/${site.id}/a.txt`])).toBe("old a");
+    expect(new TextDecoder().decode(files[`sites/${site.id}/b.txt`])).toBe("old b");
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM site_operation_leases WHERE version_id = ? AND operation = 'owned-export'").bind(selected.active_version_id).first())?.n).toBe(0);
+  });
+
   it("refuses an owned-content zip over the file-count cap", async () => {
     const token = await mint("owned-export-cap", "export-cap@esperlabs.app");
     const site = await createSite(token, "owned-cap");
@@ -1576,8 +1612,8 @@ describe("Energon", () => {
     expect(apiGone.status).toBe(410);
     expect(apiGone.body.error).toBe("expired");
 
-    const row = await env.DB.prepare(`SELECT slug FROM sites WHERE slug = ?`).bind("api-gone").first();
-    expect(row).toBeNull();
+    const row = await env.DB.prepare(`SELECT lifecycle_state, active_version_id FROM sites WHERE slug = ?`).bind("api-gone").first();
+    expect(row).toEqual({ lifecycle_state: "deleted", active_version_id: null });
   });
 
   it("expired site can be deleted, revived with PATCH ttl, or recreated", async () => {
@@ -1691,6 +1727,7 @@ describe("Energon", () => {
       .bind("2000-01-01T00:00:00.000Z", "retry-site")
       .run();
 
+    const stored = await env.DB.prepare("SELECT f.object_key FROM site_version_files f JOIN sites s ON s.active_version_id = f.version_id WHERE s.id = ?").bind(site_retry_site.id).first<{ object_key: string }>();
     const bucket = env.BUCKET as R2Bucket & { delete: R2Bucket["delete"] };
     const originalDelete = bucket.delete.bind(bucket);
     bucket.delete = async () => {
@@ -1698,7 +1735,11 @@ describe("Energon", () => {
     };
     try {
       await expect(purgeExpiredFile(env, undefined, fileId, "ada", "retry.txt")).rejects.toThrow("r2 unavailable");
-      await expect(purgeExpiredSite(env, undefined, "ada", site_retry_site.id)).rejects.toThrow("r2 unavailable");
+      expect(await purgeExpiredSite(env, undefined, "ada", site_retry_site.id)).toBe(true);
+      await sweepSiteStorage(env.DB, env.BUCKET, new Date(Date.now() + 180_000));
+      await sweepSiteStorage(env.DB, env.BUCKET, new Date(Date.now() + 600_000));
+      expect(await env.BUCKET.get(stored!.object_key)).not.toBeNull();
+      expect(await env.DB.prepare("SELECT state, cleanup_error FROM storage_allocations WHERE object_key = ?").bind(stored!.object_key).first()).toEqual({ state: "deleting", cleanup_error: "Error: r2 unavailable" });
     } finally {
       bucket.delete = originalDelete;
     }
@@ -1709,16 +1750,13 @@ describe("Energon", () => {
     }>();
     expect(fileRow?.id).toBe(fileId);
     expect(fileRow?.expires_at).toBe("2000-01-01T00:00:00.000Z");
-    const siteRow = await env.DB.prepare(`SELECT slug FROM sites WHERE slug = ?`).bind("retry-site").first();
-    expect(siteRow).toEqual({ slug: "retry-site" });
-    const siteFile = await env.DB.prepare(`SELECT path FROM site_files WHERE site_id = ?`).bind(site_retry_site.id).first();
-    expect(siteFile).toEqual({ path: "index.html" });
+    expect(await env.DB.prepare("SELECT lifecycle_state FROM sites WHERE id = ?").bind(site_retry_site.id).first()).toEqual({ lifecycle_state: "deleted" });
 
     expect(await purgeExpiredFile(env, undefined, fileId, "ada", "retry.txt")).toBe(true);
     expect(await env.DB.prepare(`SELECT id FROM loose_files WHERE id = ?`).bind(fileId).first()).toBeNull();
-    expect(await purgeExpiredSite(env, undefined, "ada", site_retry_site.id)).toBe(true);
-    expect(await env.DB.prepare(`SELECT slug FROM sites WHERE slug = ?`).bind("retry-site").first()).toBeNull();
-    expect(await env.DB.prepare(`SELECT path FROM site_files WHERE site_id = ?`).bind(site_retry_site.id).first()).toBeNull();
+    await sweepSiteStorage(env.DB, env.BUCKET, new Date(Date.now() + 900_000));
+    expect(await env.BUCKET.get(stored!.object_key)).toBeNull();
+    expect(await env.DB.prepare("SELECT state FROM storage_allocations WHERE object_key = ?").bind(stored!.object_key).first()).toEqual({ state: "released" });
   });
 
   it("API GET of an expired loose file is 410 and schedules purge", async () => {
@@ -2486,11 +2524,10 @@ describe("Energon", () => {
         body: "quota-bytes",
       });
       expect(created.status).toBe(201);
-      const catalog = await env.DB.prepare(
-        `SELECT
-          (SELECT COALESCE(SUM(size), 0) FROM site_files) +
-          (SELECT COALESCE(SUM(size), 0) FROM loose_files) AS total`,
-      ).first<{ total: number }>();
+      const catalog = await env.DB.prepare(`SELECT
+        (SELECT COALESCE(SUM(size),0) FROM site_files) +
+        (SELECT COALESCE(SUM(size),0) FROM loose_files) +
+        (SELECT COALESCE(SUM(reserved_bytes),0) FROM storage_allocations WHERE state != 'released') AS total`).first<{ total: number }>();
       const catalogBytes = Number(catalog?.total ?? 0);
       await env.DB.prepare(`UPDATE platform_quota SET used = ? WHERE id = 1`).bind(9_001_000_000).run();
 
