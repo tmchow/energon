@@ -136,6 +136,12 @@ describe("host and route contracts", () => {
     expect(created.body.error).toBe("bad_slug");
   });
 
+  it("answers 404, not 405, when a hub page does not serve the method", async () => {
+    const response = await json("/about", { method: "POST" });
+    expect(response.status).toBe(404);
+    expect(response.body.error).toBe("not_found");
+  });
+
   it("rejects malformed URL encoding without turning it into a 500", async () => {
     const malformed = await json("/ada/s/%ZZ/demo/");
 
@@ -230,6 +236,15 @@ describe("hub account API", () => {
     });
     expect(cross.status).toBe(403);
     expect(cross.body.error).toBe("bad_origin");
+
+    for (const path of ["/account/sites/%E0%A4%A", "/account/files/%E0%A4%A"]) {
+      const formWithBadPath = await json(path, {
+        method: "PATCH",
+        headers: access(email, { "content-type": "application/x-www-form-urlencoded" }),
+        body: "password=stolen",
+      });
+      expect({ path, error: formWithBadPath.body.error }).toEqual({ path, error: "bad_content_type" });
+    }
 
     const form = await json(`/account/sites/${site_csrf_site.id}`, {
       method: "PATCH",
