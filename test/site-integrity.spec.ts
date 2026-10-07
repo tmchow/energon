@@ -1,10 +1,82 @@
 import { zipSync, strToU8 } from "fflate";
 import { describe, expect, it } from "vitest";
 import { MAX_IMPORT_FILES } from "../src/config";
+import { hashSharePassword, hashWritePassword } from "../src/gate";
+import { getSiteById, patchSite } from "../src/sites";
 import { auth, createSite as postSite, json, mint, req } from "./helpers";
 import { withD1Trigger } from "./mutation-harness";
 
 const D1_BATCH_LIMIT = 100;
+
+describe("site metadata patch integrity", () => {
+  it("commits combined access and retention fields before purging, and skips purging unchanged content", async () => {
+    const { env } = await import("cloudflare:test");
+    const token = await mint("site-patch-combined");
+    const site = await postSite(token, "site-patch-combined");
+    const actor = { email: "ada@esperlabs.app", via: "token" } as const;
+    const purgeSnapshots: unknown[] = [];
+    const ctx = {
+      cache: {
+        purge: async (options: { pathPrefixes: string[] }) => {
+          expect(options.pathPrefixes).toEqual([`/ada/s/${site.id}/`]);
+          purgeSnapshots.push(await getSiteById(env, site.id));
+        },
+      },
+    } as unknown as ExecutionContext;
+
+    const response = await patchSite(env, actor, site.id, {
+      password: " view-pw ", write_password: " write-pw ", setTtl: true, ttl: "7d", write_policy: "owner",
+    }, ctx);
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store, private");
+    expect(response.headers.get("pragma")).toBe("no-cache");
+    expect(body).toMatchObject({
+      password_protected: true, password: "view-pw", write_password_protected: true, write_password: "write-pw",
+      ttl: "7d", write_policy: "owner",
+    });
+    const committed = await getSiteById(env, site.id);
+    expect(committed).toMatchObject({
+      password_hash: await hashSharePassword("view-pw"), password_secret: "view-pw",
+      write_password_hash: await hashWritePassword("write-pw"), write_password_secret: "write-pw",
+      expires_at: (body as { expires_at: string }).expires_at, write_policy: "owner", last_written_by: actor.email,
+      written_via: null,
+    });
+    expect(purgeSnapshots).toEqual([committed]);
+
+    await patchSite(env, actor, site.id, {}, ctx);
+    expect(await getSiteById(env, site.id)).toEqual(committed);
+    await patchSite(env, actor, site.id, { write_policy: "org" }, ctx);
+    expect((await getSiteById(env, site.id))?.write_policy).toBe("org");
+    expect(purgeSnapshots).toHaveLength(1);
+  });
+
+  it("keeps attribution for admin TTL-only patches without bypassing creator checks or validation order", async () => {
+    const { env } = await import("cloudflare:test");
+    const token = await mint("site-patch-admin-ttl");
+    const site = await postSite(token, "site-patch-admin-ttl", { write_policy: "owner" });
+    const timestamp = "2026-01-01T00:00:00.000Z";
+    await env.DB.prepare(`UPDATE sites SET updated_at = ?, last_written_by = ?, written_via = ? WHERE id = ?`)
+      .bind(timestamp, "guest", "write_password", site.id).run();
+    const admin = { email: "admin@esperlabs.app", via: "token", admin: true } as const;
+    const response = await patchSite(env, admin, site.id, { setTtl: true, ttl: "7d" }, undefined, true);
+    expect(await response.json()).toMatchObject({ ttl: "7d", write_policy: "owner" });
+    const committed = await getSiteById(env, site.id);
+    expect(committed).toMatchObject({ updated_at: timestamp, last_written_by: "guest", written_via: "write_password" });
+
+    for (const patch of [{ password: "view-pw" }, { write_password: undefined }, { write_policy: "invalid" }]) {
+      await expect(patchSite(env, admin, site.id, patch, undefined, true)).rejects.toMatchObject({
+        status: 403, code: "forbidden_write_policy", message: "Only the creator can change who can write this.",
+      });
+    }
+    await expect(patchSite(env, admin, site.id, {
+      write_password: "x".repeat(129), password: "view-pw", setTtl: true, ttl: "invalid",
+    }, undefined, true)).rejects.toMatchObject({
+      status: 400, code: "bad_password", message: "Write password is too long (max 128 characters).",
+    });
+    expect(await getSiteById(env, site.id)).toEqual(committed);
+  });
+});
 
 async function createSite(token: string, slug: string, files: Record<string, string> = { "index.html": "original" }) {
   const created = await postSite(token, slug);

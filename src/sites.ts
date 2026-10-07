@@ -430,26 +430,23 @@ export async function duplicateSite(
   }
 }
 
-export async function patchSite(
+type SitePatch = {
+  password?: string;
+  write_password?: string;
+  ttl?: unknown;
+  setTtl?: boolean;
+  write_policy?: unknown;
+};
+
+async function prepareSitePatch(
   env: Env,
   actor: Actor,
-  idRaw: string,
-  patch: { password?: string; write_password?: string; ttl?: unknown; setTtl?: boolean; write_policy?: unknown },
-  ctx?: ExecutionContext,
-  asAdmin = false,
-): Promise<Response> {
-  const wantsWrite = Object.prototype.hasOwnProperty.call(patch, "write_policy");
-  const wantsWritePassword = Object.prototype.hasOwnProperty.call(patch, "write_password");
-  const wantsSharePassword = patch.password !== undefined;
-  const wantsOther = wantsSharePassword || Boolean(patch.setTtl);
-  const site = await requireSite(env, actor, idRaw, {
-    allowExpired: Boolean(patch.setTtl),
-    ctx,
-    mutate: wantsOther,
-    asAdmin,
-  });
+  site: SiteRow,
+  patch: SitePatch,
+  fields: { writePolicy: boolean; writePassword: boolean; sharePassword: boolean },
+) {
   let nextWrite = resolveWritePolicy(site.write_policy);
-  if (wantsWrite) {
+  if (fields.writePolicy) {
     assertCanSetWritePolicy(actor, site.created_by, site.owner_id);
     const parsed = requestedWritePolicy(patch.write_policy);
     if (parsed === "invalid" || parsed === null) {
@@ -458,42 +455,79 @@ export async function patchSite(
     nextWrite = parsed;
   }
   const writeHash = await writePasswordHashFromInput(patch.write_password);
-  if (wantsWritePassword || wantsSharePassword) {
+  if (fields.writePassword || fields.sharePassword) {
     assertCanSetWritePolicy(actor, site.created_by, site.owner_id);
   }
   const hash = await passwordHashFromInput(patch.password);
   const ts = new Date().toISOString();
   const resolved = patch.setTtl ? resolveExpiresAt(instancePolicy(env), patch.ttl) : null;
-  const notClaimed = `last_written_by NOT LIKE ?`;
+  return { nextWrite, writeHash, hash, ts, resolved, wantsWrite: fields.writePolicy };
+}
+
+function sitePatchAssignments(
+  actor: Actor,
+  patch: SitePatch,
+  prepared: Awaited<ReturnType<typeof prepareSitePatch>>,
+  asAdmin: boolean,
+): { assignments: string[]; values: unknown[] } | null {
+  const { hash, writeHash, resolved, wantsWrite, ts, nextWrite } = prepared;
   const ttlOnlyAdmin = asAdmin && Boolean(patch.setTtl) && hash === undefined && writeHash === undefined && !wantsWrite;
-  if (hash !== undefined || writeHash !== undefined || resolved || wantsWrite) {
-    const assignments: string[] = [];
-    const values: unknown[] = [];
-    if (!ttlOnlyAdmin) {
-      assignments.push("updated_at = ?", "last_written_by = ?", "written_via = NULL");
-      values.push(ts, actor.email);
-    }
-    if (hash !== undefined) {
-      assignPasswordStore(assignments, values, hash, patch.password, "password_hash", "password_secret");
-    }
-    if (writeHash !== undefined) {
-      assignPasswordStore(assignments, values, writeHash, patch.write_password, "write_password_hash", "write_password_secret");
-    }
-    if (resolved) {
-      assignments.push("expires_at = ?");
-      values.push(resolved.expiresAt);
-    }
-    if (wantsWrite) {
-      assignments.push("write_policy = ?");
-      values.push(nextWrite);
-    }
+  if (hash === undefined && writeHash === undefined && !resolved && !wantsWrite) return null;
+  const assignments: string[] = [];
+  const values: unknown[] = [];
+  if (!ttlOnlyAdmin) {
+    assignments.push("updated_at = ?", "last_written_by = ?", "written_via = NULL");
+    values.push(ts, actor.email);
+  }
+  if (hash !== undefined) {
+    assignPasswordStore(assignments, values, hash, patch.password, "password_hash", "password_secret");
+  }
+  if (writeHash !== undefined) {
+    assignPasswordStore(assignments, values, writeHash, patch.write_password, "write_password_hash", "write_password_secret");
+  }
+  if (resolved) {
+    assignments.push("expires_at = ?");
+    values.push(resolved.expiresAt);
+  }
+  if (wantsWrite) {
+    assignments.push("write_policy = ?");
+    values.push(nextWrite);
+  }
+  return { assignments, values };
+}
+
+export async function patchSite(
+  env: Env,
+  actor: Actor,
+  idRaw: string,
+  patch: SitePatch,
+  ctx?: ExecutionContext,
+  asAdmin = false,
+): Promise<Response> {
+  const fields = {
+    writePolicy: Object.prototype.hasOwnProperty.call(patch, "write_policy"),
+    writePassword: Object.prototype.hasOwnProperty.call(patch, "write_password"),
+    sharePassword: patch.password !== undefined,
+  };
+  const wantsOther = fields.sharePassword || Boolean(patch.setTtl);
+  const site = await requireSite(env, actor, idRaw, {
+    allowExpired: Boolean(patch.setTtl),
+    ctx,
+    mutate: wantsOther,
+    asAdmin,
+  });
+  const prepared = await prepareSitePatch(env, actor, site, patch, fields);
+  const { hash, writeHash, resolved, nextWrite } = prepared;
+  const notClaimed = `last_written_by NOT LIKE ?`;
+  const update = sitePatchAssignments(actor, patch, prepared, asAdmin);
+  if (update) {
     const writeGuard = asAdmin
       ? { sql: "1 = 1", binds: [] as unknown[] }
       : { sql: OWNER_WRITE_SQL, binds: [...ownerWriteBinds(actor)] };
     const updated = await env.DB.prepare(
-      `UPDATE sites SET ${assignments.join(", ")} WHERE id = ? AND ${notClaimed} AND ${writeGuard.sql}`,
+      `UPDATE sites SET ${update.assignments.join(", ")} WHERE id = ? AND ${notClaimed} AND ${writeGuard.sql}`,
     )
-      .bind(...values, site.id, PURGE_CLAIM_LIKE, ...writeGuard.binds)
+      .bind(...update.values, site.id, PURGE_CLAIM_LIKE, ...writeGuard.binds)
       .run();
     if (!d1Changed(updated)) {
       await throwSiteMutationConflict(env, site.id);
