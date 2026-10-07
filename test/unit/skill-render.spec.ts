@@ -20,6 +20,7 @@ import {
   tokenEnvFromBrand,
 } from "../../scripts/render-skill.mjs";
 import { WRITE_PASSWORD_HEADER } from "../../src/config";
+import { GRANT_AUTH_HEADER, GRANT_UPLOAD_PREFIX } from "../../src/grant-protocol";
 
 const CATALOG_PATHS = [
   "marketplace.json",
@@ -117,6 +118,14 @@ describe("skill template", () => {
     const api = readFileSync(resolve("templates/skill/references/api.md.tmpl"), "utf8");
     expect(skill).toContain(WRITE_PASSWORD_HEADER);
     expect(api).toContain(WRITE_PASSWORD_HEADER);
+  });
+
+  it("skill templates name the upload-grant path and header from the grant protocol", () => {
+    const skill = readFileSync(resolve("templates/skill/SKILL.md.tmpl"), "utf8");
+    const api = readFileSync(resolve("templates/skill/references/api.md.tmpl"), "utf8");
+    expect(skill).toContain(GRANT_AUTH_HEADER);
+    expect(api).toContain(GRANT_AUTH_HEADER);
+    expect(api).toContain(GRANT_UPLOAD_PREFIX);
   });
 
   it("skill:init requires --name or --skill, and --origin", () => {

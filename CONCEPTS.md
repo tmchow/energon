@@ -59,6 +59,11 @@ A per-object shared secret that lets someone outside the host replace bytes at a
 ### Share Password
 A per-object shared secret that gates reading a published URL. Browsers use the gate form and cookie. Agents send the share-password header. If a write password is also set, that phrase also unlocks the gate form. The share-password header does not accept the write phrase. The cookie never authorizes PUT or DELETE. The Hub keeps the phrase so the signed-in owner can copy it again. `/v1` GET returns only whether it is set. Verification still uses a hash.
 
+### Upload Grant
+A short-lived, single-use credential a token holder mints so a machine without a token can upload one file: a new loose file, a replacement for an existing one, or one path in a site. The machine sends the bytes straight to the grant's upload URL on the content origin.
+
+It acts as the minting account: the upload must pass that account's write policy, and the minter becomes the writer. It is not an account and cannot be used as an API Token. A successful upload publishes at once and uses the grant up in the same commit as the catalog write. Its lifetime is its own credential policy, separate from Token Expiry and content retention, and never outlasts the minting token. Revoking or expiring that token ends the grant.
+
 ## Org, this Energon, and host
 
 ### This Energon
@@ -79,6 +84,7 @@ Locative only: the place (this origin, vs someone not on this host). Not the nam
 - An API Token authenticates against the Energon that issued it.
 - Purge claims and Write claims make competing content mutations resolve before storage changes begin.
 - A Share Password gates reading a published URL. A Write Password authorizes guest PUT (and site-path DELETE) on that same object without an account.
+- An Upload Grant authorizes one upload to one target on behalf of the API Token that minted it.
 
 ## Schema lifecycle
 

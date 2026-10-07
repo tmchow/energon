@@ -1,6 +1,6 @@
 ---
 name: {{SKILL_NAME}}
-description: Publish, read, reference, revise, or copy documents, prototypes, and working files on {{PRODUCT}} ({{ORIGIN}}). Use when the user wants to publish a prototype, share a markdown/image/PDF with a person or agent, update a doc at its existing URL, read published work as reference, mint or use {{TOKEN_ENV}}, or mentions {{PRODUCT}} / {{ORIGIN_HOST}}. Never invent a token.
+description: Publish, read, reference, revise, or copy documents, prototypes, and working files on {{PRODUCT}} ({{ORIGIN}}). Use when the user wants to publish a prototype, share a markdown/image/PDF with a person or agent, update a doc at its existing URL, read published work as reference, let a machine without a token upload a file (upload grant), mint or use {{TOKEN_ENV}}, or mentions {{PRODUCT}} / {{ORIGIN_HOST}}. Never invent a token.
 ---
 
 # {{PRODUCT}}
@@ -42,6 +42,7 @@ Tokens look like `{{TOKEN_PREFIX}}…`. For authentication setup, credential bou
 | Several files that belong together, or a doc plus assets | **Site**. Same slug, PUT each path. |
 | One screenshot, PDF, markdown file, or a zip that should stay a zip | **Loose file**. `POST /v1/files` once, then `PUT /v1/files/{id}` to revise. Same URL. |
 | “Give this to the other agent / my other machine / this other chat” | Loose file if it is one file. Site if it is a folder. |
+| A machine with no token (CI runner, sandbox, another host) must upload the bytes itself, not through you | **Upload grant**: **Scenario M** |
 | “Host this build output” | **Site**, often via zip import |
 | Anything over 25 MB, or a zip over 25 MB | Check the size first: **Scenario L** |
 
@@ -362,6 +363,29 @@ They want to publish something large: a video, a dataset, a big PDF, a build out
 5. **Zip over `limits.zip_bytes`:** do not import it. Unzip locally and PUT each file to the site (Scenario D); each file only has to fit the file cap. To get a big site back out, GET each path from `GET /v1/sites/{id}` instead of the zip export.
 
 Never report a large file as published until the write returned `201` or `200`, and give the human the stored `size` so they can confirm it is the whole file.
+
+## Scenario M — Another machine uploads without a token
+
+They want a machine that has no token (a CI runner, a sandbox, another agent's host) to upload one file, and the bytes should go straight there rather than through you. Mint an upload grant. Do **not** mint that machine a token. A grant is one single-use upload; for repeated updates by an outsider at a URL that already exists, use a write password instead (Scenario I).
+
+1. You must be able to write the target. Pick one: a new loose file (`filename`), an existing loose file (`id`), or one path in an existing site (`site_id` and `path`). A site folder needs one grant per path.
+2. `POST /v1/grants` with the target and, if useful, `expires_in` (`5m`, `15m` default, `30m`, `1h`), `max_bytes`, and the expected `sha256`.
+3. Hand the other machine the returned `upload_url` and `secret`, plus `max_bytes` and `sha256` if you set them so it knows the limits. The secret is shown once. Never put it in a URL or a published file.
+4. That machine sends `PUT` to `upload_url` with `Authorization: Bearer <secret>` and the raw body. It can read the content-origin `/llms.txt` for the protocol. Success publishes immediately and uses the grant up.
+5. Read the result with `GET /v1/grants/{id}`: `consumed` with `url`, `failed` with `last_error`, or `expired`. If it is `failed` or `expired`, mint a new grant; the old secret is dead. If it is still `unused` before `expires_at`, the same secret can be retried. Revoking your token ends every grant it minted.
+
+```bash
+# you, with a token
+curl -sS {{ORIGIN}}/v1/grants \
+  -H "Authorization: Bearer ${{TOKEN_ENV}}" \
+  -H "content-type: application/json" \
+  -d '{"target":{"type":"new_file","filename":"report.pdf"},"expires_in":"15m"}'
+
+# the other machine, no token
+curl -sS -X PUT "$UPLOAD_URL" \
+  -H "Authorization: Bearer $GRANT_SECRET" \
+  --data-binary @report.pdf
+```
 
 ## After you publish
 

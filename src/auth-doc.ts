@@ -58,7 +58,7 @@ Send this token only to the API on ${origin}. Published content lives at ${env.C
 
 A token acts as its owning account. Authenticated API reads bypass share passwords. Writes and deletes still obey each object's write policy; a token is not permission to overwrite an existing artifact without the human's intent. Tokens do not have selectable read/write scopes.
 
-Never put tokens, share passwords, or write passwords in published files, source control, logs, or URLs. Cloudflare Access sessions are for the human hub; agents use the API token. A share password is only for opening a protected published link, not for API authentication. A write password is an object-scoped shared secret for public-URL PUT (and site-path DELETE). It is not an account token and not Access.
+Never put tokens, share passwords, or write passwords in published files, source control, logs, or URLs. Cloudflare Access sessions are for the human hub; agents use the API token. A share password is only for opening a protected published link, not for API authentication. A write password is an object-scoped shared secret for public-URL PUT (and site-path DELETE). It is not an account token and not Access. An upload grant secret authorizes one PUT to its grant's upload URL on the content origin and nothing else; it is not an account token, and revoking the token that minted it ends the grant.
 
 ## Recover
 

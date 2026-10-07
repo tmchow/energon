@@ -29,13 +29,26 @@ function declaredLength(request: Request): number | null {
   return Number(raw);
 }
 
-export async function readUpload(request: Request, bucket: R2Bucket, maxBytes: number, origin: string): Promise<Upload> {
+export type UploadChecks = { sha256?: string | null };
+
+export async function readUpload(
+  request: Request,
+  bucket: R2Bucket,
+  maxBytes: number,
+  origin: string,
+  checks: UploadChecks = {},
+): Promise<Upload> {
+  const expected = checks.sha256 ? checks.sha256.toLowerCase() : null;
+  const inMemory = async (bytes: Uint8Array): Promise<Upload> => {
+    if (expected && (await sha256OfBytes(bytes)) !== expected) throw checksumMismatch();
+    return uploadFromBytes(bytes);
+  };
   const declared = declaredLength(request);
   if (declared !== null && declared > maxBytes) throw tooLarge(declared, origin, maxBytes);
   if (declared === null) {
     const limit = Math.min(maxBytes, IN_MEMORY_BYTES);
     try {
-      return uploadFromBytes(await readBodyCapped(request, limit, origin));
+      return await inMemory(await readBodyCapped(request, limit, origin));
     } catch (err) {
       if (!(err instanceof ApiError) || err.code !== "too_large" || limit === maxBytes) throw err;
       throw new ApiError(
@@ -46,7 +59,7 @@ export async function readUpload(request: Request, bucket: R2Bucket, maxBytes: n
       );
     }
   }
-  if (declared <= IN_MEMORY_BYTES || !request.body) return uploadFromBytes(await readBodyCapped(request, maxBytes, origin));
+  if (declared <= IN_MEMORY_BYTES || !request.body) return inMemory(await readBodyCapped(request, maxBytes, origin));
 
   const stagedKey = tmpKey("uploads");
   let head: Uint8Array = new Uint8Array(0);
@@ -59,10 +72,13 @@ export async function readUpload(request: Request, bucket: R2Bucket, maxBytes: n
   const { readable, writable } = new FixedLengthStream(declared);
   const pipeFailed = request.body.pipeThrough(keepHead).pipeTo(writable).then(() => false, () => true);
   try {
-    await bucket.put(stagedKey, readable);
+    // R2 verifies the digest while storing, so a large body is never hashed on the Worker's CPU budget.
+    await bucket.put(stagedKey, readable, expected ? { sha256: expected } : undefined);
   } catch (err) {
     await bucket.delete(stagedKey).catch(() => undefined);
-    throw (await pipeFailed) ? incomplete(declared) : err;
+    if (await pipeFailed) throw incomplete(declared);
+    if (expected && isDigestRejection(err)) throw checksumMismatch();
+    throw err;
   }
   if (await pipeFailed) {
     await bucket.delete(stagedKey).catch(() => undefined);
@@ -78,6 +94,21 @@ function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
   return out;
 }
 
+async function sha256OfBytes(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** R2 reports a failed sha256 check as BadDigest (code 10037); any other put failure stays a server error. */
+function isDigestRejection(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /digest|checksum|sha-?256|10037/i.test(message);
+}
+
+function checksumMismatch(): ApiError {
+  return new ApiError(400, "checksum_mismatch", "The upload body does not match the expected SHA-256. Nothing was published; retry with the right bytes.");
+}
+
 function incomplete(declared: number): ApiError {
   return new ApiError(400, "bad_request", `The upload body did not match its Content-Length (${declared} bytes). Retry the upload.`);
 }
@@ -88,8 +119,9 @@ export async function withUpload<T>(
   maxBytes: number,
   origin: string,
   fn: (upload: Upload) => Promise<T>,
+  checks?: UploadChecks,
 ): Promise<T> {
-  const upload = await readUpload(request, bucket, maxBytes, origin);
+  const upload = await readUpload(request, bucket, maxBytes, origin, checks);
   try {
     return await fn(upload);
   } finally {

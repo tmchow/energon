@@ -69,6 +69,18 @@ DELETE /v1/files/{id}    delete the file (no recycle bin)
 
 Guest write on the public URL uses header `X-Energon-Write-Password` (not a `/v1` header). Read `GET {content_origin}/llms.txt`. A file write password only PUTs that file. A site write password can PUT or DELETE a path. Do not mint the outside agent a token.
 
+## Upload grants
+
+```
+POST /v1/grants          { "target": { "type": "new_file", "filename", "ttl"?, "write_policy"? }
+                                   | { "type": "file", "id" } | { "type": "site_path", "site_id", "path" },
+                           "expires_in"?: "5m"|"15m"|"30m"|"1h", "max_bytes"?: number, "sha256"?: hex }
+GET  /v1/grants/{id}     state (unused|uploading|consumed|failed|expired), url, last_error
+PUT  {content_origin}/_grants/{id}   raw body, Authorization: Bearer <grant secret>; no token
+```
+
+`201` on mint `{ id, secret, upload_url, method, header, scheme, expires_at, max_bytes, sha256, target, url, status_url }`. The secret is shown once. The upload returns `201` (created) or `200` (replaced) with `url`. `410 grant_used` names the published `url`; `410 grant_expired` and `410 grant_failed` mean mint a new grant; `409 grant_busy` and `5xx` are retryable; `404 grant_invalid` is a wrong id or secret.
+
 ## Listing and cleanup
 
 `GET /v1/sites` and `GET /v1/files` only return what **you** created or last wrote. Same query on both:

@@ -62,7 +62,7 @@ type GuestLooseRow = {
   write_password_hash: string | null;
 };
 
-const FORBIDDEN_PUT_HEADERS = [
+export const FORBIDDEN_PUT_HEADERS = [
   "x-filename",
   "x-energon-set-password",
   "x-energon-set-write-password",

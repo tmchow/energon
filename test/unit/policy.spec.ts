@@ -7,6 +7,8 @@ import {
   adminTokenPolicy,
   formatDuration,
   formatTtlLabel,
+  GRANT_TTL_CATALOG,
+  grantClaimable,
   instancePolicy,
   parseByteSize,
   parseDuration,
@@ -14,6 +16,7 @@ import {
   assertCanSetWritePolicy,
   canMutate,
   parseWritePolicyEnv,
+  resolveGrantExpiresAt,
   requestedWritePolicy,
   resolveCreateWritePolicy,
   resolveExpiresAt,
@@ -405,5 +408,29 @@ describe("tokenExpired", () => {
     expect(tokenExpired("2026-09-02T15:00:00+02:00", now)).toBe(false);
     expect(tokenExpired("2026-09-02T12:00:00.000Z", now)).toBe(true);
     expect(tokenExpired("2026-09-02T12:00:00.001Z", now)).toBe(false);
+  });
+});
+
+describe("upload grant lifetime", () => {
+  const now = new Date("2026-10-06T12:00:00.000Z");
+
+  it("defaults to 15 minutes and accepts only the fixed catalog", () => {
+    expect(GRANT_TTL_CATALOG).toEqual(["5m", "15m", "30m", "1h"]);
+    expect(resolveGrantExpiresAt(undefined, null, now)).toBe("2026-10-06T12:15:00.000Z");
+    expect(resolveGrantExpiresAt("1h", null, now)).toBe("2026-10-06T13:00:00.000Z");
+    expect(() => resolveGrantExpiresAt("2h", null, now)).toThrow(/expires_in must be one of: 5m, 15m, 30m, 1h/);
+    expect(() => resolveGrantExpiresAt("never", null, now)).toThrow(/expires_in must be one of/);
+  });
+
+  it("never outlives the minting token", () => {
+    expect(resolveGrantExpiresAt("1h", "2026-10-06T12:10:00.000Z", now)).toBe("2026-10-06T12:10:00.000Z");
+    expect(resolveGrantExpiresAt("5m", "2026-10-07T00:00:00.000Z", now)).toBe("2026-10-06T12:05:00.000Z");
+  });
+
+  it("lets a lease be claimed through the five-minute grace, then fails closed", () => {
+    const expiresAt = "2026-10-06T12:00:00.000Z";
+    expect(grantClaimable(expiresAt, Date.parse("2026-10-06T12:04:59.000Z"))).toBe(true);
+    expect(grantClaimable(expiresAt, Date.parse("2026-10-06T12:05:00.000Z"))).toBe(false);
+    expect(grantClaimable("not-a-date", Date.parse("2026-10-06T11:00:00.000Z"))).toBe(false);
   });
 });

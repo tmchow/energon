@@ -26,6 +26,7 @@ import { isMarkdownName, respondMarkdown } from "./markdown";
 import { maybeUnlockWithWritePassword, passwordEcho, passwordField, passwordHashFromInput, protectContent, assignPasswordStore, hubLinkAccessFields, storedPasswordSecret, writePasswordField, writePasswordHashFromInput } from "./gate";
 import { ensureUser } from "./handles";
 import { mintObjectId } from "./ids";
+import { consumeGrantStatement, grantCommitFailure, GRANT_LEASE_SQL, grantLeaseBinds, type GrantGuard } from "./grant-guard";
 import { ApiError, applyIsolation, assertStorageRoom, basename, contentDisposition, copyR2Object, deletePrefix, discardR2Snapshots, htmlPage, json, jsonMaybeSecret, nanoid, normalizeRelPath, publicOrigin, releaseStorage, restoreR2Object, secretJson, snapshotR2Object, tooLarge, wantsDownload, type R2ObjectSnapshot } from "./http";
 import { contentTypeFor } from "./mime";
 import {
@@ -567,6 +568,7 @@ export async function putSiteFile(
   pathRaw: string,
   upload: Upload,
   hintType: string | null,
+  guard?: GrantGuard,
 ): Promise<{ url: string; api_url: string; created: boolean; path: string; size: number; content_type: string }> {
   const path = assertFilePath(pathRaw);
   const policy = instancePolicy(env);
@@ -597,13 +599,19 @@ export async function putSiteFile(
     previous = await snapshotR2Object(env.BUCKET, key);
     await putUpload(env.BUCKET, key, upload, { httpMetadata: { contentType } });
     wroteObject = true;
-    const wrote = await env.DB.batch([
-      siteFileUpsert(env, site.id, path, upload.size, contentType, ts, actor.email),
-      env.DB.prepare(
-        `UPDATE sites SET updated_at = ?, last_written_by = ?, written_via = NULL WHERE id = ? AND last_written_by NOT LIKE ? AND ${OWNER_WRITE_SQL}`,
-      ).bind(ts, actor.email, site.id, PURGE_CLAIM_LIKE, ...ownerWriteBinds(actor)),
-    ]);
+    const wrote = guard
+      ? await env.DB.batch(guardedSiteFileCommit(env, actor, guard, site, path, upload.size, contentType, ts))
+      : await env.DB.batch([
+          siteFileUpsert(env, site.id, path, upload.size, contentType, ts, actor.email),
+          env.DB.prepare(
+            `UPDATE sites SET updated_at = ?, last_written_by = ?, written_via = NULL WHERE id = ? AND last_written_by NOT LIKE ? AND ${OWNER_WRITE_SQL}`,
+          ).bind(ts, actor.email, site.id, PURGE_CLAIM_LIKE, ...ownerWriteBinds(actor)),
+        ]);
     if (!d1Changed(wrote[1] ?? {})) {
+      if (guard) {
+        // Every guarded statement carries the same predicates, so nothing landed and there is no row to compensate.
+        throw (await grantCommitFailure(env, guard)) ?? (await throwSiteMutationConflict(env, site.id));
+      }
       if (existing) {
         await siteFileUpsert(
           env,
@@ -638,6 +646,44 @@ export async function putSiteFile(
     size: upload.size,
     content_type: contentType,
   };
+}
+
+function guardedSiteFileCommit(
+  env: Env,
+  actor: Actor,
+  guard: GrantGuard,
+  site: SiteRow,
+  path: string,
+  size: number,
+  contentType: string,
+  ts: string,
+): D1PreparedStatement[] {
+  const now = new Date(ts);
+  const writable = `last_written_by NOT LIKE ? AND (expires_at IS NULL OR expires_at > ?) AND ${OWNER_WRITE_SQL}`;
+  const writableBinds = [PURGE_CLAIM_LIKE, ts, ...ownerWriteBinds(actor)];
+  const lease = grantLeaseBinds(guard, now);
+  return [
+    env.DB.prepare(
+      `INSERT INTO site_files (site_id, path, size, content_type, updated_at, last_written_by)
+       SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM sites WHERE id = ? AND ${writable}) AND ${GRANT_LEASE_SQL}
+       ON CONFLICT(site_id, path) DO UPDATE SET
+         size = excluded.size,
+         content_type = excluded.content_type,
+         updated_at = excluded.updated_at,
+         last_written_by = excluded.last_written_by`,
+    ).bind(site.id, path, size, contentType, ts, actor.email, site.id, ...writableBinds, ...lease),
+    env.DB.prepare(
+      `UPDATE sites SET updated_at = ?, last_written_by = ?, written_via = NULL WHERE id = ? AND ${writable} AND ${GRANT_LEASE_SQL}`,
+    ).bind(ts, actor.email, site.id, ...writableBinds, ...lease),
+    consumeGrantStatement(
+      env,
+      guard,
+      now,
+      { id: site.id, url: sitePublicUrl(env, site.handle, site.id, site.slug, path) },
+      `EXISTS (SELECT 1 FROM sites WHERE id = ? AND ${writable})`,
+      [site.id, ...writableBinds],
+    ),
+  ];
 }
 
 export async function getSiteFile(

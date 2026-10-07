@@ -105,6 +105,31 @@ const TABLE_STATEMENTS = [
     bytes INTEGER,
     confirm TEXT
   )`,
+  `CREATE TABLE IF NOT EXISTS upload_grants (
+    id TEXT PRIMARY KEY,
+    secret_hash TEXT NOT NULL,
+    token_id TEXT NOT NULL,
+    user_email TEXT NOT NULL,
+    user_id TEXT,
+    target_kind TEXT NOT NULL,
+    file_id TEXT,
+    site_id TEXT,
+    path TEXT,
+    filename TEXT,
+    file_ttl TEXT,
+    file_write_policy TEXT,
+    max_bytes INTEGER NOT NULL,
+    sha256 TEXT,
+    state TEXT NOT NULL,
+    lease_id TEXT,
+    leased_at TEXT,
+    last_error TEXT,
+    result_id TEXT,
+    result_url TEXT,
+    created_at TEXT NOT NULL,
+    consumed_at TEXT,
+    expires_at TEXT NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS gate_attempts (
     scope TEXT PRIMARY KEY,
     fails INTEGER NOT NULL,
@@ -144,6 +169,7 @@ const INDEX_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_sites_expires_at ON sites(expires_at)`,
   `CREATE INDEX IF NOT EXISTS idx_loose_expires_at ON loose_files(expires_at)`,
   `CREATE INDEX IF NOT EXISTS idx_admin_audit_created ON admin_audit(created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_upload_grants_expires ON upload_grants(expires_at)`,
 ];
 
 let columnsReady = false;

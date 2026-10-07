@@ -7,6 +7,7 @@ import {
   TOKEN_SECRET_LEN,
   formatBytes,
 } from "./config";
+import { helpGrantSop } from "./grant-protocol";
 import { helpGuestWriteSop } from "./guest-write-protocol";
 import { assertNever } from "./catalog";
 import { ApiError, decodeJwtPayload, isLocalHost, isWorkersDev, json, nanoid, publicOrigin, sha256Hex } from "./http";
@@ -101,26 +102,44 @@ export async function requireToken(request: Request, env: Env): Promise<Actor> {
   )
     .bind(tokenHash)
     .first<TokenRow>();
-  if (!row || row.revoked_at) {
+  const rejection = tokenRowRejection(env, row);
+  if (rejection === "missing" || rejection === "revoked") {
     throw unauthorized(
       origin,
       `That API token is missing or revoked. Stop using it. If a human can respond, connect again with a code per ${origin}/auth.md; if not, ask a human to mint a replacement at ${origin}/tokens and store it as ${id.tokenEnv}.`,
       env,
     );
   }
-  if (tokenExpired(row.expires_at)) throw tokenExpiredError(origin, row.expires_at ?? "", env);
-  assertEmailAllowed(env, row.user_email);
-  const user = row.user_id ? await getUserById(env, row.user_id) : await getUser(env, row.user_email);
-  const last = row.last_used_at ? Date.parse(row.last_used_at) : 0;
+  if (rejection === "expired") throw tokenExpiredError(origin, row?.expires_at ?? "", env);
+  if (rejection === "email") assertEmailAllowed(env, row!.user_email);
+  const live = row!;
+  const last = live.last_used_at ? Date.parse(live.last_used_at) : 0;
   if (!Number.isFinite(last) || Date.now() - last > 10 * 60 * 1000) {
     try {
       await env.DB.prepare(`UPDATE tokens SET last_used_at = ? WHERE id = ?`)
-        .bind(new Date().toISOString(), row.id)
+        .bind(new Date().toISOString(), live.id)
         .run();
     } catch {
       // Usage metadata is best-effort and must not make a valid token unusable.
     }
   }
+  return actorForTokenRow(env, live);
+}
+
+type TokenRejection = "missing" | "revoked" | "expired" | "email";
+
+/** The checks every use of a token's authority repeats, in requireToken's order. */
+function tokenRowRejection(env: Env, row: TokenRow | null): TokenRejection | null {
+  if (!row) return "missing";
+  if (row.revoked_at) return "revoked";
+  if (tokenExpired(row.expires_at)) return "expired";
+  const policy = instancePolicy(env);
+  if (!emailAllowed(policy, row.user_email)) return "email";
+  return null;
+}
+
+async function actorForTokenRow(env: Env, row: TokenRow): Promise<Actor> {
+  const user = row.user_id ? await getUserById(env, row.user_id) : await getUser(env, row.user_email);
   const tokenScope = readTokenScope(row.scope);
   return {
     email: user?.email || row.user_email,
@@ -133,6 +152,23 @@ export async function requireToken(request: Request, env: Env): Promise<Actor> {
     tokenScope,
     admin: tokenScope === "admin" && emailIsAdmin(env, row.user_email),
   };
+}
+
+/**
+ * The minting account behind an upload grant, re-derived from its token on every use so revoking or
+ * expiring the token, or dropping the email from the allow-list, ends the grant. Never carries admin scope.
+ */
+export async function grantActor(env: Env, tokenId: string): Promise<{ actor: Actor } | { rejected: TokenRejection }> {
+  const row = await env.DB.prepare(
+    `SELECT id, user_email, user_id, label, token_hash, created_at, last_used_at, revoked_at, expires_at, scope
+     FROM tokens WHERE id = ?`,
+  )
+    .bind(tokenId)
+    .first<TokenRow>();
+  const rejected = tokenRowRejection(env, row);
+  if (rejected || !row) return { rejected: rejected ?? "missing" };
+  const actor = await actorForTokenRow(env, row);
+  return { actor: { ...actor, via: "grant", tokenScope: "account", admin: false } };
 }
 
 export function identitySubFromRequest(request: Request, email: string): string {
@@ -499,6 +535,7 @@ export function helpBody(origin: string, env?: Env): unknown {
       `Clean up in bulk with POST /v1/cleanup: target ids or the list filters (expires=never, expires_within=24h|7d, expires_before, updated_before, min_size, q, created_by), action delete, set_ttl (with ttl), or expire (30m grace). Without confirm it is a dry run. Show the human the preview (matched, eligible, skipped, bytes, sample), then resend the same body with its confirm to execute. GET /v1/sites and GET /v1/files take the same filters plus sort=size|age|last_read (and changed_since_read=1, list only) to find candidates first. expires_within windows are computed at request time. GET /v1/export first if they need a copy of what they own; cleanup {} is involvement, which is wider than ownership.`,
       `Operators on ADMIN_EMAILS mint an admin token, then POST /v1/admin/cleanup with the same preview/confirm shape, without involvement scope. Add owner (handle) and last_read_before. set_ttl without ttl is 7d so the owner sees Expires and can push it back. expire is 400 expire_not_own on anyone else's content. delete is explicit. GET /v1/admin/health is the read-only snapshot. POST /v1/admin/quota/recompute, POST /v1/admin/sweep, and POST /v1/admin/gates/unlock repair quota drift, expired leftovers, and locked share gates. GET /v1/admin/tokens lists token metadata across accounts (owner email and handle, label, hint, scope, created, last used, expires, status). Filter with ?owner=handle. Never the secret or the hash. POST /v1/admin/tokens/revoke previews then revokes stale or all tokens for an owner (confirm hash of the sorted ids; 409 token_revoke_drift). The calling admin token is left live. GET /v1/admin/audit lists those actions. Never returns bytes or secrets.`,
       ...helpGuestWriteSop(),
+      ...helpGrantSop(),
     ],
     routes: {
       "GET /llms.txt": "agent-readable overview, no auth",
@@ -527,6 +564,9 @@ export function helpBody(origin: string, env?: Env): unknown {
       "PUT /v1/files/{id}": "replace loose file bytes; same id and URL; optional X-Energon-Set-Password",
       "PATCH /v1/files/{id}": '{ "password"?: string, "write_password"?: string, "ttl"?: string, "write_policy"?: "owner"|"org" } — empty password or write_password clears. ttl resets expiry from now. write_policy and write_password are creator-only.',
       "DELETE /v1/files/{id}": "delete the loose file and its object (no recycle bin)",
+      "POST /v1/grants":
+        '{ "target": { "type": "new_file", "filename", "ttl"?, "write_policy"? } | { "type": "file", "id" } | { "type": "site_path", "site_id", "path" }, "expires_in"?: "5m"|"15m"|"30m"|"1h", "max_bytes"?: number, "sha256"?: hex } — single-use upload grant; returns upload_url on the content origin and a secret (once). The tokenless client PUTs raw bytes there with Authorization: Bearer <secret>.',
+      "GET /v1/grants/{id}": "grant state (unused|uploading|consumed|failed|expired), target, result url, last_error. Any token of the minting account; never the secret.",
       "GET /v1/sites": "sites you created or last wrote. ?scope=created|edited|involved&q=&created_by=&expires=never|expires_before=<iso>|expires_within=24h|7d&updated_before=<iso>&min_size=<bytes|500mb>&sort=updated|name|size|age|last_read&changed_since_read=1&limit=25&cursor=. expires_within windows are computed at request time. Items carry last_read_at (floor; null = never). last_read is never-read first. changed_since_read=1 is updated after last_read_at (never-read counts as changed). Not a cleanup target.",
       "POST /v1/cleanup":
         '{ "target": { "sites"?: [id], "files"?: [id] } or list filters { "scope"?, "q"?, "created_by"?, "expires"?: "never", "expires_before"?, "expires_within"?: "24h"|"7d", "updated_before"?, "last_read_before"?, "owner"?, "min_size"?, "kind"?: "sites"|"files" }, "action": "delete"|"set_ttl"|"expire", "ttl"?: string (set_ttl only), "confirm"?: string } — without confirm: dry run { matched, eligible, skipped: { total, by_reason, sample }, bytes, sample, confirm }. Resend with that confirm to execute { applied, skipped, failed }. Only what you created or last wrote and can write; the rest is skipped. At most 100 eligible per call (413 cleanup_too_many). 409 cleanup_drift carries a fresh preview. {} targets everything you are involved in. No recycle bin.',
