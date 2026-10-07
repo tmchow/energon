@@ -144,4 +144,6 @@ it("bootstraps each database binding independently", async () => {
   await ensureSchema(second as unknown as D1Database);
   expect(second.tables.has("site_deployments")).toBe(true);
   expect(second.executed).toContain("ALTER TABLE sites ADD COLUMN content_generation INTEGER NOT NULL DEFAULT 0");
+  // Existing files start at generation 1, the same value a new file is created with.
+  expect(second.executed).toContain("ALTER TABLE loose_files ADD COLUMN content_generation INTEGER NOT NULL DEFAULT 1");
 });

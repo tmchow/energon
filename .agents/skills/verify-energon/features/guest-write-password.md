@@ -8,6 +8,7 @@ Guest write password lets the creator give someone outside the host a second sha
 - `wpw-file-put` replaces a loose file (including empty) at the same public URL and Content-Type.
 - `wpw-site-put` adds or replaces a site path (`201` new, `200` replace).
 - `wpw-site-delete` deletes one site path (`200` JSON `{ deleted: true, path }`) and keeps the site URL at `200` after the last path is gone.
+- `wpw-file-conditional` lets a file guest send `X-Energon-Expected-Version` with the `X-Energon-Content-Generation` from their last public GET; a stale value is `409 file_conflict`.
 - `wpw-denied` rejects loose DELETE, site directory DELETE, share-password header writes, and cookie writes.
 - `wpw-marks` shows the lockup on any write-password row, a padlock on view-password-only rows, and no password mark when neither hash is set.
 
@@ -32,6 +33,7 @@ Preconditions:
 - **Default — Writable file.** `POST /v1/files` with `X-Filename: guest.bin`, `X-Energon-Set-Write-Password: guest-write-ok`, body `abc`. Empty PUT then GET length `0`. Loose DELETE of that URL → `405`.
 - **Default — Unset is 405.** `PATCH` `{ "write_password": "" }` then guest PUT is `405` and the body does not name `X-Energon-Write-Password`.
 - **Default — Discovery.** `GET $ORIGIN/llms.txt` contains the guest-write section and `X-Energon-Write-Password`.
+- **Extra (wpw-file-conditional) — Conditional guest replace.** Public GET of the writable file returns `X-Energon-Content-Generation` `N`. Guest PUT with `X-Energon-Write-Password` and `X-Energon-Expected-Version: N` → `200` with `content_generation` `N+1`; the same PUT again → `409` `file_conflict`, and the public GET still returns the first guest bytes. A guest site PUT with `X-Energon-Expected-Version: 1` → `400` `bad_expected_version` and the path is unchanged. Drive when guest file replacement or generation handling changes.
 - **Extra (wpw-denied) — Header-bound.** Same phrase on `X-Energon-Password` cannot PUT or DELETE. Cookie from a share-password form POST cannot PUT or DELETE. Drive when gate cookie vs write header binding changes.
 - **Extra (wpw-set) — Owner policy / creator-only.** Create with `"write_policy":"owner","write_password":"guest-write-ok"`; guest PUT still succeeds. A second-account token `PATCH` of `write_password` is `403`. Drive when write policy or creator-only changes.
 - **Extra (wpw-marks / Hub.svelte) — Hub marks.** Write-only lockup hover `Write password`. `#pw-dlg-write-door` On shows `guest-write-ok`. Drive when Hub.svelte password marks change.

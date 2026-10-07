@@ -42,6 +42,7 @@ import {
   patchSite,
   postSite,
   putSiteFile,
+  rejectSiteExpectedVersion,
 } from "./sites";
 import type { Env } from "./types";
 import { withUpload } from "./upload";
@@ -256,6 +257,7 @@ export const V1_TOKEN = {
       methods: {
         GET: (c) => getSiteFile(c.env, c.ctx, c.actor, decodeURIComponent(c.params[0]), c.params[1]),
         PUT: async (c) => {
+          rejectSiteExpectedVersion(c.request);
           const id = decodeURIComponent(c.params[0]);
           const filePath = c.params[1];
           const result = await withUpload(c.request, c.env, instancePolicy(c.env).fileBytes, publicOrigin(c.env), (upload) => putSiteFile(
@@ -273,6 +275,7 @@ export const V1_TOKEN = {
           );
         },
         DELETE: async (c) => {
+          rejectSiteExpectedVersion(c.request);
           const filePath = c.params[1];
           await deleteSiteFile(c.env, c.ctx, c.actor, decodeURIComponent(c.params[0]), filePath);
           return json({ ok: true, deleted: true, path: filePath });

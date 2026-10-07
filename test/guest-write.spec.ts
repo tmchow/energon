@@ -130,6 +130,47 @@ describe("guest write password", () => {
     expect(still.status).toBe(200);
   });
 
+  it("refuses X-Energon-Expected-Version on a guest site write instead of writing unconditionally", async () => {
+    const token = await mint("guest-site-ev", "guest-site-ev@esperlabs.app");
+    const site = await createSite(token, "guest-site-ev", { write_password: "guest-write-ok" });
+    const pathUrl = `${CONTENT}/guest-site-ev/s/${site.body.id}/guest-site-ev/note.txt`;
+    expect((await req(pathUrl, { method: "PUT", headers: WRITE, body: "kept" })).status).toBe(201);
+    for (const init of [{ method: "PUT", body: "conditional?" }, { method: "DELETE" }]) {
+      const res = await json(pathUrl, { ...init, headers: { ...WRITE, "X-Energon-Expected-Version": "1" } });
+      expect(res.status, init.method).toBe(400);
+      expect(res.body.error).toBe("bad_expected_version");
+      expect(res.body.hub).toBeUndefined();
+    }
+    expect(await (await req(pathUrl)).text()).toBe("kept");
+  });
+
+  it("lets a file guest replace conditionally on the generation read from the public URL", async () => {
+    const token = await mint("guest-generation", "guest-gen@esperlabs.app");
+    const created = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "X-Filename": "shared.md", "X-Energon-Set-Write-Password": "guest-write-ok" }),
+      body: "# draft",
+    });
+    const url = created.body.url as string;
+    const read = await req(url, { headers: { accept: "text/plain" } });
+    const generation = read.headers.get("X-Energon-Content-Generation");
+    expect(generation).toBe("1");
+
+    const first = await json(url, { method: "PUT", headers: { ...WRITE, "X-Energon-Expected-Version": generation! }, body: "# guest one" });
+    expect(first.status).toBe(200);
+    expect(first.body.content_generation).toBe(2);
+    const stale = await json(url, { method: "PUT", headers: { ...WRITE, "X-Energon-Expected-Version": generation! }, body: "# guest two" });
+    expect(stale.status).toBe(409);
+    expect(stale.body).toMatchObject({ error: "file_conflict", content_generation: 2, expected_version: 1 });
+    expect(stale.body.hub).toBeUndefined();
+
+    const after = await req(url, { headers: { accept: "text/plain" } });
+    expect(await after.text()).toBe("# guest one");
+    expect(after.headers.get("X-Energon-Content-Generation")).toBe("2");
+    const pending = await env.DB.prepare(`SELECT last_written_by FROM loose_files WHERE id = ?`).bind(created.body.id).first<{ last_written_by: string }>();
+    expect(pending?.last_written_by).toBe("guest-gen@esperlabs.app");
+  });
+
   it("binds identical phrases to the header that carried them and ignores the gate cookie", async () => {
     const token = await mint("guest-bound", "guest-bound@esperlabs.app");
     const created = await createSite(token, "guest-bound", { password: "same-phrase", write_password: "same-phrase" });

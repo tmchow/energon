@@ -1,7 +1,7 @@
 import { MAX_IMPORT_FILES } from "./config";
 import { ApiError, publicOrigin, readJson, secretJson, sha256Hex, tooLarge } from "./http";
 import { assertCanMutate, instancePolicy } from "./policy";
-import { getSiteById } from "./sites";
+import { getSiteById, rejectSiteExpectedVersion } from "./sites";
 import { commitDeployment, createDeployment, DeploymentError, getDeployment, recordDeploymentFile, sealDeployment, type DeploymentAuthority } from "./site-deployments";
 import { acquireVersionLease, releaseVersionLease, startVersionLeaseHeartbeat, cleanupAllocation, reserveAllocation, writeAllocation, type StorageAllocation, type VersionLease } from "./site-storage";
 import { sitePublicUrl } from "./urls";
@@ -313,6 +313,7 @@ export async function importSiteArchive(request: Request, env: Env, actor: Actor
   const site = await getSiteById(env, siteId);
   if (!site) throw new ApiError(404, "site_not_found", "Site not found.");
   assertCanMutate(actor, site);
+  rejectSiteExpectedVersion(request);
   const policy = instancePolicy(env);
   const upload = await readUpload(request, env, policy.zipBytes, publicOrigin(env));
   let adopted = false;

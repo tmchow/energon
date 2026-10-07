@@ -63,7 +63,8 @@ CREATE TABLE IF NOT EXISTS loose_files (
   write_password_hash TEXT,
   write_password_secret TEXT,
   written_via TEXT,
-  last_read_at TEXT
+  last_read_at TEXT,
+  content_generation INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS tokens (
@@ -175,6 +176,7 @@ CREATE TABLE IF NOT EXISTS upload_grants (
   file_write_policy TEXT,
   file_password TEXT,
   file_write_password TEXT,
+  expected_version INTEGER,
   max_bytes INTEGER NOT NULL,
   sha256 TEXT,
   state TEXT NOT NULL,

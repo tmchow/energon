@@ -15,7 +15,7 @@ import {
   type ListQuery,
 } from "./catalog";
 import { brandMark, documentShell, escapeHtml } from "./chrome";
-import { MAX_IMPORT_FILES, PRODUCT, RESERVED_SLUGS, SLUG_RE, formatBytes } from "./config";
+import { EXPECTED_VERSION_HEADER, MAX_IMPORT_FILES, PRODUCT, RESERVED_SLUGS, SLUG_RE, formatBytes } from "./config";
 import {
   d1Changed,
   expiredError,
@@ -72,6 +72,16 @@ export function assertSlug(slug: string): string {
     );
   }
   return s;
+}
+
+/** Path writes merge into the live site; refusing the header keeps a caller from believing such a write was conditional. */
+export function rejectSiteExpectedVersion(request: Request): void {
+  if (request.headers.get(EXPECTED_VERSION_HEADER) === null) return;
+  throw new ApiError(
+    400,
+    "bad_expected_version",
+    `Site path writes are not conditional and do not take ${EXPECTED_VERSION_HEADER}. For a conditional site update, create a site deployment (POST /v1/sites/{id}/deployments) with expected_version set to the site's content_generation.`,
+  );
 }
 
 export function assertFilePath(path: string): string {

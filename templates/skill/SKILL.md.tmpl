@@ -112,6 +112,18 @@ curl -sS {{ORIGIN}}/v1/files/{id} \
 
 `409 file_busy` means another write is in progress; retry shortly. `409 file_recovery_required` means an interrupted earlier write left that file's storage unreconciled. Do not retry or POST a replacement copy on your own; tell the human that an administrator must reconcile it. Reads still work.
 
+If someone else may also be revising the file, replace it conditionally so you never overwrite their newer work. Every file carries `content_generation`, which goes up by one each time its bytes are replaced. Read it in the same step as the bytes you edit (the `X-Energon-Content-Generation` header on `GET /v1/files/{id}`, or `content_generation` in a write response or `GET /v1/files` item), then send it back:
+
+```bash
+curl -sS {{ORIGIN}}/v1/files/{id} \
+  -X PUT \
+  -H "Authorization: Bearer ${{TOKEN_ENV}}" \
+  -H "X-Energon-Expected-Version: 3" \
+  --data-binary @notes.md
+```
+
+`409 file_conflict` means someone replaced the file after you read it; the body carries the current `content_generation` and nothing changed. Read the file again, reconcile your edit with theirs, and PUT with the new generation. Do not resend the same bytes without the header to force it through; ask the human if the two versions cannot be merged. This header is for loose files only: site path PUT/DELETE and ZIP import reject it with `400 bad_expected_version`. A file blocked on storage recovery answers `409 file_recovery_required` even when your `expected_version` is stale; treat it as above, not as a conflict. For a conditional site update use Scenario E (`expected_version` on a deployment).
+
 The receiving agent:
 
 ```bash
@@ -246,7 +258,7 @@ They want someone who is not on this host to replace bytes at a public URL. Do *
 2. The human sends the public URL and the write password to the outside agent.
 3. That agent `GET`s the content-origin `/llms.txt` (or the guest-write section of hub `/llms.txt` when the origins are the same) and `PUT`s the public URL with header `X-Energon-Write-Password` and a raw body. Site paths also accept `DELETE`.
 
-A file write password only replaces that file (including empty). A site write password can add, replace, or delete paths under that site, including `index.html`, and cannot delete the site.
+A file write password only replaces that file (including empty). A site write password can add, replace, or delete paths under that site, including `index.html`, and cannot delete the site. A file guest can send `X-Energon-Expected-Version` with the `X-Energon-Content-Generation` value from their last GET to avoid overwriting a newer replacement.
 
 ```bash
 # creator
@@ -361,7 +373,7 @@ Never report a large file as published until the write returned `201` or `200`, 
 They want a machine that has no token (a CI runner, a sandbox, another agent's host) to upload one file, and the bytes should go straight there rather than through you. Mint an upload grant. Do **not** mint that machine a token. A grant is one single-use upload; for repeated updates by an outsider at a URL that already exists, use a write password instead (Scenario I).
 
 1. You must be able to write the target. Pick one: a new loose file (`filename`), an existing loose file (`id`), or one path in an existing site (`site_id` and `path`). For an atomic folder replacement, create the immutable deployment intent from Scenario E first, then mint `{"target":{"type":"site_deployment","deployment_id":"..."}}`.
-2. `POST /v1/grants` with the target and, if useful, `expires_in` (`5m`, `15m` default, `30m`, `1h`), `max_bytes`, and the expected `sha256`.
+2. `POST /v1/grants` with the target and, if useful, `expires_in` (`5m`, `15m` default, `30m`, `1h`), `max_bytes`, and the expected `sha256`. For an existing file that others may revise, add `expected_version` (its current `content_generation`) to the `file` target. The upload then replaces the file only if nobody replaced it after you minted; otherwise nothing is written and the grant ends `failed` with `last_error: file_conflict`. Read the file again and decide with the human before minting a new grant.
 3. Hand the other machine the returned `upload_url` and `secret`, plus `max_bytes` and `sha256` if you set them so it knows the limits. The secret is shown once. Never put it in a URL or a published file.
 4. That machine sends `PUT` to `upload_url` with `Authorization: Bearer <secret>` and the raw body. It can read the content-origin `/llms.txt` for the protocol. Success publishes immediately and uses the grant up.
 5. Read the result with `GET /v1/grants/{id}`: `consumed` with `url`, `failed` with `last_error`, or `expired`. If it is `failed` or `expired`, mint a new grant; the old secret is dead. Exception: `last_error: file_recovery_required` means the file needs an administrator to reconcile storage first, so tell the human instead of minting another grant. If it is still `unused` before `expires_at`, the same secret can be retried. Revoking your token ends every grant it minted.

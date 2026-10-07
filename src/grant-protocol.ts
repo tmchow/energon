@@ -13,7 +13,7 @@ Success is \`201\` (new file or path) or \`200\` (replaced) with the public \`ur
 
 - \`404 grant_invalid\`: wrong id or secret.
 - \`410 grant_used\`: already used; the body names the published \`url\` and its \`result_id\`.
-- \`410 grant_expired\` or \`410 grant_failed\`: stop and ask for a new grant. If \`reason\` is \`file_recovery_required\`, a new grant will fail too: tell the person that an administrator must reconcile storage for that file first.
+- \`410 grant_expired\` or \`410 grant_failed\`: stop and ask for a new grant. If \`reason\` is \`file_recovery_required\`, a new grant will fail too: tell the person that an administrator must reconcile storage for that file first. \`reason: file_conflict\` means someone replaced the file after the grant was issued; nothing was written, so tell whoever gave you the grant.
 - \`409 grant_busy\`, \`409 file_busy\`, or a \`5xx\`: retry the same upload.
 - \`413 too_large\` or \`400 checksum_mismatch\`: fix the bytes and retry; nothing was published.
 `;
@@ -22,7 +22,7 @@ Success is \`201\` (new file or path) or \`200\` (replaced) with the public \`ur
 export function hubGrantSection(contentOrigin: string): string {
   return `## Upload grant
 
-Let a machine without a token upload one file. \`POST /v1/grants\` with \`{"target": {"type": "new_file", "filename": "…"}}\`, \`{"target": {"type": "file", "id": "…"}}\`, or \`{"target": {"type": "site_path", "site_id": "…", "path": "…"}}\`, plus optional \`expires_in\` (5m, 15m default, 30m, 1h), \`max_bytes\`, and \`sha256\`. A \`new_file\` target also takes \`ttl\`, \`write_policy\`, \`password\`, and \`write_password\`; set a password there so the file is protected from the moment it lands. You must be able to write the target. The response holds \`upload_url\` (\`${contentOrigin}${GRANT_UPLOAD_PREFIX}{id}\`) and a \`secret\`, shown once.
+Let a machine without a token upload one file. \`POST /v1/grants\` with \`{"target": {"type": "new_file", "filename": "…"}}\`, \`{"target": {"type": "file", "id": "…"}}\`, or \`{"target": {"type": "site_path", "site_id": "…", "path": "…"}}\`, plus optional \`expires_in\` (5m, 15m default, 30m, 1h), \`max_bytes\`, and \`sha256\`. A \`new_file\` target also takes \`ttl\`, \`write_policy\`, \`password\`, and \`write_password\`; set a password there so the file is protected from the moment it lands. A \`file\` target takes \`expected_version\` (the file's \`content_generation\`): the upload then replaces the file only if nobody replaced it after you minted, and otherwise ends the grant as \`failed\` with \`last_error: file_conflict\` and writes nothing. You must be able to write the target. The response holds \`upload_url\` (\`${contentOrigin}${GRANT_UPLOAD_PREFIX}{id}\`) and a \`secret\`, shown once.
 
 The other machine sends \`PUT\` to \`upload_url\` with \`${GRANT_AUTH_HEADER} <secret>\` and the raw bytes; it reads \`${contentOrigin}/llms.txt\`. Success publishes at once and uses the grant up. Read the result with \`GET /v1/grants/{id}\`: \`url\` and \`result_id\` once consumed. Revoking the minting token ends its grants. A grant is a single-use capability, not an account: do not mint the other machine a token.
 `;
@@ -30,7 +30,7 @@ The other machine sends \`PUT\` to \`upload_url\` with \`${GRANT_AUTH_HEADER} <s
 
 export function helpGrantSop(): string[] {
   return [
-    `Upload grant: to let a machine without a token upload one file, POST /v1/grants with a target (new_file with filename, file with id, or site_path with site_id and path) and optional expires_in (5m, 15m default, 30m, 1h), max_bytes, and sha256. A new_file target also takes ttl, write_policy, password, and write_password; set a password there so the file is protected from the moment it lands. You must be able to write the target. The response returns upload_url on the content origin and a secret, once.`,
+    `Upload grant: to let a machine without a token upload one file, POST /v1/grants with a target (new_file with filename, file with id, or site_path with site_id and path) and optional expires_in (5m, 15m default, 30m, 1h), max_bytes, and sha256. A new_file target also takes ttl, write_policy, password, and write_password; set a password there so the file is protected from the moment it lands. A file target takes expected_version (the file's content_generation) so the upload replaces it only if nobody replaced it after you minted; a mismatch ends the grant as failed with last_error file_conflict and writes nothing. You must be able to write the target. The response returns upload_url on the content origin and a secret, once.`,
     `The other machine sends PUT upload_url with ${GRANT_AUTH_HEADER} <secret> and the raw body. Success publishes immediately and uses the grant up; retryable failures leave it usable until it expires. A file target whose storage needs reconciliation fails the grant with last_error file_recovery_required; do not mint another until an administrator reconciles it. GET /v1/grants/{id} shows unused, uploading, consumed (with url and result_id), failed (with last_error), or expired. Revoking the minting token ends every grant it minted. Never put the secret in a URL or a published file.`,
   ];
 }

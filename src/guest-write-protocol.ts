@@ -25,6 +25,8 @@ Wrong or missing write password on PUT or DELETE: 401 naming \`${WRITE_PASSWORD_
 
 If the object is gone: 404. If expired: 410. If another write is in progress: 409; retry it. Except 409 \`file_recovery_required\` on a file: an earlier write left its storage unreconciled, so do not retry; tell the person who shared the link that an administrator must reconcile it.
 
+A file GET returns \`X-Energon-Content-Generation\`, a counter that goes up each time its bytes are replaced. Send it back as \`X-Energon-Expected-Version\` on PUT to replace only if nobody replaced the file since. A mismatch is 409 \`file_conflict\` with the current \`content_generation\` and changes nothing: GET the file again and reconcile before you PUT. Site paths are not conditional: sending this header on a site PUT or DELETE is 400 \`bad_expected_version\` and writes nothing.
+
 Do not send the share-password header to write. That header does not authorize PUT or DELETE.
 `;
 }

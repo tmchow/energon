@@ -7,6 +7,7 @@ Publish a file lets a user mint one object with a short stable id, open it at `/
 - `file-create` mints an id and returns `url` plus `api_url`.
 - `file-public` serves the bytes at the public URL with the chosen filename.
 - `file-replace` PUTs new bytes to the same id; `url` does not move.
+- `file-conditional` reports `content_generation` (1 at create, up by one per byte replacement, unchanged by PATCH) and replaces only at a matching `X-Energon-Expected-Version`; a stale value is `409 file_conflict` and changes nothing.
 - `file-download` returns `Content-Disposition: attachment` with `?download=1`.
 - `file-large` accepts a body over 25 MB, up to `limits.file_bytes` (100 MB by default).
 - `file-hub` stages one dropped or chosen file and publishes with Publish.
@@ -29,6 +30,7 @@ Preconditions:
 - **Default — Public GET.** Run `curl -sS -o "$EVIDENCE/publish-file/public.md" -w '%{http_code}' "$ORIGIN/$HANDLE/f/$ID/brief.md"` using `id` from the create body. Status `200`. Body is `verify-file-v1`.
 - **Default — Token GET.** Run `curl -sS -o "$EVIDENCE/publish-file/api.md" -w '%{http_code}' "$ORIGIN/v1/files/$ID" -H "Authorization: Bearer $TOKEN"`. Status `200`. Body is `verify-file-v1`.
 - **Default — Replace.** Run `curl -sS -o "$EVIDENCE/publish-file/put.json" -w '%{http_code}' -X PUT "$ORIGIN/v1/files/$ID" -H "Authorization: Bearer $TOKEN" -H "content-type: text/markdown" --data 'verify-file-v2'`. Status `200`. Body `url` and `id` are unchanged. Public GET now returns `verify-file-v2`.
+- **Default — Conditional replace.** Create, PUT, and list bodies carry `content_generation`; after the Replace step it is `2`, and `GET /v1/files/$ID` with the token returns header `X-Energon-Content-Generation: 2`. `PATCH /v1/files/$ID` `{"ttl":"7d"}` → `200` with `content_generation` still `2`. PUT `verify-file-v3` with `-H "X-Energon-Expected-Version: 2"` → `200`, `content_generation` `3`. PUT `verify-file-stale` with `-H "X-Energon-Expected-Version: 2"` again → `409` body `error` `file_conflict`, `content_generation` `3`, `expected_version` `2`. Public GET still returns `verify-file-v3`, and the token GET header is still `3`.
 - **Extra (file-markdown-html) — Rendered Markdown.** `GET` the public `.md` URL with `Accept: text/html`. Status `200`. Body contains `class="en-md-page"`, `class="en-md"`, and the rendered heading, `color-scheme:light dark` (spaces optional), and does not contain `class="en-brand"`, `class="en-top`, `class="en-card`, `>Raw<`, `/static/md-expand.mjs`, or `/static/mermaid/`. `GET` the same URL without that Accept header (or with `?raw=1`) is still markdown source. Drive when Markdown.svelte or markdown page chrome changes.
 - **Extra (file-download) — Download.** Run `curl -sS -D "$EVIDENCE/publish-file/download.headers" -o /dev/null "$ORIGIN/v1/files/$ID?download=1" -H "Authorization: Bearer $TOKEN"`. Status `200`. `Content-Disposition` is an attachment and includes `brief.md`. Drive when download disposition changes.
 - **Extra (file-large) — Over 25 MB.** `head -c 27262976 /dev/urandom > /tmp/verify-big.bin`, then `.agents/skills/verify-energon/bin/save --expect 201 publish-file big POST "$ORIGIN/v1/files" -H "Authorization: Bearer $TOKEN" -H "X-Filename: big.bin" -H "content-type: application/octet-stream" --data-binary @/tmp/verify-big.bin`. Body `size` is `27262976`. The SHA-256 of the public GET matches the local file. `GET /v1/help` `limits.file_bytes` is `104857600` by default. Trash the temp file afterwards. Drive when upload caps, `MAX_FILE_BYTES`, or large-upload staging changes.
@@ -42,4 +44,6 @@ Preconditions:
 - The public path includes the filename. PATCH does not take `filename`. Optional `X-Filename` on PUT renames and moves the public URL; the id stays. This recipe does not rename.
 - `GET /v1/files/{id}` skips a share password. The public `/{handle}/f/…` URL does not. Proof of “anyone with the link” must hit the public URL, not `/v1`.
 - Replace must keep `url` and `id`. A new id means mint-on-PUT, which is a bug.
+- A file blocked on storage recovery answers `409 file_recovery_required` (and an in-flight write `409 file_busy`) before any `expected_version` comparison, so a stale value on such a file is not reported as `file_conflict`.
+- `X-Energon-Expected-Version` is not `If-Match`. The public URL's `ETag` is a storage etag, not the generation; the generation is the `X-Energon-Content-Generation` header or the `content_generation` field.
 - A body over 25 MB needs a `Content-Length` header (curl `--data-binary @file` sends one) or it is `413 too_large`.

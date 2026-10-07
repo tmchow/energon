@@ -26,6 +26,8 @@ export const SET_PASSWORD_HEADER = "X-Energon-Set-Password";
 export const WRITE_PASSWORD_HEADER = "X-Energon-Write-Password";
 export const SET_WRITE_PASSWORD_HEADER = "X-Energon-Set-Write-Password";
 export const WRITTEN_VIA_WRITE_PASSWORD = "write_password";
+export const EXPECTED_VERSION_HEADER = "X-Energon-Expected-Version";
+export const CONTENT_GENERATION_HEADER = "X-Energon-Content-Generation";
 
 export const RESERVED_HANDLES = new Set(["v1", "account", "static", "health", "about", "stats", "setup", "tokens", "admin"]);
 export const RESERVED_SLUGS = new Set<string>();

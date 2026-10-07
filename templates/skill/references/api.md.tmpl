@@ -24,6 +24,7 @@ This skill talks only to **{{ORIGIN}}**. Install a separately rendered skill for
 | 413 | (HTML page, not JSON) | Cloudflare's per-request limit (100 MB on Free and Pro). Partial file bodies cannot be resumed; follow SKILL.md Scenario L. |
 | 409 | `file_busy` | Another write to that file is in progress. Retry shortly. |
 | 409 | `file_recovery_required` | Terminal for that file until an operator acts. An interrupted earlier write left its storage unreconciled. Do not retry; tell the human an administrator must reconcile it (the admin health view lists it). Reads still work. |
+| 409 | `file_conflict` | `X-Energon-Expected-Version` no longer matches the file's `content_generation` (in the body). Nothing changed. Read the file again, reconcile, then PUT with the new generation; never force the same bytes through. |
 | 409 | `cleanup_drift` | The cleanup selection changed since the preview. The body is a fresh preview; show it and resend with its `confirm`. |
 | 413 | `cleanup_too_many` | More than 100 eligible objects. Narrow the target (`q`, `created_by`, `expires_before`, `expires_within`, `updated_before`, `min_size`, `kind`) or send explicit ids. |
 
@@ -33,7 +34,8 @@ This skill talks only to **{{ORIGIN}}**. Install a separately rendered skill for
 POST   /v1/sites                         { "slug", "password"?: string, "write_password"?: string, "ttl"?: string, "duplicate_from"?: id }
 PATCH  /v1/sites/{id}                    { "password"?: string, "write_password"?: string, "ttl"?: string }  empty password or write_password clears; ttl resets expiry from now; write_password is creator-only
 GET    /v1/sites/{id}/files/{path}       raw bytes (token)
-PUT    /v1/sites/{id}/files/{path}       raw body (path may contain slashes). Does not extend expiry.
+PUT    /v1/sites/{id}/files/{path}       raw body (path may contain slashes). Does not extend expiry. Not conditional:
+                                         X-Energon-Expected-Version is 400 bad_expected_version (use a deployment)
 POST   /v1/sites/{id}/import             application/zip
 GET    /v1/sites/{id}/export             zip of the site (token; skips share password)
 GET    /v1/export                        zip of every site and loose file you own (owner_id) plus manifest.json
@@ -61,13 +63,15 @@ POST /v1/files           raw body + header X-Filename  OR  multipart field "file
                          optional X-Energon-Duplicate-From
 PUT  /v1/files/{id}      replace bytes; optional X-Filename; same id and URL
                          optional X-Energon-Set-Password. Does not extend expiry.
+                         optional X-Energon-Expected-Version (or multipart field expected_version):
+                         replace only if content_generation still matches, else 409 file_conflict
 PATCH /v1/files/{id}     { "password"?: string, "write_password"?: string, "ttl"?: string }  empty password or write_password clears; write_password is creator-only
 GET  /v1/files           your loose files (`total`, `next_cursor`; filters below)
-GET  /v1/files/{id}      raw bytes (token). ?download=1 → attachment
+GET  /v1/files/{id}      raw bytes (token) + X-Energon-Content-Generation header. ?download=1 → attachment
 DELETE /v1/files/{id}    delete the file (no recycle bin)
 ```
 
-`201` `{ url, api_url, id, handle, filename, size, password_protected, password, write_password_protected, write_password, ttl, expires_at }` on create. `password` / `write_password` are the phrases you just set, or `null`. `duplicate_from` copies an existing file to a new id (write password is not copied). `200` `{ ..., replaced: true }` on PUT. Human URL: `/{handle}/f/{id}/{filename}`. Agent URL: `/v1/files/{id}`. PUT 404s if the id does not exist — there is no implicit create. GET listings have `password_protected`, `write_password_protected`, and `expires_at`.
+`201` `{ url, api_url, id, handle, filename, size, password_protected, password, write_password_protected, write_password, ttl, expires_at }` on create. `password` / `write_password` are the phrases you just set, or `null`. `duplicate_from` copies an existing file to a new id (write password is not copied). `200` `{ ..., replaced: true, content_generation }` on PUT. Create, PUT, PATCH, and list bodies carry `content_generation` (1 for a new file; up by one per byte replacement; PATCH leaves it). Human URL: `/{handle}/f/{id}/{filename}`. Agent URL: `/v1/files/{id}`. PUT 404s if the id does not exist — there is no implicit create. GET listings have `password_protected`, `write_password_protected`, and `expires_at`.
 
 Guest write on the public URL uses header `X-Energon-Write-Password` (not a `/v1` header). Read `GET {content_origin}/llms.txt`. A file write password only PUTs that file. A site write password can PUT or DELETE a path. Do not mint the outside agent a token.
 
@@ -75,13 +79,13 @@ Guest write on the public URL uses header `X-Energon-Write-Password` (not a `/v1
 
 ```
 POST /v1/grants          { "target": { "type": "new_file", "filename", "ttl"?, "write_policy"? }
-                                   | { "type": "file", "id" } | { "type": "site_path", "site_id", "path" },
+                                   | { "type": "file", "id", "expected_version"? } | { "type": "site_path", "site_id", "path" },
                            "expires_in"?: "5m"|"15m"|"30m"|"1h", "max_bytes"?: number, "sha256"?: hex }
 GET  /v1/grants/{id}     state (unused|uploading|consumed|failed|expired), url, last_error
 PUT  {content_origin}/_grants/{id}   raw body, Authorization: Bearer <grant secret>; no token
 ```
 
-`201` on mint `{ id, secret, upload_url, method, header, scheme, expires_at, max_bytes, sha256, target, url, status_url }`. The secret is shown once. The upload returns `201` (created) or `200` (replaced) with `url`. `410 grant_used` names the published `url`; `410 grant_expired` and `410 grant_failed` mean mint a new grant, except `grant_failed` with `reason: file_recovery_required`, which needs an administrator to reconcile that file first; `409 grant_busy` and `5xx` are retryable; `404 grant_invalid` is a wrong id or secret.
+`201` on mint `{ id, secret, upload_url, method, header, scheme, expires_at, max_bytes, sha256, target, url, status_url }`. The secret is shown once. The upload returns `201` (created) or `200` (replaced) with `url`. `410 grant_used` names the published `url`; `410 grant_expired` and `410 grant_failed` mean mint a new grant (`reason`/`last_error` `file_conflict`: the file moved past `expected_version`, so re-read it before minting again), except `grant_failed` with `reason: file_recovery_required`, which needs an administrator to reconcile that file first; `409 grant_busy` and `5xx` are retryable; `404 grant_invalid` is a wrong id or secret.
 
 ## Listing and cleanup
 

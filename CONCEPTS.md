@@ -22,6 +22,9 @@ A standalone published file addressed independently rather than as a path within
 ### Site mutation
 An operation that changes one or more Site files or the Site itself. A mutation is complete only when its storage and catalog changes agree; a failed mutation must restore the prior state or report an explicit recovery failure.
 
+### Content generation
+A counter on a Site or Loose file that increases each time its published bytes are replaced. Metadata changes such as passwords, expiry, or write policy leave it unchanged. A conditional write names the generation it expects (`expected_version`) and fails with a conflict instead of overwriting a newer replacement. It is a counter, not a digest, so restoring earlier bytes still counts as a new generation.
+
 ### Last read
 The most recent moment this Energon itself served a Site's or Loose file's bytes, kept as an inactivity signal for cleanup.
 
@@ -68,7 +71,7 @@ A per-object shared secret that gates reading a published URL. Browsers use the 
 ### Upload Grant
 A short-lived, single-use credential a token holder mints so a machine without a token can upload one file: a new loose file, a replacement for an existing one, or one path in a site. The machine sends the bytes straight to the grant's upload URL on the content origin.
 
-It acts as the minting account: the upload must pass that account's write policy, and the minter becomes the writer. It is not an account and cannot be used as an API Token. A successful upload publishes at once and uses the grant up in the same commit as the catalog write. Its lifetime is its own credential policy, separate from Token Expiry and content retention, and never outlasts the minting token. Revoking or expiring that token ends the grant.
+It acts as the minting account: the upload must pass that account's write policy, and the minter becomes the writer. It is not an account and cannot be used as an API Token. A successful upload publishes at once and uses the grant up in the same commit as the catalog write. A grant for an existing Loose file can name the Content generation it expects; if the file was replaced after minting, the upload writes nothing and the grant fails permanently. Its lifetime is its own credential policy, separate from Token Expiry and content retention, and never outlasts the minting token. Revoking or expiring that token ends the grant.
 
 ## Org, this Energon, and host
 
