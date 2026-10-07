@@ -103,6 +103,30 @@ export async function dispatch(
   return null;
 }
 
+export type PlainRoute = {
+  path: string | RegExp;
+  methods: Partial<Record<HttpMethod, Handler<"none">>>;
+  /** Answer 405 on a method miss instead of trying later routes. */
+  strict?: boolean;
+};
+
+export async function dispatchPlain(
+  request: Request,
+  env: Env,
+  exec: ExecutionContext,
+  url: URL,
+  routes: readonly PlainRoute[],
+): Promise<Response | null> {
+  for (const route of routes) {
+    const params = matchPath(route.path, url.pathname);
+    if (!params) continue;
+    const handler = route.methods[request.method as HttpMethod];
+    if (handler) return handler({ request, env, ctx: exec, url, params });
+    if (route.strict) return methodNotAllowed();
+  }
+  return null;
+}
+
 export async function dispatchFirst(
   request: Request,
   env: Env,
