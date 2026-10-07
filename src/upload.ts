@@ -1,3 +1,6 @@
+import type { Env } from "./types";
+import { instancePolicy } from "./policy";
+import { cleanupAllocation, reserveAllocation, writeAllocation } from "./site-storage";
 import { IN_MEMORY_BYTES, TMP_PREFIX, formatBytes, tmpKey } from "./config";
 import { ApiError, capStream, putFromStaged, readBodyCapped, tooLarge } from "./http";
 
@@ -9,7 +12,7 @@ const STALE_TMP_MS = 60 * 60 * 1000;
  * One uploaded file body. Bodies over IN_MEMORY_BYTES are staged in R2 before any write claim is taken,
  * so a slow client cannot hold a claim past its staleness window. Read with withUpload so staging is cleaned up.
  */
-export type Upload = { size: number; head: Uint8Array } & (
+export type Upload = { size: number; head: Uint8Array; allocationId?: string } & (
   | { body: Uint8Array | Blob; stagedKey?: undefined }
   | { stagedKey: string; body?: undefined }
 );
@@ -33,11 +36,13 @@ export type UploadChecks = { sha256?: string | null };
 
 export async function readUpload(
   request: Request,
-  bucket: R2Bucket,
+  storage: R2Bucket | Env,
   maxBytes: number,
   origin: string,
   checks: UploadChecks = {},
 ): Promise<Upload> {
+  const env = "DB" in storage ? storage : undefined;
+  const bucket = env ? env.BUCKET : storage as R2Bucket;
   const expected = checks.sha256 ? checks.sha256.toLowerCase() : null;
   const inMemory = async (bytes: Uint8Array): Promise<Upload> => {
     if (expected && (await sha256OfBytes(bytes)) !== expected) throw checksumMismatch();
@@ -69,6 +74,20 @@ export async function readUpload(
       controller.enqueue(chunk);
     },
   });
+  if (env) {
+    const allocation = await reserveAllocation(env.DB, {
+      ownerId: "staging", kind: "upload", key: `site-staging/${crypto.randomUUID()}`,
+      bytes: declared, cap: instancePolicy(env).platformBytes,
+    });
+    try {
+      await writeAllocation(env.DB, bucket, allocation, request.body.pipeThrough(keepHead), expected ?? undefined);
+    } catch (error) {
+      if (/declared size|reserved size/.test(String(error))) throw incomplete(declared);
+      if (expected && /checksum/.test(String(error))) throw checksumMismatch();
+      throw error;
+    }
+    return { size: declared, head, stagedKey: allocation.object_key!, allocationId: allocation.id };
+  }
   const { readable, writable } = new FixedLengthStream(declared);
   const pipeFailed = request.body.pipeThrough(keepHead).pipeTo(writable).then(() => false, () => true);
   try {
@@ -94,7 +113,7 @@ function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
   return out;
 }
 
-async function sha256OfBytes(bytes: Uint8Array): Promise<string> {
+export async function sha256OfBytes(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
@@ -115,17 +134,20 @@ function incomplete(declared: number): ApiError {
 
 export async function withUpload<T>(
   request: Request,
-  bucket: R2Bucket,
+  storage: R2Bucket | Env,
   maxBytes: number,
   origin: string,
   fn: (upload: Upload) => Promise<T>,
   checks?: UploadChecks,
 ): Promise<T> {
-  const upload = await readUpload(request, bucket, maxBytes, origin, checks);
+  const upload = await readUpload(request, storage, maxBytes, origin, checks);
+  const env = "DB" in storage ? storage : undefined;
+  const bucket = env ? env.BUCKET : storage as R2Bucket;
   try {
     return await fn(upload);
   } finally {
-    if (upload.stagedKey) await bucket.delete(upload.stagedKey).catch(() => undefined);
+    if (upload.allocationId && env) await cleanupAllocation(env.DB, bucket, upload.allocationId).catch(error => console.error("Staging cleanup pending", upload.allocationId, error));
+    else if (upload.stagedKey) await bucket.delete(upload.stagedKey).catch(() => undefined);
   }
 }
 
@@ -163,4 +185,33 @@ export async function sweepStaleTmp(bucket: R2Bucket, now = Date.now()): Promise
     if (stale.length) await bucket.delete(stale);
     cursor = listed.truncated ? listed.cursor : undefined;
   } while (cursor);
+}
+
+export function abortableBody(body: ReadableStream<Uint8Array>, signal: AbortSignal): ReadableStream<Uint8Array> {
+  const reader = body.getReader();
+  let ended = false;
+  let controller: ReadableStreamDefaultController<Uint8Array>;
+  const stop = () => { ended = true; signal.removeEventListener("abort", abort); };
+  const abort = () => {
+    if (ended) return;
+    stop();
+    controller.error(signal.reason);
+    void reader.cancel(signal.reason).catch(() => undefined).finally(() => reader.releaseLock());
+  };
+  return new ReadableStream<Uint8Array>({
+    start(value) {
+      controller = value;
+      signal.addEventListener("abort", abort, { once: true });
+      if (signal.aborted) abort();
+    },
+    async pull(value) {
+      try {
+        const next = await reader.read();
+        if (ended) return;
+        if (next.done) { stop(); reader.releaseLock(); value.close(); }
+        else value.enqueue(next.value);
+      } catch (error) { if (!ended) { stop(); reader.releaseLock(); value.error(error); } }
+    },
+    cancel(reason) { stop(); return reader.cancel(reason).finally(() => reader.releaseLock()); },
+  }, { highWaterMark: 0 });
 }

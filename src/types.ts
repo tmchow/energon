@@ -23,7 +23,11 @@ export interface Env {
   ADMIN_EMAILS?: string;
   MAX_FILE_BYTES?: string;
   MAX_ZIP_BYTES?: string;
+  MAX_ZIP_IMPORT_BYTES?: string;
+  MAX_ZIP_EXTRACTED_BYTES?: string;
+  MAX_ZIP_EXPORT_BYTES?: string;
   MAX_PLATFORM_BYTES?: string;
+  SITE_VERSIONING_ENABLED?: string;
   WRITE_POLICY?: string;
   FOOTER_TEXT?: string;
   /** Test and local override. Production omits this and fetches GitHub. */
@@ -45,6 +49,10 @@ export type Actor = {
 };
 
 export type SiteRow = {
+  active_version_id?: string | null;
+  content_generation?: number;
+  lifecycle_state?: string;
+  conversion_state?: string;
   id: string;
   handle: string;
   owner_id?: string | null;
@@ -107,4 +115,66 @@ export type TokenRow = {
   revoked_at: string | null;
   expires_at?: string | null;
   scope?: string | null;
+};
+
+export type DeploymentManifestFile = { path: string; size: number; sha256: string; contentType: string };
+export type DeploymentIntent = {
+  mode: "replace" | "merge";
+  files?: DeploymentManifestFile[];
+  archive?: { size: number; sha256: string; maxExtractedBytes: number; maxFiles: number };
+};
+export type DeploymentReceipt = {
+  deploymentId: string;
+  versionId: string;
+  outcome: "committed";
+  url: string;
+  committedAt: string;
+};
+export type SiteDeploymentRow = {
+  id: string;
+  site_id: string;
+  owner_id: string;
+  version_id: string;
+  base_generation: number;
+  mode: "replace" | "merge";
+  input_json: string;
+  intent_hash: string;
+  idempotency_key: string;
+  state: "uploading" | "ready" | "committing" | "committed" | "aborted" | "expired" | "failed";
+  created_at: string;
+  deadline: string;
+  prepare_cursor: string | null;
+  prepare_owner: string | null;
+  prepare_expires_at: string | null;
+  commit_attempt: string | null;
+  terminal_at: string | null;
+  receipt_expires_at: string | null;
+  receipt_json: string | null;
+  last_error: string | null;
+};
+export type SiteVersionFileRow = {
+  version_id: string;
+  path: string;
+  allocation_id: string;
+  object_key: string;
+  size: number;
+  sha256: string;
+  content_type: string;
+};
+
+export type DeploymentGrantRow = {
+  id: string;
+  secret_hash: string;
+  token_id: string;
+  user_email: string;
+  user_id: string;
+  target_kind: "site_deployment";
+  site_id: string;
+  deployment_id: string;
+  deployment_intent_hash: string;
+  deployment_base_generation: number;
+  max_bytes: number;
+  state: "unused" | "consumed" | "revoked";
+  expires_at: string;
+  receipt_expires_at: string | null;
 };

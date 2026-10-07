@@ -406,9 +406,11 @@ describe("guest write password", () => {
   it("omits hub from a guest 500", async () => {
     const token = await mint("guest-500", "guest-500@esperlabs.app");
     const site_guest_500 = await createSite(token, "guest-500", { write_password: "guest-write-ok" });
-    const originalPut = env.BUCKET.put.bind(env.BUCKET);
-    env.BUCKET.put = async () => {
-      throw new Error("r2 down");
+    const originalCreate = env.BUCKET.createMultipartUpload.bind(env.BUCKET);
+    env.BUCKET.createMultipartUpload = async (...args) => {
+      const upload = await originalCreate(...args);
+      await upload.abort();
+      return upload;
     };
     try {
       const failed = await json(`${CONTENT}/guest-500/s/${site_guest_500.id}/guest-500/x.txt`, { method: "PUT", headers: WRITE, body: "x" });
@@ -418,7 +420,7 @@ describe("guest write password", () => {
       expect(JSON.stringify(failed.body)).not.toContain("/v1/help");
       expect(JSON.stringify(failed.body)).not.toContain("/account");
     } finally {
-      env.BUCKET.put = originalPut;
+      env.BUCKET.createMultipartUpload = originalCreate;
     }
   });
 });

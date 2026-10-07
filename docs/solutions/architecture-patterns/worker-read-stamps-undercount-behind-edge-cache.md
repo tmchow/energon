@@ -20,6 +20,10 @@ tags: [last-read-at, edge-cache, s-maxage, workers-cache, view-counts, inactivit
 
 # Worker-side read stamps are a floor behind the edge cache; view counts belong to edge logs
 
+## Atomic-site update
+
+Versioned site requests now enter the Worker before looking up their internal version-keyed body cache. Site cache hits therefore participate in the existing hourly read-stamp throttle; they no longer incur the outer cache's day-long observation gap. Loose-file responses still use the outer edge cache described below. Neither path provides exact view counts, and failed or throttled background stamps remain a lower bound. Keep the original conclusions below scoped to responses that bypass the Worker.
+
 ## Context
 
 PR #67 added `last_read_at` to `sites` and `loose_files` (`migrations/0019_last_read_at.sql`). `noteRead` in `src/reads.ts` stamps it when the Worker serves an object's bytes, off the response path through `ctx.waitUntil`, and skips the write while the stored stamp is younger than `READ_THROTTLE_MS` (one hour, `src/reads.ts:3`, `src/reads.ts:23`). The column exists as an inactivity signal for cleanup: the `last_read_before` filter in `src/catalog.ts:302-304` matches rows whose stamp is null or older than the cutoff, and admin cleanup and the hub `/admin` page expose it.

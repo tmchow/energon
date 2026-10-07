@@ -10,6 +10,12 @@ A named collection of public files addressed through one stable site URL.
 ### Site file
 A single path within a Site, with content bytes and catalog metadata that must remain consistent across the storage and catalog layers.
 
+### Site deployment
+An upload session that prepares a complete set of Site files and publishes them together. Preparation is separate from publication; ordinary readers see only the published content.
+
+### Site version
+An immutable snapshot of a Site selected when an operation begins. A Site keeps its stable URL while publication changes its active version; retained versions support in-flight operations, not user-selectable history.
+
 ### Loose file
 A standalone published file addressed independently rather than as a path within a Site.
 

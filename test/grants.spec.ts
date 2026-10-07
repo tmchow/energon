@@ -205,7 +205,14 @@ describe("grant guard on the account write paths", () => {
     const row = await env.DB.prepare("SELECT path FROM site_files WHERE site_id = ? AND path = 'a.txt'").bind(site.id).first();
     expect(row).toBeNull();
     expect(await env.BUCKET.get(`sites/${site.handle}/${site.id}/a.txt`)).toBeNull();
-    expect(await quotaUsed()).toBe(before);
+    const pending = await env.DB.prepare(`SELECT a.id, a.reserved_bytes FROM storage_allocations a
+      JOIN site_deployments d ON d.id = a.deployment_id WHERE d.site_id = ? AND d.state = 'failed' AND a.state != 'released'`)
+      .bind(site.id).all<{ id: string; reserved_bytes: number }>();
+    expect(pending.results).toHaveLength(1);
+    expect(await quotaUsed()).toBe(before + pending.results[0].reserved_bytes);
+    const { sweepSiteStorage } = await import("../src/site-storage");
+    await sweepSiteStorage(env.DB, env.BUCKET);
+    expect((await env.DB.prepare("SELECT state FROM storage_allocations WHERE id = ?").bind(pending.results[0].id).first())?.state).toBe("released");
   });
 });
 
@@ -443,20 +450,20 @@ describe("redeeming upload grants", () => {
     const token = await mint("redeem-staged-down");
     const big = new Uint8Array(26 * 1024 * 1024).fill(98);
     const minted = await mintGrant(token, { target: { type: "new_file", filename: "big-down.bin" }, sha256: "1".repeat(64) });
-    const put = env.BUCKET.put.bind(env.BUCKET);
-    env.BUCKET.put = (async (key: string, ...rest: unknown[]) => {
-      if (key.startsWith("tmp/uploads/")) {
-        await new Response(rest[0] as ReadableStream).arrayBuffer();
-        throw new Error("storage unavailable");
-      }
-      return (put as (...a: unknown[]) => Promise<unknown>)(key, ...rest);
-    }) as R2Bucket["put"];
+    const createMultipart = env.BUCKET.createMultipartUpload.bind(env.BUCKET);
+    env.BUCKET.createMultipartUpload = async (key, options) => {
+      const multipart = await createMultipart(key, options);
+      if (!key.startsWith("site-staging/")) return multipart;
+      return { key: multipart.key, uploadId: multipart.uploadId,
+        uploadPart: async () => { throw new Error("storage unavailable"); },
+        complete: multipart.complete.bind(multipart), abort: multipart.abort.bind(multipart) };
+    };
     try {
       const res = await redeem(minted.body.upload_url, minted.body.secret, big, { "content-length": String(big.byteLength) });
       expect(res.status).toBe(500);
       expect(res.body.error).not.toBe("checksum_mismatch");
     } finally {
-      env.BUCKET.put = put;
+      env.BUCKET.createMultipartUpload = createMultipart;
     }
     expect((await json(`/v1/grants/${minted.body.id}`, { headers: auth(token) })).body.state).toBe("unused");
   });

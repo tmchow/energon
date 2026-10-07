@@ -34,11 +34,17 @@ ALLOW_UNLIMITED_TOKENS = "true"
 # FOOTER_TEXT = "Internal — not for the public internet."
 # Single-file cap. Omit for 100 MB. Cloudflare Free and Pro plans reject request bodies over 100 MB.
 # MAX_FILE_BYTES = "100mb"
-# Zip import / export cap, never above MAX_FILE_BYTES. Omit for 25 MB.
-# Zips are handled in Worker memory (128 MB), so keep this at or below about 40 MB.
-# MAX_ZIP_BYTES = "25mb"
-# Whole-bucket safety valve. Omit for 20 GB.
+# ZIP imports are staged and extracted incrementally; each entry still obeys MAX_FILE_BYTES.
+# Defaults: 100 MiB compressed input, 500 MiB expanded contents, 25 MiB buffered export.
+# MAX_ZIP_IMPORT_BYTES = "100mb"
+# MAX_ZIP_EXTRACTED_BYTES = "500mb"
+# MAX_ZIP_EXPORT_BYTES = "25mb"
+# An explicit legacy MAX_ZIP_BYTES supplies the fallback for unset ZIP limits.
+# Large ZIPs require the qualified Workers Paid profile; see docs/atomic-site-deployments.md.
+# Instance-wide quota includes staged and retained bytes. Omit for 20 GiB.
 # MAX_PLATFORM_BYTES = "20gb"
+# Enable only after full bridge rollout and old-writer/cache drain; see docs/DEPLOY.md.
+# SITE_VERSIONING_ENABLED = "true"
 
 # Stricter / untrusted host — use instead of the block above:
 # ALLOW_UNLIMITED_RETENTION = "false"
@@ -53,6 +59,7 @@ crons = ["*/5 * * * *"]
 
 [cache]
 enabled = true
+cross_version_cache = false
 
 [[d1_databases]]
 binding = "DB"

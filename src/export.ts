@@ -1,3 +1,5 @@
+import { ensureLegacyReadVersion } from "./site-version-migrate";
+import { acquireVersionLease, releaseVersionLease, startVersionLeaseHeartbeat } from "./site-storage";
 import { MAX_IMPORT_FILES, PRODUCT, fileKey, formatBytes, nowIso, siteKey } from "./config";
 import { isExpired, isPurgeClaimed } from "./expire";
 import { getUser, getUserById } from "./handles";
@@ -54,6 +56,8 @@ type SiteRow = {
   last_read_at: string | null;
   path: string | null;
   size: number | null;
+  active_version_id: string | null;
+  object_key: string | null;
 };
 
 type LooseRow = {
@@ -74,7 +78,8 @@ type SitePlan = {
   expires_at: string | null;
   last_read_at: string | null;
   write_policy: WritePolicy;
-  files: { path: string; size: number }[];
+  versionId: string | null;
+  files: { path: string; size: number; key: string }[];
 };
 
 function ownedExportExtra(counts: OwnedExportCounts, extra: Record<string, unknown>): Record<string, unknown> {
@@ -129,11 +134,12 @@ function groupSites(rows: SiteRow[]): SitePlan[] {
         last_read_at: row.last_read_at,
         write_policy: resolveWritePolicy(row.write_policy),
         files: [],
+        versionId: row.active_version_id,
       };
       byId.set(row.id, site);
       order.push(row.id);
     }
-    if (row.path) site.files.push({ path: row.path, size: Number(row.size || 0) });
+    if (row.path) site.files.push({ path: row.path, size: Number(row.size || 0), key: row.object_key ?? siteKey(row.handle, row.id, row.path) });
   }
   return order.map((id) => byId.get(id)!);
 }
@@ -153,11 +159,13 @@ export async function exportOwnedZip(
   }
 
   const siteRows = await env.DB.prepare(
-    `SELECT s.id, s.handle, s.slug, s.expires_at, s.write_policy, s.last_written_by, s.last_read_at, f.path, f.size
+    `SELECT s.id, s.handle, s.slug, s.expires_at, s.write_policy, s.last_written_by, s.last_read_at, s.active_version_id,
+       COALESCE(vf.path, f.path) AS path, COALESCE(vf.size, f.size) AS size, vf.object_key
      FROM sites s
-     LEFT JOIN site_files f ON s.id = f.site_id
-     WHERE s.owner_id = ?
-     ORDER BY s.slug, s.id, f.path`,
+     LEFT JOIN site_files f ON s.id = f.site_id AND s.active_version_id IS NULL
+     LEFT JOIN site_version_files vf ON s.active_version_id = vf.version_id
+     WHERE s.owner_id = ? AND s.lifecycle_state = 'live'
+     ORDER BY s.slug, s.id, COALESCE(vf.path, f.path)`,
   )
     .bind(user.id)
     .all<SiteRow>();
@@ -190,7 +198,7 @@ export async function exportOwnedZip(
   }
 
   const policy = instancePolicy(env);
-  assertOwnedExportFits(counts, MAX_IMPORT_FILES, policy.zipBytes);
+  assertOwnedExportFits(counts, MAX_IMPORT_FILES, policy.zipExportBytes);
 
   const manifest: OwnedExportManifest = {
     exported_at: nowIso(),
@@ -220,31 +228,36 @@ export async function exportOwnedZip(
 
   const entries: UnpackedFile[] = [{ path: "manifest.json", bytes: manifestBytes }];
   for (const site of sites) {
-    for (const file of site.files) {
-      const obj = await env.BUCKET.get(siteKey(site.handle, site.id, file.path));
-      if (!obj) {
-        throw new ApiError(
-          500,
-          "export_failed",
-          `Site file '${file.path}' on '${site.slug}' is missing from storage. Re-upload that path, then retry.`,
-        );
+    const versionId = site.versionId ?? await ensureLegacyReadVersion(env.DB, site);
+    const lease = await acquireVersionLease(env.DB, versionId, "owned-export");
+    const controller = new AbortController();
+    const heartbeat = startVersionLeaseHeartbeat(env.DB, lease, error => controller.abort(error));
+    try {
+      for (const file of site.files) {
+        heartbeat.assertActive();
+        const obj = await env.BUCKET.get(file.key);
+        if (!obj || obj.size !== file.size) {
+          await obj?.body.cancel();
+          throw new ApiError(500, "export_failed", `Site file '${file.path}' on '${site.slug}' is missing or its length changed. Retry the export.`);
+        }
+        const bytes = new Uint8Array(await new Response(obj.body.pipeThrough(
+          new TransformStream<Uint8Array, Uint8Array>(), { signal: controller.signal },
+        )).arrayBuffer());
+        heartbeat.assertActive();
+        entries.push({ path: siteArchivePath(site.id, file.path), bytes });
       }
-      entries.push({ path: siteArchivePath(site.id, file.path), bytes: new Uint8Array(await obj.arrayBuffer()) });
-    }
+    } finally { heartbeat.stop(); await releaseVersionLease(env.DB, lease); }
   }
   for (const file of files) {
     const obj = await env.BUCKET.get(fileKey(file.id, file.filename));
-    if (!obj) {
-      throw new ApiError(
-        500,
-        "export_failed",
-        `File '${file.filename}' is missing from storage. Re-upload it, then retry.`,
-      );
+    if (!obj || obj.size !== file.size) {
+      await obj?.body.cancel();
+      throw new ApiError(500, "export_failed", `File '${file.filename}' is missing or its length changed. Retry the export.`);
     }
     entries.push({ path: fileArchivePath(file.id, file.filename), bytes: new Uint8Array(await obj.arrayBuffer()) });
   }
 
-  const zip = packZip(entries, policy.zipBytes + manifestBytes.byteLength, MAX_IMPORT_FILES + 1);
+  const zip = packZip(entries, policy.zipExportBytes + manifestBytes.byteLength, MAX_IMPORT_FILES + 1);
   for (const site of sites) {
     noteRead(env, ctx, { table: "sites", id: site.id, last_read_at: site.last_read_at });
   }

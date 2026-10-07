@@ -6,7 +6,7 @@ import { v1PathLiterals, v1PathPatterns } from "../../src/v1-routes";
 
 const METHODS = ["get", "post", "put", "patch", "delete"] as const;
 const ORIGIN = "https://hub.energon.example.com";
-const SAMPLE_PARAMS: Record<string, string> = { slug: "my-slug", id: "abc123", path: "docs/a.txt" };
+const SAMPLE_PARAMS: Record<string, string> = { slug: "my-slug", id: "abc123", path: "docs/a.txt", deploymentId: "deployment123", grantId: "grant123" };
 
 type Operation = { operationId?: string; responses?: Record<string, unknown>; security?: unknown[] };
 type PathItem = Partial<Record<(typeof METHODS)[number], Operation>>;
@@ -43,6 +43,7 @@ function runtimeErrorCodes(): string[] {
   for (const file of sourceFiles("src")) {
     const source = readFileSync(file, "utf8");
     for (const match of source.matchAll(/new ApiError\(\s*\d+,\s*"([a-z_]+)"/g)) codes.add(match[1]);
+    for (const match of source.matchAll(/new DeploymentError\(\s*"([a-z_]+)"/g)) codes.add(match[1]);
     for (const match of source.matchAll(/\berror:\s*"([a-z_]+)"/g)) codes.add(match[1]);
   }
   return [...codes].sort();

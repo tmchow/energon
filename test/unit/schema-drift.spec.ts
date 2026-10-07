@@ -6,7 +6,7 @@ function tableColumns(source: string): Map<string, string[]> {
   for (const match of source.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)\s*\(([\s\S]*?)\n\s*\)/g)) {
     const columns = [...match[2].matchAll(/^\s*(\w+)\s+/gm)]
       .map((column) => column[1])
-      .filter((name) => !["PRIMARY", "CHECK"].includes(name));
+      .filter((name) => !["PRIMARY", "CHECK", "UNIQUE"].includes(name));
     tables.set(match[1], columns);
   }
   return tables;
@@ -86,4 +86,15 @@ describe("schema representations", () => {
     expect(migration).toMatch(/CREATE TABLE IF NOT EXISTS admin_audit/);
     expect(migration).toMatch(/CREATE INDEX IF NOT EXISTS idx_admin_audit_created/);
   });
+});
+
+
+it("ships the additive deployment tables and indexes in migration 0024", () => {
+  const migration = readFileSync("migrations/0024_site_deployments.sql", "utf8");
+  const runtime = tableColumns(readFileSync("src/db.ts", "utf8"));
+  for (const [table, columns] of tableColumns(migration)) {
+    expect(new Set(columns)).toEqual(new Set(runtime.get(table)));
+  }
+  expect(migration).toContain("ALTER TABLE sites ADD COLUMN content_generation INTEGER NOT NULL DEFAULT 0;");
+  expect(migration).toContain("ALTER TABLE upload_grants ADD COLUMN deployment_id TEXT;");
 });
