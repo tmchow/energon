@@ -177,9 +177,16 @@ async function prepareArchive(env: Env, deployment: SiteDeploymentRow, actor: De
 }
 
 export async function deploymentStatus(env: Env, deployment: SiteDeploymentRow): Promise<Record<string, unknown>> {
-  const files = (await env.DB.prepare("SELECT path FROM site_version_files WHERE version_id = ? ORDER BY path")
-    .bind(deployment.version_id).all<{ path: string }>()).results;
   const intent: DeploymentIntent = JSON.parse(deployment.input_json);
+  const [catalog, archiveMissing] = await Promise.all([
+    env.DB.prepare("SELECT path FROM site_version_files WHERE version_id = ? ORDER BY path")
+      .bind(deployment.version_id).all<{ path: string }>(),
+    deployment.state === "uploading" && intent.archive
+      ? env.DB.prepare("SELECT id FROM storage_allocations WHERE deployment_id = ? AND kind = ? AND state = 'stored' LIMIT 1")
+        .bind(deployment.id, `input:${ARCHIVE_PATH}`).first().then(archive => !archive)
+      : false,
+  ]);
+  const files = catalog.results;
   const stored = new Set(files.map(file => file.path));
   const missing = intent.files?.filter(file => !stored.has(file.path)).map(file => file.path) ?? [];
   const receipt = deployment.receipt_json ? JSON.parse(deployment.receipt_json) : null;
@@ -187,7 +194,7 @@ export async function deploymentStatus(env: Env, deployment: SiteDeploymentRow):
     deployment_id: deployment.id, state: deployment.state, expected_version: deployment.base_generation,
     expires_at: deployment.deadline, status_url: `${publicOrigin(env)}/v1/sites/${deployment.site_id}/deployments/${deployment.id}`,
     progress: { stored_files: files.length, missing_paths: missing },
-    next_action: deployment.state === "ready" ? "commit" : deployment.state === "uploading" ? missing.length ? "upload" : "prepare" : null,
+    next_action: deployment.state === "ready" ? "commit" : deployment.state === "uploading" ? missing.length || archiveMissing ? "upload" : "prepare" : null,
     ...(receipt ? { version_id: receipt.versionId, url: receipt.url, completed_at: receipt.committedAt, result_expires_at: deployment.receipt_expires_at } : {}),
   };
 }

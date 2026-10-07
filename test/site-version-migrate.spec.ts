@@ -1,8 +1,9 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { auth, createSite, json, mint, req } from "./helpers";
 import { ensureSchema } from "../src/db";
 import { purgeExpiredSite } from "../src/expire";
-import { STORED_BYTES_SQL } from "../src/http";
+import { sha256Hex, STORED_BYTES_SQL } from "../src/http";
 import { acquireVersionLease, releaseVersionLease } from "../src/site-storage";
 import {
   advanceLegacySiteConversion,
@@ -10,6 +11,7 @@ import {
   ensureLegacyReadVersion,
   ensureSiteSnapshotBaseline,
   getSiteConversion,
+  sweepLegacySiteStorage,
 } from "../src/site-version-migrate";
 import { putSiteFile, deleteSiteFile } from "../src/sites";
 import { uploadFromBytes } from "../src/upload";
@@ -53,6 +55,29 @@ async function finish(siteId: string, selectedEnv: Env = env, steps = 20) {
 }
 
 describe("durable legacy site conversion", () => {
+  it("keeps a new site's first deployment writable across enabled legacy sweeps", async () => {
+    const token = await mint("first-deployment-sweep");
+    const site = await createSite(token, "first-deployment-sweep");
+    expect(site.status).toBe(201);
+    const baseline = await env.DB.prepare("SELECT active_version_id, content_generation, conversion_state FROM sites WHERE id = ?").bind(site.id).first();
+    expect(baseline).toMatchObject({ content_generation: 0, conversion_state: "versioned" });
+    expect(baseline?.active_version_id).toBeTruthy();
+    const base = `/v1/sites/${site.id}/deployments`;
+    const created = await json(base, { method: "POST", headers: auth(token), body: JSON.stringify({
+      expected_version: 0, idempotency_key: `${Date.now()}.${crypto.randomUUID()}`,
+      files: [{ path: "index.html", size: 5, sha256: await sha256Hex("hello"), content_type: "text/html" }],
+    }) });
+    expect(created.status).toBe(201);
+    await sweepLegacySiteStorage({ ...env, SITE_VERSIONING_ENABLED: "true" });
+    expect(await getSiteConversion(env.DB, site.id)).toBeNull();
+    expect(await env.DB.prepare("SELECT active_version_id, content_generation, conversion_state FROM sites WHERE id = ?").bind(site.id).first()).toEqual(baseline);
+    const session = `${base}/${created.body.deployment_id}`;
+    expect((await req(`${session}/files/index.html`, { method: "PUT", headers: auth(token), body: "hello" })).status).toBe(201);
+    expect((await json(`${session}/prepare`, { method: "POST", headers: auth(token) })).body.state).toBe("ready");
+    await sweepLegacySiteStorage({ ...env, SITE_VERSIONING_ENABLED: "true" });
+    expect((await json(`${session}/commit`, { method: "POST", headers: auth(token) })).status).toBe(200);
+    expect(await (await req(site.url)).text()).toBe("hello");
+  });
   it("requires explicit conversion enablement while permitting a genuinely empty first write", async () => {
     const site = await fixture();
     await expect(ensureSiteSnapshotBaseline({ ...env, SITE_VERSIONING_ENABLED: "false" }, site)).rejects.toThrow("not enabled");

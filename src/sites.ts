@@ -1,6 +1,7 @@
 import { acquireVersionLease, releaseVersionLease, startVersionLeaseHeartbeat } from "./site-storage";
 import { SITE_FILE_COUNT_SQL, SITE_SIZE_SQL, SITE_FILE_TOTALS_JOIN_SQL } from "./catalog";
 import { publishSiteChanges, snapshotFiles } from "./site-snapshot";
+import { canonicalDeploymentIntent } from "./site-deployments";
 import { withSiteRead } from "./site-reads";
 import { withSiteBodyCache } from "./site-cache";
 import { privateCacheControl, publicCacheControl, purgeContent, siteCacheTag, sitePrefix } from "./cache";
@@ -32,7 +33,7 @@ import { maybeUnlockWithWritePassword, passwordEcho, passwordField, passwordHash
 import { ensureUser } from "./handles";
 import { mintObjectId } from "./ids";
 import { type GrantGuard } from "./grant-guard";
-import { ApiError, applyIsolation, basename, contentDisposition, htmlPage, json, jsonMaybeSecret, normalizeRelPath, publicOrigin, secretJson, tooLarge, wantsDownload } from "./http";
+import { ApiError, applyIsolation, basename, contentDisposition, htmlPage, json, jsonMaybeSecret, normalizeRelPath, publicOrigin, secretJson, sha256Hex, tooLarge, wantsDownload } from "./http";
 import { contentTypeFor } from "./mime";
 import {
   OWNER_WRITE_SQL,
@@ -151,12 +152,19 @@ export async function createSite(
   const ts = new Date().toISOString();
   const stored = hash === undefined ? null : hash;
   const storedWritePw = writeHash === undefined ? null : writeHash;
-  await env.DB.prepare(
-    `INSERT INTO sites (id, handle, slug, owner_id, created_at, updated_at, created_by, last_written_by, password_hash, password_secret, expires_at, write_policy, write_password_hash, write_password_secret, lifecycle_state)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(id, handle, slug, user.id, ts, ts, actor.email, actor.email, stored, storedPasswordSecret(stored, password), resolved.expiresAt, storedWrite, storedWritePw, storedPasswordSecret(storedWritePw, writePassword), lifecycleState)
-    .run();
+  const versionId = crypto.randomUUID();
+  const manifestHash = await sha256Hex(canonicalDeploymentIntent({ mode: "replace", files: [] }));
+  // Create the empty snapshot with its pointer so cron cannot mistake a new site for legacy storage.
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO sites (id, handle, slug, owner_id, created_at, updated_at, created_by, last_written_by, password_hash, password_secret, expires_at, write_policy, write_password_hash, write_password_secret, lifecycle_state, active_version_id, conversion_state)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'versioned')`,
+    ).bind(id, handle, slug, user.id, ts, ts, actor.email, actor.email, stored, storedPasswordSecret(stored, password), resolved.expiresAt, storedWrite, storedWritePw, storedPasswordSecret(storedWritePw, writePassword), lifecycleState, versionId),
+    env.DB.prepare(
+      `INSERT INTO site_versions (id, site_id, state, manifest_hash, created_at, sealed_at)
+       VALUES (?, ?, 'active', ?, ?, ?)`,
+    ).bind(versionId, id, manifestHash, ts, ts),
+  ]);
   return {
     status: 201,
     body: {

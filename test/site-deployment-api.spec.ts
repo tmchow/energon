@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { sha256Hex } from "../src/http";
+import { sha256OfBytes } from "../src/upload";
 import { auth, createSite, json, mint, req } from "./helpers";
 import { zipSync, strToU8 } from "fflate";
 
@@ -42,6 +43,46 @@ describe("deployment API", () => {
     const replay = await json(`${session}/commit`, { method: "POST", headers: auth(token) });
     expect(replay.body).toEqual(committed.body);
     expect((await json(path, { method: "POST", headers: auth(token), body })).body.deployment_id).toBe(created.body.deployment_id);
+  });
+
+  it.each(["token", "grant"])("reports ZIP upload, prepare, and commit steps through %s status", async authority => {
+    const { env } = await import("cloudflare:test");
+    const token = await mint(`archive-status-${authority}`);
+    const site = await createSite(token, `archive-status-${authority}`);
+    const archive = zipSync({ "index.html": strToU8("archive page") });
+    const created = await json(`/v1/sites/${site.id}/deployments`, { method: "POST", headers: auth(token), body: JSON.stringify({
+      expected_version: 0, idempotency_key: `${Date.now()}.${crypto.randomUUID()}`,
+      archive: { size: archive.length, sha256: await sha256OfBytes(archive) },
+    }) });
+    expect(created.status).toBe(201);
+    expect(created.body.next_action).toBe("upload");
+    const id = created.body.deployment_id;
+    let session = `/v1/sites/${site.id}/deployments/${id}`;
+    let headers = auth(token);
+    if (authority === "grant") {
+      const grant = await json("/v1/grants", { method: "POST", headers, body: JSON.stringify({
+        target: { type: "site_deployment", deployment_id: id }, expires_in: "15m",
+      }) });
+      expect(grant.status).toBe(201);
+      session = grant.body.status_url;
+      headers = auth(grant.body.secret);
+    }
+    const allocations = () => env.DB.prepare("SELECT * FROM storage_allocations WHERE deployment_id = ?").bind(id).all();
+    const reserved = await allocations();
+    const initial = await json(session, { headers });
+    expect(initial.status).toBe(200);
+    expect(initial.body.next_action).toBe("upload");
+    expect(await allocations()).toMatchObject({ results: reserved.results });
+    expect((await req(`${session}/archive`, { method: "PUT", headers, body: archive })).status).toBe(201);
+    const uploaded = await json(session, { headers });
+    expect(uploaded.body).toMatchObject({ state: "uploading", next_action: "prepare", progress: { stored_files: 0 } });
+    const prepared = await json(`${session}/prepare`, { method: "POST", headers });
+    expect(prepared.status).toBe(200);
+    expect(prepared.body).toMatchObject({ state: "ready", next_action: "commit" });
+    const committed = await json(`${session}/commit`, { method: "POST", headers });
+    expect(committed.status).toBe(200);
+    expect(committed.body).toMatchObject({ state: "committed", next_action: null });
+    expect(await (await req(site.url)).text()).toBe("archive page");
   });
 
   it("keeps sessions private and makes abort retries idempotent", async () => {
@@ -164,6 +205,7 @@ it("requires the controlled baseline before new legacy deployment or import sess
   const { env } = await import("cloudflare:test");
   const token = await mint("legacy-session-barrier");
   const site = await createSite(token, "legacy-session-barrier");
+  await env.DB.prepare("UPDATE sites SET active_version_id = NULL, conversion_state = 'legacy' WHERE id = ?").bind(site.id).run();
   await env.DB.prepare("INSERT INTO site_files (site_id,path,size,content_type,updated_at,last_written_by) VALUES (?,'old.txt',3,'text/plain',?,'ada@esperlabs.app')")
     .bind(site.id, new Date().toISOString()).run();
   await env.BUCKET.put(`sites/${site.handle}/${site.id}/old.txt`, "old");

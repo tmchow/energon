@@ -39,3 +39,20 @@ it("checks the current version and access before serving warmed site bodies with
   expect((await req(api, { method: "DELETE", headers: auth(token) })).status).toBe(404);
   expect((await req(site.url)).status).toBe(404);
 });
+
+it("disables outer caching for legacy content and returns 404 after logical deletion", async () => {
+  const token = await mint("legacy-site-cache");
+  const site = await createSite(token, "legacy-site-cache");
+  await env.DB.prepare("UPDATE sites SET active_version_id = NULL, conversion_state = 'legacy' WHERE id = ?").bind(site.id).run();
+  await env.BUCKET.put(`sites/${site.handle}/${site.id}/index.html`, "legacy", {
+    httpMetadata: { contentType: "text/html" },
+  });
+  const before = await req(site.url);
+  expect(await before.text()).toBe("legacy");
+  expect(before.headers.get("cache-control")).toBe("private, no-store");
+  expect(before.headers.get("cache-tag")).toBeNull();
+  expect((await req(`/v1/sites/${site.id}`, { method: "DELETE", headers: auth(token) })).status).toBe(200);
+  const after = await req(site.url);
+  expect(after.status).toBe(404);
+  expect(after.headers.get("cache-control")).toBe("private, no-store");
+});

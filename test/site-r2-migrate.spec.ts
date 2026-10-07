@@ -5,6 +5,7 @@ import { remapLegacySiteR2, resetLegacySiteR2RemapForTests } from "../src/site-r
 import { auth, createSite, mint, req, sitePub } from "./helpers";
 
 async function seedLegacyFile(site: { id: string; handle: string }, path: string, body: string, key = siteKey(site.handle, site.id, path)) {
+  await env.DB.prepare("UPDATE sites SET active_version_id = NULL, conversion_state = 'legacy' WHERE id = ?").bind(site.id).run();
   const row = await env.DB.prepare("SELECT active_version_id FROM sites WHERE id = ?").bind(site.id).first();
   expect(row?.active_version_id).toBeNull();
   await env.DB.prepare(`INSERT INTO site_files (site_id, path, size, content_type, updated_at, last_written_by)
