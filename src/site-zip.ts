@@ -150,6 +150,33 @@ function sizes(
     throw invalid("Split ZIP archives are unsupported.");
   return { size, compressed, offset };
 }
+interface ZipDirectory {
+  count: number;
+  size: number;
+  offset: number;
+  end: number;
+}
+type ZipSizes = ReturnType<typeof sizes>;
+type ZipSpan = { start: number; end: number };
+interface DirectoryFields {
+  flags: number;
+  method: number;
+  crc: number;
+  nameBytes: Uint8Array;
+  localOffset: number;
+}
+interface DirectoryRecord {
+  name: string;
+  length: number;
+  localOffset: number;
+  dataOffset: number;
+  recordEnd: number;
+  size: number;
+  compressed: number;
+  crc: number;
+  method: 0 | 8;
+}
+
 export async function indexSiteZip(
   bucket: R2Bucket,
   key: string,
@@ -162,8 +189,69 @@ export async function indexSiteZip(
   const archive = { key, size: head.size, etag: head.etag };
   const reader = new ArchiveReader(bucket, archive);
   const localReader = new ArchiveReader(bucket, archive);
-  const tailOffset = Math.max(0, head.size - (65535 + 22));
-  const tail = await reader.read(tailOffset, head.size - tailOffset);
+  const directory = await readDirectoryLocation(reader, head.size, limits);
+  range(directory.offset, directory.size, directory.end);
+  if (directory.offset + directory.size !== directory.end)
+    throw invalid("Unexpected ZIP directory trailer.");
+  if (
+    directory.count > limits.maxRecords ||
+    directory.size > limits.maxDirectoryBytes
+  )
+    throw invalid("ZIP directory metadata limit exceeded.");
+  const entries: SiteZipEntry[] = [];
+  const occupied: ZipSpan[] = [];
+  let at = directory.offset,
+    totalBytes = 0;
+  for (let i = 0; i < directory.count; i++) {
+    const record = await readDirectoryRecord(
+      reader,
+      localReader,
+      at,
+      directory,
+      limits,
+    );
+    occupied.push({ start: record.localOffset, end: record.recordEnd });
+    if (!record.name.endsWith("/") && !skipZipJunk(record.name)) {
+      assertSafeZipName(record.name);
+      if (entries.length >= limits.maxFiles)
+        throw new ApiError(
+          400,
+          "too_many_files",
+          "ZIP file count limit exceeded.",
+        );
+      if (
+        record.size > limits.maxFileBytes ||
+        totalBytes > limits.maxTotalBytes - record.size
+      )
+        throw overLimit();
+      totalBytes += record.size;
+      entries.push({
+        path: record.name,
+        dataOffset: record.dataOffset,
+        compressedBytes: record.compressed,
+        size: record.size,
+        crc32: record.crc,
+        method: record.method,
+      });
+    }
+    at += record.length;
+  }
+  if (at !== directory.end)
+    throw invalid("ZIP directory record count disagrees with size.");
+  assertNoOverlap(occupied);
+  if (!entries.length)
+    throw new ApiError(400, "empty_zip", "ZIP has no files.");
+  canonicalizeEntryPaths(entries);
+  return { archive, entries, totalBytes };
+}
+
+async function readDirectoryLocation(
+  reader: ArchiveReader,
+  archiveSize: number,
+  limits: SiteZipLimits,
+): Promise<ZipDirectory> {
+  const tailOffset = Math.max(0, archiveSize - (65535 + 22));
+  const tail = await reader.read(tailOffset, archiveSize - tailOffset);
   let end = tail.length - 22;
   while (
     end >= 0 &&
@@ -174,200 +262,230 @@ export async function indexSiteZip(
   if (end < 0) throw invalid("Missing ZIP end record.");
   if (u16(tail, end + 4) || u16(tail, end + 6))
     throw invalid("Split ZIP archives are unsupported.");
-  let count = u16(tail, end + 10),
-    directorySize = u32(tail, end + 12),
-    directoryOffset = u32(tail, end + 16);
-  let directoryEnd = tailOffset + end;
-  if (u16(tail, end + 8) !== count)
+  const directory = {
+    count: u16(tail, end + 10),
+    size: u32(tail, end + 12),
+    offset: u32(tail, end + 16),
+    end: tailOffset + end,
+  };
+  if (u16(tail, end + 8) !== directory.count)
     throw invalid("Split ZIP archives are unsupported.");
   if (
-    count === 65535 ||
-    directorySize === 0xffffffff ||
-    directoryOffset === 0xffffffff
+    directory.count === 65535 ||
+    directory.size === 0xffffffff ||
+    directory.offset === 0xffffffff
+  )
+    return readZip64Directory(reader, directory, limits);
+  return directory;
+}
+
+async function readZip64Directory(
+  reader: ArchiveReader,
+  classic: ZipDirectory,
+  limits: SiteZipLimits,
+): Promise<ZipDirectory> {
+  const locatorOffset = classic.end - 20;
+  const locator = await reader.read(locatorOffset, 20);
+  if (
+    u32(locator, 0) !== 0x07064b50 ||
+    u32(locator, 4) !== 0 ||
+    u32(locator, 16) !== 1
+  )
+    throw invalid("Invalid ZIP64 locator.");
+  const at = u64(locator, 8),
+    record = await reader.read(at, 56);
+  const recordSize = u64(record, 4);
+  if (
+    u32(record, 0) !== 0x06064b50 ||
+    recordSize < 44 ||
+    recordSize > limits.maxDirectoryBytes ||
+    at + 12 + recordSize !== locatorOffset
+  )
+    throw invalid("Invalid ZIP64 end record.");
+  if (
+    u32(record, 16) ||
+    u32(record, 20) ||
+    u64(record, 24) !== u64(record, 32)
+  )
+    throw invalid("Split ZIP archives are unsupported.");
+  if (
+    (classic.count !== 65535 && classic.count !== u64(record, 32)) ||
+    (classic.size !== 0xffffffff && classic.size !== u64(record, 40)) ||
+    (classic.offset !== 0xffffffff && classic.offset !== u64(record, 48))
+  )
+    throw invalid("ZIP64 end records disagree.");
+  return {
+    count: u64(record, 32),
+    size: u64(record, 40),
+    offset: u64(record, 48),
+    end: at,
+  };
+}
+
+async function readDirectoryRecord(
+  reader: ArchiveReader,
+  localReader: ArchiveReader,
+  at: number,
+  directory: ZipDirectory,
+  limits: SiteZipLimits,
+): Promise<DirectoryRecord> {
+  range(at, 46, directory.end);
+  const record = await reader.read(at, 46);
+  if (u32(record, 0) !== 0x02014b50)
+    throw invalid("Invalid ZIP directory record.");
+  const flags = u16(record, 8),
+    method = u16(record, 10);
+  if (flags & ~0x080e || (method !== 0 && method !== 8))
+    throw invalid("Encrypted or unsupported ZIP entry.");
+  const nameLength = u16(record, 28),
+    extraLength = u16(record, 30),
+    commentLength = u16(record, 32);
+  if (!nameLength || nameLength > limits.maxNameBytes)
+    throw invalid("ZIP filename limit exceeded.");
+  const recordLength = 46 + nameLength + extraLength + commentLength;
+  range(at, recordLength, directory.end);
+  const variable = await reader.read(at + 46, nameLength + extraLength);
+  const nameBytes = variable.subarray(0, nameLength);
+  const name = strFromU8(nameBytes, !(flags & 2048));
+  const parsed = sizes(
+    variable.subarray(nameLength),
+    u32(record, 24),
+    u32(record, 20),
+    u32(record, 42),
+    u16(record, 34),
+  );
+  const localOffset = parsed.offset!;
+  const crc = u32(record, 16);
+  const dataOffset = await readLocalHeader(
+    localReader,
+    { flags, method, crc, nameBytes, localOffset },
+    parsed,
+    directory.offset,
+  );
+  const dataEnd = dataOffset + parsed.compressed;
+  const wide =
+    u32(record, 24) === 0xffffffff || u32(record, 20) === 0xffffffff;
+  const recordEnd =
+    flags & 8
+      ? await readDataDescriptor(localReader, crc, wide, parsed, dataEnd, directory.offset)
+      : dataEnd;
+  if (method === 0 && parsed.size !== parsed.compressed)
+    throw invalid("Stored ZIP lengths disagree.");
+  return {
+    name,
+    length: recordLength,
+    localOffset,
+    dataOffset,
+    recordEnd,
+    size: parsed.size,
+    compressed: parsed.compressed,
+    crc,
+    method,
+  };
+}
+
+async function readLocalHeader(
+  localReader: ArchiveReader,
+  { flags, method, crc, nameBytes, localOffset }: DirectoryFields,
+  parsed: ZipSizes,
+  directoryOffset: number,
+): Promise<number> {
+  const nameLength = nameBytes.length;
+  range(localOffset, 30, directoryOffset);
+  const local = await localReader.read(localOffset, 30);
+  if (
+    u32(local, 0) !== 0x04034b50 ||
+    u16(local, 6) !== flags ||
+    u16(local, 8) !== method ||
+    u16(local, 26) !== nameLength
+  )
+    throw invalid("ZIP local header disagrees with directory.");
+  const localExtraLength = u16(local, 28),
+    dataOffset = localOffset + 30 + nameLength + localExtraLength;
+  range(
+    localOffset,
+    dataOffset - localOffset + parsed.compressed,
+    directoryOffset,
+  );
+  const localVariable = await localReader.read(
+    localOffset + 30,
+    nameLength + localExtraLength,
+  );
+  if (!nameBytes.every((b, j) => b === localVariable[j]))
+    throw invalid("ZIP local filename disagrees with directory.");
+  const localSizes = sizes(
+    localVariable.subarray(nameLength),
+    u32(local, 22),
+    u32(local, 18),
+  );
+  if (!(flags & 8)) {
+    if (
+      localSizes.size !== parsed.size ||
+      localSizes.compressed !== parsed.compressed ||
+      u32(local, 14) !== crc
+    )
+      throw invalid("ZIP local sizes disagree with directory.");
+  } else if (
+    (localSizes.size && localSizes.size !== parsed.size) ||
+    (localSizes.compressed && localSizes.compressed !== parsed.compressed) ||
+    (u32(local, 14) && u32(local, 14) !== crc)
   ) {
-    const locatorOffset = directoryEnd - 20;
-    const locator = await reader.read(locatorOffset, 20);
-    if (
-      u32(locator, 0) !== 0x07064b50 ||
-      u32(locator, 4) !== 0 ||
-      u32(locator, 16) !== 1
-    )
-      throw invalid("Invalid ZIP64 locator.");
-    const at = u64(locator, 8),
-      record = await reader.read(at, 56);
-    const recordSize = u64(record, 4);
-    if (
-      u32(record, 0) !== 0x06064b50 ||
-      recordSize < 44 ||
-      recordSize > limits.maxDirectoryBytes ||
-      at + 12 + recordSize !== locatorOffset
-    )
-      throw invalid("Invalid ZIP64 end record.");
-    if (
-      u32(record, 16) ||
-      u32(record, 20) ||
-      u64(record, 24) !== u64(record, 32)
-    )
-      throw invalid("Split ZIP archives are unsupported.");
-    if (
-      (count !== 65535 && count !== u64(record, 32)) ||
-      (directorySize !== 0xffffffff && directorySize !== u64(record, 40)) ||
-      (directoryOffset !== 0xffffffff && directoryOffset !== u64(record, 48))
-    )
-      throw invalid("ZIP64 end records disagree.");
-    count = u64(record, 32);
-    directorySize = u64(record, 40);
-    directoryOffset = u64(record, 48);
-    directoryEnd = at;
+    throw invalid("ZIP local descriptor sizes disagree with directory.");
   }
-  range(directoryOffset, directorySize, directoryEnd);
-  if (directoryOffset + directorySize !== directoryEnd)
-    throw invalid("Unexpected ZIP directory trailer.");
-  if (count > limits.maxRecords || directorySize > limits.maxDirectoryBytes)
-    throw invalid("ZIP directory metadata limit exceeded.");
-  const entries: SiteZipEntry[] = [];
-  const occupied: Array<{ start: number; end: number }> = [];
-  let at = directoryOffset,
-    totalBytes = 0;
-  for (let i = 0; i < count; i++) {
-    range(at, 46, directoryEnd);
-    const record = await reader.read(at, 46);
-    if (u32(record, 0) !== 0x02014b50)
-      throw invalid("Invalid ZIP directory record.");
-    const flags = u16(record, 8),
-      method = u16(record, 10);
-    if (flags & ~0x080e || (method !== 0 && method !== 8))
-      throw invalid("Encrypted or unsupported ZIP entry.");
-    const nameLength = u16(record, 28),
-      extraLength = u16(record, 30),
-      commentLength = u16(record, 32);
-    if (!nameLength || nameLength > limits.maxNameBytes)
-      throw invalid("ZIP filename limit exceeded.");
-    const recordLength = 46 + nameLength + extraLength + commentLength;
-    range(at, recordLength, directoryEnd);
-    const variable = await reader.read(at + 46, nameLength + extraLength);
-    const nameBytes = variable.subarray(0, nameLength);
-    const name = strFromU8(nameBytes, !(flags & 2048));
-    const parsed = sizes(
-      variable.subarray(nameLength),
-      u32(record, 24),
-      u32(record, 20),
-      u32(record, 42),
-      u16(record, 34),
+  return dataOffset;
+}
+
+async function readDataDescriptor(
+  localReader: ArchiveReader,
+  crc: number,
+  wide: boolean,
+  parsed: ZipSizes,
+  dataEnd: number,
+  directoryOffset: number,
+): Promise<number> {
+  const available = Math.min(wide ? 24 : 16, directoryOffset - dataEnd);
+  const descriptor = await localReader.read(dataEnd, available);
+  const matches = (p: number) => {
+    const length = p + (wide ? 20 : 12);
+    return (
+      descriptor.length >= length &&
+      u32(descriptor, p) === crc &&
+      (wide ? u64(descriptor, p + 4) : u32(descriptor, p + 4)) ===
+        parsed.compressed &&
+      (wide ? u64(descriptor, p + 12) : u32(descriptor, p + 8)) ===
+        parsed.size
     );
-    const localOffset = parsed.offset!;
-    range(localOffset, 30, directoryOffset);
-    const local = await localReader.read(localOffset, 30);
-    if (
-      u32(local, 0) !== 0x04034b50 ||
-      u16(local, 6) !== flags ||
-      u16(local, 8) !== method ||
-      u16(local, 26) !== nameLength
-    )
-      throw invalid("ZIP local header disagrees with directory.");
-    const localExtraLength = u16(local, 28),
-      dataOffset = localOffset + 30 + nameLength + localExtraLength;
-    range(
-      localOffset,
-      dataOffset - localOffset + parsed.compressed,
-      directoryOffset,
-    );
-    const localVariable = await localReader.read(
-      localOffset + 30,
-      nameLength + localExtraLength,
-    );
-    if (!nameBytes.every((b, j) => b === localVariable[j]))
-      throw invalid("ZIP local filename disagrees with directory.");
-    const localSizes = sizes(
-      localVariable.subarray(nameLength),
-      u32(local, 22),
-      u32(local, 18),
-    );
-    const crc = u32(record, 16);
-    if (!(flags & 8)) {
-      if (
-        localSizes.size !== parsed.size ||
-        localSizes.compressed !== parsed.compressed ||
-        u32(local, 14) !== crc
-      )
-        throw invalid("ZIP local sizes disagree with directory.");
-    } else if (
-      (localSizes.size && localSizes.size !== parsed.size) ||
-      (localSizes.compressed && localSizes.compressed !== parsed.compressed) ||
-      (u32(local, 14) && u32(local, 14) !== crc)
-    ) {
-      throw invalid("ZIP local descriptor sizes disagree with directory.");
-    }
-    let recordEnd = dataOffset + parsed.compressed;
-    if (flags & 8) {
-      const wide =
-        u32(record, 24) === 0xffffffff || u32(record, 20) === 0xffffffff;
-      const available = Math.min(wide ? 24 : 16, directoryOffset - recordEnd);
-      const descriptor = await localReader.read(recordEnd, available);
-      const matches = (p: number) => {
-        const length = p + (wide ? 20 : 12);
-        return (
-          descriptor.length >= length &&
-          u32(descriptor, p) === crc &&
-          (wide ? u64(descriptor, p + 4) : u32(descriptor, p + 4)) ===
-            parsed.compressed &&
-          (wide ? u64(descriptor, p + 12) : u32(descriptor, p + 8)) ===
-            parsed.size
-        );
-      };
-      const prefix =
-        descriptor.length >= 4 &&
-        u32(descriptor, 0) === 0x08074b50 &&
-        matches(4)
-          ? 4
-          : 0;
-      if (!matches(prefix))
-        throw invalid("ZIP data descriptor disagrees with directory.");
-      recordEnd += prefix + (wide ? 20 : 12);
-    }
-    if (method === 0 && parsed.size !== parsed.compressed)
-      throw invalid("Stored ZIP lengths disagree.");
-    occupied.push({ start: localOffset, end: recordEnd });
-    if (!name.endsWith("/") && !skipZipJunk(name)) {
-      if (
-        name.includes("\0") ||
-        name
-          .replace(/\\/g, "/")
-          .split("/")
-          .some((s) => s === ".." || s === "" || s.includes(":"))
-      )
-        throw new ApiError(400, "bad_zip_path", "Unsafe ZIP path.");
-      if (entries.length >= limits.maxFiles)
-        throw new ApiError(
-          400,
-          "too_many_files",
-          "ZIP file count limit exceeded.",
-        );
-      if (
-        parsed.size > limits.maxFileBytes ||
-        totalBytes > limits.maxTotalBytes - parsed.size
-      )
-        throw overLimit();
-      totalBytes += parsed.size;
-      entries.push({
-        path: name,
-        dataOffset,
-        compressedBytes: parsed.compressed,
-        size: parsed.size,
-        crc32: crc,
-        method,
-      });
-    }
-    at += recordLength;
-  }
-  if (at !== directoryEnd)
-    throw invalid("ZIP directory record count disagrees with size.");
+  };
+  const prefix =
+    descriptor.length >= 4 &&
+    u32(descriptor, 0) === 0x08074b50 &&
+    matches(4)
+      ? 4
+      : 0;
+  if (!matches(prefix))
+    throw invalid("ZIP data descriptor disagrees with directory.");
+  return dataEnd + prefix + (wide ? 20 : 12);
+}
+
+function assertSafeZipName(name: string): void {
+  if (
+    name.includes("\0") ||
+    name
+      .replace(/\\/g, "/")
+      .split("/")
+      .some((s) => s === ".." || s === "" || s.includes(":"))
+  )
+    throw new ApiError(400, "bad_zip_path", "Unsafe ZIP path.");
+}
+
+function assertNoOverlap(occupied: ZipSpan[]): void {
   occupied.sort((a, b) => a.start - b.start);
   for (let i = 1; i < occupied.length; i++)
     if (occupied[i].start < occupied[i - 1].end)
       throw invalid("Overlapping ZIP records.");
-  if (!entries.length)
-    throw new ApiError(400, "empty_zip", "ZIP has no files.");
+}
+
+function canonicalizeEntryPaths(entries: SiteZipEntry[]): void {
   const first = entries[0].path.split("/")[0];
   const strip =
     first !== "." &&
@@ -383,7 +501,6 @@ export async function indexSiteZip(
     paths.add(path);
     entry.path = path;
   }
-  return { archive, entries, totalBytes };
 }
 
 const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, n) => {
