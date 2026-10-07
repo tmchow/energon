@@ -105,33 +105,7 @@ export async function recordAdminAudit(env: Env, actor: Actor, input: AdminAudit
   const created_at = new Date().toISOString();
   const token_hint = actor.tokenId ? await tokenHintFor(env, actor) : null;
   const target_json = JSON.stringify(input.target ?? {});
-  await env.DB.prepare(
-    `INSERT INTO admin_audit (
-       id, created_at, actor_email, token_id, token_hint, action, executed, action_kind, ttl,
-       target_json, matched, eligible, applied, skipped, failed, bytes, confirm
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(
-      id,
-      created_at,
-      actor.email,
-      actor.tokenId ?? null,
-      token_hint,
-      input.action,
-      input.executed ? 1 : 0,
-      input.actionKind ?? null,
-      input.ttl ?? null,
-      target_json,
-      input.matched ?? null,
-      input.eligible ?? null,
-      input.applied ?? null,
-      input.skipped ?? null,
-      input.failed ?? null,
-      input.bytes ?? null,
-      input.confirm ?? null,
-    )
-    .run();
-  return {
+  const event: AdminAuditEvent = {
     id,
     created_at,
     actor_email: actor.email,
@@ -150,6 +124,33 @@ export async function recordAdminAudit(env: Env, actor: Actor, input: AdminAudit
     bytes: input.bytes ?? null,
     confirm: input.confirm ?? null,
   };
+  await env.DB.prepare(
+    `INSERT INTO admin_audit (
+       id, created_at, actor_email, token_id, token_hint, action, executed, action_kind, ttl,
+       target_json, matched, eligible, applied, skipped, failed, bytes, confirm
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      event.id,
+      event.created_at,
+      event.actor_email,
+      event.token_id,
+      event.token_hint,
+      event.action,
+      event.executed ? 1 : 0,
+      event.action_kind,
+      event.ttl,
+      target_json,
+      event.matched,
+      event.eligible,
+      event.applied,
+      event.skipped,
+      event.failed,
+      event.bytes,
+      event.confirm,
+    )
+    .run();
+  return event;
 }
 
 function parseLimit(raw: string | null): number {

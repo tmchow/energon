@@ -327,21 +327,34 @@ async function recordCleanupAudit(
   body: Record<string, unknown>,
   outcome: CleanupOutcome,
 ): Promise<void> {
-  const preview = outcome.kind === "executed" ? null : outcome.preview;
-  const result = outcome.kind === "executed" ? outcome.result : null;
+  const fields = outcome.kind === "executed"
+    ? {
+      actionKind: outcome.result.action,
+      ttl: outcome.result.ttl,
+      matched: null,
+      eligible: outcome.result.applied.total,
+      applied: outcome.result.applied.total,
+      skipped: outcome.result.skipped.total,
+      failed: outcome.result.failed.total,
+      bytes: outcome.result.applied.bytes,
+      confirm: typeof body.confirm === "string" ? body.confirm : null,
+    }
+    : {
+      actionKind: outcome.preview.action,
+      ttl: outcome.preview.ttl,
+      matched: outcome.preview.matched,
+      eligible: outcome.preview.eligible,
+      applied: null,
+      skipped: outcome.preview.skipped.total,
+      failed: null,
+      bytes: outcome.preview.bytes,
+      confirm: outcome.preview.confirm ?? (typeof body.confirm === "string" ? body.confirm : null),
+    };
   await recordAdminAudit(env, actor, {
     action: "cleanup",
     executed: outcome.kind === "executed",
-    actionKind: (preview ?? result)?.action,
-    ttl: (preview ?? result)?.ttl,
     target: body.target ?? {},
-    matched: preview?.matched ?? null,
-    eligible: preview?.eligible ?? result?.applied.total ?? null,
-    applied: result?.applied.total ?? null,
-    skipped: (preview ?? result)?.skipped.total ?? null,
-    failed: result?.failed.total ?? null,
-    bytes: preview?.bytes ?? result?.applied.bytes ?? null,
-    confirm: preview?.confirm ?? (typeof body.confirm === "string" ? body.confirm : null),
+    ...fields,
   });
 }
 
