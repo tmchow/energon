@@ -285,7 +285,11 @@ export function likeNeedle(q: string): string | null {
   return `%${cleaned}%`;
 }
 
-export const SITE_SIZE_SQL = "COALESCE(SUM(f.size), 0)";
+export const SITE_FILE_TOTALS_JOIN_SQL = `LEFT JOIN site_version_files vf ON vf.version_id = s.active_version_id
+  LEFT JOIN site_files f ON f.site_id = s.id AND s.active_version_id IS NULL`;
+export const SITE_FILE_COUNT_SQL = "COUNT(COALESCE(vf.path, f.path))";
+export const SITE_SIZE_SQL = "COALESCE(SUM(COALESCE(vf.size, f.size)), 0)";
+
 const FILE_UPDATED_SQL = "COALESCE(updated_at, created_at)";
 
 type Columns = {

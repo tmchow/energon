@@ -5,6 +5,9 @@ export const ENV_TOKEN = "ENERGON_TOKEN";
 export const MAX_FILE_BYTES = 100 * 1024 * 1024;
 /** Zips unpack and pack in memory, so their cap stays well under the Worker's 128 MB isolate limit. */
 export const MAX_ZIP_BYTES = 25 * 1024 * 1024;
+export const MAX_ZIP_IMPORT_BYTES = 100 * 1024 * 1024;
+export const MAX_ZIP_EXTRACTED_BYTES = 500 * 1024 * 1024;
+export const MAX_ZIP_EXPORT_BYTES = 25 * 1024 * 1024;
 /** Bodies and rollback snapshots up to this size stay in memory; larger ones are staged under TMP_PREFIX in R2. */
 export const IN_MEMORY_BYTES = 25 * 1024 * 1024;
 export const TMP_PREFIX = "tmp/";

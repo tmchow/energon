@@ -26,7 +26,7 @@ The trigger itself is not a separate product. Each run is a Worker invocation.
 
 - `*/5 * * * *` → 12/hour × 24 × 30 = **8,640 invocations / month**
 - Workers Paid ($5/mo, which you already need for unzip and large uploads): 10 million requests and 30 million CPU-ms included. 8,640 requests is noise.
-- An empty sweep is one D1 `SELECT … LIMIT 100` and returns. You pay R2 deletes only when something actually expired.
+- Sweeps use bounded D1 queries for expired content, staged allocations, retained versions, and enabled legacy conversions. R2 work depends on the pending cleanup and conversion batches.
 - Cron does **not** retry on failure. Reads still enforce expiry, so a missed sweep does not serve dead content.
 
 Hourly (`0 * * * *`) is also fine. Keep 5 minutes so R2 bytes leave soon after expiry.
@@ -35,8 +35,8 @@ Hourly (`0 * * * *`) is also fine. Keep 5 minutes so R2 bytes leave soon after e
 
 Two paths, on purpose:
 
-1. **Cron** (`src/expire.ts` `sweepExpired`) — select `expires_at <= now`, delete R2 + D1, purge cache. Batch of 100.
-2. **Read/write check** — GET/PUT/PATCH: if `expires_at` is in the past → **410 Gone**, then `waitUntil` purge that one object. Edge `s-maxage` is capped to leftover TTL.
+1. **Cron** (`src/expire.ts` `sweepExpired`) — select expired content in bounded batches. Sites are first tombstoned, then their versions and allocations are reclaimed after read leases and cleanup guards permit it. Loose files retain their existing purge path.
+2. **Read/write check** — GET/PUT/PATCH: if `expires_at` is in the past → **410 Gone**, then `waitUntil` purge that one object. Loose-file edge `s-maxage` is capped to leftover TTL. Site requests check expiry before their internal version cache.
 
 `PUT` does not extend TTL. `PATCH { "ttl": "7d" }` resets from now, still capped by `MAX_TTL`. `"never"` is 400 unless `ALLOW_UNLIMITED_RETENTION=true`.
 
@@ -112,9 +112,9 @@ The same query with `expires_at IS NULL` lists never-expiring tokens, which is w
 
 `MAX_FILE_BYTES` caps one file upload (default 100 MB). Raw bodies over 25 MB are staged in R2 under `tmp/` instead of held in Worker memory, then removed; the cron sweep deletes anything left there for over an hour. Multipart uploads stay capped at 25 MB because the Worker buffers them; larger files go as a raw body with `X-Filename`. Cloudflare rejects request bodies over 100 MB on Free and Pro plans before the Worker runs, so a higher value only takes effect on Business (200 MB) or Enterprise.
 
-`MAX_ZIP_BYTES` caps one zip import, its extracted total, and one site or account zip export (default 25 MB, never above `MAX_FILE_BYTES`). Zips are unpacked and built in Worker memory, which Cloudflare limits to 128 MB per isolate, so keep it at or below about 40 MB.
+`MAX_ZIP_IMPORT_BYTES` caps compressed ZIP input (default 100 MiB). `MAX_ZIP_EXTRACTED_BYTES` caps expanded input (default 500 MiB), with the file cap applied independently. Imports stage the archive and incrementally prepare a complete candidate; use `Prefer: respond-async` for resumable preparation. `MAX_ZIP_EXPORT_BYTES` remains 25 MiB by default. An explicitly configured `MAX_ZIP_BYTES` supplies the fallback for each new setting, preserving existing smaller limits. See [atomic deployments](atomic-site-deployments.md) for quota headroom, deployment-profile verification, and migration requirements.
 
-Both accept `25mb`, `5mb`, or a raw byte count. `MAX_PLATFORM_BYTES` is the whole-bucket safety valve (default 20 GB).
+These size settings accept `25mb`, `5mb`, or a raw byte count. `MAX_PLATFORM_BYTES` is the whole-bucket safety valve (default 20 GB).
 
 `FOOTER_TEXT` is one line on signed-in pages. It is escaped as text — not HTML. Leave it empty for no footer. Use this variable instead of editing hub components to brand a deployment repository.
 

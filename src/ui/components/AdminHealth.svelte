@@ -62,7 +62,7 @@
   }
 </script>
 <Card id="admin-health" title="Health" className="en-admin-card en-admin-health">
-  <p class="en-muted-copy">Quota used is the ledger that stops publishes when it reaches the cap. Catalog is stored sizes. Expired objects wait for the next sweep. Stale purge claims are markers older than a minute. Recompute and sweep do not delete live work.</p>
+  <p class="en-muted-copy">Quota used is the ledger that stops publishes when it reaches the cap. Catalog is stored sizes. Expired objects wait for the next sweep. Stale purge claims are markers older than a minute. Recompute does not delete content. Sweep removes expired work and advances enabled site conversions.</p>
   {#if error}<Flash tone="err">{error}</Flash>{/if}
   {#if notice}<Flash tone="ok">{notice}</Flash>{/if}
   <div class="en-metrics" id="admin-health-quota">
@@ -81,6 +81,20 @@
     <div id="admin-health-files"><Metric label="Files" value={formatCount(view.files)} /></div>
     <div id="admin-health-people"><Metric label="People" value={formatCount(view.people)} /></div>
   </div>
+  {#if view.site_conversions && view.site_conversions.pending > 0}
+    <section aria-label="Site conversions">
+      <h3>Site conversions</h3>
+      <p class="en-muted-copy">{formatCount(view.site_conversions.pending)} {view.site_conversions.pending === 1 ? 'site awaits' : 'sites await'} conversion.
+        {view.site_conversions.enabled ? 'Sweep now advances a bounded batch; sites remain readable while converting.' : 'Conversion is disabled. Complete the rollout checks before setting SITE_VERSIONING_ENABLED=true.'}</p>
+      <ul>{#each view.site_conversions.items as site (site.site_id)}
+        <li><strong>{site.slug}</strong> ({site.site_id}): {site.phase}{site.last_error ? ` — ${site.last_error}` : ''}</li>
+      {/each}</ul>
+    </section>
+  {/if}
+  {#if view.quota.pending_cleanup_bytes}
+    <p class="en-muted-copy">Pending storage cleanup: {formatBytes(view.quota.pending_cleanup_bytes)}.
+      {formatCount(view.quota.cleanup_failed_allocations ?? 0)} allocations need cleanup retries.</p>
+  {/if}
   {#if view.locked_scopes.length}
     <ul id="admin-health-scopes" class="en-admin-health-scopes">{#each view.locked_scopes as locked (locked)}
       <li><button type="button" class="en-admin-health-scope" onclick={() => scope = locked}><code>{locked}</code></button></li>
@@ -98,4 +112,4 @@
   </form>
 </Card>
 <ConfirmDialog id="admin-health-recompute-dlg" bind:open={recomputeOpen} title="Recompute quota" message="This sets the ledger from stored sizes. It does not delete content." action="Recompute" {busy} onConfirm={runRecompute} />
-<ConfirmDialog id="admin-health-sweep-dlg" bind:open={sweepOpen} title="Sweep expired" message="This runs one expiry sweep of at most 100 objects. Already-expired work is removed. Remaining expired objects can be swept again." action="Sweep" {busy} onConfirm={runSweep} />
+<ConfirmDialog id="admin-health-sweep-dlg" bind:open={sweepOpen} title="Sweep expired" message="This removes a bounded batch of expired work and advances enabled site conversions. Live site contents remain available. Run again for remaining work." action="Sweep" {busy} onConfirm={runSweep} />

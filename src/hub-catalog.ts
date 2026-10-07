@@ -1,4 +1,4 @@
-import { catalogCursorSql, criteriaSql, nextCatalogCursor, takePage, type CatalogCursorRow, type ListPage, type ListQuery } from "./catalog";
+import { SITE_FILE_COUNT_SQL, SITE_SIZE_SQL, SITE_FILE_TOTALS_JOIN_SQL, catalogCursorSql, criteriaSql, nextCatalogCursor, takePage, type CatalogCursorRow, type ListPage, type ListQuery } from "./catalog";
 import { resolveWritePolicy } from "./policy";
 import { publicOrigin } from "./http";
 import { filePublicUrl, sitePublicUrl } from "./urls";
@@ -53,9 +53,9 @@ export async function listHubCatalog(env: Env, email: string, query: ListQuery, 
     branches.push({
       sql: `SELECT 'site' AS kind, s.id, s.handle, s.slug AS name, s.updated_at AS sort_updated, s.created_at, s.updated_at, s.created_by, s.last_written_by,
               s.password_hash, s.write_password_hash, s.written_via, s.expires_at, s.last_read_at, s.write_policy,
-              COUNT(f.path) AS file_count, COALESCE(SUM(f.size), 0) AS size, NULL AS content_type
-            FROM sites s LEFT JOIN site_files f ON s.id = f.site_id
-            WHERE ${c.where} GROUP BY s.id${c.having ? ` HAVING ${c.having}` : ""}`,
+              ${SITE_FILE_COUNT_SQL} AS file_count, ${SITE_SIZE_SQL} AS size, NULL AS content_type
+            FROM sites s ${SITE_FILE_TOTALS_JOIN_SQL}
+            WHERE s.lifecycle_state = 'live' AND ${c.where} GROUP BY s.id${c.having ? ` HAVING ${c.having}` : ""}`,
       binds: [...c.whereBinds, ...c.havingBinds],
     });
   }

@@ -276,44 +276,77 @@ export function storageCap(used: number, incoming: number, limitBytes = MAX_PLAT
   );
 }
 
+export const STORED_BYTES_SQL = `
+  (SELECT COALESCE(SUM(size), 0) FROM site_files) +
+  (SELECT COALESCE(SUM(size), 0) FROM loose_files) +
+  (SELECT COALESCE(SUM(reserved_bytes), 0) FROM storage_allocations WHERE state != 'released')`;
+
+export type LegacyReservationRecovery = {
+  fileId: string;
+  targetKey: string;
+  ownerId: string;
+  operation: "create" | "duplicate" | "replace";
+  cleanupKey?: string;
+  claimToken?: string;
+  snapshotKey?: string;
+};
+export type StorageReservation = { id: string; bytes: number; recovery?: LegacyReservationRecovery };
+
+export function legacyQuotaStatement(db: D1Database): D1PreparedStatement {
+  return db.prepare(`UPDATE platform_quota SET used = ${STORED_BYTES_SQL} WHERE id = 1`);
+}
+
+// Place immediately after the catalog mutation: changes() is the zero-row publication witness.
+export function legacyHandoffStatement(db: D1Database, reservation: StorageReservation,
+  cleanup?: { key: string; bytes: number }): D1PreparedStatement {
+  const recovery = { ...reservation.recovery, ...(cleanup ? { cleanupKey: cleanup.key } : {}) };
+  return db.prepare(`UPDATE storage_allocations SET state = ?, reserved_bytes = ?, recovery_json = ?,
+    quiesced_at = ?, released_at = ?, cleanup_error = NULL
+    WHERE id = ? AND kind = 'legacy_reservation' AND state = 'stored' AND changes() > 0`)
+    .bind(cleanup ? "cleanup_pending" : "released", cleanup?.bytes ?? reservation.bytes,
+      JSON.stringify(recovery), new Date().toISOString(), cleanup ? null : new Date().toISOString(), reservation.id);
+}
+
+export async function markLegacyReservation(db: D1Database, reservation: StorageReservation,
+  state: "writing" | "stored" | "cleanup_pending" | "uncertain",
+  options: { error?: unknown; cleanupKey?: string; snapshotKey?: string } = {}): Promise<void> {
+  const { error, cleanupKey, snapshotKey } = options;
+  const recovery = { ...reservation.recovery, ...(cleanupKey ? { cleanupKey } : {}), ...(snapshotKey ? { snapshotKey } : {}) };
+  await db.prepare(`UPDATE storage_allocations SET state = ?, recovery_json = ?, cleanup_error = ?,
+    quiesced_at = ?, writer_expires_at = ? WHERE id = ? AND kind = 'legacy_reservation' AND state != 'released'`)
+    .bind(state, JSON.stringify(recovery), error === undefined ? null : String(error).slice(0, 1000),
+      state === "stored" || state === "cleanup_pending" ? new Date().toISOString() : null,
+      new Date(Date.now() + 3_600_000).toISOString(), reservation.id).run();
+}
+
 export async function totalStoredBytes(db: D1Database): Promise<number> {
-  const row = await db
-    .prepare(
-      `SELECT
-        (SELECT COALESCE(SUM(size), 0) FROM site_files) +
-        (SELECT COALESCE(SUM(size), 0) FROM loose_files) AS total`,
-    )
-    .first<{ total: number }>();
+  const row = await db.prepare(`SELECT ${STORED_BYTES_SQL} AS total`).first<{ total: number }>();
   return Number(row?.total ?? 0);
 }
 
 export async function usedStorage(db: D1Database): Promise<number> {
   const ledger = await db.prepare(`SELECT used FROM platform_quota WHERE id = 1`).first<{ used: number }>();
-  if (ledger) return Number(ledger.used);
-  return totalStoredBytes(db);
+  return ledger ? Number(ledger.used) : totalStoredBytes(db);
 }
 
 export async function recomputeStorage(db: D1Database): Promise<{ before: number; after: number }> {
   const before = await usedStorage(db);
-  await db
-    .prepare(
-      `UPDATE platform_quota SET used = (
-        (SELECT COALESCE(SUM(size), 0) FROM site_files) +
-        (SELECT COALESCE(SUM(size), 0) FROM loose_files)
-      ) WHERE id = 1`,
-    )
-    .run();
-  const after = await usedStorage(db);
-  return { before, after };
+  await legacyQuotaStatement(db).run();
+  return { before, after: await usedStorage(db) };
 }
 
-export async function releaseStorage(db: D1Database, bytes: number): Promise<void> {
-  if (bytes <= 0) return;
-  await db
-    .prepare(`UPDATE platform_quota SET used = MAX(0, used - ?) WHERE id = 1`)
-    .bind(bytes)
-    .run()
-    .catch(() => undefined);
+export async function releaseStorage(db: D1Database, reservation: StorageReservation | number): Promise<void> {
+  if (typeof reservation === "number") {
+    if (reservation > 0) await recomputeStorage(db);
+    return;
+  }
+  // The catalog may already reflect the write. Recompute in the same transaction as handoff so repair cannot double-release it.
+  await db.batch([
+    db.prepare(`UPDATE storage_allocations SET state = 'released', released_at = ?
+      WHERE id = ? AND kind = 'legacy_reservation' AND state != 'released'`)
+      .bind(new Date().toISOString(), reservation.id),
+    legacyQuotaStatement(db),
+  ]);
 }
 
 export async function assertStorageRoom(
@@ -321,37 +354,48 @@ export async function assertStorageRoom(
   additionalBytes: number,
   replacingBytes = 0,
   platformBytes = MAX_PLATFORM_BYTES,
-): Promise<number> {
-  const delta = additionalBytes - replacingBytes;
-  if (delta <= 0) return 0;
-  try {
-    const reserved = await db
-      .prepare(`UPDATE platform_quota SET used = used + ? WHERE id = 1 AND used + ? <= ?`)
-      .bind(delta, delta, platformBytes)
-      .run();
-    if (Number(reserved.meta?.changes ?? 0) > 0) return delta;
-    const ledger = await db.prepare(`SELECT used FROM platform_quota WHERE id = 1`).first<{ used: number }>();
-    if (ledger) throw storageCap(Number(ledger.used), delta, platformBytes);
-  } catch (err) {
-    if (err instanceof ApiError) throw err;
-  }
-  const used = await totalStoredBytes(db);
-  const next = used - replacingBytes + additionalBytes;
-  if (next > platformBytes) throw storageCap(used, delta, platformBytes);
-  return 0;
+  recovery?: LegacyReservationRecovery,
+): Promise<StorageReservation> {
+  const bytes = Math.max(additionalBytes, replacingBytes);
+  if (!Number.isSafeInteger(bytes) || bytes < 0) throw new Error("Invalid storage reservation");
+  const id = crypto.randomUUID();
+  await db.batch([
+    db.prepare(`INSERT INTO storage_allocations (id, owner_id, kind, reserved_bytes, attempt_id, created_at, recovery_json, writer_expires_at)
+      SELECT ?, ?, 'legacy_reservation', ?, ?, ?, ?, ?
+      WHERE EXISTS (SELECT 1 FROM platform_quota WHERE id = 1 AND used + ? <= ?)`)
+      .bind(id, recovery?.ownerId ?? "legacy", bytes, id, new Date().toISOString(), recovery ? JSON.stringify(recovery) : null,
+        new Date(Date.now() + 3_600_000).toISOString(), bytes, platformBytes),
+    db.prepare(`UPDATE platform_quota SET used = used + ? WHERE id = 1
+      AND EXISTS (SELECT 1 FROM storage_allocations WHERE id = ?)`)
+      .bind(bytes, id),
+  ]);
+  const allocated = await db.prepare("SELECT id FROM storage_allocations WHERE id = ?").bind(id).first();
+  if (!allocated) throw storageCap(await usedStorage(db), bytes, platformBytes);
+  return { id, bytes, recovery };
 }
 
 /** Objects over IN_MEMORY_BYTES are copied under TMP_PREFIX instead of held in memory. Pair with discardR2Snapshots. */
 export type R2ObjectSnapshot = {
+  allocation?: { db: D1Database; id: string };
   httpMetadata?: R2HTTPMetadata;
   customMetadata?: Record<string, string>;
 } & ({ bytes: Uint8Array; stagedKey?: undefined } | { stagedKey: string; bytes?: undefined });
 
-export async function snapshotR2Object(bucket: R2Bucket, key: string): Promise<R2ObjectSnapshot | null> {
+export async function snapshotR2Object(storage: R2Bucket | Env, key: string): Promise<R2ObjectSnapshot | null> {
+  const env = "DB" in storage ? storage : undefined;
+  const bucket = env ? env.BUCKET : storage as R2Bucket;
   const object = await bucket.get(key);
   if (!object) return null;
   const meta = { httpMetadata: object.httpMetadata, customMetadata: object.customMetadata };
   if ((object.size ?? 0) <= IN_MEMORY_BYTES) return { bytes: await object.bytes(), ...meta };
+  if (env) {
+    const { reserveAllocation, writeAllocation } = await import("./site-storage");
+    const { instancePolicy } = await import("./policy");
+    const allocation = await reserveAllocation(env.DB, { ownerId: "snapshot", kind: "snapshot",
+      key: `site-staging/snapshots/${crypto.randomUUID()}`, bytes: object.size, cap: instancePolicy(env).platformBytes });
+    await writeAllocation(env.DB, bucket, allocation, object.body, undefined, object.httpMetadata?.contentType);
+    return { stagedKey: allocation.object_key!, allocation: { db: env.DB, id: allocation.id }, ...meta };
+  }
   const stagedKey = tmpKey("snapshots");
   await bucket.put(stagedKey, object.body, meta);
   return { stagedKey, ...meta };
@@ -374,8 +418,13 @@ export async function restoreR2Object(
 
 /** Best effort: the cron sweep removes any staged snapshot this misses. */
 export async function discardR2Snapshots(bucket: R2Bucket, snapshots: (R2ObjectSnapshot | null)[]): Promise<void> {
-  const keys = snapshots.flatMap((snapshot) => (snapshot?.stagedKey ? [snapshot.stagedKey] : []));
-  if (keys.length) await bucket.delete(keys).catch(() => undefined);
+  const { cleanupAllocation } = await import("./site-storage");
+  for (const snapshot of snapshots) {
+    if (snapshot?.allocation) {
+      await cleanupAllocation(snapshot.allocation.db, bucket, snapshot.allocation.id)
+        .catch(error => console.error("Snapshot cleanup pending", snapshot.allocation?.id, error));
+    } else if (snapshot?.stagedKey) await bucket.delete(snapshot.stagedKey).catch(() => undefined);
+  }
 }
 
 /** Streams an object staged under TMP_PREFIX to its real key; the staged copy stays for the caller to remove. */

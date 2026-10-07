@@ -460,10 +460,9 @@
             "$ref": "#/components/responses/UnsupportedMediaType"
           },
           "500": {
-            "description": "Server error. Rollback failures mean the copy may be partial; retry after storage recovers.",
+            "description": "Storage failure. Read current site/session status before retrying; staged bytes may remain charged until cleanup.",
             "x-error-codes": [
               "copy_failed",
-              "site_copy_rollback_failed",
               "handle_failed",
               "internal"
             ],
@@ -2311,10 +2310,9 @@
             }
           },
           "500": {
-            "description": "Server error. A rollback failure means files may be partially removed; retry after storage recovers.",
+            "description": "Storage failure. Read current site/session status before retrying; staged bytes may remain charged until cleanup.",
             "x-error-codes": [
               "copy_failed",
-              "site_delete_rollback_failed",
               "handle_failed",
               "internal"
             ],
@@ -2351,6 +2349,14 @@
             "content": {
               "application/octet-stream": {},
               "*/*": {}
+            },
+            "headers": {
+              "X-Energon-Site-Version": {
+                "description": "Read-only selected immutable version ID. Each request selects independently.",
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
           },
           "400": {
@@ -2506,7 +2512,7 @@
             }
           },
           "500": {
-            "description": "Server error. storage_rollback_failed means the previous bytes could not be restored; retry after storage recovers.",
+            "description": "Storage failure. Read current site/session status before retrying; staged bytes may remain charged until cleanup.",
             "x-error-codes": [
               "storage_rollback_failed",
               "handle_failed",
@@ -2621,7 +2627,7 @@
           "sites"
         ],
         "summary": "Unpack a zip into the site",
-        "description": "Each entry becomes a path (last write wins per path; other paths stay). A single wrapping folder is stripped so index.html lands at the root. Junk entries (__MACOSX, .DS_Store) are skipped. Caps: GET /v1/help limits.zip_bytes for the archive and for its extracted files combined, limits.max_import_files entries. The site must already exist.",
+        "description": "Merge ZIP paths into a complete snapshot. Default synchronous 200. Prefer: respond-async returns 202 with a staged session; prepare until ready and explicitly commit. Import and expansion caps are independent of the export cap.",
         "requestBody": {
           "required": true,
           "description": "A zip archive.",
@@ -2706,9 +2712,8 @@
             }
           },
           "500": {
-            "description": "Server error. A rollback failure means the import may be partial; retry after storage recovers.",
+            "description": "Storage failure. Read current site/session status before retrying; staged bytes may remain charged until cleanup.",
             "x-error-codes": [
-              "site_import_rollback_failed",
               "handle_failed",
               "internal"
             ],
@@ -2722,8 +2727,27 @@
           },
           "503": {
             "$ref": "#/components/responses/ContentOriginNotConfigured"
+          },
+          "202": {
+            "description": "Staged import session; not yet published.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentStatus"
+                }
+              }
+            }
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "Prefer",
+            "in": "header",
+            "schema": {
+              "const": "respond-async"
+            }
+          }
+        ]
       }
     },
     "/v1/sites/{id}/export": {
@@ -2748,6 +2772,12 @@
                   "type": "string"
                 },
                 "description": "attachment; filename=\"{slug}.zip\""
+              },
+              "X-Energon-Site-Version": {
+                "description": "Read-only selected immutable version ID. Each request selects independently.",
+                "schema": {
+                  "type": "string"
+                }
               }
             },
             "content": {
@@ -2831,7 +2861,7 @@
           "grants"
         ],
         "summary": "Mint a single-use upload grant",
-        "description": "The minting account must be able to write the target now. The upload re-checks that, and fails if the minting token is revoked or expired first. The tokenless client PUTs raw bytes to upload_url with Authorization: Bearer <secret>; success publishes immediately and uses the grant up. Retryable upload failures (busy target, storage cap) leave the grant usable until it expires; a deleted target or lost permission ends it. Read the result with GET /v1/grants/{id}.",
+        "description": "The minting account must be able to write the target now. The upload re-checks that, and fails if the minting token is revoked or expired first. The tokenless client PUTs raw bytes to upload_url with Authorization: Bearer <secret>; success publishes immediately and uses the grant up. Retryable upload failures (busy target, storage cap) leave the grant usable until it expires; a deleted target or lost permission ends it. Read the result with GET /v1/grants/{id}. For target site_deployment, bind an existing owned immutable session. The secret authorizes only its returned status/files/archive/prepare/commit URLs and is consumed at commit. The session deadline and minting token expiry bound grant lifetime.",
         "requestBody": {
           "required": true,
           "content": {
@@ -2848,7 +2878,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GrantMinted"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/GrantMinted"
+                    },
+                    {
+                      "$ref": "#/components/schemas/DeploymentGrantMinted"
+                    }
+                  ]
                 }
               }
             }
@@ -2973,6 +3010,1479 @@
           }
         }
       }
+    },
+    "/v1/sites/{id}/deployments": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "postVSitesIdDeployments",
+        "summary": "create immutable full-replacement intent; expected_version, idempotency_key, files or archive; 201 new, 200 identical replay",
+        "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota.",
+        "responses": {
+          "200": {
+            "description": "create immutable full-replacement intent; expected_version, idempotency_key, files or archive; 201 new, 200 identical replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentStatus"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "create immutable full-replacement intent; expected_version, idempotency_key, files or archive; 201 new, 200 identical replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeploymentCreate"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "Unix milliseconds.UUIDv4; required when absent from the JSON body.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/sites/{id}/deployments/{deploymentId}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "deploymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getVSitesIdDeploymentsDeploymentid",
+        "summary": "read session progress or committed receipt",
+        "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota.",
+        "responses": {
+          "200": {
+            "description": "read session progress or committed receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteVSitesIdDeploymentsDeploymentid",
+        "summary": "abort unpublished session (204)",
+        "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota.",
+        "responses": {
+          "204": {
+            "description": "abort unpublished session (204)"
+          },
+          "400": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sites/{id}/deployments/{deploymentId}/files/{path}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "deploymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "path",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "put": {
+        "operationId": "putVSitesIdDeploymentsDeploymentidFilesPath",
+        "summary": "upload exact declared bytes; 201 first receipt, 200 identical retry",
+        "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota.",
+        "responses": {
+          "200": {
+            "description": "upload exact declared bytes; 201 first receipt, 200 identical retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "stored"
+                  ],
+                  "properties": {
+                    "stored": {
+                      "const": true
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "upload exact declared bytes; 201 first receipt, 200 identical retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "stored"
+                  ],
+                  "properties": {
+                    "stored": {
+                      "const": true
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sites/{id}/deployments/{deploymentId}/archive": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "deploymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "put": {
+        "operationId": "putVSitesIdDeploymentsDeploymentidArchive",
+        "summary": "upload declared ZIP bytes",
+        "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota.",
+        "responses": {
+          "200": {
+            "description": "upload declared ZIP bytes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "stored"
+                  ],
+                  "properties": {
+                    "stored": {
+                      "const": true
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "upload declared ZIP bytes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "stored"
+                  ],
+                  "properties": {
+                    "stored": {
+                      "const": true
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/zip": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sites/{id}/deployments/{deploymentId}/prepare": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "deploymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "postVSitesIdDeploymentsDeploymentidPrepare",
+        "summary": "validate and prepare; 202 progress or 200 ready; does not publish",
+        "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota.",
+        "responses": {
+          "200": {
+            "description": "validate and prepare; 202 progress or 200 ready; does not publish",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentStatus"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "validate and prepare; 202 progress or 200 ready; does not publish",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sites/{id}/deployments/{deploymentId}/commit": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "deploymentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "postVSitesIdDeploymentsDeploymentidCommit",
+        "summary": "publish complete replacement atomically or recover receipt (200)",
+        "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota.",
+        "responses": {
+          "200": {
+            "description": "publish complete replacement atomically or recover receipt (200)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/_deployment-grants/{grantId}": {
+      "parameters": [
+        {
+          "name": "grantId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getDeploymentGrantsGrantid",
+        "summary": "content-origin status with grant bearer secret",
+        "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota. Use the content origin returned by /v1/help. Revocation blocks receipt recovery; expiry permits recovery of an already committed receipt.",
+        "responses": {
+          "200": {
+            "description": "content-origin status with grant bearer secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "deploymentGrant": []
+          }
+        ]
+      }
+    },
+    "/_deployment-grants/{grantId}/files/{path}": {
+      "parameters": [
+        {
+          "name": "grantId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "path",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "put": {
+        "operationId": "putDeploymentGrantsGrantidFilesPath",
+        "summary": "content-origin declared file upload with grant bearer secret",
+        "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota. Use the content origin returned by /v1/help. Revocation blocks receipt recovery; expiry permits recovery of an already committed receipt.",
+        "responses": {
+          "200": {
+            "description": "content-origin declared file upload with grant bearer secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "stored"
+                  ],
+                  "properties": {
+                    "stored": {
+                      "const": true
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "content-origin declared file upload with grant bearer secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "stored"
+                  ],
+                  "properties": {
+                    "stored": {
+                      "const": true
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "deploymentGrant": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/_deployment-grants/{grantId}/archive": {
+      "parameters": [
+        {
+          "name": "grantId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "put": {
+        "operationId": "putDeploymentGrantsGrantidArchive",
+        "summary": "content-origin declared archive upload with grant bearer secret",
+        "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota. Use the content origin returned by /v1/help. Revocation blocks receipt recovery; expiry permits recovery of an already committed receipt.",
+        "responses": {
+          "200": {
+            "description": "content-origin declared archive upload with grant bearer secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "stored"
+                  ],
+                  "properties": {
+                    "stored": {
+                      "const": true
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "content-origin declared archive upload with grant bearer secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "stored"
+                  ],
+                  "properties": {
+                    "stored": {
+                      "const": true
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "deploymentGrant": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/zip": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/_deployment-grants/{grantId}/prepare": {
+      "parameters": [
+        {
+          "name": "grantId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "postDeploymentGrantsGrantidPrepare",
+        "summary": "content-origin prepare with grant bearer secret; no body",
+        "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota. Use the content origin returned by /v1/help. Revocation blocks receipt recovery; expiry permits recovery of an already committed receipt.",
+        "responses": {
+          "200": {
+            "description": "content-origin prepare with grant bearer secret; no body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentStatus"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "content-origin prepare with grant bearer secret; no body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "deploymentGrant": []
+          }
+        ]
+      }
+    },
+    "/_deployment-grants/{grantId}/commit": {
+      "parameters": [
+        {
+          "name": "grantId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "postDeploymentGrantsGrantidCommit",
+        "summary": "content-origin atomic commit with grant bearer secret; no body",
+        "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota. Use the content origin returned by /v1/help. Revocation blocks receipt recovery; expiry permits recovery of an already committed receipt.",
+        "responses": {
+          "200": {
+            "description": "content-origin atomic commit with grant bearer secret; no body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid input, authority, lifecycle, conflict, or storage limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "deploymentGrant": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -2981,6 +4491,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Authorization: Bearer {token}. A human mints the token at {origin}/tokens while signed in and exports it under the env var named by GET /v1/help env; the token starts with GET /v1/help token_prefix. The secret is shown once. Never invent a token. A 401 token_expired is terminal: the human mints a new one."
+      },
+      "deploymentGrant": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Once-shown deployment grant secret. Content origin only; bound to one immutable session. Never put in a URL."
       }
     },
     "schemas": {
@@ -3026,6 +4541,11 @@
               "connection_slow_down",
               "content_origin_not_configured",
               "copy_failed",
+              "deployment_conflict",
+              "deployment_expired",
+              "deployment_forbidden",
+              "deployment_incomplete",
+              "deployment_missing",
               "empty_export",
               "empty_site",
               "empty_zip",
@@ -3049,7 +4569,10 @@
               "grant_used",
               "handle_failed",
               "id_failed",
+              "idempotency_conflict",
+              "idempotency_expired",
               "internal",
+              "invalid_intent",
               "invalid_zip",
               "method_not_allowed",
               "missing_file",
@@ -3059,11 +4582,7 @@
               "rate_limited",
               "reserved_slug",
               "site_busy",
-              "site_copy_rollback_failed",
-              "site_delete_rollback_failed",
-              "site_import_rollback_failed",
               "site_not_found",
-              "site_write_lost",
               "storage_cap",
               "storage_rollback_failed",
               "token_expired",
@@ -3974,7 +5493,9 @@
           "last_read_at",
           "write_policy",
           "write_password_protected",
-          "files"
+          "files",
+          "content_generation",
+          "version_id"
         ],
         "properties": {
           "id": {
@@ -4038,6 +5559,16 @@
               "$ref": "#/components/schemas/SiteFile"
             },
             "description": "Sorted by path."
+          },
+          "content_generation": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "version_id": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -4058,7 +5589,9 @@
           "write_password_protected",
           "expires_at",
           "last_read_at",
-          "write_policy"
+          "write_policy",
+          "content_generation",
+          "version_id"
         ],
         "properties": {
           "id": {
@@ -4122,6 +5655,16 @@
           },
           "write_policy": {
             "$ref": "#/components/schemas/WritePolicy"
+          },
+          "content_generation": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "version_id": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -5119,7 +6662,8 @@
           "locked_scopes",
           "sites",
           "files",
-          "people"
+          "people",
+          "site_conversions"
         ],
         "properties": {
           "quota": {
@@ -5127,7 +6671,9 @@
             "required": [
               "used_bytes",
               "catalog_bytes",
-              "limit_bytes"
+              "limit_bytes",
+              "pending_cleanup_bytes",
+              "cleanup_failed_allocations"
             ],
             "properties": {
               "used_bytes": {
@@ -5136,11 +6682,19 @@
               },
               "catalog_bytes": {
                 "type": "integer",
-                "description": "SUM(size) over site_files and loose_files."
+                "description": "Accounted stored and reserved bytes, including immutable versions and durable allocations."
               },
               "limit_bytes": {
                 "type": "integer",
                 "description": "MAX_PLATFORM_BYTES for this Energon."
+              },
+              "pending_cleanup_bytes": {
+                "type": "integer",
+                "description": "Bytes held by allocations pending cleanup or legacy reservation resolution."
+              },
+              "cleanup_failed_allocations": {
+                "type": "integer",
+                "description": "Pending allocations with a recorded cleanup error."
               }
             }
           },
@@ -5167,6 +6721,52 @@
           },
           "people": {
             "type": "integer"
+          },
+          "site_conversions": {
+            "type": "object",
+            "required": [
+              "enabled",
+              "pending",
+              "items"
+            ],
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "pending": {
+                "type": "integer"
+              },
+              "items": {
+                "type": "array",
+                "maxItems": 25,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "site_id",
+                    "slug",
+                    "phase",
+                    "last_error"
+                  ],
+                  "properties": {
+                    "site_id": {
+                      "type": "string"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "phase": {
+                      "type": "string"
+                    },
+                    "last_error": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -5449,6 +7049,25 @@
               }
             },
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "deployment_id"
+            ],
+            "properties": {
+              "type": {
+                "const": "site_deployment"
+              },
+              "deployment_id": {
+                "type": "string"
+              },
+              "site_id": {
+                "$ref": "#/components/schemas/SiteId"
+              }
+            },
+            "additionalProperties": false
           }
         ]
       },
@@ -5475,12 +7094,12 @@
           "max_bytes": {
             "type": "integer",
             "minimum": 0,
-            "description": "Largest body the upload may send. Capped at this Energon's per-file limit; defaults to it."
+            "description": "Single-file byte ceiling; for site_deployment, if supplied it must cover all immutable input bytes, and the result is bound to that exact input total."
           },
           "sha256": {
             "type": "string",
             "pattern": "^[0-9a-fA-F]{64}$",
-            "description": "Expected SHA-256 of the body, hex. A mismatching upload publishes nothing."
+            "description": "Optional single-file digest. A site_deployment uses the hashes already bound in its immutable input descriptor."
           }
         },
         "additionalProperties": false
@@ -5632,6 +7251,256 @@
           "expires_at": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "DeploymentFile": {
+        "type": "object",
+        "required": [
+          "path",
+          "size",
+          "sha256",
+          "content_type"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-fA-F0-9]{64}$"
+          },
+          "content_type": {
+            "type": "string"
+          }
+        }
+      },
+      "DeploymentArchive": {
+        "type": "object",
+        "required": [
+          "size",
+          "sha256"
+        ],
+        "properties": {
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-fA-F0-9]{64}$"
+          },
+          "max_extracted_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_files": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          }
+        }
+      },
+      "DeploymentCreate": {
+        "type": "object",
+        "required": [
+          "expected_version"
+        ],
+        "properties": {
+          "expected_version": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "idempotency_key": {
+            "type": "string",
+            "description": "Unix milliseconds followed by a dot and a UUIDv4. Reuse with identical intent only."
+          },
+          "mode": {
+            "const": "replace"
+          },
+          "files": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "$ref": "#/components/schemas/DeploymentFile"
+            }
+          },
+          "archive": {
+            "$ref": "#/components/schemas/DeploymentArchive"
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "files"
+            ],
+            "not": {
+              "required": [
+                "archive"
+              ]
+            }
+          },
+          {
+            "required": [
+              "archive"
+            ],
+            "not": {
+              "required": [
+                "files"
+              ]
+            }
+          }
+        ],
+        "description": "Supply idempotency_key in this body or the Idempotency-Key header; one is required. The body value takes precedence."
+      },
+      "DeploymentStatus": {
+        "type": "object",
+        "required": [
+          "deployment_id",
+          "state",
+          "expected_version",
+          "expires_at",
+          "status_url",
+          "progress",
+          "next_action"
+        ],
+        "properties": {
+          "deployment_id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "uploading",
+              "ready",
+              "committed",
+              "aborted",
+              "failed",
+              "expired"
+            ]
+          },
+          "expected_version": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "status_url": {
+            "type": "string"
+          },
+          "progress": {
+            "type": "object",
+            "required": [
+              "stored_files",
+              "missing_paths"
+            ],
+            "properties": {
+              "stored_files": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "missing_paths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "next_action": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version_id": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "completed_at": {
+            "type": "string"
+          },
+          "result_expires_at": {
+            "type": "string"
+          }
+        }
+      },
+      "DeploymentGrantMinted": {
+        "type": "object",
+        "required": [
+          "id",
+          "secret",
+          "header",
+          "scheme",
+          "expires_at",
+          "max_bytes",
+          "target",
+          "status_url",
+          "upload_url",
+          "archive_url",
+          "prepare_url",
+          "commit_url"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "secret": {
+            "type": "string"
+          },
+          "header": {
+            "type": "string"
+          },
+          "scheme": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "status_url": {
+            "type": "string"
+          },
+          "upload_url": {
+            "type": "string"
+          },
+          "archive_url": {
+            "type": "string"
+          },
+          "prepare_url": {
+            "type": "string"
+          },
+          "commit_url": {
+            "type": "string"
+          },
+          "max_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "target": {
+            "type": "object",
+            "required": [
+              "type",
+              "deployment_id"
+            ],
+            "properties": {
+              "type": {
+                "const": "site_deployment"
+              },
+              "deployment_id": {
+                "type": "string"
+              },
+              "site_id": {
+                "$ref": "#/components/schemas/SiteId"
+              }
+            },
+            "additionalProperties": false
           }
         }
       }

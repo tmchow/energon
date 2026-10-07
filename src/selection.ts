@@ -4,6 +4,7 @@ import {
   criteriaFrom,
   criteriaSql,
   SITE_SIZE_SQL,
+  SITE_FILE_TOTALS_JOIN_SQL,
   type CatalogKind,
   type CriteriaKey,
   type SelectionCriteria,
@@ -211,8 +212,8 @@ async function scanSites(env: Env, actor: Actor, criteria: SelectionCriteria, in
   const rows = await env.DB.prepare(
     `SELECT ${SITE_SCAN_SELECT}
      FROM sites s
-     LEFT JOIN site_files f ON s.id = f.site_id
-     WHERE ${sql.where}
+     ${SITE_FILE_TOTALS_JOIN_SQL}
+     WHERE s.lifecycle_state = 'live' AND ${sql.where}
      GROUP BY s.id
      ${sql.having ? `HAVING ${sql.having}` : ""}
      ORDER BY s.updated_at ASC, s.id ASC
@@ -273,7 +274,7 @@ async function criteriaCandidates(
 async function lookupSite(env: Env, actor: Actor, id: string): Promise<CleanupObject | null> {
   const site = await getSiteById(env, id);
   if (!site) return null;
-  const usage = await env.DB.prepare(`SELECT ${SITE_SIZE_SQL} AS size FROM site_files f WHERE f.site_id = ?`)
+  const usage = await env.DB.prepare(`SELECT ${SITE_SIZE_SQL} AS size FROM sites s ${SITE_FILE_TOTALS_JOIN_SQL} WHERE s.id = ? AND s.lifecycle_state = 'live'`)
     .bind(site.id)
     .first<{ size: number }>();
   return siteObject(actor, {

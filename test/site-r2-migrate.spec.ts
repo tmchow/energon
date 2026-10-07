@@ -2,7 +2,16 @@ import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { siteKey } from "../src/config";
 import { remapLegacySiteR2, resetLegacySiteR2RemapForTests } from "../src/site-r2-migrate";
-import { auth, createSite, json, mint, req, sitePub } from "./helpers";
+import { auth, createSite, mint, req, sitePub } from "./helpers";
+
+async function seedLegacyFile(site: { id: string; handle: string }, path: string, body: string, key = siteKey(site.handle, site.id, path)) {
+  const row = await env.DB.prepare("SELECT active_version_id FROM sites WHERE id = ?").bind(site.id).first();
+  expect(row?.active_version_id).toBeNull();
+  await env.DB.prepare(`INSERT INTO site_files (site_id, path, size, content_type, updated_at, last_written_by)
+    VALUES (?, ?, ?, 'text/html', ?, 'ada@esperlabs.app')`)
+    .bind(site.id, path, new TextEncoder().encode(body).length, new Date().toISOString()).run();
+  await env.BUCKET.put(key, body, { httpMetadata: { contentType: "text/html" } });
+}
 
 describe("legacy site R2 remap", () => {
   it("moves pre-migration slug keys onto the id prefix so public and API GETs work", async () => {
@@ -12,21 +21,9 @@ describe("legacy site R2 remap", () => {
     expect(site.id).toBeTruthy();
     expect(site.id).not.toBe(site.slug);
 
-    await json(`/v1/sites/${site.id}/files/index.html`, {
-      method: "PUT",
-      headers: auth(token, { "content-type": "text/html" }),
-      body: "<p>from-legacy-prefix</p>",
-    });
-
     const idKey = siteKey(site.handle, site.id, "index.html");
     const legacyKey = `sites/${site.handle}/${site.slug}/index.html`;
-    const stored = await env.BUCKET.get(idKey);
-    expect(stored).not.toBeNull();
-    await env.BUCKET.put(legacyKey, await stored!.arrayBuffer(), {
-      httpMetadata: stored!.httpMetadata,
-      customMetadata: stored!.customMetadata,
-    });
-    await env.BUCKET.delete(idKey);
+    await seedLegacyFile(site, "index.html", "<p>from-legacy-prefix</p>", legacyKey);
 
     expect(await env.BUCKET.get(idKey)).toBeNull();
     expect(await env.BUCKET.get(legacyKey)).not.toBeNull();
@@ -57,11 +54,7 @@ describe("legacy site R2 remap", () => {
     const token = await mint("site-r2-remap-idempotent");
     const site = await createSite(token, "already-id-prefix");
     expect(site.status).toBe(201);
-    await json(`/v1/sites/${site.id}/files/ok.txt`, {
-      method: "PUT",
-      headers: auth(token),
-      body: "stable",
-    });
+    await seedLegacyFile(site, "ok.txt", "stable");
     const idKey = siteKey(site.handle, site.id, "ok.txt");
     resetLegacySiteR2RemapForTests();
     await remapLegacySiteR2(env);
