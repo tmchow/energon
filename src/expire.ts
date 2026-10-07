@@ -75,9 +75,37 @@ export function isStaleClaim(updatedAt: string | null | undefined, now = Date.no
   return Number.isFinite(t) && now - t >= STALE_CLAIM_MS;
 }
 
+export const UNRESOLVED_LEGACY_SQL = `a.kind = 'legacy_reservation' AND a.state != 'released'`;
+
 export const NO_LOOSE_RECOVERY_SQL = `NOT EXISTS (SELECT 1 FROM storage_allocations a
-  WHERE a.kind = 'legacy_reservation' AND a.state != 'released'
+  WHERE ${UNRESOLVED_LEGACY_SQL}
     AND json_extract(a.recovery_json, '$.fileId') = loose_files.id)`;
+
+/**
+ * A reservation that only an operator can resolve: its outcome is unknown, cleanup recorded an error, or its writer
+ * outlived the window the sweep uses to flag it. Queued cleanup and live writers are ordinary contention. Binds now.
+ */
+export const LEGACY_RECOVERY_REQUIRED_SQL = `(a.state = 'uncertain' OR a.cleanup_error IS NOT NULL
+  OR ((a.state != 'cleanup_pending' OR a.cleanup_owner IS NOT NULL) AND a.writer_expires_at <= ?))`;
+
+export function fileRecoveryRequired(): ApiError {
+  return new ApiError(409, "file_recovery_required",
+    "Storage recovery is pending for this file. Retrying will not help; ask an administrator to reconcile it (admin health lists it).");
+}
+
+export async function looseFileReservation(db: D1Database, id: string): Promise<"recovery_required" | "pending" | null> {
+  const row = await db.prepare(`SELECT ${LEGACY_RECOVERY_REQUIRED_SQL} AS required FROM storage_allocations a
+    WHERE ${UNRESOLVED_LEGACY_SQL} AND json_extract(a.recovery_json, '$.fileId') = ?
+    ORDER BY required DESC LIMIT 1`).bind(new Date().toISOString(), id).first<{ required: number }>();
+  if (!row) return null;
+  return row.required ? "recovery_required" : "pending";
+}
+
+/** The error for a loose-file mutation that lost to contention; an unresolved reservation outranks a retryable busy. */
+export async function looseFileBusy(env: Env, id: string, message: string): Promise<ApiError> {
+  if (await looseFileReservation(env.DB, id) === "recovery_required") return fileRecoveryRequired();
+  return new ApiError(409, "file_busy", message);
+}
 
 export type LooseFileWriteClaim = { restoreWriter: string; restoreUpdatedAt: string | null; token: string };
 type LooseFileClaimState = Pick<LooseFileRow, "expires_at" | "last_written_by" | "updated_at" | "created_by">;

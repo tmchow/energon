@@ -27,8 +27,21 @@ export type PlatformHeadroom = {
   limit_bytes: number;
 };
 
+export type FileRecoveryItem = {
+  allocation_id: string;
+  file_id: string | null;
+  filename: string | null;
+  operation: string | null;
+  state: string;
+  created_at: string;
+  cleanup_error: string | null;
+  snapshot_retained: boolean;
+  recovery_required: boolean;
+};
+
 export type AdminHealthSnapshot = {
   site_conversions?: { enabled: boolean; pending: number; items: Array<{ site_id: string; slug: string; phase: string; last_error: string | null }> };
+  file_recoveries?: { pending: number; recovery_required: number; items: FileRecoveryItem[] };
   quota: {
     used_bytes: number;
     catalog_bytes: number; pending_cleanup_bytes?: number; cleanup_failed_allocations?: number;

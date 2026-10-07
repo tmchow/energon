@@ -9,6 +9,7 @@
   import Field from './Field.svelte';
   import Input from './Input.svelte';
   import Flash from './Flash.svelte';
+  import Timestamp from './Timestamp.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
   let { health }: { health: AdminHealthSnapshot } = $props();
   let snapshot = $state<AdminHealthSnapshot | null>(null);
@@ -88,6 +89,17 @@
         {view.site_conversions.enabled ? 'Sweep now advances a bounded batch; sites remain readable while converting.' : 'Conversion is disabled. Complete the rollout checks before setting SITE_VERSIONING_ENABLED=true.'}</p>
       <ul>{#each view.site_conversions.items as site (site.site_id)}
         <li><strong>{site.slug}</strong> ({site.site_id}): {site.phase}{site.last_error ? ` — ${site.last_error}` : ''}</li>
+      {/each}</ul>
+    </section>
+  {/if}
+  {#if view.file_recoveries && view.file_recoveries.pending > 0}
+    {@const recoveries = view.file_recoveries}
+    <section id="admin-health-file-recoveries" aria-label="File recoveries">
+      <h3>File recoveries</h3>
+      <p class="en-muted-copy">{formatCount(recoveries.pending)} unresolved file {recoveries.pending === 1 ? 'reservation' : 'reservations'}, {formatCount(recoveries.recovery_required)} {recoveries.recovery_required === 1 ? 'needs' : 'need'} reconciliation.
+        Changes to those files fail with <code>file_recovery_required</code> until storage is reconciled; reads continue. Queued cleanup without an error finishes on its own.</p>
+      <ul>{#each recoveries.items as item (item.allocation_id)}
+        <li><strong>{item.filename ?? 'File not in catalog'}</strong>{#if item.file_id}{' '}(<code>{item.file_id}</code>){/if}: {item.state}{item.operation ? ` ${item.operation}` : ''}{item.recovery_required ? ', needs reconciliation' : ''}{item.snapshot_retained ? ', rollback snapshot retained' : ''}. Reservation <code>{item.allocation_id}</code> since <Timestamp value={item.created_at} />.{item.cleanup_error ? ` Error: ${item.cleanup_error}` : ''}</li>
       {/each}</ul>
     </section>
   {/if}

@@ -308,7 +308,10 @@ function grantUsed(row: Pick<GrantRow, "result_id" | "result_url">): ApiError {
 }
 
 function grantFailed(reason: string | null): ApiError {
-  return new ApiError(410, "grant_failed", "This grant can no longer be used. Ask for a new grant.", { reason });
+  const message = reason === "file_recovery_required"
+    ? "This grant can no longer be used: the file needs storage recovery, so a new grant would fail too. Ask its owner to have an administrator reconcile it."
+    : "This grant can no longer be used. Ask for a new grant.";
+  return new ApiError(410, "grant_failed", message, { reason });
 }
 
 function grantExpired(): ApiError {

@@ -14,7 +14,9 @@ import {
   isPurgeClaimed,
   isStaleClaim,
   isWriteClaimed,
+  looseFileBusy,
   newWriteToken,
+  NO_LOOSE_RECOVERY_SQL,
   restoreLooseFileWriteClaim,
   staleClaimCutoff,
   type LooseFileWriteClaim,
@@ -168,7 +170,7 @@ async function guestPutLoose(
   if (upload.size > policy.fileBytes) throw tooLarge(upload.size, "", policy.fileBytes);
 
   if (isWriteClaimed(row.last_written_by) && !isStaleClaim(row.updated_at)) {
-    throw new ApiError(409, "file_busy", "Another write is in progress; retry this replacement.");
+    throw await looseFileBusy(env, row.id, "Another write is in progress; retry this replacement.");
   }
 
   const claim = await claimLooseGuestWrite(env, row.id, row, authority.hash);
@@ -184,7 +186,7 @@ async function guestPutLoose(
     if (!current.write_password_hash || !hashesEqual(current.write_password_hash, authority.hash)) {
       return writePasswordRequired();
     }
-    throw new ApiError(409, "file_busy", "Another write is in progress; retry this replacement.");
+    throw await looseFileBusy(env, row.id, "Another write is in progress; retry this replacement.");
   }
 
   const key = fileKey(row.id, row.filename);
@@ -387,7 +389,8 @@ async function claimLooseGuestWrite(
      WHERE id = ? AND write_password_hash = ?
        AND (expires_at IS NULL OR expires_at > ?)
        AND ifnull(last_written_by, '') NOT LIKE ?
-       AND (ifnull(last_written_by, '') NOT LIKE ? OR updated_at IS NULL OR updated_at <= ?)`,
+       AND (ifnull(last_written_by, '') NOT LIKE ? OR updated_at IS NULL OR updated_at <= ?)
+       AND ${NO_LOOSE_RECOVERY_SQL}`,
   )
     .bind(token, now, id, writeHash, now, PURGE_CLAIM_LIKE, WRITE_CLAIM_LIKE, staleClaimCutoff())
     .run();
