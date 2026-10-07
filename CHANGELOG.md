@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.9.0](https://github.com/tmchow/energon/compare/v1.8.0...v1.9.0) (2026-10-07)
+
+
+### Features
+
+* **grants:** let a tokenless machine upload one file with a single-use grant ([#137](https://github.com/tmchow/energon/issues/137)) ([fb74aae](https://github.com/tmchow/energon/commit/fb74aaeabcf27ba49687d647714afd20f83995fa))
+
+
+### Bug Fixes
+
+* **content:** sandbox published XML like HTML and SVG ([#135](https://github.com/tmchow/energon/issues/135)) ([d1216b7](https://github.com/tmchow/energon/commit/d1216b780aaa6db5f207dd7f1396979c66eb1a5d))
+
 ## [1.8.0](https://github.com/tmchow/energon/compare/v1.7.0...v1.8.0) (2026-10-06)
 
 
