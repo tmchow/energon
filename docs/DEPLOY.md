@@ -80,7 +80,10 @@ Strings only (Wrangler).
 | `MARKETPLACE_REPO` | `your-org/energon` | `tmchow/energon` |
 | `FOOTER_TEXT` | omit, or one company line | empty (no footer) |
 | `MAX_FILE_BYTES` | omit (100 MB) | 100 MB |
-| `MAX_ZIP_BYTES` | omit (25 MB) | 25 MB |
+| `MAX_ZIP_IMPORT_BYTES` | omit (100 MiB) | 100 MiB |
+| `MAX_ZIP_EXTRACTED_BYTES` | omit (500 MiB) | 500 MiB |
+| `MAX_ZIP_EXPORT_BYTES` | omit (25 MiB) | 25 MiB |
+| `MAX_ZIP_BYTES` | omit (legacy override) | When explicitly set, fallback for all three ZIP limits |
 | `MAX_PLATFORM_BYTES` | omit (20 GB) | 20 GB |
 | `WRITE_POLICY` | `org` | `owner` |
 | `DEV_ACCESS_EMAIL` | `.dev.vars` only | `dev@example.com` |
@@ -114,7 +117,9 @@ The same query with `expires_at IS NULL` lists never-expiring tokens, which is w
 
 `MAX_ZIP_IMPORT_BYTES` caps compressed ZIP input (default 100 MiB). `MAX_ZIP_EXTRACTED_BYTES` caps expanded input (default 500 MiB), with the file cap applied independently. Imports stage the archive and incrementally prepare a complete candidate; use `Prefer: respond-async` for resumable preparation. `MAX_ZIP_EXPORT_BYTES` remains 25 MiB by default. An explicitly configured `MAX_ZIP_BYTES` supplies the fallback for each new setting, preserving existing smaller limits. See [atomic deployments](atomic-site-deployments.md) for quota headroom, deployment-profile verification, and migration requirements.
 
-These size settings accept `25mb`, `5mb`, or a raw byte count. `MAX_PLATFORM_BYTES` is the whole-bucket safety valve (default 20 GB).
+These size settings accept `25mb`, `5mb`, or a raw byte count. `MAX_PLATFORM_BYTES` is the instance-wide storage quota (default 20 GiB, displayed as GB). It includes active content, staged inputs, retained versions, and pending cleanup. It is shared by all users; there is no separate per-user quota.
+
+Leave room for updates: replacing a 500 MiB site from a 100 MiB ZIP can temporarily use about 1.1 GiB for the old site, new site, and archive together. A practical starting point is at least 2 GiB of free capacity for large deployments, with more for concurrent publishing, retries, or a cleanup backlog. This is operating guidance, not a second enforced quota.
 
 `FOOTER_TEXT` is one line on signed-in pages. It is escaped as text — not HTML. Leave it empty for no footer. Use this variable instead of editing hub components to brand a deployment repository.
 
