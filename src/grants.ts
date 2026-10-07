@@ -138,10 +138,13 @@ function readSha256(raw: unknown): string | null {
   return raw.toLowerCase();
 }
 
+/** Unset new-file options are omitted, matching the request shape the OpenAPI target schema describes. */
+function newFileTargetJson(filename: string | null, ttl: string | null, writePolicy: string | null) {
+  return { type: "new_file", filename, ...(ttl ? { ttl } : {}), ...(writePolicy ? { write_policy: writePolicy } : {}) };
+}
+
 function targetJson(row: GrantRow) {
-  if (row.target_kind === "new_file") {
-    return { type: "new_file", filename: row.filename, ttl: row.file_ttl, write_policy: row.file_write_policy };
-  }
+  if (row.target_kind === "new_file") return newFileTargetJson(row.filename, row.file_ttl, row.file_write_policy);
   if (row.target_kind === "file") return { type: "file", id: row.file_id };
   return { type: "site_path", site_id: row.site_id, path: row.path };
 }
@@ -191,7 +194,7 @@ export async function mintGrant(env: Env, actor: Actor, body: Record<string, unk
       sha256,
       target:
         target.kind === "new_file"
-          ? { type: "new_file", filename: target.filename, ttl: target.ttl, write_policy: target.writePolicy }
+          ? newFileTargetJson(target.filename, target.ttl, target.writePolicy)
           : target.kind === "file"
             ? { type: "file", id: target.fileId }
             : { type: "site_path", site_id: target.siteId, path: target.path },
@@ -297,7 +300,8 @@ function rejectForbiddenHeaders(request: Request): void {
 }
 
 async function failGrant(env: Env, id: string, from: { state: "unused" } | { leaseId: string }, reason: string): Promise<void> {
-  const where = "state" in from ? `state = 'unused'` : `lease_id = ?`;
+  // A lease-keyed transition must never touch a grant its own upload already consumed.
+  const where = "state" in from ? `state = 'unused'` : `lease_id = ? AND state = 'uploading'`;
   const binds = "state" in from ? [] : [from.leaseId];
   await env.DB.prepare(
     `UPDATE upload_grants SET state = 'failed', last_error = ?, lease_id = NULL, leased_at = NULL WHERE id = ? AND ${where}`,
@@ -307,7 +311,9 @@ async function failGrant(env: Env, id: string, from: { state: "unused" } | { lea
 }
 
 async function releaseGrant(env: Env, id: string, leaseId: string): Promise<void> {
-  await env.DB.prepare(`UPDATE upload_grants SET state = 'unused', lease_id = NULL, leased_at = NULL WHERE id = ? AND lease_id = ?`)
+  await env.DB.prepare(
+    `UPDATE upload_grants SET state = 'unused', lease_id = NULL, leased_at = NULL WHERE id = ? AND lease_id = ? AND state = 'uploading'`,
+  )
     .bind(id, leaseId)
     .run();
 }

@@ -5394,7 +5394,8 @@
                 "description": "Simple filename, not a path. Fixed at mint."
               },
               "ttl": {
-                "$ref": "#/components/schemas/Ttl"
+                "type": "string",
+                "description": "Retention preset for the new file (see GET /v1/help retention.presets). Omitted means this Energon's default. Unlike POST /v1/files, seconds are not accepted here."
               },
               "write_policy": {
                 "$ref": "#/components/schemas/WritePolicy"

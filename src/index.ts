@@ -106,7 +106,8 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
         : json({ error: "content_origin_not_configured", message: "Set CONTENT_ORIGIN to a separate custom hostname before serving content." }, 503);
     }
     await ensureSchema(env.DB);
-    return redeemGrantRoute(env, ctx, request, decodeURIComponent(grantUpload[1]));
+    // Grant ids are alphanumeric, so the raw segment needs no decoding (and a malformed escape cannot throw).
+    return redeemGrantRoute(env, ctx, request, grantUpload[1]);
   }
   if (isPublicContentPath(path)) {
     if (!contentHost && !isLocalHost(url.hostname)) {

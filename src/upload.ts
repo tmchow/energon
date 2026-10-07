@@ -77,7 +77,8 @@ export async function readUpload(
   } catch (err) {
     await bucket.delete(stagedKey).catch(() => undefined);
     if (await pipeFailed) throw incomplete(declared);
-    throw expected ? checksumMismatch() : err;
+    if (expected && isDigestRejection(err)) throw checksumMismatch();
+    throw err;
   }
   if (await pipeFailed) {
     await bucket.delete(stagedKey).catch(() => undefined);
@@ -96,6 +97,12 @@ function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
 async function sha256OfBytes(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** R2 reports a failed sha256 check as BadDigest (code 10037); any other put failure stays a server error. */
+function isDigestRejection(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /digest|checksum|sha-?256|10037/i.test(message);
 }
 
 function checksumMismatch(): ApiError {
