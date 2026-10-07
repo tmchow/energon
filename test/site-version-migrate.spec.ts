@@ -8,6 +8,7 @@ import { acquireVersionLease, releaseVersionLease } from "../src/site-storage";
 import {
   advanceLegacySiteConversion,
   cleanupLegacySite,
+  conversionBudget,
   ensureLegacyReadVersion,
   ensureSiteSnapshotBaseline,
   getSiteConversion,
@@ -46,6 +47,25 @@ async function fixture() {
     .bind(id)
     .first<SiteRow>())!;
 }
+async function bulkFixture(count: number) {
+  const site = await fixture();
+  const now = new Date().toISOString();
+  for (let i = 0; i < count; i++) {
+    const path = `page-${String(i).padStart(2, "0")}.html`;
+    await env.BUCKET.put(`sites/migrate/${site.id}/${path}`, `p${i}`, { httpMetadata: { contentType: "text/html" } });
+    await env.DB.prepare("INSERT INTO site_files (site_id, path, size, content_type, updated_at, last_written_by) VALUES (?, ?, ?, 'text/html', ?, 'owner@example.test')")
+      .bind(site.id, path, `p${i}`.length, now).run();
+  }
+  await env.DB.prepare(`UPDATE platform_quota SET used = ${STORED_BYTES_SQL} WHERE id = 1`).run();
+  return site;
+}
+const unbounded = () => conversionBudget(100_000, 1024 ** 3, 60_000);
+const activeVersion = async (siteId: string) =>
+  (await env.DB.prepare("SELECT active_version_id FROM sites WHERE id = ?").bind(siteId).first())?.active_version_id;
+const versionFileCount = async (versionId: unknown) =>
+  (await env.DB.prepare("SELECT COUNT(*) AS n FROM site_version_files WHERE version_id = ?").bind(versionId).first())?.n;
+const BULK = 57,
+  BULK_TOTAL = BULK + 2;
 async function finish(siteId: string, selectedEnv: Env = env, steps = 20) {
   for (let i = 0; i < steps; i++) {
     const row = await advanceLegacySiteConversion(selectedEnv, siteId);
@@ -88,18 +108,68 @@ describe("durable legacy site conversion", () => {
     expect(await getSiteConversion(env.DB, site.id)).toBeNull();
     expect((await env.DB.prepare("SELECT active_version_id FROM sites WHERE id = ?").bind(site.id).first())?.active_version_id).toBeTruthy();
   });
-  it("defers the first legacy PUT until durable conversion preserves uncataloged paths", async () => {
+  it("finishes converting a small legacy site inside the first PUT, then accepts the retry", async () => {
     const site = await fixture();
     const actor = { email: "owner@example.test", userId: "owner", via: "access" as const };
     const update = () => putSiteFile({ ...env, SITE_VERSIONING_ENABLED: "true" }, undefined, actor, site.id, "index.html", uploadFromBytes(new TextEncoder().encode("edit")), "text/html");
-    await expect(update()).rejects.toMatchObject({ code: "site_busy" });
-    expect((await getSiteConversion(env.DB, site.id))?.phase).toBe("reserve");
-    expect((await env.DB.prepare("SELECT active_version_id FROM sites WHERE id = ?").bind(site.id).first())?.active_version_id).toBeNull();
-    await finish(site.id);
+    await expect(update()).rejects.toMatchObject({ code: "site_busy", message: expect.stringContaining("finished") });
+    expect((await getSiteConversion(env.DB, site.id))?.phase).toBe("complete");
     await update();
     const orphan = await env.DB.prepare("SELECT f.object_key FROM sites s JOIN site_version_files f ON f.version_id = s.active_version_id WHERE s.id = ? AND f.path = 'orphan.txt'").bind(site.id).first<{ object_key: string }>();
     expect(await (await env.BUCKET.get(orphan!.object_key))!.text()).toBe("lost");
   });
+  it("converts a large legacy site in a few budgeted sweeps instead of one step per sweep", async () => {
+    const site = await bulkFixture(BULK);
+    const enabled = { ...env, SITE_VERSIONING_ENABLED: "true" };
+    let sweeps = 0;
+    while ((await getSiteConversion(env.DB, site.id))?.phase !== "complete" && sweeps < 20) {
+      await sweepLegacySiteStorage(enabled);
+      sweeps++;
+    }
+    expect(await activeVersion(site.id)).toBeTruthy();
+    expect(sweeps).toBeLessThanOrEqual(4);
+    expect(await versionFileCount(await activeVersion(site.id))).toBe(BULK_TOTAL);
+  }, 120_000);
+  it("stops at the request budget and resumes from the last checkpoint", async () => {
+    const site = await bulkFixture(BULK);
+    const row = await advanceLegacySiteConversion(env, site.id, conversionBudget(150, 1024 ** 3, 60_000));
+    expect(["reserve", "copy"]).toContain(row.phase);
+    expect(JSON.parse(row.inventory_json).next).toBeGreaterThan(1);
+    expect(row.owner).toBeNull();
+    expect((await advanceLegacySiteConversion(env, site.id, unbounded())).phase).toBe("complete");
+  }, 120_000);
+  it("resumes a budgeted loop interrupted between copies without duplicating work", async () => {
+    const site = await bulkFixture(BULK);
+    await env.DB.prepare(
+      `CREATE TRIGGER migration_test_loop BEFORE UPDATE ON site_conversions
+      WHEN OLD.site_id = '${site.id}' AND NEW.phase = 'copy' AND json_extract(NEW.inventory_json, '$.next') = 30
+      BEGIN SELECT RAISE(FAIL, 'loop stopped'); END`,
+    ).run();
+    try {
+      await expect(advanceLegacySiteConversion(env, site.id, unbounded())).rejects.toThrow("loop stopped");
+    } finally {
+      await env.DB.exec("DROP TRIGGER migration_test_loop");
+    }
+    const stopped = (await getSiteConversion(env.DB, site.id))!;
+    expect(stopped).toMatchObject({ phase: "copy", owner: null, last_error: expect.stringContaining("loop stopped") });
+    expect(await versionFileCount(JSON.parse(stopped.inventory_json).versionId)).toBe(30);
+    expect(await activeVersion(site.id)).toBeNull();
+    expect((await advanceLegacySiteConversion(env, site.id, unbounded())).phase).toBe("complete");
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM storage_allocations WHERE site_id = ?").bind(site.id).first())?.n).toBe(BULK_TOTAL);
+  }, 120_000);
+  it("keeps a site readable and retryable when the quota cap stops a budgeted reservation run", async () => {
+    const site = await bulkFixture(10);
+    await advanceLegacySiteConversion(env, site.id);
+    const used = Number((await env.DB.prepare("SELECT used FROM platform_quota WHERE id = 1").first())!.used);
+    const capped = { ...env, MAX_PLATFORM_BYTES: String(used + 10) };
+    await expect(advanceLegacySiteConversion(capped, site.id, unbounded())).rejects.toThrow();
+    const blocked = (await getSiteConversion(env.DB, site.id))!;
+    expect(blocked).toMatchObject({ phase: "reserve", owner: null, last_error: expect.any(String) });
+    expect(JSON.parse(blocked.inventory_json).next).toBeGreaterThan(0);
+    expect(await activeVersion(site.id)).toBeNull();
+    expect(await (await env.BUCKET.get(`sites/migrate/${site.id}/index.html`))!.text()).toBe("main");
+    expect((await advanceLegacySiteConversion(env, site.id, unbounded())).phase).toBe("complete");
+  }, 120_000);
   it("converts before deleting a legacy orphan that was absent from the catalog", async () => {
     const site = await fixture();
     const remove = () => deleteSiteFile({ ...env, SITE_VERSIONING_ENABLED: "true" }, undefined, { email: "owner@example.test", userId: "owner", via: "access" as const }, site.id, "orphan.txt");
