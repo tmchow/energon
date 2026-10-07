@@ -2,10 +2,10 @@ import { ApiError, json, publicOrigin, recomputeStorage, totalStoredBytes, usedS
 import { requireAdmin, requireHuman } from "./auth";
 import { recordAdminAudit } from "./audit";
 import { GATE_MAX_FAILS, GATE_WINDOW_MS } from "./gate";
-import { d1Changed, PURGE_CLAIM_LIKE, staleClaimCutoff, sweepExpired } from "./expire";
+import { d1Changed, LEGACY_RECOVERY_REQUIRED_SQL, PURGE_CLAIM_LIKE, staleClaimCutoff, sweepExpired, UNRESOLVED_LEGACY_SQL } from "./expire";
 import { instancePolicy } from "./policy";
 import type { Actor, Env } from "./types";
-import type { AdminHealthSnapshot, GateUnlockResult, QuotaRecomputeResult, SweepNowResult } from "./page-data";
+import type { AdminHealthSnapshot, FileRecoveryItem, GateUnlockResult, QuotaRecomputeResult, SweepNowResult } from "./page-data";
 import { storageCleanupStatus } from "./site-storage";
 import { SITE_FILE_COUNT_SQL, SITE_FILE_TOTALS_JOIN_SQL } from "./catalog";
 
@@ -51,7 +51,7 @@ export async function loadAdminHealth(env: Env, now = Date.now()): Promise<Admin
         .all<{ scope: string }>(),
     ]);
   const lockedScopes = (locked.results || []).map((row) => row.scope);
-  const cleanup = await storageCleanupStatus(env.DB);
+  const [cleanup, fileRecoveries] = await Promise.all([storageCleanupStatus(env.DB), loadFileRecoveries(env, now)]);
   const conversions = await env.DB.prepare(`SELECT s.id AS site_id, s.slug, COALESCE(c.phase, 'pending') AS phase, c.last_error
     FROM sites s LEFT JOIN site_conversions c ON c.site_id = s.id
     WHERE s.lifecycle_state = 'live' AND s.active_version_id IS NULL
@@ -69,6 +69,7 @@ export async function loadAdminHealth(env: Env, now = Date.now()): Promise<Admin
       pending: await count(env, "SELECT COUNT(*) AS n FROM sites WHERE lifecycle_state = 'live' AND active_version_id IS NULL"),
       items: conversions.results,
     },
+    file_recoveries: fileRecoveries,
     expired_awaiting_purge: expired,
     stale_purge_claims: staleSites + staleFiles,
     locked_gates: lockedScopes.length,
@@ -76,6 +77,32 @@ export async function loadAdminHealth(env: Env, now = Date.now()): Promise<Admin
     sites,
     files: looseFiles + siteFiles,
     people,
+  };
+}
+
+type FileRecoveryRow = Omit<FileRecoveryItem, "snapshot_retained" | "recovery_required"> & { snapshot_retained: number; recovery_required: number };
+
+async function loadFileRecoveries(env: Env, now: number): Promise<AdminHealthSnapshot["file_recoveries"]> {
+  const iso = new Date(now).toISOString();
+  const [totals, rows] = await Promise.all([
+    env.DB.prepare(`SELECT COUNT(*) AS pending, COALESCE(SUM(${LEGACY_RECOVERY_REQUIRED_SQL}), 0) AS required
+      FROM storage_allocations a WHERE ${UNRESOLVED_LEGACY_SQL}`).bind(iso).first<{ pending: number; required: number }>(),
+    env.DB.prepare(`SELECT a.id AS allocation_id, json_extract(a.recovery_json, '$.fileId') AS file_id,
+      f.filename, json_extract(a.recovery_json, '$.operation') AS operation, a.state, a.created_at, a.cleanup_error,
+      json_extract(a.recovery_json, '$.snapshotKey') IS NOT NULL AS snapshot_retained,
+      ${LEGACY_RECOVERY_REQUIRED_SQL} AS recovery_required
+    FROM storage_allocations a LEFT JOIN loose_files f ON f.id = json_extract(a.recovery_json, '$.fileId')
+    WHERE ${UNRESOLVED_LEGACY_SQL}
+    ORDER BY recovery_required DESC, a.created_at, a.id LIMIT 25`).bind(iso).all<FileRecoveryRow>(),
+  ]);
+  return {
+    pending: Number(totals?.pending ?? 0),
+    recovery_required: Number(totals?.required ?? 0),
+    items: rows.results.map((row) => ({
+      ...row,
+      snapshot_retained: Boolean(row.snapshot_retained),
+      recovery_required: Boolean(row.recovery_required),
+    })),
   };
 }
 

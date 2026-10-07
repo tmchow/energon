@@ -110,6 +110,8 @@ curl -sS {{ORIGIN}}/v1/files/{id} \
 
 `url` and `api_url` stay the same. Expiry does **not** move. The other agent already has them.
 
+`409 file_busy` means another write is in progress; retry shortly. `409 file_recovery_required` means an interrupted earlier write left that file's storage unreconciled. Do not retry or POST a replacement copy on your own; tell the human that an administrator must reconcile it. Reads still work.
+
 The receiving agent:
 
 ```bash
@@ -362,7 +364,7 @@ They want a machine that has no token (a CI runner, a sandbox, another agent's h
 2. `POST /v1/grants` with the target and, if useful, `expires_in` (`5m`, `15m` default, `30m`, `1h`), `max_bytes`, and the expected `sha256`.
 3. Hand the other machine the returned `upload_url` and `secret`, plus `max_bytes` and `sha256` if you set them so it knows the limits. The secret is shown once. Never put it in a URL or a published file.
 4. That machine sends `PUT` to `upload_url` with `Authorization: Bearer <secret>` and the raw body. It can read the content-origin `/llms.txt` for the protocol. Success publishes immediately and uses the grant up.
-5. Read the result with `GET /v1/grants/{id}`: `consumed` with `url`, `failed` with `last_error`, or `expired`. If it is `failed` or `expired`, mint a new grant; the old secret is dead. If it is still `unused` before `expires_at`, the same secret can be retried. Revoking your token ends every grant it minted.
+5. Read the result with `GET /v1/grants/{id}`: `consumed` with `url`, `failed` with `last_error`, or `expired`. If it is `failed` or `expired`, mint a new grant; the old secret is dead. Exception: `last_error: file_recovery_required` means the file needs an administrator to reconcile storage first, so tell the human instead of minting another grant. If it is still `unused` before `expires_at`, the same secret can be retried. Revoking your token ends every grant it minted.
 
 ```bash
 # you, with a token

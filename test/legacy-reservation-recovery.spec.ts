@@ -59,7 +59,7 @@ it("fences uncertain rename cleanup without deleting the published target", asyn
   expect((await recomputeStorage(env.DB)).after).toBe(before + 5);
   await env.DB.prepare("UPDATE loose_files SET updated_at = '2000-01-01' WHERE id = ?").bind(created.id).run();
   await expect(putLooseFile(env, undefined, actor, created.id, upload("renamed back"), "before.txt", "text/plain"))
-    .rejects.toMatchObject({ code: "file_busy" });
+    .rejects.toMatchObject({ code: "file_recovery_required" });
 });
 
 it("rolls back the catalog when its reservation handoff aborts", async () => {

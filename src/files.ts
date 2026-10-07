@@ -15,11 +15,14 @@ import {
   expiredHtml,
   claimLooseFileForDelete,
   claimLooseFileForWrite,
+  fileRecoveryRequired,
   finalizeLooseFileWriteClaim,
   isExpired,
   isPurgeClaimed,
   isStaleClaim,
   isWriteClaimed,
+  looseFileBusy,
+  looseFileReservation,
   PURGE_CLAIM_LIKE,
   NO_LOOSE_RECOVERY_SQL,
   purgeExpiredFile,
@@ -483,7 +486,7 @@ async function acquireLooseFileReplacementClaim(
     }
     throw expiredError("file");
   }
-  throw new ApiError(409, "file_busy", "Another write is in progress; retry this replacement.");
+  throw await looseFileBusy(env, id, "Another write is in progress; retry this replacement.");
 }
 
 async function commitLooseFileReplacement(
@@ -588,7 +591,7 @@ export async function putLooseFile(
     );
   }
   if (isWriteClaimed(existing.last_written_by) && !isStaleClaim(existing.updated_at)) {
-    throw new ApiError(409, "file_busy", "Another write is in progress; retry this replacement.");
+    throw await looseFileBusy(env, id, "Another write is in progress; retry this replacement.");
   }
   if (isPurgeClaimed(existing.last_written_by) || isExpired(existing.expires_at)) {
     try {
@@ -790,7 +793,7 @@ export async function patchLoose(
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
   if (isWriteClaimed(existing.last_written_by) && !isStaleClaim(existing.updated_at)) {
-    throw new ApiError(409, "file_busy", "Another write is in progress; retry this update.");
+    throw await looseFileBusy(env, id, "Another write is in progress; retry this update.");
   }
   if (isPurgeClaimed(existing.last_written_by) || (isExpired(existing.expires_at) && !patch.setTtl)) {
     try {
@@ -888,10 +891,9 @@ async function throwLooseFileMutationConflict(env: Env, id: string): Promise<nev
   const current = await env.DB.prepare(`SELECT last_written_by FROM loose_files WHERE id = ?`)
     .bind(id)
     .first<{ last_written_by: string | null }>();
-  const recovery = current && await env.DB.prepare(`SELECT id FROM storage_allocations WHERE kind = 'legacy_reservation'
-    AND state != 'released' AND json_extract(recovery_json, '$.fileId') = ? LIMIT 1`).bind(id).first();
-  if (recovery) throw new ApiError(409, "file_busy", "Storage recovery is pending for this file; ask an administrator to inspect it.");
-  if (isWriteClaimed(current?.last_written_by)) {
+  const reservation = current && await looseFileReservation(env.DB, id);
+  if (reservation === "recovery_required") throw fileRecoveryRequired();
+  if (reservation || isWriteClaimed(current?.last_written_by)) {
     throw new ApiError(409, "file_busy", "Another write is in progress; retry this update.");
   }
   throw expiredError("file");
@@ -1012,7 +1014,7 @@ export async function deleteLooseFile(
   }
   if (!asAdmin) assertCanMutate(actor, row);
   if (isWriteClaimed(row.last_written_by) && !isStaleClaim(row.updated_at)) {
-    throw new ApiError(409, "file_busy", "Another write is in progress; retry this deletion.");
+    throw await looseFileBusy(env, id, "Another write is in progress; retry this deletion.");
   }
   if (isPurgeClaimed(row.last_written_by)) throw expiredError("file");
   const claim = await claimLooseFileForDelete(
@@ -1028,7 +1030,7 @@ export async function deleteLooseFile(
       .first<{ last_written_by: string | null }>();
     if (!current) throw expiredError("file");
     if (isPurgeClaimed(current.last_written_by)) throw expiredError("file");
-    throw new ApiError(409, "file_busy", "The file changed during deletion; retry.");
+    throw await looseFileBusy(env, id, "The file changed during deletion; retry.");
   }
   const key = fileKey(row.id, row.filename);
   let previousState: R2ObjectSnapshot | null = null;

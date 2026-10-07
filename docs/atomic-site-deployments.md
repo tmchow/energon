@@ -50,7 +50,9 @@ The range ZIP reader rejects encrypted/unsupported compression entries, malforme
 
 Loose-file writes share the quota ledger. A successful catalog change hands off its reservation in the same transaction. Known cleanup that has not started can be swept. An interrupted direct write or uncertain deletion remains charged and blocks further mutations of that file, so a late operation cannot overwrite or delete its replacement. Reads remain available subject to the normal access and expiry rules.
 
-Inspect retained work with a read-only query against the configured database:
+Mutations of a blocked file return `409 file_recovery_required` once its reservation needs an operator: its outcome is `uncertain`, cleanup recorded an error, or its writer window (`writer_expires_at`) has passed. That code is not retryable. An upload grant for the file fails with that reason, and a guest write-password PUT returns it. A live writer or queued cleanup without an error still returns retryable `409 file_busy`.
+
+The admin Health view (`/admin`) and `GET /v1/admin/health` list unresolved reservations under `file_recoveries`: allocation id, file id and current filename, operation, state, creation time, cleanup error, whether a rollback snapshot is retained, and whether it needs reconciliation. For the full recovery record, query the configured database read-only:
 
 ```sql
 SELECT id, state, reserved_bytes, created_at, cleanup_error,

@@ -22,6 +22,8 @@ This skill talks only to **{{ORIGIN}}**. Install a separately rendered skill for
 | 400 | `empty_export` | `GET /v1/export` with no owned sites or files. This zip is ownership, not involvement. |
 | 413 | `too_large` / `storage_cap` | Over the file cap (100 MB default), ZIP input cap (100 MiB default), expanded ZIP cap (500 MiB default), or ZIP export cap (25 MiB default), 25 MB multipart cap (send a raw body instead), or 20 GB platform cap. Owned-content export over the cap names the totals and tells you to export per site. Follow SKILL.md Scenario L. |
 | 413 | (HTML page, not JSON) | Cloudflare's per-request limit (100 MB on Free and Pro). Partial file bodies cannot be resumed; follow SKILL.md Scenario L. |
+| 409 | `file_busy` | Another write to that file is in progress. Retry shortly. |
+| 409 | `file_recovery_required` | Terminal for that file until an operator acts. An interrupted earlier write left its storage unreconciled. Do not retry; tell the human an administrator must reconcile it (the admin health view lists it). Reads still work. |
 | 409 | `cleanup_drift` | The cleanup selection changed since the preview. The body is a fresh preview; show it and resend with its `confirm`. |
 | 413 | `cleanup_too_many` | More than 100 eligible objects. Narrow the target (`q`, `created_by`, `expires_before`, `expires_within`, `updated_before`, `min_size`, `kind`) or send explicit ids. |
 
@@ -79,7 +81,7 @@ GET  /v1/grants/{id}     state (unused|uploading|consumed|failed|expired), url, 
 PUT  {content_origin}/_grants/{id}   raw body, Authorization: Bearer <grant secret>; no token
 ```
 
-`201` on mint `{ id, secret, upload_url, method, header, scheme, expires_at, max_bytes, sha256, target, url, status_url }`. The secret is shown once. The upload returns `201` (created) or `200` (replaced) with `url`. `410 grant_used` names the published `url`; `410 grant_expired` and `410 grant_failed` mean mint a new grant; `409 grant_busy` and `5xx` are retryable; `404 grant_invalid` is a wrong id or secret.
+`201` on mint `{ id, secret, upload_url, method, header, scheme, expires_at, max_bytes, sha256, target, url, status_url }`. The secret is shown once. The upload returns `201` (created) or `200` (replaced) with `url`. `410 grant_used` names the published `url`; `410 grant_expired` and `410 grant_failed` mean mint a new grant, except `grant_failed` with `reason: file_recovery_required`, which needs an administrator to reconcile that file first; `409 grant_busy` and `5xx` are retryable; `404 grant_invalid` is a wrong id or secret.
 
 ## Listing and cleanup
 

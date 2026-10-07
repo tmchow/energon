@@ -23,7 +23,7 @@ GET with that same write header reads the object even if a share password is set
 
 Wrong or missing write password on PUT or DELETE: 401 naming \`${WRITE_PASSWORD_HEADER}\`. Unset write password: 405. Directory URLs accept GET only.
 
-If the object is gone: 404. If expired: 410. If another write is in progress: 409. Retry 409.
+If the object is gone: 404. If expired: 410. If another write is in progress: 409; retry it. Except 409 \`file_recovery_required\` on a file: an earlier write left its storage unreconciled, so do not retry; tell the person who shared the link that an administrator must reconcile it.
 
 Do not send the share-password header to write. That header does not authorize PUT or DELETE.
 `;
