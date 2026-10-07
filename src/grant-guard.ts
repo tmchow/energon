@@ -27,7 +27,8 @@ export function consumeGrantStatement(
   landedBinds: unknown[],
 ): D1PreparedStatement {
   return env.DB.prepare(
-    `UPDATE upload_grants SET state = 'consumed', result_id = ?, result_url = ?, consumed_at = ?, last_error = NULL
+    `UPDATE upload_grants SET state = 'consumed', result_id = ?, result_url = ?, consumed_at = ?, last_error = NULL,
+       file_password = NULL, file_write_password = NULL
      WHERE id = ? AND lease_id = ? AND ${GRANT_LEASE_SQL} AND ${landedSql}`,
   ).bind(result.id, result.url, now.toISOString(), guard.grantId, guard.leaseId, ...grantLeaseBinds(guard, now), ...landedBinds);
 }

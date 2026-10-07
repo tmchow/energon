@@ -1,7 +1,7 @@
 import { grantActor, parseBearer } from "./auth";
 import { d1Changed, expiredError, isExpired, isPurgeClaimed } from "./expire";
 import { assertFilename, createLooseFile, putLooseFile } from "./files";
-import { hashesEqual } from "./gate";
+import { hashesEqual, passwordHashFromInput, storedPasswordSecret, writePasswordHashFromInput } from "./gate";
 import { GRANT_UPLOAD_PREFIX } from "./grant-protocol";
 import { grantBusy, type GrantGuard } from "./grant-guard";
 import { FORBIDDEN_PUT_HEADERS } from "./guest-write";
@@ -44,6 +44,8 @@ type GrantRow = {
   filename: string | null;
   file_ttl: string | null;
   file_write_policy: string | null;
+  file_password: string | null;
+  file_write_password: string | null;
   max_bytes: number;
   sha256: string | null;
   state: "unused" | "uploading" | "consumed" | "failed";
@@ -57,7 +59,7 @@ type GrantRow = {
 };
 
 type Target =
-  | { kind: "new_file"; filename: string; ttl: string | null; writePolicy: string | null }
+  | { kind: "new_file"; filename: string; ttl: string | null; writePolicy: string | null; password: string | null; writePassword: string | null }
   | { kind: "file"; fileId: string; url: string }
   | { kind: "site_path"; siteId: string; path: string; url: string };
 
@@ -86,14 +88,23 @@ async function resolveTarget(env: Env, actor: Actor, raw: unknown): Promise<Targ
   throw new ApiError(400, "bad_target", 'target.type must be "new_file", "file", or "site_path".');
 }
 
-function resolveNewFileTarget(env: Env, target: Record<string, unknown>): Target {
+/** Stored as the trimmed phrase, like a file's password_secret, so the redeem can set it exactly as POST /v1/files would. */
+async function readGrantPassword(raw: unknown, field: string, hash: (raw: string) => Promise<string | null | undefined>): Promise<string | null> {
+  const value = optionalString(raw, field);
+  if (value === null) return null;
+  return storedPasswordSecret(await hash(value), value);
+}
+
+async function resolveNewFileTarget(env: Env, target: Record<string, unknown>): Promise<Target> {
   const filename = assertFilename(optionalString(target.filename, "target.filename") ?? "", "");
   if (!filename) throw new ApiError(400, "bad_filename", "target.filename is required for a new file.");
   const ttl = optionalString(target.ttl, "target.ttl");
   const writePolicy = optionalString(target.write_policy, "target.write_policy");
   resolveExpiresAt(instancePolicy(env), ttl ?? undefined);
   resolveCreateWritePolicy(env, writePolicy ?? undefined);
-  return { kind: "new_file", filename, ttl, writePolicy };
+  const password = await readGrantPassword(target.password, "target.password", passwordHashFromInput);
+  const writePassword = await readGrantPassword(target.write_password, "target.write_password", writePasswordHashFromInput);
+  return { kind: "new_file", filename, ttl, writePolicy, password, writePassword };
 }
 
 async function resolveFileTarget(env: Env, actor: Actor, target: Record<string, unknown>): Promise<Target> {
@@ -159,8 +170,8 @@ export async function mintGrant(env: Env, actor: Actor, body: Record<string, unk
   const id = nanoid(24);
   const secret = `${GRANT_SECRET_PREFIX}${nanoid(43)}`;
   await env.DB.prepare(
-    `INSERT INTO upload_grants (id, secret_hash, token_id, user_email, user_id, target_kind, file_id, site_id, path, filename, file_ttl, file_write_policy, max_bytes, sha256, state, created_at, expires_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unused', ?, ?)`,
+    `INSERT INTO upload_grants (id, secret_hash, token_id, user_email, user_id, target_kind, file_id, site_id, path, filename, file_ttl, file_write_policy, file_password, file_write_password, max_bytes, sha256, state, created_at, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unused', ?, ?)`,
   )
     .bind(
       id,
@@ -175,6 +186,8 @@ export async function mintGrant(env: Env, actor: Actor, body: Record<string, unk
       target.kind === "new_file" ? target.filename : null,
       target.kind === "new_file" ? target.ttl : null,
       target.kind === "new_file" ? target.writePolicy : null,
+      target.kind === "new_file" ? target.password : null,
+      target.kind === "new_file" ? target.writePassword : null,
       maxBytes,
       sha256,
       now.toISOString(),
@@ -194,7 +207,12 @@ export async function mintGrant(env: Env, actor: Actor, body: Record<string, unk
       sha256,
       target:
         target.kind === "new_file"
-          ? newFileTargetJson(target.filename, target.ttl, target.writePolicy)
+          ? {
+              ...newFileTargetJson(target.filename, target.ttl, target.writePolicy),
+              // Echoed once here, like POST /v1/files; GET /v1/grants/{id} never returns stored phrases.
+              ...(target.password ? { password: target.password } : {}),
+              ...(target.writePassword ? { write_password: target.writePassword } : {}),
+            }
           : target.kind === "file"
             ? { type: "file", id: target.fileId }
             : { type: "site_path", site_id: target.siteId, path: target.path },
@@ -225,6 +243,7 @@ export async function grantStatus(env: Env, actor: Actor, id: string): Promise<R
     state: derivedState(row),
     target: targetJson(row),
     url: row.result_url,
+    result_id: row.result_id,
     last_error: row.last_error,
     max_bytes: row.max_bytes,
     sha256: row.sha256,
@@ -275,8 +294,8 @@ function invalidGrant(): ApiError {
   return new ApiError(404, "grant_invalid", "No upload grant matches that id and secret.");
 }
 
-function grantUsed(row: Pick<GrantRow, "result_url">): ApiError {
-  return new ApiError(410, "grant_used", "This grant was already used. Its upload is published.", { url: row.result_url });
+function grantUsed(row: Pick<GrantRow, "result_id" | "result_url">): ApiError {
+  return new ApiError(410, "grant_used", "This grant was already used. Its upload is published.", { url: row.result_url, result_id: row.result_id });
 }
 
 function grantFailed(reason: string | null): ApiError {
@@ -304,7 +323,7 @@ async function failGrant(env: Env, id: string, from: { state: "unused" } | { lea
   const where = "state" in from ? `state = 'unused'` : `lease_id = ? AND state = 'uploading'`;
   const binds = "state" in from ? [] : [from.leaseId];
   await env.DB.prepare(
-    `UPDATE upload_grants SET state = 'failed', last_error = ?, lease_id = NULL, leased_at = NULL WHERE id = ? AND ${where}`,
+    `UPDATE upload_grants SET state = 'failed', last_error = ?, lease_id = NULL, leased_at = NULL, file_password = NULL, file_write_password = NULL WHERE id = ? AND ${where}`,
   )
     .bind(reason, id, ...binds)
     .run();
@@ -367,9 +386,9 @@ async function claimLease(env: Env, row: GrantRow): Promise<GrantGuard> {
     .bind(leaseId, now.toISOString(), row.id, grantClaimCutoff(now))
     .run();
   if (d1Changed(claimed)) return { grantId: row.id, leaseId };
-  const current = await env.DB.prepare(`SELECT state, last_error, result_url FROM upload_grants WHERE id = ?`)
+  const current = await env.DB.prepare(`SELECT state, last_error, result_id, result_url FROM upload_grants WHERE id = ?`)
     .bind(row.id)
-    .first<Pick<GrantRow, "state" | "last_error" | "result_url">>();
+    .first<Pick<GrantRow, "state" | "last_error" | "result_id" | "result_url">>();
   if (current?.state === "consumed") throw grantUsed(current);
   if (current?.state === "failed") throw grantFailed(current.last_error);
   if (current?.state === "uploading") throw grantBusy();
@@ -378,7 +397,7 @@ async function claimLease(env: Env, row: GrantRow): Promise<GrantGuard> {
 
 async function commit(env: Env, ctx: ExecutionContext, actor: Actor, row: GrantRow, upload: Upload, guard: GrantGuard): Promise<Response> {
   if (row.target_kind === "new_file") {
-    const res = await createLooseFile(env, ctx, actor, row.filename ?? "", upload, null, undefined, row.file_ttl ?? undefined, row.file_write_policy ?? undefined, undefined, guard);
+    const res = await createLooseFile(env, ctx, actor, row.filename ?? "", upload, null, row.file_password ?? undefined, row.file_ttl ?? undefined, row.file_write_policy ?? undefined, row.file_write_password ?? undefined, guard);
     return looseResult(res, true);
   }
   if (row.target_kind === "file") {
