@@ -118,6 +118,8 @@ const TABLE_STATEMENTS = [
     filename TEXT,
     file_ttl TEXT,
     file_write_policy TEXT,
+    file_password TEXT,
+    file_write_password TEXT,
     max_bytes INTEGER NOT NULL,
     sha256 TEXT,
     state TEXT NOT NULL,
@@ -191,6 +193,7 @@ export async function ensureSchema(db: D1Database): Promise<void> {
     await backfillSiteIds(db);
     await ensureColumns(db, "tokens", ["token_secret", "token_hint", "user_id", "expires_at", "scope"]);
     await ensureColumns(db, "users", ["idp_sub"]);
+    await ensureColumns(db, "upload_grants", ["file_password", "file_write_password"]);
     await db.prepare(`UPDATE tokens SET token_secret = NULL WHERE token_secret IS NOT NULL`).run();
     await db.prepare(
       `UPDATE tokens SET user_id = (SELECT id FROM users WHERE users.email = tokens.user_email) WHERE user_id IS NULL`,

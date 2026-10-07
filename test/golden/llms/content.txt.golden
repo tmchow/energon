@@ -27,7 +27,7 @@ Send `PUT` to the upload URL with header `Authorization: Bearer <secret>` and th
 Success is `201` (new file or path) or `200` (replaced) with the public `url`. The grant is then used up.
 
 - `404 grant_invalid`: wrong id or secret.
-- `410 grant_used`: already used; the body names the published `url`.
+- `410 grant_used`: already used; the body names the published `url` and its `result_id`.
 - `410 grant_expired` or `410 grant_failed`: stop and ask for a new grant.
 - `409 grant_busy`, `409 file_busy`, or a `5xx`: retry the same upload.
 - `413 too_large` or `400 checksum_mismatch`: fix the bytes and retry; nothing was published.

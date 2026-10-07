@@ -50,9 +50,9 @@ A file write password only replaces that file (including empty). A site write pa
 
 ## Upload grant
 
-Let a machine without a token upload one file. `POST /v1/grants` with `{"target": {"type": "new_file", "filename": "…"}}`, `{"target": {"type": "file", "id": "…"}}`, or `{"target": {"type": "site_path", "site_id": "…", "path": "…"}}`, plus optional `expires_in` (5m, 15m default, 30m, 1h), `max_bytes`, and `sha256`. You must be able to write the target. The response holds `upload_url` (`https://energon.example.com/_grants/{id}`) and a `secret`, shown once.
+Let a machine without a token upload one file. `POST /v1/grants` with `{"target": {"type": "new_file", "filename": "…"}}`, `{"target": {"type": "file", "id": "…"}}`, or `{"target": {"type": "site_path", "site_id": "…", "path": "…"}}`, plus optional `expires_in` (5m, 15m default, 30m, 1h), `max_bytes`, and `sha256`. A `new_file` target also takes `ttl`, `write_policy`, `password`, and `write_password`; set a password there so the file is protected from the moment it lands. You must be able to write the target. The response holds `upload_url` (`https://energon.example.com/_grants/{id}`) and a `secret`, shown once.
 
-The other machine sends `PUT` to `upload_url` with `Authorization: Bearer <secret>` and the raw bytes; it reads `https://energon.example.com/llms.txt`. Success publishes at once and uses the grant up. Read the result with `GET /v1/grants/{id}`. Revoking the minting token ends its grants. A grant is a single-use capability, not an account: do not mint the other machine a token.
+The other machine sends `PUT` to `upload_url` with `Authorization: Bearer <secret>` and the raw bytes; it reads `https://energon.example.com/llms.txt`. Success publishes at once and uses the grant up. Read the result with `GET /v1/grants/{id}`: `url` and `result_id` once consumed. Revoking the minting token ends its grants. A grant is a single-use capability, not an account: do not mint the other machine a token.
 
 ## Optional
 

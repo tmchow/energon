@@ -270,6 +270,8 @@ describe("minting and reading upload grants", () => {
     expect((await mintGrant(token, { target: { type: "new_file", filename: "a.txt" }, expires_in: "2h" })).body.error).toBe("bad_ttl");
     expect((await mintGrant(token, { target: { type: "new_file", filename: "a.txt" }, sha256: "abc" })).status).toBe(400);
     expect((await mintGrant(token, { target: { type: "new_file", filename: "a.txt", ttl: "forever" } })).body.error).toBe("bad_ttl");
+    expect((await mintGrant(token, { target: { type: "new_file", filename: "a.txt", password: "x".repeat(129) } })).body.error).toBe("bad_password");
+    expect((await mintGrant(token, { target: { type: "new_file", filename: "a.txt", password: 7 } })).status).toBe(400);
   });
 
   it("caps max_bytes at the instance file limit", async () => {
@@ -319,7 +321,29 @@ describe("redeeming upload grants", () => {
     const row = await env.DB.prepare("SELECT created_by FROM loose_files WHERE id = ?").bind(put.body.id).first<{ created_by: string }>();
     expect(row?.created_by).toBe("ada@esperlabs.app");
     const status = await json(`/v1/grants/${minted.body.id}`, { headers: auth(token) });
-    expect(status.body).toMatchObject({ state: "consumed", url: put.body.url });
+    expect(status.body).toMatchObject({ state: "consumed", url: put.body.url, result_id: put.body.id });
+  });
+
+  it("creates a new file already protected by the passwords set at mint", async () => {
+    const token = await mint("redeem-protected");
+    const minted = await mintGrant(token, {
+      target: { type: "new_file", filename: "locked.txt", password: " grant-pw ", write_password: "grant-wpw" },
+    });
+    expect(minted.status).toBe(201);
+    expect(minted.body.target).toEqual({ type: "new_file", filename: "locked.txt", password: "grant-pw", write_password: "grant-wpw" });
+    const put = await redeem(minted.body.upload_url, minted.body.secret, "locked bytes");
+    expect(put.status).toBe(201);
+    expect(put.text).not.toContain("grant-pw");
+    expect((await SELF.fetch(put.body.url)).status).toBe(401);
+    const unlocked = await SELF.fetch(put.body.url, { headers: { "X-Energon-Password": "grant-pw" } });
+    expect(await unlocked.text()).toBe("locked bytes");
+    const file = await env.DB.prepare("SELECT password_secret, write_password_secret FROM loose_files WHERE id = ?").bind(put.body.id).first();
+    expect(file).toEqual({ password_secret: "grant-pw", write_password_secret: "grant-wpw" });
+    const status = await json(`/v1/grants/${minted.body.id}`, { headers: auth(token) });
+    expect(status.body.target).toEqual({ type: "new_file", filename: "locked.txt" });
+    expect(JSON.stringify(status.body)).not.toContain("grant-pw");
+    const row = await env.DB.prepare("SELECT file_password, file_write_password FROM upload_grants WHERE id = ?").bind(minted.body.id).first();
+    expect(row).toEqual({ file_password: null, file_write_password: null });
   });
 
   it("replaces an existing loose file at the same URL", async () => {
@@ -365,7 +389,7 @@ describe("redeeming upload grants", () => {
     const first = await redeem(minted.body.upload_url, minted.body.secret, "1");
     const again = await redeem(minted.body.upload_url, minted.body.secret, "2");
     expect(again.status).toBe(410);
-    expect(again.body).toMatchObject({ error: "grant_used", url: first.body.url });
+    expect(again.body).toMatchObject({ error: "grant_used", url: first.body.url, result_id: first.body.id });
   });
 
   it("answers a wrong secret and an unknown id identically", async () => {

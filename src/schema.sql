@@ -165,6 +165,8 @@ CREATE TABLE IF NOT EXISTS upload_grants (
   filename TEXT,
   file_ttl TEXT,
   file_write_policy TEXT,
+  file_password TEXT,
+  file_write_password TEXT,
   max_bytes INTEGER NOT NULL,
   sha256 TEXT,
   state TEXT NOT NULL,
