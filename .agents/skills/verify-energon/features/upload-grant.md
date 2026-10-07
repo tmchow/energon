@@ -11,7 +11,7 @@ An upload grant lets a token holder hand a machine without a token a short-lived
 - `grant-single-use` refuses a second upload with `410 grant_used` and the published `url`.
 - `grant-checksum` rejects bytes that do not match `sha256` with `400 checksum_mismatch` and leaves the grant usable.
 - `grant-revoked` ends the grant with `410 grant_failed` (`reason: token_revoked`) once the minting token is revoked.
-- `grant-status` shows `unused`, `consumed` with `url`, `failed` with `last_error`, or `expired` to any token of the minting account.
+- `grant-status` shows `unused`, `uploading` (an upload in flight), `consumed` with `url`, `failed` with `last_error`, or `expired` to any token of the minting account.
 
 ## How to get to it (user POV)
 
