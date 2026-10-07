@@ -40,5 +40,6 @@ Preconditions:
 - Setting `expires_at` in the throwaway verify D1 is how to make sweep visible without waiting. GET of that public URL purges immediately and invalidates the sweep proof.
 - Locked share-gate scopes are `obj:/{handle}/f/{id}/` and `ip:…` (and `wobj:` / `wip:` for write). They are not secrets. A lockout writes both an object scope and an IP scope; unlocking only one leaves the other blocking. Extra unlock seeds `gate_attempts` (`fails=20`) on `$PERSIST`; do not send twenty wrong-password GETs.
 - Health and repairs never return published file bytes, share passwords, or write passwords.
-- Sweep runs one batch of at most 100. Remaining greater than 0 means run again; do not loop in one request.
+- Sweep runs one batch: at most 100 expired sites and 100 expired files per call. `swept` is `{sites, files}`. Remaining greater than 0 means run again; do not loop in one request.
+- Sweep purges expired sites and files only. Expired upload grants and stale `tmp/` upload objects are cleaned by the scheduled cron, not by Sweep, and health does not count them.
 - Hub humans POST `/account/admin/...`. Agents POST `/v1/admin/...` with an admin token.

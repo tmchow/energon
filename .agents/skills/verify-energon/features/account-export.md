@@ -23,7 +23,7 @@ Account export lets a person or agent download every site and loose file they ow
 Preconditions:
 
 - `bin/up` passed. `$TOKEN` is the signed-in email (`$EMAIL` / `$HANDLE`).
-- Fixture names start with `vexport` so other recipes stay out of this zip.
+- Fixture names start with `vexport` so they are easy to find in the zip. The export holds everything this identity owns, including other recipes' fixtures; assert the `vexport` entries are present, not that they are alone.
 - Localhost accepts `Cf-Access-Authenticated-User-Email` for a second identity. Do not invent a token; mint through `POST $ORIGIN/account/tokens` with `Origin: $ORIGIN`.
 
 - **Default — Fixtures (slim).** `POST $ORIGIN/v1/sites` `{"slug":"vexport-alpha"}` then PUT `index.html` (`alpha`). `POST $ORIGIN/v1/files` `X-Filename: vexport-one.md` body `one`. Record `$ALPHA` and `$F1`.
