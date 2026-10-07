@@ -362,7 +362,7 @@ describe("TTL purge claims", () => {
     let injected = false;
     db.prepare = ((sql: string) => {
       const statement = originalPrepare(sql);
-      if (injected || !sql.includes("password_hash = ?, password_secret = ?, write_policy = ? WHERE")) return statement;
+      if (injected || !sql.includes("password_hash = ?, password_secret = ?, write_password_hash = ?, write_password_secret = ?, expires_at = ?, write_policy = ? WHERE")) return statement;
       const originalBind = statement.bind.bind(statement);
       return {
         ...statement,
@@ -386,7 +386,7 @@ describe("TTL purge claims", () => {
       const patched = await json(`/v1/files/${fileId}`, {
         method: "PATCH",
         headers: auth(token, { "content-type": "application/json" }),
-        body: JSON.stringify({ password: "secret", write_policy: "owner" }),
+        body: JSON.stringify({ password: "secret", write_password: "writer-secret", ttl: "7d", write_policy: "owner" }),
       });
       expect(patched.status).toBe(409);
       expect(patched.body.error).toBe("file_busy");
@@ -395,11 +395,17 @@ describe("TTL purge claims", () => {
     }
 
     expect(injected).toBe(true);
-    const row = await env.DB.prepare(`SELECT password_hash, write_policy FROM loose_files WHERE id = ?`)
+    const row = await env.DB.prepare(`SELECT password_hash, password_secret, write_password_hash, write_password_secret, expires_at, write_policy FROM loose_files WHERE id = ?`)
       .bind(fileId)
-      .first<{ password_hash: string | null; write_policy: string }>();
-    expect(row?.password_hash).toBeNull();
-    expect(row?.write_policy).toBe("org");
+      .first();
+    expect(row).toEqual({
+      password_hash: null,
+      password_secret: null,
+      write_password_hash: null,
+      write_password_secret: null,
+      expires_at: null,
+      write_policy: "org",
+    });
   });
 
   it("does not partially apply a multi-field site PATCH when purge claims", async () => {

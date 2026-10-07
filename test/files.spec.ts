@@ -1,7 +1,66 @@
 import { describe, expect, it } from "vitest";
-import { createLooseFile, deleteLooseFile, putLooseFile } from "../src/files";
+import { createLooseFile, deleteLooseFile, patchLoose, putLooseFile } from "../src/files";
 import { uploadFromBytes } from "../src/upload";
 import type { Actor, Env } from "../src/types";
+import { auth, json, mint } from "./helpers";
+
+describe("patchLoose preparation", () => {
+  it("distinguishes omitted fields from present undefined fields without mutating the file", async () => {
+    const { env } = await import("cloudflare:test");
+    const token = await mint("patch-field-presence");
+    const created = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "X-Filename": "field-presence.txt" }),
+      body: "original",
+    });
+    const id = String(created.body.id);
+    const before = await env.DB.prepare("SELECT * FROM loose_files WHERE id = ?").bind(id).first();
+    const creator: Actor = { email: "ada@esperlabs.app", via: "token" };
+    const coworker: Actor = { email: "bob@esperlabs.app", via: "token" };
+
+    expect((await patchLoose(env, coworker, id, {})).status).toBe(200);
+    await expect(patchLoose(env, coworker, id, { write_password: undefined })).rejects.toMatchObject({
+      status: 403,
+      code: "forbidden_write_policy",
+      message: "Only the creator can change who can write this.",
+    });
+    await expect(patchLoose(env, creator, id, { write_policy: undefined })).rejects.toMatchObject({
+      status: 400,
+      code: "bad_write_policy",
+      message: "write_policy must be owner or org.",
+    });
+    expect(await env.DB.prepare("SELECT * FROM loose_files WHERE id = ?").bind(id).first()).toEqual(before);
+  });
+
+  it("retains policy authorization, write-password validation, and share-password authorization precedence", async () => {
+    const { env } = await import("cloudflare:test");
+    const token = await mint("patch-validation-order");
+    const created = await json("/v1/files", {
+      method: "POST",
+      headers: auth(token, { "X-Filename": "validation-order.txt" }),
+      body: "original",
+    });
+    const id = String(created.body.id);
+    const before = await env.DB.prepare("SELECT * FROM loose_files WHERE id = ?").bind(id).first();
+    const coworker: Actor = { email: "bob@esperlabs.app", via: "token" };
+    const overlong = "x".repeat(129);
+
+    await expect(patchLoose(env, coworker, id, { write_policy: "invalid", write_password: overlong })).rejects.toMatchObject({
+      status: 403,
+      code: "forbidden_write_policy",
+    });
+    await expect(patchLoose(env, coworker, id, { write_password: overlong, password: overlong })).rejects.toMatchObject({
+      status: 400,
+      code: "bad_password",
+      message: "Write password is too long (max 128 characters).",
+    });
+    await expect(patchLoose(env, coworker, id, { password: overlong })).rejects.toMatchObject({
+      status: 403,
+      code: "forbidden_write_policy",
+    });
+    expect(await env.DB.prepare("SELECT * FROM loose_files WHERE id = ?").bind(id).first()).toEqual(before);
+  });
+});
 
 describe("putLooseFile", () => {
   it("succeeds and purges cached content when renamed-file cleanup fails", async () => {

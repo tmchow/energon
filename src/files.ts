@@ -66,6 +66,7 @@ import {
   resolveWritePolicy,
   ttlFromRequest,
   writePolicyFromRequest,
+  type ResolvedTtl,
 } from "./policy";
 import { noteRead } from "./reads";
 import type { Actor, Env, LooseFileRow } from "./types";
@@ -431,6 +432,81 @@ export async function postLooseFromRequest(
   ));
 }
 
+async function acquireLooseFileReplacementClaim(
+  env: Env,
+  ctx: ExecutionContext | undefined,
+  actor: Actor,
+  id: string,
+  existing: Pick<LooseFileRow, "handle" | "filename" | "expires_at" | "created_by" | "last_written_by" | "updated_at">,
+) {
+  const claim = await claimLooseFileForWrite(env, id, existing, actor);
+  if (claim) return claim;
+  const current = await env.DB.prepare(`SELECT expires_at, last_written_by FROM loose_files WHERE id = ?`)
+    .bind(id)
+    .first<{ expires_at: string | null; last_written_by: string | null }>();
+  if (!current || isPurgeClaimed(current.last_written_by) || isExpired(current.expires_at)) {
+    try {
+      await purgeExpiredFile(env, ctx, id, existing.handle, existing.filename);
+    } catch (err) {
+      console.error("purgeExpiredFile failed", err);
+    }
+    throw expiredError("file");
+  }
+  throw new ApiError(409, "file_busy", "Another write is in progress; retry this replacement.");
+}
+
+async function commitLooseFileReplacement(
+  env: Env,
+  id: string,
+  claimToken: string,
+  replacement: {
+    handle: string;
+    filename: string;
+    size: number;
+    contentType: string;
+    ts: string;
+    hash: string | null | undefined;
+    password: string | undefined;
+  },
+  guard: GrantGuard | undefined,
+): Promise<void> {
+  const { handle, filename, size, contentType, ts, hash, password } = replacement;
+  const assignments = [
+    "handle = COALESCE(handle, ?)",
+    "filename = ?",
+    "size = ?",
+    "content_type = ?",
+    "updated_at = ?",
+    "last_written_by = ?",
+  ];
+  const values: unknown[] = [handle, filename, size, contentType, ts, claimToken];
+  assignPasswordStore(assignments, values, hash, password, "password_hash", "password_secret");
+  const update = `UPDATE loose_files SET ${assignments.join(", ")} WHERE id = ? AND last_written_by = ?`;
+  let updated: D1Result;
+  if (guard) {
+    const now = new Date(ts);
+    const live = `(expires_at IS NULL OR expires_at > ?)`;
+    [updated] = await env.DB.batch([
+      env.DB.prepare(`${update} AND ${live} AND ${GRANT_LEASE_SQL}`).bind(...values, id, claimToken, ts, ...grantLeaseBinds(guard, now)),
+      consumeGrantStatement(
+        env,
+        guard,
+        now,
+        { id, url: filePublicUrl(env, handle, id, filename) },
+        `EXISTS (SELECT 1 FROM loose_files WHERE id = ? AND last_written_by = ? AND ${live})`,
+        [id, claimToken, ts],
+      ),
+    ]);
+  } else {
+    updated = await env.DB.prepare(update).bind(...values, id, claimToken).run();
+  }
+  if (!d1Changed(updated)) {
+    const grantProblem = guard ? await grantCommitFailure(env, guard) : null;
+    if (grantProblem) throw grantProblem;
+    throw new ApiError(409, "file_write_lost", "The file changed during replacement; retry.");
+  }
+}
+
 export async function putLooseFile(
   env: Env,
   ctx: ExecutionContext | undefined,
@@ -497,26 +573,7 @@ export async function putLooseFile(
   const oldKey = fileKey(id, existing.filename);
   const newKey = fileKey(id, filename);
   const renamed = newKey !== oldKey;
-  const claim = await claimLooseFileForWrite(
-    env,
-    id,
-    existing,
-    actor,
-  );
-  if (!claim) {
-    const current = await env.DB.prepare(`SELECT expires_at, last_written_by FROM loose_files WHERE id = ?`)
-      .bind(id)
-      .first<{ expires_at: string | null; last_written_by: string | null }>();
-    if (!current || isPurgeClaimed(current.last_written_by) || isExpired(current.expires_at)) {
-      try {
-        await purgeExpiredFile(env, ctx, id, existing.handle, existing.filename);
-      } catch (err) {
-        console.error("purgeExpiredFile failed", err);
-      }
-      throw expiredError("file");
-    }
-    throw new ApiError(409, "file_busy", "Another write is in progress; retry this replacement.");
-  }
+  const claim = await acquireLooseFileReplacementClaim(env, ctx, actor, id, existing);
   let reserved = 0;
   let previousState: R2ObjectSnapshot | null = null;
   let metadataCommitted = false;
@@ -526,40 +583,7 @@ export async function putLooseFile(
     previousState = renamed ? null : await snapshotR2Object(env.BUCKET, oldKey);
     await putUpload(env.BUCKET, newKey, upload, { httpMetadata: { contentType } });
     wroteObject = true;
-    const assignments = [
-      "handle = COALESCE(handle, ?)",
-      "filename = ?",
-      "size = ?",
-      "content_type = ?",
-      "updated_at = ?",
-      "last_written_by = ?",
-    ];
-    const values: unknown[] = [handle, filename, upload.size, contentType, ts, claim.token];
-    assignPasswordStore(assignments, values, hash, password, "password_hash", "password_secret");
-    const update = `UPDATE loose_files SET ${assignments.join(", ")} WHERE id = ? AND last_written_by = ?`;
-    let updated: D1Result;
-    if (guard) {
-      const now = new Date(ts);
-      const live = `(expires_at IS NULL OR expires_at > ?)`;
-      [updated] = await env.DB.batch([
-        env.DB.prepare(`${update} AND ${live} AND ${GRANT_LEASE_SQL}`).bind(...values, id, claim.token, ts, ...grantLeaseBinds(guard, now)),
-        consumeGrantStatement(
-          env,
-          guard,
-          now,
-          { id, url: filePublicUrl(env, handle, id, filename) },
-          `EXISTS (SELECT 1 FROM loose_files WHERE id = ? AND last_written_by = ? AND ${live})`,
-          [id, claim.token, ts],
-        ),
-      ]);
-    } else {
-      updated = await env.DB.prepare(update).bind(...values, id, claim.token).run();
-    }
-    if (!d1Changed(updated)) {
-      const grantProblem = guard ? await grantCommitFailure(env, guard) : null;
-      if (grantProblem) throw grantProblem;
-      throw new ApiError(409, "file_write_lost", "The file changed during replacement; retry.");
-    }
+    await commitLooseFileReplacement(env, id, claim.token, { handle, filename, size: upload.size, contentType, ts, hash, password }, guard);
     metadataCommitted = true;
     if (renamed) await env.BUCKET.delete(oldKey).catch(() => undefined);
   } catch (err) {
@@ -604,11 +628,76 @@ export async function putLooseFile(
   });
 }
 
+type LooseFilePatch = { password?: string; write_password?: string; ttl?: unknown; setTtl?: boolean; write_policy?: unknown };
+
+async function prepareLooseFilePatch(
+  actor: Actor,
+  existing: Pick<LooseFileRow, "created_by" | "owner_id" | "write_policy">,
+  patch: LooseFilePatch,
+  asAdmin: boolean,
+) {
+  const wantsWrite = Object.prototype.hasOwnProperty.call(patch, "write_policy");
+  const wantsWritePassword = Object.prototype.hasOwnProperty.call(patch, "write_password");
+  const wantsSharePassword = patch.password !== undefined;
+  const wantsOther = wantsSharePassword || Boolean(patch.setTtl);
+  if (wantsOther && !asAdmin) assertCanMutate(actor, existing);
+  let nextWrite = resolveWritePolicy(existing.write_policy);
+  if (wantsWrite) {
+    assertCanSetWritePolicy(actor, existing.created_by, existing.owner_id);
+    const parsed = requestedWritePolicy(patch.write_policy);
+    if (parsed === "invalid" || parsed === null) {
+      throw new ApiError(400, "bad_write_policy", "write_policy must be owner or org.");
+    }
+    nextWrite = parsed;
+  }
+  const writeHash = await writePasswordHashFromInput(patch.write_password);
+  if (wantsWritePassword || wantsSharePassword) {
+    assertCanSetWritePolicy(actor, existing.created_by, existing.owner_id);
+  }
+  const hash = await passwordHashFromInput(patch.password);
+  return { wantsWrite, nextWrite, writeHash, hash };
+}
+
+function looseFilePatchAssignments(
+  actor: Actor,
+  patch: LooseFilePatch,
+  prepared: Awaited<ReturnType<typeof prepareLooseFilePatch>>,
+  resolved: ResolvedTtl | null,
+  ts: string,
+  asAdmin: boolean,
+) {
+  const { wantsWrite, nextWrite, writeHash, hash } = prepared;
+  const ttlOnlyAdmin = asAdmin && Boolean(patch.setTtl) && hash === undefined && writeHash === undefined && !wantsWrite;
+  const assignments: string[] = [];
+  const values: unknown[] = [];
+  if (hash !== undefined || writeHash !== undefined || resolved || wantsWrite) {
+    if (!ttlOnlyAdmin) {
+      assignments.push("updated_at = ?", "last_written_by = ?", "written_via = NULL");
+      values.push(ts, actor.email);
+    }
+    if (hash !== undefined) {
+      assignPasswordStore(assignments, values, hash, patch.password, "password_hash", "password_secret");
+    }
+    if (writeHash !== undefined) {
+      assignPasswordStore(assignments, values, writeHash, patch.write_password, "write_password_hash", "write_password_secret");
+    }
+    if (resolved) {
+      assignments.push("expires_at = ?");
+      values.push(resolved.expiresAt);
+    }
+    if (wantsWrite) {
+      assignments.push("write_policy = ?");
+      values.push(nextWrite);
+    }
+  }
+  return { assignments, values };
+}
+
 export async function patchLoose(
   env: Env,
   actor: Actor,
   id: string,
-  patch: { password?: string; write_password?: string; ttl?: unknown; setTtl?: boolean; write_policy?: unknown },
+  patch: LooseFilePatch,
   ctx?: ExecutionContext,
   asAdmin = false,
 ): Promise<Response> {
@@ -646,52 +735,15 @@ export async function patchLoose(
     }
     throw expiredError("file");
   }
-  const wantsWrite = Object.prototype.hasOwnProperty.call(patch, "write_policy");
-  const wantsWritePassword = Object.prototype.hasOwnProperty.call(patch, "write_password");
-  const wantsSharePassword = patch.password !== undefined;
-  const wantsOther = wantsSharePassword || Boolean(patch.setTtl);
-  if (wantsOther && !asAdmin) assertCanMutate(actor, existing);
-  let nextWrite = resolveWritePolicy(existing.write_policy);
-  if (wantsWrite) {
-    assertCanSetWritePolicy(actor, existing.created_by, existing.owner_id);
-    const parsed = requestedWritePolicy(patch.write_policy);
-    if (parsed === "invalid" || parsed === null) {
-      throw new ApiError(400, "bad_write_policy", "write_policy must be owner or org.");
-    }
-    nextWrite = parsed;
-  }
-  const writeHash = await writePasswordHashFromInput(patch.write_password);
-  if (wantsWritePassword || wantsSharePassword) {
-    assertCanSetWritePolicy(actor, existing.created_by, existing.owner_id);
-  }
-  const hash = await passwordHashFromInput(patch.password);
+  const prepared = await prepareLooseFilePatch(actor, existing, patch, asAdmin);
+  const { nextWrite, writeHash, hash } = prepared;
   const ts = new Date().toISOString();
   const handle = existing.handle || (await ensureHandle(env, actor.email, actor.idpSub));
   const resolved = patch.setTtl ? resolveExpiresAt(instancePolicy(env), patch.ttl) : null;
   const notClaimed = `ifnull(last_written_by, '') NOT LIKE ? AND (ifnull(last_written_by, '') NOT LIKE ? OR updated_at IS NULL OR updated_at <= ?)`;
   const claimGuards = [PURGE_CLAIM_LIKE, WRITE_CLAIM_LIKE, staleClaimCutoff()] as const;
-  const ttlOnlyAdmin = asAdmin && Boolean(patch.setTtl) && hash === undefined && writeHash === undefined && !wantsWrite;
-  if (hash !== undefined || writeHash !== undefined || resolved || wantsWrite) {
-    const assignments: string[] = [];
-    const values: unknown[] = [];
-    if (!ttlOnlyAdmin) {
-      assignments.push("updated_at = ?", "last_written_by = ?", "written_via = NULL");
-      values.push(ts, actor.email);
-    }
-    if (hash !== undefined) {
-      assignPasswordStore(assignments, values, hash, patch.password, "password_hash", "password_secret");
-    }
-    if (writeHash !== undefined) {
-      assignPasswordStore(assignments, values, writeHash, patch.write_password, "write_password_hash", "write_password_secret");
-    }
-    if (resolved) {
-      assignments.push("expires_at = ?");
-      values.push(resolved.expiresAt);
-    }
-    if (wantsWrite) {
-      assignments.push("write_policy = ?");
-      values.push(nextWrite);
-    }
+  const { assignments, values } = looseFilePatchAssignments(actor, patch, prepared, resolved, ts, asAdmin);
+  if (assignments.length) {
     const updated = await env.DB.prepare(
       `UPDATE loose_files SET ${assignments.join(", ")} WHERE id = ? AND ${notClaimed}`,
     )
