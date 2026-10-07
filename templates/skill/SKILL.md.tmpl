@@ -147,31 +147,24 @@ curl -sS {{ORIGIN}}/v1/sites/{id}/files/index.html \
   --data-binary @index.html
 ```
 
-This is the collaboration model: a shared site id, last write wins per path. Two agents, or a human and an agent, can take turns if they both know the site id and path.
+Each write publishes a complete snapshot preserving other paths. Concurrent writers can receive 409; reread before retrying. For a folder replacement use Scenario E so readers never see a partially uploaded release.
 
-## Scenario E — Folder is easier as a zip
+## Scenario E — Publish a complete folder atomically
 
-1. Create the site (Scenario A). Import 404s if the id does not exist.
-2. Zip the folder. If every entry is under one wrapping directory (`my-site/index.html`), {{PRODUCT}} strips that folder so `index.html` lands at the site root.
-3. `POST /v1/sites/{id}/import` with `Content-Type: application/zip`.
-4. Zip body and its extracted files ≤ `limits.zip_bytes` from `GET /v1/help` (25 MB by default). `..` paths are rejected.
+1. Create a site (Scenario A) or read `GET /v1/sites/{id}`. Save `content_generation` as `expected_version`. The existing public site stays live while you upload.
+2. Build a manifest of the **complete desired folder**, at most 200 files: `files: [{"path":"index.html","size":123,"sha256":"<64 hex digits>","content_type":"text/html"}]`. Hash the exact local bytes. Omitted paths disappear when you commit; an empty manifest publishes an empty site.
+3. Generate `idempotency_key` as Unix milliseconds, a dot, and a UUIDv4. Save it with the exact manifest before making a request. `POST /v1/sites/{id}/deployments` with JSON `{"expected_version":N,"idempotency_key":"<milliseconds>.<UUIDv4>","files":[...]}`. Save the returned `deployment_id` and `status_url`.
+4. PUT each file's raw bytes to `/v1/sites/{id}/deployments/{deploymentId}/files/{path}` with the token and declared content type. Use a file path with `--data-binary @file` so the client supplies Content-Length. A matching retry is safe; a different body is rejected. Never publish an undeclared path.
+5. POST `/v1/sites/{id}/deployments/{deploymentId}/prepare` without a body. If 202, read status and repeat prepare until ready. Preparation does **not** publish.
+6. **Explicitly POST `/v1/sites/{id}/deployments/{deploymentId}/commit` without a body.** Save its `version_id` and stable `url`; GET the public URL and check `X-Energon-Site-Version`. A stale generation returns 409 rather than overwriting another release. Read the new state and make a new intent if the replacement is still wanted.
 
-```bash
-curl -sS {{ORIGIN}}/v1/sites/{id}/import \
-  -H "Authorization: Bearer ${{TOKEN_ENV}}" \
-  -H "content-type: application/zip" \
-  --data-binary @site.zip
-```
+A ZIP can replace the manifest: pass `archive: {"size":N,"sha256":"<hex>","max_extracted_bytes":N,"max_files":200}` instead of `files`, PUT the ZIP to the session's `/archive`, then prepare and explicitly commit. One wrapping directory is stripped. Traversal, duplicate normalized paths, unsupported ZIP features, and invalid checksums are rejected. Import bytes and expanded bytes have independent caps: `limits.zip_import_bytes` (100 MiB default) and `limits.zip_extracted_bytes` (500 MiB default). Each individual file must fit `limits.file_bytes`.
 
-To download a site back as a zip (same zip / file-count caps; empty site is 400):
+Sessions last one hour. GET status after a lost response, and resume missing files or preparation; repeat a lost commit using the same session. Committed receipts remain for seven days. Do not create a new idempotency identity just to retry a timed-out request. DELETE the unpublished session to abort. Staging, old releases, and pending cleanup all count toward quota; allow room for old and new content together.
 
-```bash
-curl -sS {{ORIGIN}}/v1/sites/{id}/export \
-  -H "Authorization: Bearer ${{TOKEN_ENV}}" \
-  -o onboarding-draft.zip
-```
+Compatibility: `POST /v1/sites/{id}/import` with `Content-Type: application/zip` still merges paths synchronously (200). Add `Prefer: respond-async` for a staged merge (202), then prepare and explicitly commit. Use a deployment for full replacement. ZIP export remains `GET /v1/sites/{id}/export`, capped separately by `limits.zip_export_bytes` (25 MiB default); an empty site is 400.
 
-A single file is never a zip. `GET /v1/files/{id}?download=1` (or the public URL with `?download=1`) returns the file with `Content-Disposition: attachment`.
+Public URLs stay the same. Every request resolves one active version, but a page and its later asset requests can cross a commit. There is no page-wide pinning, browsable history, or rollback API.
 
 ## Scenario F — No token, expired token, or 401
 
@@ -323,10 +316,12 @@ They want to publish something large: a video, a dataset, a big PDF, a build out
 | One request of any kind | 100 MB on Cloudflare Free and Pro, 200 MB on Business | Cloudflare, before {{PRODUCT}} sees it. Usually the real ceiling. |
 | Multipart upload (`-F file=@…`) | 25 MB | Fixed. Use a raw body instead. |
 | Upload without `Content-Length` | 25 MB | Fixed. Upload from a file path so curl sets the header. |
-| Zip import, and site or account zip export | `limits.zip_bytes` (25 MB by default) | This Energon's `MAX_ZIP_BYTES` |
+| ZIP input | `limits.zip_import_bytes` (100 MiB default) | `MAX_ZIP_IMPORT_BYTES` |
+| ZIP expanded files | `limits.zip_extracted_bytes` (500 MiB default) | `MAX_ZIP_EXTRACTED_BYTES` |
+| Site or account ZIP export | `limits.zip_export_bytes` (25 MiB default) | `MAX_ZIP_EXPORT_BYTES` |
 | Whole Energon | `limits.platform_bytes` (20 GB by default) | 413 `storage_cap` |
 
-{{PRODUCT}} has **no chunked or resumable upload**. One file is one request, so nothing over the per-request ceiling can be published as a single file, whatever `limits.file_bytes` says.
+Deployment sessions resume between files and preparation steps; they do not resume a partial file body. One file or ZIP input is one request and must fit the host request limit. Explicit ZIP settings override the legacy `MAX_ZIP_BYTES` fallback, which retains smaller configured caps.
 
 1. Get the size (`wc -c < file`) and the caps (`GET /v1/help` → `limits`).
 2. **Up to 25 MB:** publish normally (Scenario B, or a site PUT).
@@ -350,17 +345,12 @@ They want to publish something large: a video, a dataset, a big PDF, a build out
      ```bash
      split -b 90m -d big.tar.gz big.tar.gz.part-
      shasum -a 256 big.tar.gz > big.tar.gz.sha256
-     for p in big.tar.gz.part-* big.tar.gz.sha256; do
-       curl -sS -X PUT {{ORIGIN}}/v1/sites/{id}/files/"$p" \
-         -H "Authorization: Bearer ${{TOKEN_ENV}}" \
-         --data-binary @"$p"
-     done
      ```
 
-     Also PUT an `index.md` that lists the parts and says how to rebuild: download every part, `cat big.tar.gz.part-* > big.tar.gz`, then `shasum -a 256 -c big.tar.gz.sha256`. A site holds at most 200 files.
+     Add an `index.md` that lists the parts and says how to rebuild: download every part, `cat big.tar.gz.part-* > big.tar.gz`, then `shasum -a 256 -c big.tar.gz.sha256`. Publish the parts, checksum, and index together using one manifest deployment (Scenario E). Repeated site-path PUTs copy the entire site each time and retain those copies during cleanup grace. A new deployment accepts at most 200 files.
    - **Host the large file elsewhere.** If they have company file or video hosting, put it there and publish a short markdown page on {{PRODUCT}} that links to it.
    - **Raise the cap.** Only the operator can raise `MAX_FILE_BYTES`, and it only helps up to the Cloudflare plan limit (200 MB on Business). Mention it; do not promise it.
-5. **Zip over `limits.zip_bytes`:** do not import it. Unzip locally and PUT each file to the site (Scenario D); each file only has to fit the file cap. To get a big site back out, GET each path from `GET /v1/sites/{id}` instead of the zip export.
+5. **ZIP over `limits.zip_import_bytes`:** unpack locally and build a complete manifest deployment (Scenario E). Upload the declared files, prepare, and explicitly commit. Every file must fit the file/request cap. For a site over the export cap, read the listing and GET files individually; these independent reads are not a pinned export.
 
 Never report a large file as published until the write returned `201` or `200`, and give the human the stored `size` so they can confirm it is the whole file.
 
@@ -368,7 +358,7 @@ Never report a large file as published until the write returned `201` or `200`, 
 
 They want a machine that has no token (a CI runner, a sandbox, another agent's host) to upload one file, and the bytes should go straight there rather than through you. Mint an upload grant. Do **not** mint that machine a token. A grant is one single-use upload; for repeated updates by an outsider at a URL that already exists, use a write password instead (Scenario I).
 
-1. You must be able to write the target. Pick one: a new loose file (`filename`), an existing loose file (`id`), or one path in an existing site (`site_id` and `path`). A site folder needs one grant per path.
+1. You must be able to write the target. Pick one: a new loose file (`filename`), an existing loose file (`id`), or one path in an existing site (`site_id` and `path`). For an atomic folder replacement, create the immutable deployment intent from Scenario E first, then mint `{"target":{"type":"site_deployment","deployment_id":"..."}}`.
 2. `POST /v1/grants` with the target and, if useful, `expires_in` (`5m`, `15m` default, `30m`, `1h`), `max_bytes`, and the expected `sha256`.
 3. Hand the other machine the returned `upload_url` and `secret`, plus `max_bytes` and `sha256` if you set them so it knows the limits. The secret is shown once. Never put it in a URL or a published file.
 4. That machine sends `PUT` to `upload_url` with `Authorization: Bearer <secret>` and the raw body. It can read the content-origin `/llms.txt` for the protocol. Success publishes immediately and uses the grant up.
@@ -403,3 +393,9 @@ Do not dump the whole API. Do not keep the token in your reply.
 ## When you get stuck
 
 `GET {{ORIGIN}}/v1/help` then follow its `sop` array. Route details: [references/api.md](references/api.md). Exact schemas: `GET {{ORIGIN}}/v1/openapi.json`.
+
+### Whole-site grant handoff
+
+Keep the API token on the trusted machine. The producing machine builds the files first and sends their exact manifest or ZIP size and SHA-256 to the token holder. This grant does not authorize an unknown future build. Create an owned deployment with that exact manifest or ZIP descriptor, then `POST /v1/grants` with `{"target":{"type":"site_deployment","deployment_id":"..."},"expires_in":"15m"}`. Send the once-shown secret and returned status/upload/archive/prepare/commit URLs to the uploader. The uploader uses `Authorization: Bearer <secret>` on those content-origin URLs only, uploads declared inputs, prepares until ready, and explicitly commits. A single grant authorizes all these steps and is consumed only by publication. It cannot choose a different site, base generation, intent, or settings. Keep the secret out of URLs and published files.
+
+The token holder can read the session or grant status. After a lost commit response, the uploader can recover the committed receipt even after grant expiry, but not after revocation. A revoked or expired owner credential cannot authorize new writes. Existing single-file grants still publish immediately on their one PUT; do not apply the multi-step protocol to them.

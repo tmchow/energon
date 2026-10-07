@@ -172,6 +172,8 @@ npx wrangler deploy
 
 Stop on a migration failure. Never stamp `d1_migrations` or execute ad hoc schema SQL to bypass it; see [Migration recovery](docs/DEPLOY.md#migrations-after-a-deploy). Do not deploy from an unrelated checkout or account. Record the deployed commit, account, resource IDs, origins, and plugin coordinates without secrets.
 
+For an existing installation, leave `SITE_VERSIONING_ENABLED` unset until the full version-aware Worker rollout, old-writer drain, and cache isolation checks are complete. Follow [the atomic-site conversion procedure](docs/atomic-site-deployments.md#enabling-legacy-conversion) before enabling conversion. Do not roll back to a version-unaware Worker after any site converts.
+
 ### 7. Verify the installation
 
 Replace the example origins and probe without an Access session or API token:

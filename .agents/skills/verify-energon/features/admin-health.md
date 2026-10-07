@@ -7,7 +7,7 @@ Operators listed on `ADMIN_EMAILS` see storage health on `/admin` and can repair
 - `admin-health-page` is the `#admin-health` card on `GET /admin` for operators. It shows quota used, cap, catalog, expired awaiting purge, stale purge claims, locked share gates, sites, files, and people.
 - `admin-health-get` is `GET /v1/admin/health` (admin token) and `GET /account/admin/health` (hub). Same JSON. Never published bytes or secrets.
 - `admin-health-refuse` is `403 forbidden_admin` for a non-admin on `GET /admin` health numbers, `GET /account/admin/health`, `GET /v1/admin/health`, and the three repair POSTs.
-- `admin-health-recompute` is `POST /v1/admin/quota/recompute` (admin token) and `POST /account/admin/quota/recompute` (hub). Sets `platform_quota.used` from `SUM(size)`. Returns `used_before` and `used_after`. Hub `#admin-health-recompute` opens `#admin-health-recompute-dlg` first.
+- `admin-health-recompute` is `POST /v1/admin/quota/recompute` (admin token) and `POST /account/admin/quota/recompute` (hub). Recomputes `platform_quota.used` from catalog bytes and durable allocations, including pending reservations and retained versions. Returns `used_before` and `used_after`. Hub `#admin-health-recompute` opens `#admin-health-recompute-dlg` first.
 - `admin-health-sweep` is `POST /v1/admin/sweep` (admin token) and `POST /account/admin/sweep` (hub). Runs one expiry batch and returns `swept` plus `expired_remaining`. Hub `#admin-health-sweep` opens `#admin-health-sweep-dlg` first; the button reads `N left, run again` when expired objects remain.
 - `admin-health-unlock` is `POST /v1/admin/gates/unlock` (admin token) and `POST /account/admin/gates/unlock` (hub) with `{ "scope" }`. Clears that `gate_attempts` row. Hub field is `#admin-health-scope`; submit is `#admin-health-unlock`. Empty scope with an admin token is `400 bad_target`. No token, including a malformed JSON body, is `401 unauthorized`.
 
@@ -31,6 +31,7 @@ Preconditions:
 - **Extra (admin-health-page) — Operator hub.** Open `$ORIGIN/admin`. `#admin-health` and repair controls present. Drive when Admin.svelte health card changes.
 - **Extra (admin-health-sweep) — Sweep now.** Publish a file, backdate `expires_at` on `$PERSIST`, do **not** GET the public URL, `POST /v1/admin/sweep`. Drive when sweep changes.
 - **Extra (admin-health-unlock) — Unlock.** Do **not** send 20 wrong-password GETs. After publishing `$ID`, seed **this run's** DB with an ISO `window_start` (SQLite `datetime('now')` will not match the health query): `INSERT OR REPLACE INTO gate_attempts (scope, fails, window_start) VALUES ('obj:/$HANDLE/f/$ID/', 20, '<ISO now>')`. Health lists that scope. `POST /v1/admin/gates/unlock` `{ "scope": "obj:/$HANDLE/f/$ID/" }` `unlocked` true. Drive when lockout or unlock changes.
+- **Extra (site conversion) — Progress and blocker.** With `SITE_VERSIONING_ENABLED=true`, seed a legacy site with a catalog path whose R2 object is missing in this run only. Run Sweep now. Health and the operator page must identify the site and its repairable conversion error without publishing a partial version. Check desktop and mobile layouts and the sweep confirmation.
 - **Proof.** Default: health JSON, 403, 401, 400, recompute JSON. Screenshots only for Extra hub.
 
 ## Gotchas
@@ -41,5 +42,5 @@ Preconditions:
 - Locked share-gate scopes are `obj:/{handle}/f/{id}/` and `ip:…` (and `wobj:` / `wip:` for write). They are not secrets. A lockout writes both an object scope and an IP scope; unlocking only one leaves the other blocking. Extra unlock seeds `gate_attempts` (`fails=20`) on `$PERSIST`; do not send twenty wrong-password GETs.
 - Health and repairs never return published file bytes, share passwords, or write passwords.
 - Sweep runs one batch: at most 100 expired sites and 100 expired files per call. `swept` is `{sites, files}`. Remaining greater than 0 means run again; do not loop in one request.
-- Sweep purges expired sites and files only. Expired upload grants and stale `tmp/` upload objects are cleaned by the scheduled cron, not by Sweep, and health does not count them.
+- Sweep also advances bounded version/allocation cleanup and, when `SITE_VERSIONING_ENABLED=true`, legacy conversion. Health reports pending conversion phases/errors and cleanup charges. Expired upload grants retain their separate scheduled cleanup.
 - Hub humans POST `/account/admin/...`. Agents POST `/v1/admin/...` with an admin token.

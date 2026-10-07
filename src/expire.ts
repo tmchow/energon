@@ -1,6 +1,8 @@
-import { filePrefix, purgeContent, sitePrefix } from "./cache";
+import { sweepLegacySiteStorage } from "./site-version-migrate";
+import { sweepSiteStorage } from "./site-storage";
+import { filePrefix, purgeContent } from "./cache";
 import { fileKey } from "./config";
-import { ApiError, deletePrefix, htmlPage, releaseStorage } from "./http";
+import { ApiError, htmlPage, releaseStorage } from "./http";
 import { OWNER_WRITE_SQL, ownerWriteBinds } from "./policy";
 import type { Actor, Env, LooseFileRow } from "./types";
 
@@ -73,6 +75,10 @@ export function isStaleClaim(updatedAt: string | null | undefined, now = Date.no
   return Number.isFinite(t) && now - t >= STALE_CLAIM_MS;
 }
 
+export const NO_LOOSE_RECOVERY_SQL = `NOT EXISTS (SELECT 1 FROM storage_allocations a
+  WHERE a.kind = 'legacy_reservation' AND a.state != 'released'
+    AND json_extract(a.recovery_json, '$.fileId') = loose_files.id)`;
+
 export type LooseFileWriteClaim = { restoreWriter: string; restoreUpdatedAt: string | null; token: string };
 type LooseFileClaimState = Pick<LooseFileRow, "expires_at" | "last_written_by" | "updated_at" | "created_by">;
 
@@ -114,7 +120,7 @@ async function claimLooseFile(
        AND ifnull(last_written_by, '') = ?
        AND ifnull(last_written_by, '') NOT LIKE ?
        AND (ifnull(last_written_by, '') NOT LIKE ? OR updated_at IS NULL OR updated_at <= ?)
-       AND ${writeGuard.sql}`,
+       AND ${writeGuard.sql} AND ${NO_LOOSE_RECOVERY_SQL}`,
   )
     .bind(
       token,
@@ -162,63 +168,16 @@ export async function restoreLooseFileWriteClaim(
     .run();
 }
 
-/**
- * Hold the slug until R2 is gone, then drop the catalog row.
- * Claim last_written_by first so a concurrent TTL reset cannot keep a live
- * catalog after this function has started deleting objects.
- */
 export async function purgeExpiredSite(
   env: Env,
-  ctx: ExecutionContext | undefined,
-  handle: string,
+  _ctx: ExecutionContext | undefined,
+  _handle: string,
   id: string,
 ): Promise<boolean> {
-  const key = `site:${handle}/${id}`;
-  if (inFlight.has(key)) return false;
-  inFlight.add(key);
-  try {
-    const claim = await claimExpiredSite(env, id);
-    if (!claim) return false;
-
-    try {
-      await deletePrefix(env.BUCKET, `sites/${handle}/${id}/`);
-    } catch (err) {
-      await env.DB.prepare(
-        `UPDATE sites SET last_written_by = ? WHERE id = ? AND last_written_by = ?`,
-      )
-        .bind(claim.restoreWriter, id, claim.token)
-        .run();
-      throw err;
-    }
-
-    const usage = await env.DB.prepare(
-      `SELECT COALESCE(SUM(size), 0) AS total FROM site_files WHERE site_id = ?`,
-    )
-      .bind(id)
-      .first<{ total: number }>();
-    await env.DB.prepare(
-      `DELETE FROM site_files WHERE site_id = ?
-       AND EXISTS (
-         SELECT 1 FROM sites WHERE id = ? AND last_written_by = ? AND expires_at = ?
-       )`,
-    )
-      .bind(id, id, claim.token, claim.expiresAt)
-      .run();
-    const dropped = await env.DB.prepare(
-      `DELETE FROM sites WHERE id = ? AND last_written_by = ? AND expires_at IS NOT NULL AND expires_at = ?`,
-    )
-      .bind(id, claim.token, claim.expiresAt)
-      .run();
-    if (!d1Changed(dropped)) return false;
-    try {
-      await purgeContent(ctx, [sitePrefix(handle, id)]);
-    } finally {
-      await releaseStorage(env.DB, Number(usage?.total ?? 0));
-    }
-    return true;
-  } finally {
-    inFlight.delete(key);
-  }
+  const result = await env.DB.prepare(`UPDATE sites SET lifecycle_state = 'deleted', active_version_id = NULL, content_generation = content_generation + 1
+    WHERE id = ? AND lifecycle_state = 'live' AND expires_at IS NOT NULL AND expires_at <= ?`)
+    .bind(id, new Date().toISOString()).run();
+  return d1Changed(result);
 }
 
 export async function purgeExpiredFile(
@@ -261,30 +220,6 @@ export async function purgeExpiredFile(
   }
 }
 
-async function claimExpiredSite(env: Env, id: string): Promise<Claim | null> {
-  const now = new Date().toISOString();
-  const row = await env.DB.prepare(
-    `SELECT expires_at, last_written_by, created_by, updated_at FROM sites
-     WHERE id = ? AND expires_at IS NOT NULL AND expires_at <= ?`,
-  )
-    .bind(id, now)
-    .first<{ expires_at: string; last_written_by: string; created_by: string; updated_at: string }>();
-  if (!row) return null;
-  if (isPurgeClaimed(row.last_written_by) && !isStaleClaim(row.updated_at)) {
-    return null;
-  }
-  const token = newPurgeToken();
-  const claimed = await env.DB.prepare(
-    `UPDATE sites SET last_written_by = ?, updated_at = ?
-     WHERE id = ? AND expires_at = ? AND expires_at <= ? AND last_written_by = ?`,
-  )
-    .bind(token, now, id, row.expires_at, now, row.last_written_by)
-    .run();
-  if (!d1Changed(claimed)) return null;
-  const restoreWriter = isPurgeClaimed(row.last_written_by) ? row.created_by : row.last_written_by;
-  return { expiresAt: row.expires_at, restoreWriter, token };
-}
-
 async function claimExpiredFile(env: Env, id: string): Promise<Claim | null> {
   const now = new Date().toISOString();
   const row = await env.DB.prepare(
@@ -307,7 +242,7 @@ async function claimExpiredFile(env: Env, id: string): Promise<Claim | null> {
   const token = newPurgeToken();
   const claimed = await env.DB.prepare(
     `UPDATE loose_files SET last_written_by = ?, updated_at = ?
-     WHERE id = ? AND expires_at = ? AND expires_at <= ? AND ifnull(last_written_by, '') = ?`,
+     WHERE id = ? AND expires_at = ? AND expires_at <= ? AND ifnull(last_written_by, '') = ? AND ${NO_LOOSE_RECOVERY_SQL}`,
   )
     .bind(token, now, id, row.expires_at, now, row.last_written_by ?? "")
     .run();
@@ -348,7 +283,7 @@ export async function sweepExpired(
   let files = 0;
 
   const siteRows = await env.DB.prepare(
-    `SELECT handle, id FROM sites WHERE expires_at IS NOT NULL AND expires_at <= ? LIMIT ?`,
+    `SELECT handle, id FROM sites WHERE lifecycle_state = 'live' AND expires_at IS NOT NULL AND expires_at <= ? LIMIT ?`,
   )
     .bind(now, SWEEP_BATCH)
     .all<{ handle: string; id: string }>();
@@ -365,5 +300,7 @@ export async function sweepExpired(
     if (await purgeExpiredFile(env, ctx, row.id, row.handle, row.filename)) files += 1;
   }
 
+  await sweepLegacySiteStorage(env);
+  await sweepSiteStorage(env.DB, env.BUCKET);
   return { sites, files };
 }

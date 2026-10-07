@@ -41,10 +41,10 @@ FOOTER_TEXT = ""
 [triggers]
 crons = ["*/5 * * * *"]
 
-# Repeat GETs of public /sites and /files skip the Worker (no D1, no R2, no CPU).
-# Cached until write or delete purges that prefix. Passworded responses are private.
+# Loose files may use automatic caching. Sites select a version in the Worker.
 [cache]
 enabled = true
+cross_version_cache = false
 
 [[d1_databases]]
 binding = "DB"
@@ -69,3 +69,6 @@ run_worker_first = ["/static/ui/*", "/static/mermaid/*", "/static/md-expand.mjs"
 type = "Text"
 globs = ["**/*.html", "**/*.svg", "**/*.css", "**/*.client.js", "**/*.txt"]
 fallthrough = false
+
+# Enable legacy site conversion only after the full rollout and old-writer/cache drain.
+# SITE_VERSIONING_ENABLED = "true" belongs in [vars] when the rollout is verified.

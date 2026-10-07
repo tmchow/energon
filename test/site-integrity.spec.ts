@@ -1,226 +1,206 @@
+import { env } from "cloudflare:test";
 import { zipSync, strToU8 } from "fflate";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { MAX_IMPORT_FILES } from "../src/config";
+import { sweepSiteStorage } from "../src/site-storage";
 import { auth, createSite as postSite, json, mint, req } from "./helpers";
 import { withD1Trigger } from "./mutation-harness";
 
-const D1_BATCH_LIMIT = 100;
-
 async function createSite(token: string, slug: string, files: Record<string, string> = { "index.html": "original" }) {
   const created = await postSite(token, slug);
-  if (created.status !== 201) throw new Error(`createSite ${slug} failed: ${created.status}`);
+  expect(created.status).toBe(201);
   for (const [path, body] of Object.entries(files)) {
-    await json(`/v1/sites/${created.id}/files/${path}`, {
-      method: "PUT",
-      headers: auth(token),
-      body,
-    });
+    expect((await json(`/v1/sites/${created.id}/files/${path}`, { method: "PUT", headers: auth(token), body })).status).toBe(201);
   }
   return created;
 }
 
+async function snapshot(id: string) {
+  const site = await env.DB.prepare("SELECT active_version_id, content_generation, lifecycle_state FROM sites WHERE id = ?").bind(id)
+    .first<{ active_version_id: string; content_generation: number; lifecycle_state: string }>();
+  const files = (await env.DB.prepare("SELECT path, object_key, size FROM site_version_files WHERE version_id = ? ORDER BY path")
+    .bind(site!.active_version_id).all<{ path: string; object_key: string; size: number }>()).results;
+  return { site, files, bytes: await Promise.all(files.map(async file => [file.path, await (await env.BUCKET.get(file.object_key))!.text()])) };
+}
+
+async function failPart<T>(number: number, run: () => Promise<T>) {
+  const original = env.BUCKET.createMultipartUpload.bind(env.BUCKET);
+  let parts = 0;
+  env.BUCKET.createMultipartUpload = async (...args) => {
+    const upload = await original(...args);
+    const uploadPart = upload.uploadPart.bind(upload);
+    upload.uploadPart = async (...partArgs) => {
+      if (++parts === number) throw new Error("injected multipart failure");
+      return uploadPart(...partArgs);
+    };
+    return upload;
+  };
+  try { const result = await run(); expect(parts).toBeGreaterThanOrEqual(number); return result; } finally { env.BUCKET.createMultipartUpload = original; }
+}
+
+function importZip(token: string, id: string, files: Record<string, string>) {
+  return json(`/v1/sites/${id}/import`, { method: "POST", headers: auth(token, { "content-type": "application/zip" }),
+    body: zipSync(Object.fromEntries(Object.entries(files).map(([path, bytes]) => [path, strToU8(bytes)]))) });
+}
+
+function failPublication<T>(id: string, run: () => Promise<T>) {
+  return withD1Trigger(env.DB, "fail_publication", `CREATE TRIGGER fail_publication BEFORE UPDATE OF active_version_id ON sites
+    WHEN OLD.id = '${id}' AND NEW.active_version_id IS NOT OLD.active_version_id
+    BEGIN SELECT RAISE(ABORT, 'injected publication failure'); END`, run);
+}
+
 describe("site mutation integrity", () => {
-  it("restores every affected path when an import fails after an R2 write", async () => {
-    const { env } = await import("cloudflare:test");
-    const token = await mint("site-integrity-import");
-    const site = await createSite(token, "integrity-import", { "a.txt": "old-a", "b.txt": "old-b" });
-    const bucket = env.BUCKET;
-    const originalPut = bucket.put.bind(bucket);
-    let writes = 0;
-    bucket.put = async (...args) => {
-      writes += 1;
-      if (writes === 2) throw new Error("injected import storage failure");
-      return originalPut(...args);
-    };
-    try {
-      const zipped = zipSync({ "a.txt": strToU8("new-a"), "b.txt": strToU8("new-b") });
-      const response = await json(`/v1/sites/${site.id}/import`, {
-        method: "POST",
-        headers: auth(token, { "content-type": "application/zip" }),
-        body: zipped,
-      });
-      expect(response.status).toBe(500);
-    } finally {
-      bucket.put = originalPut;
-    }
-    for (const path of ["a.txt", "b.txt"]) {
-      const response = await req(`/v1/sites/${site.id}/files/${path}`, { headers: auth(token) });
-      expect(await response.text()).toBe(`old-${path[0]}`);
-    }
-  });
-
-  it("restores bytes and metadata when an import metadata write fails", async () => {
-    const { env } = await import("cloudflare:test");
-    const token = await mint("site-integrity-import-db");
-    const site = await createSite(token, "integrity-import-db", { "a.txt": "old-a", "b.txt": "old-b" });
-    const response = await withD1Trigger(
-      env.DB,
-      "fail_native_import_metadata",
-      `CREATE TRIGGER fail_native_import_metadata
-       BEFORE UPDATE OF size ON site_files
-       WHEN NEW.site_id = '${site.id}' AND NEW.path = 'a.txt' AND NEW.size = 9
-       BEGIN
-         SELECT RAISE(ABORT, 'test import metadata abort');
-       END`,
-      () => json(`/v1/sites/${site.id}/import`, {
-        method: "POST",
-        headers: auth(token, { "content-type": "application/zip" }),
-        body: zipSync({ "a.txt": strToU8("new-alpha"), "b.txt": strToU8("new-b") }),
-      }),
-    );
+  it("keeps the complete old version after a later multipart import write fails", async () => {
+    const token = await mint("integrity-multipart");
+    const site = await createSite(token, "integrity-multipart", { "a.txt": "old-a", "b.txt": "old-b" });
+    const before = await snapshot(site.id);
+    const response = await failPart(3, () => importZip(token, site.id, { "a.txt": "new-a", "b.txt": "new-b" }));
     expect(response.status).toBe(500);
-    const listing = await json(`/v1/sites/${site.id}`, { headers: auth(token) });
-    expect(listing.body.files.map((file: { path: string; size: number }) => [file.path, file.size])).toEqual([
-      ["a.txt", 5],
-      ["b.txt", 5],
-    ]);
-    for (const path of ["a.txt", "b.txt"]) {
-      const response = await req(`/v1/sites/${site.id}/files/${path}`, { headers: auth(token) });
-      expect(await response.text()).toBe(`old-${path[0]}`);
-    }
+    expect(await snapshot(site.id)).toEqual(before);
   });
 
-  it("keeps max-size import metadata batches within the D1 statement limit", async () => {
-    const { env } = await import("cloudflare:test");
-    const token = await mint("site-integrity-import-batch-limit");
-    const site = await createSite(token, "integrity-import-batch-limit", {});
-    const db = env.DB;
-    const originalBatch = db.batch.bind(db);
-    const batchSizes: number[] = [];
-    db.batch = async (statements) => {
-      batchSizes.push(statements.length);
-      if (statements.length > D1_BATCH_LIMIT) throw new Error("D1 batch statement limit exceeded");
-      return originalBatch(statements);
-    };
-    try {
-      const files = Object.fromEntries(
-        Array.from({ length: MAX_IMPORT_FILES }, (_, index) => [`file-${index.toString().padStart(3, "0")}.txt`, strToU8(String(index))]),
-      );
-      const response = await json(`/v1/sites/${site.id}/import`, {
-        method: "POST",
-        headers: auth(token, { "content-type": "application/zip" }),
-        body: zipSync(files),
-      });
-      expect(response.status).toBe(200);
-    } finally {
-      db.batch = originalBatch;
-    }
-    expect(batchSizes).toEqual([D1_BATCH_LIMIT, D1_BATCH_LIMIT]);
+  it("keeps the old pointer and bytes after native publication abort and retains candidate charges", async () => {
+    const token = await mint("integrity-native");
+    const site = await createSite(token, "integrity-native", { "a.txt": "old-a", "b.txt": "old-b" });
+    const before = await snapshot(site.id);
+    const response = await failPublication(site.id, () => importZip(token, site.id, { "a.txt": "new-alpha", "b.txt": "new-b" }));
+    expect(response.status).toBe(500);
+    expect(await snapshot(site.id)).toEqual(before);
+    const pending = await env.DB.prepare("SELECT COALESCE(SUM(reserved_bytes),0) AS bytes FROM storage_allocations WHERE site_id = ? AND version_id != ? AND state != 'released'")
+      .bind(site.id, before.site!.active_version_id).first<{ bytes: number }>();
+    expect(pending!.bytes).toBeGreaterThan(0);
+    for (const [path, bytes] of before.bytes) expect(await (await req(`/v1/sites/${site.id}/files/${path}`, { headers: auth(token) })).text()).toBe(bytes);
+  });
+
+  it("imports all 200 files without exceeding the D1 statement limit", async () => {
+    const token = await mint("integrity-limit");
+    const site = await createSite(token, "integrity-limit", {});
+    const original = env.DB.batch.bind(env.DB);
+    const sizes: number[] = [];
+    env.DB.batch = async statements => { sizes.push(statements.length); expect(statements.length).toBeLessThanOrEqual(100); return original(statements); };
+    const files = Object.fromEntries(Array.from({ length: MAX_IMPORT_FILES }, (_, i) => [`file-${String(i).padStart(3, "0")}.txt`, String(i)]));
+    try { expect((await importZip(token, site.id, files)).status).toBe(200); } finally { env.DB.batch = original; }
+    expect(sizes.length).toBeGreaterThan(0);
+    expect((await snapshot(site.id)).bytes).toEqual(Object.entries(files));
   }, 15_000);
 
-  it("cleans up a duplicate when a later R2 copy fails", async () => {
-    const { env } = await import("cloudflare:test");
-    const token = await mint("site-integrity-duplicate");
+  it("hides a duplicate after its later storage write fails and preserves its source", async () => {
+    const token = await mint("integrity-copy");
     const source = await createSite(token, "integrity-source", { "a.txt": "a", "b.txt": "b" });
-    const bucket = env.BUCKET;
-    const originalPut = bucket.put.bind(bucket);
-    let destinationWrites = 0;
-    bucket.put = async (key, ...args) => {
-      if (typeof key === "string" && key.startsWith("sites/") && !key.includes(`/${source.id}/`)) {
-        destinationWrites += 1;
-        if (destinationWrites === 2) throw new Error("injected duplicate storage failure");
+    const before = await snapshot(source.id);
+    const response = await failPart(2, () => json("/v1/sites", { method: "POST", headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "integrity-copy", duplicate_from: source.id }) }));
+    expect(response.status).toBe(500);
+    expect(await snapshot(source.id)).toEqual(before);
+    expect((await json("/v1/sites?q=integrity-copy", { headers: auth(token) })).body.sites).toEqual([]);
+  });
+
+  it("hides a duplicate after native publication failure", async () => {
+    const token = await mint("integrity-copy-db");
+    const source = await createSite(token, "integrity-source-db");
+    const before = await snapshot(source.id);
+    const response = await withD1Trigger(env.DB, "fail_duplicate", `CREATE TRIGGER fail_duplicate BEFORE UPDATE OF active_version_id ON sites
+      WHEN NEW.slug = 'integrity-copy-db' AND NEW.active_version_id IS NOT NULL BEGIN SELECT RAISE(ABORT, 'duplicate abort'); END`,
+    () => json("/v1/sites", { method: "POST", headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({ slug: "integrity-copy-db", duplicate_from: source.id }) }));
+    expect(response.status).toBe(500);
+    expect(await snapshot(source.id)).toEqual(before);
+    expect((await json("/v1/sites?q=integrity-copy-db", { headers: auth(token) })).body.sites).toEqual([]);
+  });
+
+  it("finishes a duplicate from its selected version across publication and cleanup", async () => {
+    const token = await mint("duplicate-selected-version");
+    const source = await createSite(token, "duplicate-selected-source", { "a.txt": "old-a", "b.txt": "old-b" });
+    const before = await snapshot(source.id);
+    const original = env.BUCKET.get.bind(env.BUCKET);
+    let interrupted = false;
+    env.BUCKET.get = (async (...args: Parameters<R2Bucket["get"]>) => {
+      if (!interrupted && args[0] === before.files[0].object_key) {
+        interrupted = true;
+        expect((await importZip(token, source.id, { "a.txt": "new-a", "b.txt": "new-b" })).status).toBe(200);
+        await env.DB.prepare("UPDATE site_versions SET superseded_at = ? WHERE id = ?")
+          .bind("2000-01-01T00:00:00.000Z", before.site!.active_version_id).run();
+        await sweepSiteStorage(env.DB, env.BUCKET);
+        expect(await original(before.files[1].object_key)).not.toBeNull();
       }
-      return originalPut(key, ...args);
-    };
+      return original(...args);
+    }) as R2Bucket["get"];
     try {
-      const response = await json("/v1/sites", {
-        method: "POST",
-        headers: auth(token, { "content-type": "application/json" }),
-        body: JSON.stringify({ slug: "integrity-copy", duplicate_from: source.id }),
-      });
-      expect(response.status).toBe(500);
-    } finally {
-      bucket.put = originalPut;
-    }
-    const listing = await json("/v1/sites?q=integrity-copy", { headers: auth(token) });
-    expect((listing.body.sites || []).some((s: { slug: string }) => s.slug === "integrity-copy")).toBe(false);
+      const result = await json("/v1/sites", { method: "POST", headers: auth(token),
+        body: JSON.stringify({ slug: "duplicate-selected-copy", duplicate_from: source.id }) });
+      expect(result.status).toBe(201);
+      expect(interrupted).toBe(true);
+      expect((await snapshot(result.body.id)).bytes).toEqual(before.bytes);
+      expect((await snapshot(source.id)).bytes).toEqual([["a.txt", "new-a"], ["b.txt", "new-b"]]);
+    } finally { env.BUCKET.get = original; }
   });
 
-  it("cleans up a duplicate when destination metadata fails", async () => {
-    const { env } = await import("cloudflare:test");
-    const token = await mint("site-integrity-duplicate-db");
-    const source = await createSite(token, "integrity-source-db", { "a.txt": "a", "b.txt": "b" });
-    const db = env.DB;
-    const originalPrepare = db.prepare.bind(db);
-    db.prepare = ((sql: string) => {
-      if (sql.startsWith("INSERT INTO site_files")) throw new Error("injected duplicate metadata failure");
-      return originalPrepare(sql);
-    }) as typeof db.prepare;
-    try {
-      const response = await json("/v1/sites", {
-        method: "POST",
-        headers: auth(token, { "content-type": "application/json" }),
-        body: JSON.stringify({ slug: "integrity-copy-db", duplicate_from: source.id }),
-      });
-      expect(response.status).toBe(500);
-    } finally {
-      db.prepare = originalPrepare;
-    }
-    const listing = await json("/v1/sites?q=integrity-copy-db", { headers: auth(token) });
-    expect((listing.body.sites || []).some((s: { slug: string }) => s.slug === "integrity-copy-db")).toBe(false);
+  it("keeps a file after its deletion publication fails", async () => {
+    const token = await mint("integrity-file-delete");
+    const site = await createSite(token, "integrity-file-delete");
+    const before = await snapshot(site.id);
+    expect((await failPublication(site.id, () => json(`/v1/sites/${site.id}/files/index.html`, { method: "DELETE", headers: auth(token) }))).status).toBe(500);
+    expect(await snapshot(site.id)).toEqual(before);
   });
 
-  it("keeps a site file when its delete metadata batch fails", async () => {
-    const { env } = await import("cloudflare:test");
-    const token = await mint("site-integrity-delete-file");
-    const site = await createSite(token, "integrity-delete-file");
-    const db = env.DB;
-    const originalBatch = db.batch.bind(db);
-    db.batch = async () => {
-      throw new Error("injected delete metadata failure");
-    };
-    try {
-      const response = await json(`/v1/sites/${site.id}/files/index.html`, {
-        method: "DELETE",
-        headers: auth(token),
-      });
-      expect(response.status).toBe(500);
-    } finally {
-      db.batch = originalBatch;
-    }
-    const file = await req(`/v1/sites/${site.id}/files/index.html`, { headers: auth(token) });
-    expect(await file.text()).toBe("original");
-  });
-
-  it("restores a site when its R2 deletion fails after staging", async () => {
-    const { env } = await import("cloudflare:test");
-    const token = await mint("site-integrity-delete-site-r2");
-    const site = await createSite(token, "integrity-delete-site-r2");
-    const bucket = env.BUCKET;
-    const originalDelete = bucket.delete.bind(bucket);
-    bucket.delete = async (keys) => {
-      const values = Array.isArray(keys) ? keys : [keys];
-      if (values.some((key) => key.includes(`sites/ada/${site.id}/`))) {
-        throw new Error("injected site deletion failure");
+  it("does not publish a duplicate after its source lease is lost during copying", async () => {
+    const token = await mint("duplicate-lost-lease");
+    const source = await createSite(token, "duplicate-lost-source");
+    const before = await snapshot(source.id);
+    const original = env.BUCKET.get.bind(env.BUCKET);
+    let interrupted = false;
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    env.BUCKET.get = (async (...args: Parameters<R2Bucket["get"]>) => {
+      if (!interrupted && args[0] === before.files[0].object_key) {
+        interrupted = true;
+        await env.DB.prepare("DELETE FROM site_operation_leases WHERE version_id = ? AND operation = 'duplicate'")
+          .bind(before.site!.active_version_id).run();
+        await vi.advanceTimersByTimeAsync(30_000);
       }
-      return originalDelete(keys);
-    };
+      return original(...args);
+    }) as R2Bucket["get"];
     try {
-      const response = await json(`/v1/sites/${site.id}`, { method: "DELETE", headers: auth(token) });
-      expect(response.status).toBe(500);
-    } finally {
-      bucket.delete = originalDelete;
-    }
-    const file = await req(`/v1/sites/${site.id}/files/index.html`, { headers: auth(token) });
-    expect(await file.text()).toBe("original");
+      const result = await json("/v1/sites", { method: "POST", headers: auth(token),
+        body: JSON.stringify({ slug: "duplicate-lost-copy", duplicate_from: source.id }) });
+      expect(interrupted).toBe(true);
+      expect(result.status).toBeGreaterThanOrEqual(400);
+      expect((await json("/v1/sites?q=duplicate-lost-copy", { headers: auth(token) })).body.sites).toEqual([]);
+    } finally { env.BUCKET.get = original; vi.useRealTimers(); }
   });
 
-  it("does not turn a failed backup copy into a rollback failure", async () => {
-    const { env } = await import("cloudflare:test");
-    const token = await mint("site-integrity-delete-site-staging");
-    const site = await createSite(token, "integrity-delete-site-staging");
-    const bucket = env.BUCKET;
-    const originalPut = bucket.put.bind(bucket);
-    bucket.put = async (key, ...args) => {
-      if (typeof key === "string" && key.includes("sites/.integrity-backup/")) throw new Error("injected backup staging failure");
-      return originalPut(key, ...args);
-    };
+  it("retains deleted bytes and charges when cleanup fails, then releases after confirmed deletion", async () => {
+    const token = await mint("integrity-cleanup");
+    const site = await createSite(token, "integrity-cleanup");
+    const before = await snapshot(site.id);
+    const allocation = await env.DB.prepare("SELECT id FROM storage_allocations WHERE object_key = ?").bind(before.files[0].object_key).first<{ id: string }>();
+    const original = env.BUCKET.delete.bind(env.BUCKET);
+    env.BUCKET.delete = async keys => { if ((Array.isArray(keys) ? keys : [keys]).includes(before.files[0].object_key)) throw new Error("cleanup unavailable"); return original(keys); };
     try {
-      const response = await json(`/v1/sites/${site.id}`, { method: "DELETE", headers: auth(token) });
-      expect(response.status).toBe(500);
-      expect(response.body.error).not.toBe("site_delete_rollback_failed");
-    } finally {
-      bucket.put = originalPut;
-    }
+      expect((await json(`/v1/sites/${site.id}`, { method: "DELETE", headers: auth(token) })).status).toBe(200);
+      await sweepSiteStorage(env.DB, env.BUCKET, new Date(Date.now() + 3 * 60_000));
+      await sweepSiteStorage(env.DB, env.BUCKET, new Date(Date.now() + 10 * 60_000));
+      expect((await req(`/v1/sites/${site.id}/files/index.html`, { headers: auth(token) })).status).toBe(404);
+      expect(await (await env.BUCKET.get(before.files[0].object_key))!.text()).toBe("original");
+      expect(await env.DB.prepare("SELECT state, released_at, cleanup_error FROM storage_allocations WHERE id = ?").bind(allocation!.id).first())
+        .toMatchObject({ state: "deleting", released_at: null, cleanup_error: "Error: cleanup unavailable" });
+    } finally { env.BUCKET.delete = original; }
+    const charged = await env.DB.prepare("SELECT used FROM platform_quota WHERE id = 1").first<{ used: number }>();
+    expect(charged!.used).toBeGreaterThanOrEqual(before.files[0].size);
+    await sweepSiteStorage(env.DB, env.BUCKET, new Date(Date.now() + 15 * 60_000));
+    const released = await env.DB.prepare("SELECT used FROM platform_quota WHERE id = 1").first<{ used: number }>();
+    expect(released!.used).toBeLessThanOrEqual(charged!.used - before.files[0].size);
+    expect(await env.BUCKET.get(before.files[0].object_key)).toBeNull();
+    expect(await env.DB.prepare("SELECT state FROM storage_allocations WHERE id = ?").bind(allocation!.id).first()).toEqual({ state: "released" });
+  });
+
+  it("keeps the site live when its logical deletion transaction aborts", async () => {
+    const token = await mint("integrity-tombstone");
+    const site = await createSite(token, "integrity-tombstone");
+    const before = await snapshot(site.id);
+    const response = await withD1Trigger(env.DB, "fail_tombstone", `CREATE TRIGGER fail_tombstone BEFORE UPDATE OF lifecycle_state ON sites
+      WHEN OLD.id = '${site.id}' AND NEW.lifecycle_state = 'deleted' BEGIN SELECT RAISE(ABORT, 'tombstone abort'); END`,
+    () => json(`/v1/sites/${site.id}`, { method: "DELETE", headers: auth(token) }));
+    expect(response.status).toBe(500);
+    expect(await snapshot(site.id)).toEqual(before);
   });
 });

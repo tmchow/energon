@@ -188,72 +188,22 @@ function loadInstance(root) {
   }
 }
 
-function parseArgs(argv, root) {
-  const prev = loadInstance(root);
-  const out = { ...prev, check: false, init: false, updateMarketplace: true };
-  const set = new Set();
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    const next = () => {
-      const v = argv[++i];
-      if (v == null) throw new Error(`missing value for ${a}`);
-      return v;
-    };
-    if (a === "--check") out.check = true;
-    else if (a === "--init") out.init = true;
-    else if (a === "--name") {
-      out.name = next();
-      set.add("name");
-    } else if (a === "--skill") {
-      out.skill = next();
-      set.add("skill");
-    } else if (a === "--plugin") {
-      out.plugin = next();
-      set.add("plugin");
-    } else if (a === "--marketplace") {
-      out.marketplace = next();
-      set.add("marketplace");
-    } else if (a === "--origin") {
-      out.origin = next();
-      set.add("origin");
-    } else if (a === "--token-env") {
-      out.tokenEnv = next();
-      set.add("tokenEnv");
-    } else if (a === "--token-prefix") {
-      out.tokenPrefix = next();
-      set.add("tokenPrefix");
-    } else if (a === "--product") {
-      out.product = next();
-      set.add("product");
-    } else if (a === "--org") {
-      out.org = next();
-      set.add("org");
-    } else if (a === "--repo" || a === "--marketplace-repo") {
-      out.repo = next();
-      set.add("repo");
-    } else if (a === "--marketplace-url") {
-      out.marketplaceUrl = next();
-      set.add("marketplaceUrl");
-    } else if (a === "--no-marketplace") out.updateMarketplace = false;
-    else if (a === "--help" || a === "-h") {
-      console.log(`Usage:
-  node scripts/render-skill.mjs [--check]
-  node scripts/render-skill.mjs --init --name cybertron --origin URL
+const VALUE_OPTIONS = new Map([
+  ["--name", "name"],
+  ["--skill", "skill"],
+  ["--plugin", "plugin"],
+  ["--marketplace", "marketplace"],
+  ["--origin", "origin"],
+  ["--token-env", "tokenEnv"],
+  ["--token-prefix", "tokenPrefix"],
+  ["--product", "product"],
+  ["--org", "org"],
+  ["--repo", "repo"],
+  ["--marketplace-repo", "repo"],
+  ["--marketplace-url", "marketplaceUrl"],
+]);
 
-  --init                 write this host's plugin package and marketplace catalogs
-  --name PREFIX          skill + marketplace become PREFIX-energon (cybertron → cybertron-energon)
-  --skill NAME           slash command /NAME (defaults marketplace to the same NAME)
-  --origin URL           public hostname, no trailing slash
-  --repo OWNER/REPO      GitHub repo that is the marketplace. Default: git remote origin
-  --token-env NAME       env var agents look for
-  --org NAME             company name in prose
-  --check                exit 1 if committed files drifted from templates`);
-      process.exit(0);
-    } else {
-      throw new Error(`unknown arg: ${a}`);
-    }
-  }
-
+function applyBrandDefaults(out, set) {
   if (set.has("name")) {
     assertIdentifier(out.name, "--name");
     const brand = brandFromName(out.name);
@@ -273,6 +223,10 @@ function parseArgs(argv, root) {
     if (!set.has("tokenEnv")) out.tokenEnv = tokenEnvFromBrand(brand);
     if (!set.has("org")) out.org = orgFromBrand(brand);
   }
+}
+
+function resolveArgumentOptions(out, prev, set, root) {
+  applyBrandDefaults(out, set);
 
   if (!set.has("plugin")) out.plugin = out.skill;
   if (out.init && !set.has("marketplace")) out.marketplace = out.skill;
@@ -296,6 +250,46 @@ function parseArgs(argv, root) {
   }
   validateIdentifiers(out, "argument");
   if (out.init || !isPlaceholder(out)) validateInstance(out);
+}
+
+function parseArgs(argv, root) {
+  const prev = loadInstance(root);
+  const out = { ...prev, check: false, init: false, updateMarketplace: true };
+  const set = new Set();
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    const next = () => {
+      const v = argv[++i];
+      if (v == null) throw new Error(`missing value for ${a}`);
+      return v;
+    };
+    if (a === "--check") out.check = true;
+    else if (a === "--init") out.init = true;
+    else if (VALUE_OPTIONS.has(a)) {
+      const field = VALUE_OPTIONS.get(a);
+      out[field] = next();
+      set.add(field);
+    } else if (a === "--no-marketplace") out.updateMarketplace = false;
+    else if (a === "--help" || a === "-h") {
+      console.log(`Usage:
+  node scripts/render-skill.mjs [--check]
+  node scripts/render-skill.mjs --init --name cybertron --origin URL
+
+  --init                 write this host's plugin package and marketplace catalogs
+  --name PREFIX          skill + marketplace become PREFIX-energon (cybertron → cybertron-energon)
+  --skill NAME           slash command /NAME (defaults marketplace to the same NAME)
+  --origin URL           public hostname, no trailing slash
+  --repo OWNER/REPO      GitHub repo that is the marketplace. Default: git remote origin
+  --token-env NAME       env var agents look for
+  --org NAME             company name in prose
+  --check                exit 1 if committed files drifted from templates`);
+      process.exit(0);
+    } else {
+      throw new Error(`unknown arg: ${a}`);
+    }
+  }
+
+  resolveArgumentOptions(out, prev, set, root);
   return { opts: out, prev };
 }
 

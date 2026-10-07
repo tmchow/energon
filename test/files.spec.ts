@@ -91,12 +91,14 @@ describe("putLooseFile", () => {
       },
     };
     const db = {
+      async batch(statements: Array<{ run(): Promise<unknown> }>) { return Promise.all(statements.map(statement => statement.run())); },
       prepare(sql: string) {
         return {
           bind() {
             return this;
           },
           async first() {
+            if (sql.includes("SELECT id FROM storage_allocations")) return { id: "reservation" };
             if (sql.includes("SELECT id, handle, filename, size")) {
               return {
                 id: "Abc123",
@@ -172,12 +174,14 @@ describe("putLooseFile", () => {
       async delete() {},
     };
     const db = {
+      async batch(statements: Array<{ run(): Promise<unknown> }>) { return Promise.all(statements.map(statement => statement.run())); },
       prepare(sql: string) {
         return {
           bind() {
             return this;
           },
           async first() {
+            if (sql.includes("SELECT id FROM storage_allocations")) return { id: "reservation" };
             if (sql.includes("SELECT id, handle, filename, size")) {
               return {
                 id: "Abc123",
@@ -246,6 +250,7 @@ describe("putLooseFile", () => {
       },
     };
     const db = {
+      async batch(statements: Array<{ run(): Promise<unknown> }>) { return Promise.all(statements.map(statement => statement.run())); },
       prepare(sql: string) {
         return {
           bind() {
@@ -302,6 +307,7 @@ describe("putLooseFile", () => {
       async delete() {},
     };
     const db = {
+      async batch(statements: Array<{ run(): Promise<unknown> }>) { return Promise.all(statements.map(statement => statement.run())); },
       prepare(sql: string) {
         return {
           bind() {
@@ -339,6 +345,7 @@ describe("putLooseFile", () => {
   it("does not reserve storage when the write claim is lost", async () => {
     let quotaIncrements = 0;
     const db = {
+      async batch(statements: Array<{ run(): Promise<unknown> }>) { return Promise.all(statements.map(statement => statement.run())); },
       prepare(sql: string) {
         return {
           bind() {
@@ -389,6 +396,7 @@ describe("putLooseFile", () => {
   it("releases the write claim when the storage cap rejects the replacement", async () => {
     let claimReleases = 0;
     const db = {
+      async batch(statements: Array<{ run(): Promise<unknown> }>) { return Promise.all(statements.map(statement => statement.run())); },
       prepare(sql: string) {
         return {
           bind() {
@@ -451,6 +459,7 @@ describe("createLooseFile", () => {
   it("does not reserve storage when write_policy is invalid", async () => {
     let quotaIncrements = 0;
     const db = {
+      async batch(statements: Array<{ run(): Promise<unknown> }>) { return Promise.all(statements.map(statement => statement.run())); },
       prepare(sql: string) {
         return {
           bind() {
@@ -489,6 +498,7 @@ describe("createLooseFile", () => {
 describe("deleteLooseFile", () => {
   it("reports a row removed during claim acquisition as expired", async () => {
     const db = {
+      async batch(statements: Array<{ run(): Promise<unknown> }>) { return Promise.all(statements.map(statement => statement.run())); },
       prepare(sql: string) {
         return {
           bind() {
@@ -550,6 +560,7 @@ describe("deleteLooseFile", () => {
     };
     let lastWrittenBy = "ada@esperlabs.app";
     const db = {
+      async batch(statements: Array<{ run(): Promise<unknown> }>) { return Promise.all(statements.map(statement => statement.run())); },
       prepare(sql: string) {
         let values: unknown[] = [];
         return {

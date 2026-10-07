@@ -48,7 +48,8 @@ class SchemaDb {
       return;
     }
 
-    const createIndex = sql.match(/CREATE (?:UNIQUE )?INDEX IF NOT EXISTS (\w+) ON (\w+)\(([^)]+)\)/);
+    const indexedColumns = sql.replace(/json_extract\((\w+),\s*'[^']+'\)/g, "$1");
+    const createIndex = indexedColumns.match(/CREATE (?:UNIQUE )?INDEX IF NOT EXISTS (\w+) ON (\w+)\(([^)]+)\)/);
     if (createIndex) {
       const columns = createIndex[3].split(",").map((column) => column.trim().split(/\s+/)[0]);
       const tableColumns = this.tables.get(createIndex[2]) || new Set<string>();
@@ -66,7 +67,7 @@ describe("schema upgrades", () => {
     await expect(ensureSchema(db as unknown as D1Database)).resolves.toBeUndefined();
 
     expect([...db.tables.get("sites") || []]).toEqual(
-      expect.arrayContaining(["id", "password_hash", "handle", "owner_id", "expires_at", "write_policy", "last_read_at"]),
+      expect.arrayContaining(["id", "password_hash", "handle", "owner_id", "expires_at", "write_policy", "last_read_at", "active_version_id", "content_generation", "lifecycle_state", "conversion_state"]),
     );
     expect([...db.tables.get("site_files") || []]).toEqual(expect.arrayContaining(["site_id"]));
     expect([...db.tables.get("loose_files") || []]).toEqual(
@@ -133,4 +134,14 @@ describe("schema upgrades", () => {
     expect([...db.tables.get("tokens") || []]).toContain("scope");
     expect(db.executed.filter((sql) => /ALTER TABLE tokens ADD COLUMN scope/.test(sql))).toHaveLength(0);
   });
+});
+
+
+it("bootstraps each database binding independently", async () => {
+  const first = new SchemaDb();
+  const second = new SchemaDb();
+  await ensureSchema(first as unknown as D1Database);
+  await ensureSchema(second as unknown as D1Database);
+  expect(second.tables.has("site_deployments")).toBe(true);
+  expect(second.executed).toContain("ALTER TABLE sites ADD COLUMN content_generation INTEGER NOT NULL DEFAULT 0");
 });

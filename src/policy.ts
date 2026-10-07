@@ -1,4 +1,4 @@
-import { MAX_FILE_BYTES, MAX_PLATFORM_BYTES, MAX_ZIP_BYTES, PRODUCT, parseByteSize } from "./config";
+import { MAX_FILE_BYTES, MAX_PLATFORM_BYTES, MAX_ZIP_BYTES, MAX_ZIP_IMPORT_BYTES, MAX_ZIP_EXTRACTED_BYTES, MAX_ZIP_EXPORT_BYTES, PRODUCT, parseByteSize } from "./config";
 
 export { parseByteSize };
 import { ApiError } from "./http";
@@ -39,6 +39,8 @@ export type InstancePolicy = {
   allowedEmailDomains: string[];
   fileBytes: number;
   zipBytes: number;
+  zipExtractedBytes: number;
+  zipExportBytes: number;
   platformBytes: number;
   writePolicy: WritePolicy;
 };
@@ -118,6 +120,9 @@ export function instancePolicy(
     | "ALLOWED_EMAIL_DOMAINS"
     | "MAX_FILE_BYTES"
     | "MAX_ZIP_BYTES"
+    | "MAX_ZIP_IMPORT_BYTES"
+    | "MAX_ZIP_EXTRACTED_BYTES"
+    | "MAX_ZIP_EXPORT_BYTES"
     | "MAX_PLATFORM_BYTES"
     | "WRITE_POLICY"
   >,
@@ -157,6 +162,9 @@ export function instancePolicy(
   }
 
   const fileBytes = parseByteSize(env.MAX_FILE_BYTES) ?? MAX_FILE_BYTES;
+  const legacyZipBytes = env.MAX_ZIP_BYTES
+    ? Math.min(parseByteSize(env.MAX_ZIP_BYTES) ?? MAX_ZIP_BYTES, fileBytes)
+    : undefined;
   return {
     allowUnlimited,
     defaultTtl,
@@ -165,7 +173,9 @@ export function instancePolicy(
     allowedEmailDomains: csv(env.ALLOWED_EMAIL_DOMAINS),
     fileBytes,
     // A zip may never smuggle in an entry larger than a single upload could be.
-    zipBytes: Math.min(parseByteSize(env.MAX_ZIP_BYTES) ?? MAX_ZIP_BYTES, fileBytes),
+    zipBytes: parseByteSize(env.MAX_ZIP_IMPORT_BYTES) ?? (legacyZipBytes ?? MAX_ZIP_IMPORT_BYTES),
+    zipExtractedBytes: parseByteSize(env.MAX_ZIP_EXTRACTED_BYTES) ?? (legacyZipBytes ?? MAX_ZIP_EXTRACTED_BYTES),
+    zipExportBytes: parseByteSize(env.MAX_ZIP_EXPORT_BYTES) ?? (legacyZipBytes ?? MAX_ZIP_EXPORT_BYTES),
     platformBytes: parseByteSize(env.MAX_PLATFORM_BYTES) ?? MAX_PLATFORM_BYTES,
     writePolicy: parseWritePolicyEnv(env.WRITE_POLICY),
   };
@@ -293,6 +303,8 @@ export function policyPublic(policy: InstancePolicy) {
     allowed_email_domains: policy.allowedEmailDomains,
     file_bytes: policy.fileBytes,
     zip_bytes: policy.zipBytes,
+    zip_extracted_bytes: policy.zipExtractedBytes,
+    zip_export_bytes: policy.zipExportBytes,
     platform_bytes: policy.platformBytes,
     write_policy: policy.writePolicy,
   };

@@ -1,10 +1,9 @@
+import { publishSiteChanges, snapshotFiles } from "./site-snapshot";
 import { filePrefix, purgeContent, sitePrefix } from "./cache";
 import {
-  MAX_IMPORT_FILES,
   WRITE_PASSWORD_HEADER,
   WRITTEN_VIA_WRITE_PASSWORD,
   fileKey,
-  siteKey,
 } from "./config";
 import {
   PURGE_CLAIM_LIKE,
@@ -44,7 +43,7 @@ import {
 } from "./http";
 import { contentTypeFor } from "./mime";
 import { instancePolicy } from "./policy";
-import { assertFilePath, assertSlug, fileCount, getSiteById, siteFileUpsert } from "./sites";
+import { assertFilePath, assertSlug, getSiteById } from "./sites";
 import type { Env, SiteRow, WriteAuthority } from "./types";
 import { putUpload, withUpload, type Upload } from "./upload";
 import { filePublicUrl, isFileId, isSiteId, sitePublicUrl, urlFilename } from "./urls";
@@ -151,7 +150,7 @@ async function guestLoose(
   }
   if (filenameSeg !== urlFilename(row.filename)) throw notFoundFile();
 
-  return withUpload(request, env.BUCKET, instancePolicy(env).fileBytes, contentOrigin(env), (upload) =>
+  return withUpload(request, env, instancePolicy(env).fileBytes, contentOrigin(env), (upload) =>
     guestPutLoose(env, ctx, request, target, row, authority, objectPath, upload));
 }
 
@@ -189,14 +188,14 @@ async function guestPutLoose(
   }
 
   const key = fileKey(row.id, row.filename);
-  let reserved = 0;
+  let reserved: Awaited<ReturnType<typeof assertStorageRoom>> | number = 0;
   let previousState: R2ObjectSnapshot | null = null;
   let metadataCommitted = false;
   let wroteObject = false;
   const ts = new Date().toISOString();
   try {
     reserved = await assertStorageRoom(env.DB, upload.size, row.size, policy.platformBytes);
-    previousState = await snapshotR2Object(env.BUCKET, key);
+    previousState = await snapshotR2Object(env, key);
     await putUpload(env.BUCKET, key, upload, { httpMetadata: { contentType: row.content_type } });
     wroteObject = true;
     const updated = await env.DB.prepare(
@@ -212,15 +211,15 @@ async function guestPutLoose(
     metadataCommitted = true;
   } catch (err) {
     if (!metadataCommitted) {
-      if (wroteObject) await restoreR2Object(env.BUCKET, key, previousState).catch(() => undefined);
-      await restoreLooseFileWriteClaim(env, row.id, claim).catch(() => undefined);
+      if (wroteObject) await restoreR2Object(env.BUCKET, key, previousState);
+      await restoreLooseFileWriteClaim(env, row.id, claim);
       await releaseStorage(env.DB, reserved);
     }
     throw err;
   } finally {
     await discardR2Snapshots(env.BUCKET, [previousState]);
   }
-  await releaseStorage(env.DB, row.size - upload.size);
+  await releaseStorage(env.DB, reserved);
   await env.DB.prepare(`UPDATE loose_files SET last_written_by = ? WHERE id = ? AND last_written_by = ?`)
     .bind(claim.restoreWriter, row.id, claim.token)
     .run()
@@ -290,7 +289,7 @@ async function guestSite(
   return guestPutSitePath(env, ctx, request, site, path, authority, objectPath, writer);
 }
 
-type GuestSiteFileRow = { size: number; content_type: string; updated_at: string; last_written_by: string };
+type GuestSiteFileRow = { size: number; content_type: string };
 
 async function guestPutSitePath(
   env: Env,
@@ -302,22 +301,8 @@ async function guestPutSitePath(
   objectPath: string,
   writer: string,
 ): Promise<Response> {
-  const existing = await env.DB.prepare(
-    `SELECT size, content_type, updated_at, last_written_by FROM site_files WHERE site_id = ? AND path = ?`,
-  )
-    .bind(site.id, path)
-    .first<GuestSiteFileRow>();
-  if (!existing) {
-    const count = await fileCount(env, site.id);
-    if (count >= MAX_IMPORT_FILES) {
-      throw new ApiError(
-        400,
-        "too_many_files",
-        `That site already has ${MAX_IMPORT_FILES} files. Replace or delete a path, then retry.`,
-      );
-    }
-  }
-  return withUpload(request, env.BUCKET, instancePolicy(env).fileBytes, contentOrigin(env), (upload) =>
+  const existing = (await snapshotFiles(env, site)).find(file => file.path === path) ?? null;
+  return withUpload(request, env, instancePolicy(env).fileBytes, contentOrigin(env), (upload) =>
     writeGuestSitePath(env, ctx, request, site, path, authority, objectPath, writer, existing, upload));
 }
 
@@ -336,57 +321,11 @@ async function writeGuestSitePath(
   const policy = instancePolicy(env);
   if (upload.size > policy.fileBytes) throw tooLarge(upload.size, "", policy.fileBytes);
   const contentType = contentTypeFor(path, upload.head, request.headers.get("content-type"));
-  const key = siteKey(site.handle, site.id, path);
-  const ts = new Date().toISOString();
-  const reserved = await assertStorageRoom(env.DB, upload.size, existing?.size ?? 0, policy.platformBytes);
-  let previous: R2ObjectSnapshot | null = null;
-  let wroteObject = false;
-  try {
-    previous = await snapshotR2Object(env.BUCKET, key);
-    await putUpload(env.BUCKET, key, upload, { httpMetadata: { contentType } });
-    wroteObject = true;
-    const wrote = await env.DB.batch([
-      siteFileUpsert(env, site.id, path, upload.size, contentType, ts, writer),
-      env.DB.prepare(
-        `UPDATE sites SET updated_at = ?, written_via = ? WHERE id = ? AND write_password_hash = ? AND last_written_by NOT LIKE ?`,
-      ).bind(ts, WRITTEN_VIA_WRITE_PASSWORD, site.id, authority.hash, PURGE_CLAIM_LIKE),
-    ]);
-    if (!d1Changed(wrote[1]!)) {
-      if (existing) {
-        await siteFileUpsert(
-          env,
-          site.id,
-          path,
-          existing.size,
-          existing.content_type,
-          existing.updated_at,
-          existing.last_written_by,
-        ).run();
-      } else {
-        await env.DB.prepare(`DELETE FROM site_files WHERE site_id = ? AND path = ?`)
-          .bind(site.id, path)
-          .run();
-      }
-      throw new ApiError(409, "site_write_lost", "The site changed during replacement; retry.");
-    }
-  } catch (err) {
-    try {
-      if (wroteObject) await restoreR2Object(env.BUCKET, key, previous);
-    } catch {
-      throw new ApiError(
-        500,
-        "storage_rollback_failed",
-        "The request failed and storage rollback also failed. Retry after storage recovers.",
-      );
-    }
-    await releaseStorage(env.DB, reserved);
-    throw err;
-  } finally {
-    await discardR2Snapshots(env.BUCKET, [previous]);
-  }
-  await releaseStorage(env.DB, (existing?.size ?? 0) - upload.size);
+  await publishSiteChanges(env, site, { email: writer, userId: site.owner_id ?? undefined, via: "access",
+    writePasswordHash: authority.hash, writtenVia: WRITTEN_VIA_WRITE_PASSWORD }, [{ path, upload, contentType }],
+    sitePublicUrl(env, site.handle, site.id, site.slug, path));
   await clearGateAttempts(env, writeGateScopes(request, objectPath));
-  await purgeContent(ctx, [sitePrefix(site.handle, site.id)]);
+  await purgeContent(ctx, [sitePrefix(site.handle, site.id)]).catch(error => console.error("Site cache purge pending", error));
   return guestJson(
     {
       url: sitePublicUrl(env, site.handle, site.id, site.slug, path),
@@ -407,53 +346,13 @@ async function guestDeleteSitePath(
   authority: WriteAuthority,
   objectPath: string,
 ): Promise<Response> {
-  const existing = await env.DB.prepare(
-    `SELECT path, size, content_type, updated_at, last_written_by FROM site_files WHERE site_id = ? AND path = ?`,
-  )
-    .bind(site.id, path)
-    .first<{ path: string; size: number; content_type: string; updated_at: string; last_written_by: string }>();
-  if (!existing) {
-    throw new ApiError(404, "file_not_found", `No file at /${site.handle}/s/${site.id}/${site.slug}/${path}.`);
-  }
-  const ts = new Date().toISOString();
-  const deleted = await env.DB.prepare(
-    `DELETE FROM site_files WHERE site_id = ? AND path = ?
-     AND EXISTS (SELECT 1 FROM sites WHERE id = ? AND write_password_hash = ? AND last_written_by NOT LIKE ?)`,
-  )
-    .bind(site.id, path, site.id, authority.hash, PURGE_CLAIM_LIKE)
-    .run();
-  if (!d1Changed(deleted)) {
-    const still = await getSiteById(env, site.id);
-    if (!still || isPurgeClaimed(still.last_written_by) || isExpired(still.expires_at)) throw expiredError("site");
-    if (!still.write_password_hash || !hashesEqual(still.write_password_hash, authority.hash)) {
-      return writePasswordRequired();
-    }
-    throw new ApiError(409, "site_write_lost", "The site changed during replacement; retry.");
-  }
-  const key = siteKey(site.handle, site.id, path);
-  try {
-    await env.BUCKET.delete(key);
-  } catch (err) {
-    await env.DB.prepare(
-      `INSERT INTO site_files (site_id, path, size, content_type, updated_at, last_written_by)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-    )
-      .bind(site.id, path, existing.size, existing.content_type, existing.updated_at, existing.last_written_by)
-      .run()
-      .catch(() => undefined);
-    throw err;
-  }
-  await env.DB.prepare(
-    `UPDATE sites SET updated_at = ?, written_via = ? WHERE id = ? AND write_password_hash = ? AND last_written_by NOT LIKE ?`,
-  )
-    .bind(ts, WRITTEN_VIA_WRITE_PASSWORD, site.id, authority.hash, PURGE_CLAIM_LIKE)
-    .run();
+  if (!(await snapshotFiles(env, site)).some(file => file.path === path))
+    throw new ApiError(404, "file_not_found", `No file at ${path}.`);
+  await publishSiteChanges(env, site, { email: accountWriter(site.last_written_by, site.created_by),
+    userId: site.owner_id ?? undefined, via: "access", writePasswordHash: authority.hash,
+    writtenVia: WRITTEN_VIA_WRITE_PASSWORD }, [{ path, delete: true }], sitePublicUrl(env, site.handle, site.id, site.slug));
   await clearGateAttempts(env, writeGateScopes(request, objectPath));
-  try {
-    await purgeContent(ctx, [sitePrefix(site.handle, site.id)]);
-  } finally {
-    await releaseStorage(env.DB, existing.size);
-  }
+  await purgeContent(ctx, [sitePrefix(site.handle, site.id)]).catch(error => console.error("Site cache purge pending", error));
   return guestJson({ deleted: true, path }, 200);
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_FILE_BYTES, MAX_PLATFORM_BYTES, MAX_ZIP_BYTES } from "../../src/config";
+import { MAX_FILE_BYTES, MAX_PLATFORM_BYTES, MAX_ZIP_IMPORT_BYTES, MAX_ZIP_EXTRACTED_BYTES, MAX_ZIP_EXPORT_BYTES } from "../../src/config";
 import {
   emailAllowed,
   emailIsAdmin,
@@ -105,7 +105,9 @@ describe("instancePolicy", () => {
     expect(policy.presets.some((p) => p.id === "90d")).toBe(false);
     expect(policy.allowedEmailDomains).toEqual([]);
     expect(policy.fileBytes).toBe(MAX_FILE_BYTES);
-    expect(policy.zipBytes).toBe(MAX_ZIP_BYTES);
+    expect(policy.zipBytes).toBe(MAX_ZIP_IMPORT_BYTES);
+    expect(policy.zipExtractedBytes).toBe(MAX_ZIP_EXTRACTED_BYTES);
+    expect(policy.zipExportBytes).toBe(MAX_ZIP_EXPORT_BYTES);
     expect(policy.platformBytes).toBe(MAX_PLATFORM_BYTES);
     expect(policy.writePolicy).toBe("owner");
   });
@@ -124,10 +126,21 @@ describe("instancePolicy", () => {
     expect(policy.platformBytes).toBe(2 * 1024 * 1024 * 1024);
   });
 
-  it("caps zips separately but never above the file cap", () => {
+  it("keeps import defaults independent while preserving explicit legacy cap fallback", () => {
     expect(instancePolicy(env({ MAX_ZIP_BYTES: "10mb" })).zipBytes).toBe(10 * 1024 * 1024);
-    expect(instancePolicy(env({ MAX_FILE_BYTES: "5mb" })).zipBytes).toBe(5 * 1024 * 1024);
+    expect(instancePolicy(env({ MAX_FILE_BYTES: "5mb" })).zipBytes).toBe(MAX_ZIP_IMPORT_BYTES);
     expect(instancePolicy(env({ MAX_FILE_BYTES: "5mb", MAX_ZIP_BYTES: "40mb" })).zipBytes).toBe(5 * 1024 * 1024);
+  });
+
+  it("gives each explicit ZIP override precedence over the legacy setting", () => {
+    const policy = instancePolicy(env({ MAX_FILE_BYTES: "5mb", MAX_ZIP_BYTES: "4mb",
+      MAX_ZIP_IMPORT_BYTES: "100mb", MAX_ZIP_EXTRACTED_BYTES: "500mb", MAX_ZIP_EXPORT_BYTES: "25mb" }));
+    expect(policy.fileBytes).toBe(5 * 1024 * 1024);
+    expect(policy.zipBytes).toBe(100 * 1024 * 1024);
+    expect(policy.zipExtractedBytes).toBe(500 * 1024 * 1024);
+    expect(policy.zipExportBytes).toBe(25 * 1024 * 1024);
+    const fallback = instancePolicy(env({ MAX_FILE_BYTES: "5mb", MAX_ZIP_BYTES: "40mb" }));
+    expect([fallback.zipBytes, fallback.zipExtractedBytes, fallback.zipExportBytes]).toEqual([5, 5, 5].map(n => n * 1024 * 1024));
   });
 
   it("lets a company host keep content forever and lock email domains", () => {
