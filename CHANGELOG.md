@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.10.0](https://github.com/tmchow/energon/compare/v1.9.0...v1.10.0) (2026-10-07)
+
+
+### Features
+
+* **grants:** set share passwords at mint and return result_id on recovery ([#139](https://github.com/tmchow/energon/issues/139)) ([c2f9d31](https://github.com/tmchow/energon/commit/c2f9d31170ed377b22acb78f2c7b10fd6fff95f2))
+* **sites:** publish complete site updates atomically ([#145](https://github.com/tmchow/energon/issues/145)) ([cef60de](https://github.com/tmchow/energon/commit/cef60de47e96fd841a2725b33100c3f1b9c8c617))
+
 ## [1.9.0](https://github.com/tmchow/energon/compare/v1.8.0...v1.9.0) (2026-10-07)
 
 
