@@ -198,6 +198,11 @@ function allowUnlimitedTokens(value: string | undefined): boolean {
   return value === undefined ? true : flag(value);
 }
 
+/** Unset means on; once set, only a truthy value keeps the well-known skill served. */
+export function agentSkillsDiscovery(env: Pick<Env, "AGENT_SKILLS_DISCOVERY">): boolean {
+  return env.AGENT_SKILLS_DISCOVERY === undefined ? true : flag(env.AGENT_SKILLS_DISCOVERY);
+}
+
 export function tokenPolicy(env: Pick<Env, "ALLOW_UNLIMITED_TOKENS">): TokenPolicy {
   const allowUnlimited = allowUnlimitedTokens(env.ALLOW_UNLIMITED_TOKENS);
   const presets: TtlPreset[] = TOKEN_TTL_CATALOG.map((id) => ({

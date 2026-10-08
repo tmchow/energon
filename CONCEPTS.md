@@ -80,6 +80,9 @@ The deployed product: one Worker, D1, R2, Access app, and rendered skill. Speak 
 
 `GET /v1/help` describes this Energon: origins, skill and marketplace coordinates, token environment variable, Token Prefix, retention, token policy, limits. Those values come from deployment configuration with project defaults as fallbacks, so this Energon does not advertise or issue credentials in a format it will reject.
 
+### Well-known skill
+This Energon's rendered skill, served publicly from its content origin under `/.well-known/agent-skills/` so installers and tool gateways can load it by URL without access to the deployment repository. It names the same origin, token environment variable, and Token Prefix as `GET /v1/help`, and holds no credentials. `/v1/help` `agent_skills_url` is null when the operator turns it off with `AGENT_SKILLS_DISCOVERY`.
+
 ### Org
 Everyone who can mint a token on this Energon (Cloudflare Access, with an optional email-domain lock). Not a database entity. Write policy `org` means any of those tokens may write the object. Hub copy says “Anyone in the org.”
 
@@ -94,6 +97,7 @@ Locative only: the place (this origin, vs someone not on this host). Not the nam
 - Purge claims and Write claims make competing content mutations resolve before storage changes begin.
 - A Share Password gates reading a published URL. A Write Password authorizes guest PUT (and site-path DELETE) on that same object without an account.
 - An Upload Grant authorizes one upload to one target on behalf of the API Token that minted it.
+- The Well-known skill and `GET /v1/help` describe the same Energon; neither carries a credential.
 
 ## Schema lifecycle
 

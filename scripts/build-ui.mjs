@@ -1,6 +1,6 @@
 import { build } from 'esbuild';
 import { compile } from 'svelte/compiler';
-import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { readFile, readdir, mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -25,8 +25,22 @@ function sveltePlugin(generate) {
   };
 }
 
+// The Worker renders templates/skill/ at request time; a JS module avoids new wrangler [[rules]] in deployments.
+async function buildSkillBundle() {
+  const dir = path.join(root, 'templates/skill');
+  const entries = await readdir(dir, { recursive: true, withFileTypes: true });
+  const bundle = {};
+  for (const entry of entries.filter(e => e.isFile())) {
+    const file = path.join(entry.parentPath, entry.name);
+    bundle[path.relative(dir, file).split(path.sep).join('/')] = await readFile(file, 'utf8');
+  }
+  const sorted = Object.fromEntries(Object.entries(bundle).sort(([a], [b]) => a.localeCompare(b)));
+  await writeFile(path.join(generated, 'skill-templates.js'), `export default ${JSON.stringify(sorted, null, 2)};\n`);
+}
+
 export async function buildUI() {
   await mkdir(generated, { recursive: true });
+  await buildSkillBundle();
   const client = await build({ ...common, entryPoints: ['src/ui/client.ts'], outfile: 'app.js', plugins: [sveltePlugin('client')], conditions: ['browser'], minify: true, write: false });
   const bytes = client.outputFiles[0].contents;
   const hash = createHash('sha256').update(bytes).digest('hex').slice(0, 16);

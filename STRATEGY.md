@@ -1,6 +1,6 @@
 ---
 name: Energon
-last_updated: 2026-10-06
+last_updated: 2026-10-07
 ---
 
 # Energon Strategy
@@ -17,7 +17,7 @@ Energon is agent-native publishing for documents, prototypes, and working files.
 
 The distinctive value is the combination: useful browser views, direct file access for agents, stable-link revision and reference, and one workflow for several artifact types on infrastructure you control. Agent-native means agents work with the underlying files using their existing tools, while people get a browser view of the same work. It does not mean only agents can publish or only agent-authored work belongs here.
 
-Each Energon runs in its operator's Cloudflare account and ships a skill bound to that Energon for compatible agent tools, including Cursor, Claude Code, and Codex. Once it exists, publishing a file or prepared site needs no new repository or deployment pipeline. Energon does not build source projects or run server-side application code. Links serve the current contents until expiry or deletion; a copy is a separate object, not a version-history entry. Write permissions, expiry, and share passwords are per object.
+Each Energon runs in its operator's Cloudflare account and ships a skill bound to that Energon for compatible agent tools, including Cursor, Claude Code, and Codex. Each Energon also serves that skill at a well-known URL on its own origin, so it travels through tool gateways and skill installers that load skills by URL, such as an MCP gateway that imports the OpenAPI document together with the skill. Once it exists, publishing a file or prepared site needs no new repository or deployment pipeline. Energon does not build source projects or run server-side application code. Links serve the current contents until expiry or deletion; a copy is a separate object, not a version-history entry. Write permissions, expiry, and share passwords are per object.
 
 It is not a system of record. Code and anything that must be versioned and reviewed stays in the repo. Energon holds the documents, previews, and working files around that work.
 
@@ -25,7 +25,7 @@ It is not a system of record. Code and anything that must be versioned and revie
 
 **Primary:** A person working with agents across sessions, tools, or machines. They want one way to publish, view, revise, and reference work without choosing a new place per artifact or creating a repository for it. Sometimes they upload or share directly; sometimes they ask an agent; sometimes an agent acts autonomously within delegated authority. Human-to-human, human-to-agent, agent-to-human, and agent-to-agent use all belong. Cross-tool demand remains a positioning hypothesis, not observed adoption.
 
-**Secondary:** The individual or organization operator who forks and deploys their own Energon. They want that workflow on infrastructure they control, with their own origin, token, and retention policies.
+**Secondary:** The individual or organization operator who forks and deploys their own Energon. They want that workflow on infrastructure they control, with their own origin, token, and retention policies. Some run Energon behind a tool gateway for a fleet of machines: the gateway holds the token centrally, and machines publish through upload grants instead of holding a token.
 
 ## Boundaries
 

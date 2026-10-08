@@ -5,12 +5,13 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   brandFromName,
@@ -19,6 +20,8 @@ import {
   runRender,
   tokenEnvFromBrand,
 } from "../../scripts/render-skill.mjs";
+import { render, skillTemplateVars } from "../../scripts/skill-template.mjs";
+import skillTemplates from "../../src/generated/skill-templates.js";
 import { WRITE_PASSWORD_HEADER } from "../../src/config";
 import { GRANT_AUTH_HEADER, GRANT_UPLOAD_PREFIX } from "../../src/grant-protocol";
 
@@ -31,6 +34,18 @@ const CATALOG_PATHS = [
 
 const disposableRoots: string[] = [];
 const TEST_VERSION = "9.9.9";
+const ACME_VARS = skillTemplateVars({
+  skill: "acme-energon",
+  plugin: "acme-energon",
+  marketplace: "acme-energon",
+  origin: "https://energon.acme.test",
+  tokenEnv: "ACME_ENERGON_TOKEN",
+  tokenPrefix: "ee_live_",
+  product: "Energon",
+  marketplaceRepo: "acme/energon",
+  marketplaceUrl: "https://github.com/acme/energon",
+  version: TEST_VERSION,
+});
 
 function writeProductVersion(root: string, version = TEST_VERSION) {
   writeFileSync(join(root, "version.txt"), `${version}\n`);
@@ -66,6 +81,7 @@ function makeDisposableRepo() {
   writeProductVersion(root);
   mkdirSync(join(root, "scripts"), { recursive: true });
   cpSync(resolve("scripts/render-skill.mjs"), join(root, "scripts/render-skill.mjs"));
+  cpSync(resolve("scripts/skill-template.mjs"), join(root, "scripts/skill-template.mjs"));
   cpSync(resolve("templates"), join(root, "templates"), { recursive: true });
   mkdirSync(join(root, "plugins", "old-plugin", "skills", "old-skill"), { recursive: true });
   writeFileSync(join(root, "plugins", "old-plugin", "skills", "old-skill", "SKILL.md"), "old skill\n");
@@ -128,8 +144,68 @@ describe("skill template", () => {
     expect(api).toContain(GRANT_UPLOAD_PREFIX);
   });
 
+  it("rendered SKILL.md teaches gateway mode and the bundled helper", () => {
+    const skill = render(skillTemplates["SKILL.md.tmpl"], ACME_VARS);
+    const hardRules = skill.slice(skill.indexOf("## Hard rules"), skill.indexOf("## Gateway mode"));
+    expect(hardRules).toMatch(/1\. \*\*Gateway mode first\.\*\*.*search.*`mintGrant`.*`createDeployment`/);
+    expect(hardRules).toContain("follow **Gateway mode** below instead");
+
+    const gateway = skill.slice(skill.indexOf("## Gateway mode"), skill.indexOf("## Decide: site or loose file?"));
+    expect(gateway).toContain("search the gateway");
+    expect(gateway).toContain("never through the gateway");
+    expect(gateway).toContain("GET https://energon.acme.test/v1/help");
+    expect(gateway).toContain("agent_skills_url");
+    expect(gateway).toContain('curl -fsS "${AGENT_SKILLS_URL}acme-energon/scripts/energon_publish.py"');
+    expect(gateway).toContain("python3 scripts/energon_publish.py publish-file");
+    expect(gateway).toContain("python3 scripts/energon_publish.py publish-folder");
+    expect(gateway).toContain('"type":"site_deployment"');
+    expect(gateway).toContain("same `deployment_id`");
+    expect(gateway).toContain("/llms.txt");
+    expect(gateway).not.toContain("Bearer $ACME_ENERGON_TOKEN");
+
+    const scenarioE = skill.slice(skill.indexOf("## Scenario E"), skill.indexOf("## Scenario F"));
+    expect(scenarioE).toContain("python3 scripts/energon_publish.py publish-folder ./dist --site-id {id}");
+  });
+
   it("skill:init requires --name or --skill, and --origin", () => {
     expect(() => runRender(["--init"])).toThrow(/--name \(or --skill\) and --origin/);
+  });
+});
+
+describe("shared skill renderer", () => {
+  it("rejects unknown keys and leftover tokens", () => {
+    expect(() => render("a {{KNOWN}} {{NOPE}}", { KNOWN: "x" })).toThrow("unknown template keys: NOPE");
+    expect(() => render("{{A}}", { A: "{{B}}" })).toThrow("unreplaced template tokens remain");
+  });
+
+  it("the build bundles exactly the files under templates/skill with their raw contents", () => {
+    const dir = resolve("templates/skill");
+    const walk = (d: string): string[] =>
+      readdirSync(d, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walk(join(d, e.name)) : [relative(dir, join(d, e.name)).split(sep).join("/")],
+      );
+    const files = walk(dir).sort();
+    expect(files).toContain("SKILL.md.tmpl");
+    expect(Object.keys(skillTemplates).sort()).toEqual(files);
+    for (const file of files) expect(skillTemplates[file]).toBe(readFileSync(join(dir, file), "utf8"));
+  });
+
+  it("renders the bundled skill from runtime identity without ORG", () => {
+    expect(ACME_VARS.ORIGIN_HOST).toBe("energon.acme.test");
+    expect(ACME_VARS.INSTALL_LINE).toBe("acme-energon@acme-energon");
+    for (const [file, template] of Object.entries(skillTemplates)) {
+      if (!file.endsWith(".tmpl")) continue;
+      const text = render(template, ACME_VARS);
+      expect(text).not.toMatch(/\{\{[A-Z0-9_]+\}\}/);
+    }
+    expect(render(skillTemplates["SKILL.md.tmpl"], ACME_VARS)).toContain("energon.acme.test");
+  });
+
+  it("renders the upload helper with the instance identity and no leftover placeholders", () => {
+    const helper = render(skillTemplates["scripts/energon_publish.py.tmpl"], ACME_VARS);
+    expect(helper).not.toMatch(/\{\{[A-Z0-9_]+\}\}/);
+    expect(helper).toContain('DEFAULT_ORIGIN = "https://energon.acme.test"');
+    expect(helper).toContain('TOKEN_ENV = "ACME_ENERGON_TOKEN"');
   });
 });
 

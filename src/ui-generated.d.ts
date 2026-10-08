@@ -6,3 +6,8 @@ declare module '*generated/ui-manifest.json' {
   const manifest: { script: string };
   export default manifest;
 }
+
+declare module '*generated/skill-templates.js' {
+  const templates: Record<string, string>;
+  export default templates;
+}

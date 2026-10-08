@@ -1,0 +1,587 @@
+#!/usr/bin/env python3
+"""Publish a local file or folder to {{PRODUCT}} at {{ORIGIN}}.
+
+Run with `python3 energon_publish.py <command> ...`; `--help` lists commands.
+Token mode reads the token from ${{TOKEN_ENV}}. Grant mode reads grant JSON from
+`--grant-file PATH` (or `--grant-file -` for stdin). No flag takes a secret value.
+JSON results go to stdout; progress and errors go to stderr.
+"""
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import shutil
+import socket
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
+import zipfile
+from http.client import HTTPException
+
+HELPER_VERSION = "1"
+DEFAULT_ORIGIN = "{{ORIGIN}}"
+TOKEN_ENV = "{{TOKEN_ENV}}"
+TOKEN_PREFIX = "{{TOKEN_PREFIX}}"
+SKILL_NAME = "{{SKILL_NAME}}"
+MAX_FILES = 200
+USER_AGENT = "energon-publish/" + HELPER_VERSION + " (" + SKILL_NAME + ")"
+RETRY_DELAYS = (1, 2, 4)
+RETRY_CODES = ("grant_busy", "file_busy")
+SECRET_PATTERN = re.compile("(?:" + "|".join(re.escape(p) for p in ("grant_", "deployment_grant_", TOKEN_PREFIX) if p)
+                            + ")[A-Za-z0-9]{16,}")
+FIXED_ZIP_TIME = (1980, 1, 1, 0, 0, 0)
+SESSION_URLS = ("status_url", "archive_url", "prepare_url", "commit_url")
+# Sessions expire after an hour, so older leftovers can never resume; they only keep private archives on disk.
+STALE_STATE_SECONDS = 24 * 60 * 60
+# The server accepts a new idempotency key for an hour after its timestamp; refresh unused keys before that.
+KEY_FRESH_SECONDS = 55 * 60
+EXPIRED_CODES = ("idempotency_expired", "deployment_expired", "deployment_missing")
+
+
+class Fail(Exception):
+    def __init__(self, body, hint=None):
+        Exception.__init__(self, body.get("message") or body.get("error"))
+        self.body = body
+        self.hint = hint
+
+
+def fail(code, message, hint=None):
+    raise Fail({"error": code, "message": message}, hint)
+
+
+def note(message):
+    sys.stderr.write(message + "\n")
+
+
+def emit(data):
+    sys.stdout.write(json.dumps(data, indent=2) + "\n")
+
+
+# ---------- HTTP ----------
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
+class LostResponse(Exception):
+    pass
+
+
+def origin_of(url):
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        fail("bad_url", "Not an http(s) URL: " + url)
+    port = parts.port
+    default = 443 if parts.scheme == "https" else 80
+    host = parts.hostname.lower()
+    if ":" in host:
+        host = "[" + host + "]"
+    return parts.scheme + "://" + host + ("" if port in (None, default) else ":" + str(port))
+
+
+def require_origin(url, allowed, what):
+    if origin_of(url) != allowed:
+        fail("origin_mismatch", what + " is not on " + allowed + "; refusing to send credentials there.")
+
+
+def http(method, url, secret=None, body_path=None, json_body=None, content_type=None, headers=None):
+    """One request. Returns (status, parsed body). Raises LostResponse when no response arrived."""
+    send = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+    send.update(headers or {})
+    if secret:
+        send["Authorization"] = "Bearer " + secret
+    data = None
+    handle = None
+    if json_body is not None:
+        data = json.dumps(json_body).encode()
+        send["Content-Type"] = "application/json"
+    elif body_path is not None:
+        handle = open(body_path, "rb")
+        data = handle
+        send["Content-Type"] = content_type or "application/octet-stream"
+        send["Content-Length"] = str(os.fstat(handle.fileno()).st_size)
+    elif method in ("POST", "PUT"):
+        data = b""
+        send["Content-Type"] = content_type or "application/octet-stream"
+    req = urllib.request.Request(url, data=data, method=method, headers=send)
+    try:
+        with _OPENER.open(req, timeout=120) as res:
+            return res.status, _parse(res.read())
+    except urllib.error.HTTPError as err:
+        if 300 <= err.code < 400:
+            fail("redirect_refused", method + " " + url + " answered " + str(err.code) + "; redirects are not followed.")
+        return err.code, _parse(err.read())
+    except (urllib.error.URLError, HTTPException, OSError) as err:
+        raise LostResponse(str(getattr(err, "reason", err)))
+    finally:
+        if handle:
+            handle.close()
+
+
+def _parse(raw):
+    try:
+        value = json.loads(raw.decode() or "{}")
+        return value if isinstance(value, dict) else {"body": value}
+    except ValueError:
+        return {"body": raw.decode("utf-8", "replace")[:500]}
+
+
+def call(method, url, idempotent=True, **kw):
+    """Request with retries for 409 busy, 5xx, and (when idempotent) lost responses."""
+    for attempt in range(len(RETRY_DELAYS) + 1):
+        try:
+            status, body = http(method, url, **kw)
+        except LostResponse as err:
+            if not idempotent or attempt == len(RETRY_DELAYS):
+                raise
+            note("No response (" + str(err) + "); retrying.")
+        else:
+            retry = (status == 409 and body.get("error") in RETRY_CODES) or (status >= 500 and idempotent)
+            if not retry or attempt == len(RETRY_DELAYS):
+                return status, body
+            note(str(status) + " " + str(body.get("error", "")) + "; retrying.")
+        time.sleep(RETRY_DELAYS[attempt])
+    raise AssertionError("unreachable")
+
+
+def ok(status, body, *codes):
+    if status not in codes:
+        raise Fail(dict(body, status=status))
+    return body
+
+
+def discover_content_origin(origin):
+    try:
+        status, body = http("GET", origin + "/v1/help")
+    except LostResponse as err:
+        fail("unreachable", "Could not read " + origin + "/v1/help: " + str(err))
+    ok(status, body, 200)
+    return origin_of(body.get("content_origin") or origin)
+
+
+# ---------- Secrets ----------
+
+def reject_secret_argv(argv):
+    for arg in argv:
+        value = arg.split("=", 1)[1] if arg.startswith("--") and "=" in arg else arg
+        if SECRET_PATTERN.fullmatch(value):
+            fail("secret_in_argument", "An argument looks like a token or grant secret. Pass grants with --grant-file "
+                 "and the token through $" + TOKEN_ENV + ", never as an argument.")
+
+
+def read_token():
+    token = os.environ.get(TOKEN_ENV, "").strip()
+    if not token:
+        fail("missing_token", "Token mode needs $" + TOKEN_ENV + ". Set it, or publish with --grant-file.")
+    return token
+
+
+def read_grant(path):
+    try:
+        if path == "-":
+            grant = json.load(sys.stdin)
+        else:
+            with open(path) as handle:
+                grant = json.load(handle)
+    except (OSError, ValueError) as err:
+        fail("bad_grant", "Could not read grant JSON: " + type(err).__name__)
+    if not isinstance(grant, dict) or not isinstance(grant.get("secret"), str) or not grant["secret"]:
+        fail("bad_grant", "Grant JSON has no secret.")
+    return grant
+
+
+def grant_urls(grant, names):
+    missing = [n for n in names if not isinstance(grant.get(n), str) or not grant[n]]
+    if missing:
+        fail("bad_grant", "Grant JSON is missing " + ", ".join(missing) + ".")
+    return {n: grant[n] for n in names}
+
+
+# ---------- Files and archives ----------
+
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def require_file(path):
+    if os.path.islink(path) or not os.path.isfile(path):
+        fail("not_a_file", path + " is not a regular file.")
+
+
+def folder_files(folder, include_hidden):
+    """Relative POSIX paths of regular files, sorted. Never follows or includes symlinks."""
+    found = []
+    for base, dirs, names in os.walk(folder, followlinks=False):
+        dirs[:] = sorted(d for d in dirs if not os.path.islink(os.path.join(base, d))
+                         and (include_hidden or not d.startswith(".")))
+        for name in names:
+            full = os.path.join(base, name)
+            if (not include_hidden and name.startswith(".")) or os.path.islink(full) or not os.path.isfile(full):
+                continue
+            found.append(os.path.relpath(full, folder).replace(os.sep, "/"))
+            if len(found) > MAX_FILES:
+                fail("too_many_files", folder + " has more than " + str(MAX_FILES) + " files; a site deployment takes at most "
+                     + str(MAX_FILES) + ".")
+    found.sort()
+    if not found:
+        fail("empty_folder", folder + " has no files to publish.")
+    return found
+
+
+def fingerprint(folder, files):
+    digest = hashlib.sha256()
+    for rel in files:
+        st = os.stat(os.path.join(folder, rel))
+        digest.update((rel + "\0" + str(st.st_size) + "\0" + str(st.st_mtime_ns) + "\n").encode())
+    return digest.hexdigest()
+
+
+def build_zip(folder, files, dest):
+    """Deterministic ZIP: fixed timestamps and order, so unchanged content yields identical bytes."""
+    fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "wb") as raw, zipfile.ZipFile(raw, "w", zipfile.ZIP_DEFLATED) as archive:
+        for rel in files:
+            info = zipfile.ZipInfo(rel, FIXED_ZIP_TIME)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o644 << 16
+            with open(os.path.join(folder, rel), "rb") as src, archive.open(info, "w") as out:
+                shutil.copyfileobj(src, out, 1 << 20)
+    os.chmod(dest, 0o600)
+
+
+# ---------- Persisted state (never holds secrets) ----------
+
+def state_root(arg):
+    root = arg or os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache"),
+                               "energon-publish")
+    os.makedirs(root, mode=0o700, exist_ok=True)
+    os.chmod(root, 0o700)
+    prune_stale(root)
+    return root
+
+
+def prune_stale(root):
+    cutoff = time.time() - STALE_STATE_SECONDS
+    for name in os.listdir(root):
+        path = os.path.join(root, name)
+        try:
+            if os.path.isfile(path) and not os.path.islink(path) and os.path.getmtime(path) < cutoff:
+                os.remove(path)
+        except OSError:
+            pass
+
+
+def state_paths(root, folder):
+    name = hashlib.sha256(os.path.realpath(folder).encode()).hexdigest()[:24]
+    return os.path.join(root, name + ".json"), os.path.join(root, name + ".zip")
+
+
+def load_state(path):
+    try:
+        with open(path) as handle:
+            return json.load(handle)
+    except (OSError, ValueError):
+        return None
+
+
+def save_state(path, state):
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), suffix=".tmp")
+    with os.fdopen(fd, "w") as handle:
+        json.dump(state, handle, indent=2)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
+
+
+def drop_state(state_path, archive_path):
+    for path in (state_path, archive_path):
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+
+
+def new_key():
+    return str(int(time.time() * 1000)) + "." + str(uuid.uuid4())
+
+
+def key_is_fresh(key):
+    try:
+        return time.time() - int(str(key).split(".")[0]) / 1000 < KEY_FRESH_SECONDS
+    except ValueError:
+        return False
+
+
+def reset_identity(state):
+    """Forget an expired server session; the persisted archive stays and publishes under a new key."""
+    for field in ("deployment_id", "status_url", "expected_version", "site_id"):
+        state.pop(field, None)
+    state["idempotency_key"] = new_key()
+
+
+def prepare_folder(folder, include_hidden, state_dir, rebuild=False, restart=False):
+    """Return (state, state_path, built). Reuses the persisted archive unless asked to rebuild before a session exists."""
+    if not os.path.isdir(folder) or os.path.islink(folder):
+        fail("not_a_folder", folder + " is not a folder.")
+    state_path, archive_path = state_paths(state_root(state_dir), folder)
+    previous = None if restart else load_state(state_path)
+    if previous and previous.get("host") != socket.gethostname():
+        previous = None  # State from another machine is a new local transfer, never a resume.
+    if previous and os.path.isfile(archive_path) and not (rebuild and not previous.get("deployment_id")):
+        if previous.get("include_hidden") != include_hidden:
+            fail("state_mismatch", "The persisted archive was built " + ("with" if previous.get("include_hidden") else "without")
+                 + " --include-hidden. Pass the same flag, or run inspect --restart to rebuild.")
+        if not previous.get("deployment_id") and not key_is_fresh(previous.get("idempotency_key")):
+            previous["idempotency_key"] = new_key()
+            save_state(state_path, previous)
+        return previous, state_path, False
+    files = folder_files(folder, include_hidden)
+    tmp = archive_path + ".tmp"
+    build_zip(folder, files, tmp)
+    archive = {"size": os.path.getsize(tmp), "sha256": sha256_file(tmp)}
+    os.replace(tmp, archive_path)
+    # Same bytes keep the same key (and any recorded session base) so a replay matches; new bytes need a new key.
+    state = previous if previous and previous.get("archive") == archive else {"idempotency_key": new_key()}
+    if not state.get("deployment_id") and not key_is_fresh(state.get("idempotency_key")):
+        state["idempotency_key"] = new_key()
+    state.update(host=socket.gethostname(), folder=os.path.realpath(folder), include_hidden=include_hidden, files=files,
+                 fingerprint=fingerprint(folder, files), archive=archive, archive_path=archive_path)
+    save_state(state_path, state)
+    return state, state_path, True
+
+
+def served_paths(files):
+    """Mirror the server: skip ZIP junk, then strip a first folder shared by every entry. Returns (paths, stripped)."""
+    kept = [f for f in files if "__MACOSX" not in f.split("/") and f.rsplit("/", 1)[-1] not in (".DS_Store", "Thumbs.db")]
+    first = kept[0].split("/")[0] if kept else ""
+    if first and all(f.startswith(first + "/") for f in kept):
+        return [f[len(first) + 1:] for f in kept], first
+    return kept, None
+
+
+def note_stripped(state):
+    stripped = served_paths(state["files"])[1]
+    if stripped:
+        note("Every file sits under " + stripped + "/; the site serves them without that folder (" + stripped
+             + "/index.html is served as index.html).")
+
+
+def inspect_output(state, state_path):
+    note_stripped(state)
+    return {"kind": "folder", "folder": state["folder"], "size": state["archive"]["size"],
+            "sha256": state["archive"]["sha256"], "archive": state["archive"], "files": served_paths(state["files"])[0],
+            "idempotency_key": state["idempotency_key"], "deployment_id": state.get("deployment_id"),
+            "state_path": state_path, "archive_path": state["archive_path"]}
+
+
+# ---------- Commands ----------
+
+def cmd_inspect(args):
+    path = args.path
+    if os.path.isdir(path) and not os.path.islink(path):
+        state, state_path, built = prepare_folder(path, args.include_hidden, args.state_dir, rebuild=True, restart=args.restart)
+        if not built:
+            note("Deployment " + str(state["deployment_id"]) + " already started; keeping its persisted archive. "
+                 "Pass --restart to discard it and rebuild.")
+        return inspect_output(state, state_path)
+    require_file(path)
+    return {"kind": "file", "path": os.path.abspath(path), "filename": os.path.basename(path),
+            "size": os.path.getsize(path), "sha256": sha256_file(path)}
+
+
+def cmd_publish_file(args):
+    require_file(args.file)
+    if args.grant_file:
+        if args.file_id or args.expected_version is not None or args.filename:
+            fail("bad_arguments", "--file-id, --expected-version, and --filename are token-mode options; a grant fixes its target.")
+        grant = read_grant(args.grant_file)
+        if grant.get("archive_url"):
+            fail("bad_grant", "This is a site deployment grant; use publish-folder.")
+        upload_url = grant_urls(grant, ["upload_url"])["upload_url"]
+        if "{" in upload_url:
+            fail("bad_grant", "upload_url is a template, not a file grant URL.")
+        content = discover_content_origin(args.origin)
+        require_origin(upload_url, content, "upload_url")
+        status, body = call("PUT", upload_url, secret=grant["secret"], body_path=args.file)
+        if status == 410 and body.get("error") == "grant_used" and body.get("url"):
+            note("The grant was already used; its upload is published.")
+            return {"url": body["url"], "result_id": body.get("result_id"), "grant_used": True}
+        return ok(status, body, 200, 201)
+    token = read_token()
+    if args.file_id:
+        headers = {}
+        if args.expected_version is not None:
+            headers["X-Energon-Expected-Version"] = str(args.expected_version)
+        url = args.origin + "/v1/files/" + urllib.parse.quote(args.file_id, safe="")
+        status, body = call("PUT", url, secret=token, body_path=args.file, headers=headers)
+        return ok(status, body, 200, 201)
+    if args.expected_version is not None:
+        fail("bad_arguments", "--expected-version needs --file-id.")
+    name = args.filename or os.path.basename(args.file)
+    # Creating is not idempotent: a retry after a lost response could publish a duplicate.
+    status, body = call("POST", args.origin + "/v1/files", idempotent=False, secret=token, body_path=args.file,
+                        headers={"X-Filename": name})
+    return ok(status, body, 200, 201)
+
+
+def run_session(args, state, state_path, grant, token, urls):
+    """Create or resume the deployment, upload, prepare, and commit. Returns the committed status body."""
+    if grant:
+        content = discover_content_origin(args.origin)
+        for name, url in urls.items():
+            require_origin(url, content, name)
+        status_url, archive_url, prepare_url, commit_url = (urls[n] for n in SESSION_URLS)
+        secret = grant["secret"]
+        target = grant.get("target") or {}
+        state.update(deployment_id=target.get("deployment_id"), site_id=target.get("site_id"), status_url=status_url)
+        save_state(state_path, state)
+        current = ok(*call("GET", status_url, secret=secret), 200)
+    else:
+        secret = token
+        site = urllib.parse.quote(args.site_id, safe="")
+        if state.get("site_id") not in (None, args.site_id):
+            fail("state_mismatch", "The persisted deployment targets site " + str(state["site_id"])
+                 + ". Run inspect --restart to start over for another site.")
+        if state.get("expected_version") is None:
+            site_body = ok(*call("GET", args.origin + "/v1/sites/" + site, secret=token), 200)
+            state.update(site_id=args.site_id, expected_version=site_body.get("content_generation"))
+            save_state(state_path, state)
+        intent = {"expected_version": state["expected_version"], "idempotency_key": state["idempotency_key"],
+                  "archive": state["archive"]}
+        current = ok(*call("POST", args.origin + "/v1/sites/" + site + "/deployments", secret=token, json_body=intent), 200, 201)
+        status_url = args.origin + "/v1/sites/" + site + "/deployments/" + urllib.parse.quote(str(current["deployment_id"]), safe="")
+        archive_url, prepare_url, commit_url = status_url + "/archive", status_url + "/prepare", status_url + "/commit"
+        state.update(deployment_id=current["deployment_id"], status_url=status_url)
+        save_state(state_path, state)
+
+    if current.get("state") == "uploading" and current.get("next_action") == "upload":
+        note("Uploading archive (" + str(state["archive"]["size"]) + " bytes).")
+        ok(*call("PUT", archive_url, secret=secret, body_path=state["archive_path"], content_type="application/zip"), 200, 201)
+    for _ in range(4 * MAX_FILES + 10):
+        if current.get("state") != "uploading":
+            break
+        status, current = call("POST", prepare_url, secret=secret)
+        ok(status, current, 200, 202)
+    if current.get("state") == "ready":
+        try:
+            status, body = http("POST", commit_url, secret=secret)
+            if status == 200:
+                current = body
+            elif status < 500:
+                raise Fail(dict(body, status=status))
+        except LostResponse:
+            pass
+        if current.get("state") != "committed":
+            current = ok(*call("GET", status_url, secret=secret), 200)
+    if current.get("state") != "committed":
+        raise Fail(dict(current, error=current.get("error") or "not_committed",
+                        message="The deployment is " + str(current.get("state")) + ", not committed."),
+                   "Rerun the same publish-folder command to resume" + (" (mint a new grant for the same deployment if this one expired)." if grant else "."))
+    return current
+
+
+def cmd_publish_folder(args):
+    grant = token = None
+    if args.grant_file:
+        grant = read_grant(args.grant_file)
+        if not grant.get("archive_url") and grant.get("upload_url"):
+            fail("bad_grant", "This is a single-file grant; use publish-file.")
+        urls = grant_urls(grant, SESSION_URLS)
+    else:
+        token = read_token()
+        if not args.site_id:
+            fail("bad_arguments", "Token mode needs --site-id (create the site first with POST /v1/sites).")
+    state, state_path, built = prepare_folder(args.folder, args.include_hidden, args.state_dir)
+    note_stripped(state)
+    if not built:
+        # Only decides a warning; the persisted archive is what publishes, so the live folder must not block it.
+        try:
+            changed = fingerprint(args.folder, folder_files(args.folder, state["include_hidden"])) != state.get("fingerprint")
+        except Fail:
+            changed = True
+        if changed:
+            note("The folder changed since inspect; publishing the archive inspect built (sha256 "
+                 + state["archive"]["sha256"] + "). Run inspect --restart first to publish current content.")
+
+    try:
+        current = run_session(args, state, state_path, grant, token, urls if grant else None)
+    except Fail as err:
+        if err.body.get("status") != 410 or err.body.get("error") not in EXPIRED_CODES:
+            raise
+        if grant:
+            raise Fail(err.body, "The deployment expired. Run inspect --restart, have the gateway create a new deployment with "
+                                 "the new idempotency_key and archive, mint a new grant, and publish again.")
+        note("The earlier deployment expired (" + err.body["error"] + "); starting a new one from the persisted archive.")
+        reset_identity(state)
+        save_state(state_path, state)
+        current = run_session(args, state, state_path, grant, token, None)
+    drop_state(state_path, state["archive_path"])
+    return {"state": "committed", "url": current.get("url"), "version_id": current.get("version_id"),
+            "deployment_id": current.get("deployment_id") or state.get("deployment_id"), "site_id": state.get("site_id")}
+
+
+def parser():
+    top = argparse.ArgumentParser(prog="python3 energon_publish.py", description=__doc__,
+                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = top.add_subparsers(dest="command", required=True)
+
+    def common(p, state=True, hidden=True, grant=True):
+        p.add_argument("--origin", default=DEFAULT_ORIGIN, help="hub origin (default " + DEFAULT_ORIGIN + ")")
+        if state:
+            p.add_argument("--state-dir", help="where archives and resume state live (default $XDG_CACHE_HOME/energon-publish or ~/.cache/energon-publish)")
+        if hidden:
+            p.add_argument("--include-hidden", action="store_true", help="include paths with a segment starting with '.'; symlinks are always skipped")
+        if grant:
+            p.add_argument("--grant-file", metavar="PATH", help="grant JSON from this file, or - for stdin; selects grant mode")
+
+    p = sub.add_parser("inspect", help="print size, sha256, and (for a folder) the persisted archive descriptor and idempotency key")
+    p.add_argument("path")
+    p.add_argument("--restart", action="store_true", help="discard persisted state and rebuild the archive")
+    common(p, grant=False)
+    p = sub.add_parser("publish-file", help="publish one file")
+    p.add_argument("file")
+    p.add_argument("--file-id", help="token mode: replace this file instead of creating one")
+    p.add_argument("--expected-version", type=int, help="token mode with --file-id: replace only if content_generation still matches")
+    p.add_argument("--filename", help="token mode: name for a new file (default: the local name)")
+    common(p, state=False, hidden=False)
+    p = sub.add_parser("publish-folder", help="publish a folder as a ZIP archive deployment; rerun to resume")
+    p.add_argument("folder")
+    p.add_argument("--site-id", help="token mode: the site to replace")
+    common(p)
+    return top
+
+
+def main(argv):
+    try:
+        reject_secret_argv(argv)
+        args = parser().parse_args(argv)
+        if hasattr(args, "origin"):
+            args.origin = origin_of(args.origin)
+        handler = {"inspect": cmd_inspect, "publish-file": cmd_publish_file, "publish-folder": cmd_publish_folder}[args.command]
+        emit(handler(args))
+        return 0
+    except Fail as err:
+        emit(err.body)
+        note("Error: " + str(err.body.get("message") or err.body.get("error")) + (" " + err.hint if err.hint else ""))
+        return 1
+    except LostResponse as err:
+        emit({"error": "no_response", "message": str(err)})
+        note("Error: no response from the server (" + str(err) + "). Rerun to resume.")
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

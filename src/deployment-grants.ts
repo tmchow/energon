@@ -8,6 +8,7 @@ import { getDeployment, type DeploymentAuthority } from "./site-deployments";
 import { getSiteById } from "./sites";
 import type { Actor, DeploymentGrantRow, DeploymentIntent, Env, SiteDeploymentRow } from "./types";
 
+export const DEPLOYMENT_GRANT_SECRET_PREFIX = "deployment_grant_";
 export const DEPLOYMENT_GRANT_PATH = /^\/_deployment-grants\/([A-Za-z0-9]{24})(?:\/(files|archive|prepare|commit)(?:\/(.+))?)?$/;
 const hashSecret = (secret: string) => sha256Hex(`energon-deployment-grant:${secret}`);
 const invalidGrant = () => new ApiError(404, "grant_invalid", "No deployment grant matches that id and secret.");
@@ -41,7 +42,7 @@ export async function mintDeploymentGrant(env: Env, actor: Actor, body: Record<s
   }
   const expiresAt = [deployment.deadline, resolveGrantExpiresAt(body.expires_in, live.actor.tokenExpiresAt, now)].sort()[0];
   const id = nanoid(24);
-  const secret = `deployment_grant_${nanoid(43)}`;
+  const secret = `${DEPLOYMENT_GRANT_SECRET_PREFIX}${nanoid(43)}`;
   await env.DB.prepare(`INSERT INTO upload_grants (id, secret_hash, token_id, user_email, user_id, target_kind,
     site_id, deployment_id, deployment_intent_hash, deployment_base_generation, max_bytes, state, created_at, expires_at)
     VALUES (?, ?, ?, ?, ?, 'site_deployment', ?, ?, ?, ?, ?, 'unused', ?, ?)`)

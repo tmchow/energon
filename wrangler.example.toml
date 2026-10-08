@@ -29,6 +29,9 @@ WRITE_POLICY = "org"
 # API tokens: humans pick 1d..365d at mint (default 90d). "true" also offers Never.
 # Only affects future mints; tokens already minted keep working until revoked on /tokens.
 ALLOW_UNLIMITED_TOKENS = "true"
+# The content origin serves this Energon's rendered skill at /.well-known/agent-skills/ (on when unset).
+# Set "false" to stop serving it; edge caches can keep it for up to five minutes.
+# AGENT_SKILLS_DISCOVERY = "false"
 # ALLOWED_EMAIL_DOMAINS = "example.com"
 # Optional line on signed-in pages. Omit or leave empty for no footer.
 # FOOTER_TEXT = "Internal — not for the public internet."

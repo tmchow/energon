@@ -71,6 +71,7 @@ Strings only (Wrangler).
 | `MAX_TTL` | `never` | `30d` (`never` if unlimited) |
 | `TTL_PRESETS` | omit (full catalog) | code catalog ∩ `MAX_TTL` |
 | `ALLOW_UNLIMITED_TOKENS` | `true` | `true` (Never on the token lifetime menu; `false` removes it). Only affects future mints — tokens minted before, and Never tokens minted before you flip it, keep working until revoked on `/tokens`. |
+| `AGENT_SKILLS_DISCOVERY` | `false` to turn off | on: `CONTENT_ORIGIN` serves the rendered publish skill at `/.well-known/agent-skills/` (`index.json` plus files) without credentials, and `/v1/help` reports `agent_skills_url`. Once set, only `1`, `true`, or `yes` keeps it on. Responses are cached for five minutes, so turning it off can take up to five minutes at the edge. |
 | `ALLOWED_EMAIL_DOMAINS` | `your.co,your.com` | empty (any Access email) |
 | `ADMIN_EMAILS` | `you@your.co` | empty (no one is admin; admin tokens and `/v1/admin` refuse) |
 | `TOKEN_ENV` | match the rendered skill | `ENERGON_TOKEN` |
