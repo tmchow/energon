@@ -13,13 +13,13 @@ Mint a token lets a signed-in human create an `ee_live_` secret for agents with 
 - `token-never-disabled` removes `Never` from the menu and rejects `ttl: never` when this Energon sets `ALLOW_UNLIMITED_TOKENS=false`; tokens minted earlier keep working.
 - `token-revoke` disables the secret after typing the label to confirm.
 - `token-stale` marks a token unused for 30 days (never used counts from mint) with a `Stale` badge and `status: "stale"` in `/account/data`; `#tokens-show` filters `Live` (default, hides expired and revoked), `Stale`, and `All`.
-- `token-bulk-revoke` revokes every stale token or every token on the account from `#revoke-stale` / `#revoke-all`: `POST /account/tokens/revoke` previews first (`matched`, `sample`, `confirm`), the dialog wants `N tokens` typed, and the same body plus `confirm` executes; a changed selection is `409 token_revoke_drift`.
+- `token-bulk-revoke` revokes every stale token or every token on the account from `#revoke-stale` / `#revoke-all`: `POST /account/tokens/revoke` previews first (`matched`, `sample`, `confirm`), the dialog wants `N keys` typed, and the same body plus `confirm` executes; a changed selection is `409 token_revoke_drift`.
 
 ## How to get to it (user POV)
 
 - Open `/keys`. The page is titled `Agent keys`. The `Keys` card lists keys first; the `Create a key by hand` card below it holds the form. Fill `Label`, pick a lifetime in `#mint-ttl`, choose `Create key`. Admins also see `#mint-scope` (`aria-label="Key authority"`) with Account (default) and Admin.
 - Choose `Revoke`, type the exact label, confirm.
-- Switch `#tokens-show` to `Stale` or `All`; choose `Revoke stale` or `Revoke all`, read the listed labels, type `N tokens`, confirm.
+- Switch `#tokens-show` to `Stale` or `All`; choose `Revoke stale` or `Revoke all`, read the listed labels, type `N keys`, confirm.
 - `POST /account/tokens/revoke` with `{ "target": "stale" | "all" }` to preview, then again with `"confirm"` from that preview — the same endpoint the buttons use.
 - Agent: send `Authorization: Bearer ee_live_…` to `/v1/whoami`.
 - Agent, when its task is done: `DELETE /v1/whoami` with the same header.
@@ -48,7 +48,7 @@ Preconditions:
 - `/v1` cannot mint tokens. A passing whoami with a hand-typed secret is not a mint proof.
 - `DELETE /v1/whoami` is the only token mutation on `/v1`, and it acts on the bearer token alone. There is no `/v1/tokens`; a request to revoke another token belongs on `/keys` or `POST /account/tokens/revoke`.
 - Localhost does not require Access. Production hub minting needs a signed-in session; this skill does not drive production.
-- Revoke confirmation matches the label, not the token id. Typing the id fails validation. Bulk confirmation matches the count as `N tokens` (`1 token` for one), not a label.
+- Revoke confirmation matches the label, not the token id. Typing the id fails validation. Bulk confirmation matches the count as `N keys` (`1 key` for one), not a label.
 - Calling `/v1` with a token bumps its `last_used_at`, so a `whoami` check after the stale fixture makes it live again and the stale preview drifts. Prove the token works before backdating, or backdate `last_used_at` too.
 - After revoke of the session token, mint a replacement with `ENERGON_VERIFY_SAVE_TOKEN=1` before continuing other recipes. Extra labels (`verify-done`, `verify-mint`) print a secret and do not overwrite `TOKEN=` in `state.env`.
 - `bin/up` / `bin/ready` already mint `verify-run`. Default mint-token must not mint a second `verify-run`; use `verify-mint` / `verify-done` for extra labels.
