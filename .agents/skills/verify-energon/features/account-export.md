@@ -24,14 +24,15 @@ Preconditions:
 
 - `bin/up` passed. `$TOKEN` is the signed-in email (`$EMAIL` / `$HANDLE`).
 - Fixture names start with `vexport` so they are easy to find in the zip. The export holds everything this identity owns, including other recipes' fixtures; assert the `vexport` entries are present, not that they are alone.
+- Fixture identities reuse the doctor identity's domain so they pass `ALLOWED_EMAIL_DOMAINS`: `DOMAIN="${EMAIL#*@}"` after sourcing `state.env`.
 - Localhost accepts `Cf-Access-Authenticated-User-Email` for a second identity. Do not invent a token; mint through `POST $ORIGIN/account/tokens` with `Origin: $ORIGIN`.
 
 - **Default — Fixtures (slim).** `POST $ORIGIN/v1/sites` `{"slug":"vexport-alpha"}` then PUT `index.html` (`alpha`). `POST $ORIGIN/v1/files` `X-Filename: vexport-one.md` body `one`. Record `$ALPHA` and `$F1`.
-- **Default — Second identity.** `POST $ORIGIN/account/tokens` with `Cf-Access-Authenticated-User-Email: vexport-other@example.com`, `Origin: $ORIGIN`, `{"label":"vexport-other"}` (`201`). With that token, create file `vexport-other.md`. Record `$OTHER_FILE`.
+- **Default — Second identity.** `POST $ORIGIN/account/tokens` with `Cf-Access-Authenticated-User-Email: vexport-other@$DOMAIN`, `Origin: $ORIGIN`, `{"label":"vexport-other"}` (`201`). With that token, create file `vexport-other.md`. Record `$OTHER_FILE`.
 - **Default — HTTP export.** `curl -sS -D "$EVIDENCE/account-export/headers.txt" -o "$EVIDENCE/account-export/owned.zip" "$ORIGIN/v1/export" -H "Authorization: Bearer $TOKEN"`. Status `200`. Zip named `$HANDLE-owned.zip`. Unzip: `manifest.json`, `sites/$ALPHA/index.html` (`alpha`), `files/$F1/vexport-one.md` (`one`). No `$OTHER_FILE`. Manifest `scope` `owned`, `owner.email` `$EMAIL`, no share/write password.
-- **Default — Empty / unauth.** Mint a token for `vexport-empty@example.com`. `GET /v1/export` with it is `400 empty_export`. `GET /v1/export` with no Authorization is `401`.
+- **Default — Empty / unauth.** Mint a token for `vexport-empty@$DOMAIN`. `GET /v1/export` with it is `400 empty_export`. `GET /v1/export` with no Authorization is `401`.
 - **Extra (owned-hub) — Hub card.** `#account-export` on `$ORIGIN/`. `GET /account/export` same zip. Drive when Hub.svelte export card changes.
-- **Extra (owned-cap) — 200-file cap.** Never on the default identity. Mint `vexport-cap@example.com`, import a 200-file zip plus one extra loose file, `GET /v1/export` is `400 too_many_files` `limit_files` `200` `actual_files` `201`. Drive when the export cap changes.
+- **Extra (owned-cap) — 200-file cap.** Never on the default identity. Mint `vexport-cap@$DOMAIN`, import a 200-file zip plus one extra loose file, `GET /v1/export` is `400 too_many_files` `limit_files` `200` `actual_files` `201`. Drive when the export cap changes.
 - **Proof.** Default: zip, unzip listing, `manifest.json`, `empty.json`, `unauth.json`. Screenshot only for Extra hub.
 
 ## Gotchas

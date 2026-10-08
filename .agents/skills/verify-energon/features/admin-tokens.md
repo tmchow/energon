@@ -23,10 +23,11 @@ Preconditions:
 
 - Launch with `ENERGON_VERIFY_VARS="ADMIN_EMAILS:$EMAIL"` so the doctor identity is an operator. `$EMAIL` must be the address `GET /account/data` reports (`.dev.vars` `DEV_ACCESS_EMAIL` if set, else `dev@example.com`).
 - `bin/up` passed.
-- Owner identity for this recipe is `vadmin-tok@example.com` (sent as `Cf-Access-Authenticated-User-Email`). Handle is `vadmin-tok`.
+- Fixture identities reuse the doctor identity's domain so they pass `ALLOWED_EMAIL_DOMAINS`: `DOMAIN="${EMAIL#*@}"` after sourcing `state.env`.
+- Owner identity for this recipe is `vadmin-tok@$DOMAIN` (sent as `Cf-Access-Authenticated-User-Email`). Handle is `vadmin-tok`.
 - Every fixture label starts with `vadmin-tok` so other recipes stay out of the target.
 
-- **Default — Owner fixture.** `POST /account/tokens` with Access header `vadmin-tok@example.com`, `origin: $ORIGIN`, `{"label":"vadmin-tok-agent"}` (`201`). Record `$OWNER_TOKEN`. `GET /v1/whoami` is `200`.
+- **Default — Owner fixture.** `POST /account/tokens` with Access header `vadmin-tok@$DOMAIN`, `origin: $ORIGIN`, `{"label":"vadmin-tok-agent"}` (`201`). Record `$OWNER_TOKEN`. `GET /v1/whoami` is `200`.
 - **Default — Non-admin 403.** `bin/mint-token vadmin-tok-account` on `GET /v1/admin/tokens?owner=vadmin-tok` and `POST /v1/admin/tokens/revoke` is `403 forbidden_admin`.
 - **Default — Admin list / preview / execute / audit.** Mint `{"label":"vadmin-tok-ops","ttl":"1d","scope":"admin"}`. `GET /v1/admin/tokens?owner=vadmin-tok` includes `vadmin-tok-agent`, owner email/handle, hint, status; no `$OWNER_TOKEN` or `token_hash`. Preview `{"owner":"vadmin-tok","target":"all"}` `executed` false, 32-hex `confirm`; owner whoami still `200`. Execute with `confirm`: owner whoami `401`. Audit events `action` `tokens`; no secrets.
 - **Extra (admin-tokens-page) — Hub list.** Open `/admin`, `#admin-tokens-owner`, List, `#admin-tokens-dlg`. Drive when Admin.svelte tokens card changes.

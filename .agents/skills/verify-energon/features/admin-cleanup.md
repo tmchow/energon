@@ -26,10 +26,11 @@ Preconditions:
 
 - Launch with `ENERGON_VERIFY_VARS="ADMIN_EMAILS:$EMAIL"` so the doctor identity is an operator. `$EMAIL` must be the address `GET /account/data` reports (`.dev.vars` `DEV_ACCESS_EMAIL` if set, else `dev@example.com`).
 - `bin/up` passed.
-- Owner identity for this recipe is `vadmin-owner@example.com` (sent as `Cf-Access-Authenticated-User-Email`). Handle is `vadmin-owner`.
+- Fixture identities reuse the doctor identity's domain so they pass `ALLOWED_EMAIL_DOMAINS`: `DOMAIN="${EMAIL#*@}"` after sourcing `state.env`.
+- Owner identity for this recipe is `vadmin-owner@$DOMAIN` (sent as `Cf-Access-Authenticated-User-Email`). Handle is `vadmin-owner`.
 - Every fixture name starts with `vadmin` so `q` keeps other recipes out of the target.
 
-- **Default — Non-admin never sees it.** `GET $ORIGIN/admin` with `-H "Cf-Access-Authenticated-User-Email: vadmin-owner@example.com"` is `403 forbidden_admin`.
+- **Default — Non-admin never sees it.** `GET $ORIGIN/admin` with `-H "Cf-Access-Authenticated-User-Email: vadmin-owner@$DOMAIN"` is `403 forbidden_admin`.
 - **Default — Owner fixture.** `POST /account/tokens` with that Access header, `origin: $ORIGIN`, `{"label":"vadmin-owner"}`. With `$OWNER_TOKEN`, `POST /v1/files` `X-Filename: vadmin-old.md` `X-Energon-Write-Policy: owner` body `keep-me`. `expires_at` null. Record `$FILE_ID` `$OWNER_HANDLE`.
 - **Default — Account token 403 / admin token.** `bin/mint-token vadmin-account` on `POST /v1/admin/cleanup` is `403`. Admin mint `{"label":"vadmin-ops","ttl":"1d","scope":"admin"}`. `GET /v1/whoami` has `admin` true.
 - **Default — Expire refused / preview / execute / audit.** `action: expire` on `$FILE_ID` is `400 expire_not_own`. Preview `set_ttl` with `owner` + `q=vadmin-old` + `expires=never`: `executed` false, `ttl` `7d`, `eligible` `1`, no `keep-me`. Owner list still `expires_at` null. Execute with `confirm`: `applied.total` `1`. Owner `GET /v1/files?q=vadmin-old` shows `expires_at`. `GET /v1/admin/audit` has preview and executed events; neither contains `$ADMIN_TOKEN` or `keep-me`.
