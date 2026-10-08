@@ -269,6 +269,8 @@ describe("gateway catalog", () => {
     for (const [path, method] of [["/v1/grants", "post"], ["/v1/sites/{id}/deployments", "post"], ["/v1/sites", "post"], ["/v1/files/{id}/duplicate", "post"]]) {
       const op = doc.paths[path][method];
       expect(op.summary.toLowerCase(), path).toMatch(/publish|share/);
+      // Executor shows only the summary in tool search, so the skill pointer must be there too.
+      expect(op.summary, path).toContain("Energon skill");
       const lead = op.description.split("\n")[0];
       for (const step of ["mint", "helper", "SHA-256", "URL and expiry", "Energon skill"]) expect(lead, `${path} ${step}`).toContain(step);
     }

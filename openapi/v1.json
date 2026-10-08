@@ -400,7 +400,7 @@
         "tags": [
           "sites"
         ],
-        "summary": "Create a site to publish into, or duplicate a site",
+        "summary": "Create a site to publish a local folder into (see the Energon skill), or duplicate a site",
         "description": "Publish a local folder: create the site here, then inspect the folder on the machine, create a deployment with its descriptors, mint a site_deployment grant, upload from the machine with the helper from the attached Energon skill, verify the SHA-256, and return the URL and expiry. This call never carries file bytes.\n\n201 always creates a new site with a fresh id, even when the slug matches an existing site on this handle. duplicate_from copies another site's files (by id) into the new site (201).",
         "requestBody": {
           "required": true,
@@ -1192,7 +1192,7 @@
         "tags": [
           "files"
         ],
-        "summary": "Copy a published file to share under a new id you own",
+        "summary": "Copy a published file to share under a new id; to publish a local file, see the Energon skill",
         "description": "Copy an already published file without sending its bytes. To publish or share a local file instead, mint an upload grant, upload from the machine with the helper from the attached Energon skill, verify the SHA-256, and return the URL and expiry.\n\nCopies an existing loose file into a new file you own, with a new id and URL. The body is a JSON object of options only; it never carries file bytes. Anyone who can read via /v1 can duplicate. Share and write passwords are not copied; set them here or later with PATCH /v1/files/{id}.",
         "requestBody": {
           "required": false,
@@ -3064,7 +3064,7 @@
         "tags": [
           "grants"
         ],
-        "summary": "Publish, share, or upload a local file: mint a single-use upload grant",
+        "summary": "Publish, share, or upload a local file: mint an upload grant, then upload with the Energon skill's helper",
         "description": "Publish or upload a local file without sending its bytes through tool arguments: inspect it on the machine (size, SHA-256), mint a grant here, upload from the machine with the helper from the attached Energon skill, verify the SHA-256, then return the URL and expiry.\n\nThe minting account must be able to write the target now. The upload re-checks that, and fails if the minting token is revoked or expired first. The tokenless client PUTs raw bytes to upload_url with Authorization: Bearer <secret>; success publishes immediately and uses the grant up. Retryable upload failures (busy target, storage cap) leave the grant usable until it expires; a deleted target or lost permission ends it. Read the result with GET /v1/grants/{id}. For target site_deployment, bind an existing owned immutable session. The secret authorizes only its returned status/files/archive/prepare/commit URLs and is consumed at commit. The session deadline and minting token expiry bound grant lifetime. A file target with expected_version is conditional: the upload replaces the file only if its content_generation still matches, and a mismatch ends the grant as failed with last_error file_conflict.",
         "requestBody": {
           "required": true,
@@ -3248,7 +3248,7 @@
         "tags": [
           "deployments"
         ],
-        "summary": "Publish a local folder as a site: create a full-replacement deployment",
+        "summary": "Publish a local folder as a site: create a deployment, then upload with the Energon skill's helper",
         "description": "Publish or replace a whole site from a local folder: inspect it on the machine, create this deployment with file or archive descriptors only (size, SHA-256), mint a site_deployment grant, upload from the machine with the helper from the attached Energon skill, prepare and commit, verify the SHA-256 of what was served, then return the URL and expiry.\n\nSessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota.",
         "responses": {
           "200": {
