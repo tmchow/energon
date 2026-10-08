@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.12.0](https://github.com/tmchow/energon/compare/v1.11.0...v1.12.0) (2026-10-08)
+
+
+### Features
+
+* **api:** readable deployment operationIds and content-origin servers ([#152](https://github.com/tmchow/energon/issues/152)) ([6e32895](https://github.com/tmchow/energon/commit/6e3289536f41435c0a8be44b6227aeca995b1967))
+* **skill:** serve the skill to gateways and ship an upload helper ([#153](https://github.com/tmchow/energon/issues/153)) ([615ee58](https://github.com/tmchow/energon/commit/615ee5832f876fd8a9cd9d47dd181b1ef1f0d99d))
+
 ## [1.11.0](https://github.com/tmchow/energon/compare/v1.10.0...v1.11.0) (2026-10-08)
 
 
