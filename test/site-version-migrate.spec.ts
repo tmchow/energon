@@ -1,5 +1,5 @@
 import { env } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { auth, createSite, json, mint, req } from "./helpers";
 import { ensureSchema } from "../src/db";
 import { purgeExpiredSite } from "../src/expire";
@@ -47,14 +47,15 @@ async function fixture() {
     .bind(id)
     .first<SiteRow>())!;
 }
-async function bulkFixture(count: number) {
+async function bulkFixture(count: number, bytes?: number) {
   const site = await fixture();
   const now = new Date().toISOString();
   for (let i = 0; i < count; i++) {
     const path = `page-${String(i).padStart(2, "0")}.html`;
-    await env.BUCKET.put(`sites/migrate/${site.id}/${path}`, `p${i}`, { httpMetadata: { contentType: "text/html" } });
+    const body = bytes ? new Uint8Array(bytes).fill(i) : new TextEncoder().encode(`p${i}`);
+    await env.BUCKET.put(`sites/migrate/${site.id}/${path}`, body, { httpMetadata: { contentType: "text/html" } });
     await env.DB.prepare("INSERT INTO site_files (site_id, path, size, content_type, updated_at, last_written_by) VALUES (?, ?, ?, 'text/html', ?, 'owner@example.test')")
-      .bind(site.id, path, `p${i}`.length, now).run();
+      .bind(site.id, path, body.byteLength, now).run();
   }
   await env.DB.prepare(`UPDATE platform_quota SET used = ${STORED_BYTES_SQL} WHERE id = 1`).run();
   return site;
@@ -66,6 +67,54 @@ const versionFileCount = async (versionId: unknown) =>
   (await env.DB.prepare("SELECT COUNT(*) AS n FROM site_version_files WHERE version_id = ?").bind(versionId).first())?.n;
 const BULK = 57,
   BULK_TOTAL = BULK + 2;
+// Every D1 and R2 round trip advances the faked clock, so budgets see production latency without the test waiting for it.
+function withRoundTripLatency(base: Env, ms: number): Env {
+  const real = new WeakMap<object, D1PreparedStatement>();
+  const tick = async <T>(call: Promise<T>): Promise<T> => {
+    const value = await call;
+    vi.advanceTimersByTime(ms);
+    return value;
+  };
+  const delayAll = <T extends object>(target: T): T => new Proxy(target, {
+    get: (object, key) => {
+      const value = Reflect.get(object, key, object);
+      return typeof value === "function" ? (...args: unknown[]) => tick(value.apply(object, args)) : value;
+    },
+  });
+  const statement = (target: D1PreparedStatement): D1PreparedStatement => {
+    const proxy = new Proxy(target, {
+      get: (object, key) => {
+        const value = Reflect.get(object, key, object);
+        if (key === "bind") return (...args: unknown[]) => statement(object.bind(...args));
+        if (key === "first" || key === "run" || key === "all" || key === "raw")
+          return (...args: unknown[]) => tick(value.apply(object, args));
+        return typeof value === "function" ? value.bind(object) : value;
+      },
+    });
+    real.set(proxy, target);
+    return proxy;
+  };
+  const DB = new Proxy(base.DB, {
+    get: (object, key) => {
+      if (key === "prepare") return (sql: string) => statement(object.prepare(sql));
+      if (key === "batch")
+        return (statements: D1PreparedStatement[]) => tick(object.batch(statements.map(s => real.get(s) ?? s)));
+      const value = Reflect.get(object, key, object);
+      return typeof value === "function" ? (...args: unknown[]) => tick(value.apply(object, args)) : value;
+    },
+  });
+  const BUCKET = new Proxy(base.BUCKET, {
+    get: (object, key) => {
+      const value = Reflect.get(object, key, object);
+      if (typeof value !== "function") return value;
+      if (key === "resumeMultipartUpload") return (...args: unknown[]) => delayAll(value.apply(object, args));
+      if (key === "createMultipartUpload")
+        return async (...args: unknown[]) => delayAll(await tick(value.apply(object, args) as Promise<R2MultipartUpload>));
+      return (...args: unknown[]) => tick(value.apply(object, args));
+    },
+  });
+  return { ...base, DB, BUCKET };
+}
 async function finish(siteId: string, selectedEnv: Env = env, steps = 20) {
   for (let i = 0; i < steps; i++) {
     const row = await advanceLegacySiteConversion(selectedEnv, siteId);
@@ -130,6 +179,24 @@ describe("durable legacy site conversion", () => {
     expect(sweeps).toBeLessThanOrEqual(4);
     expect(await versionFileCount(await activeVersion(site.id))).toBe(BULK_TOTAL);
   }, 120_000);
+  it("converts a 58-file, 4.5 MB legacy site in about four cron sweeps at production D1/R2 latency", async () => {
+    const site = await bulkFixture(56, 80_000);
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    try {
+      const slow = { ...withRoundTripLatency(env, 250), SITE_VERSIONING_ENABLED: "true" };
+      const durations: number[] = [];
+      while ((await getSiteConversion(env.DB, site.id))?.phase !== "complete" && durations.length < 20) {
+        const started = Date.now();
+        await sweepLegacySiteStorage(slow, new Date(), true);
+        durations.push(Date.now() - started);
+      }
+      expect(durations.length).toBeLessThanOrEqual(4);
+      expect(Math.max(...durations)).toBeLessThan(5 * 60_000);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(await versionFileCount(await activeVersion(site.id))).toBe(58);
+  }, 120_000);
   it("stops at the request budget and resumes from the last checkpoint", async () => {
     const site = await bulkFixture(BULK);
     const row = await advanceLegacySiteConversion(env, site.id, conversionBudget(150, 1024 ** 3, 60_000));
@@ -152,7 +219,8 @@ describe("durable legacy site conversion", () => {
     }
     const stopped = (await getSiteConversion(env.DB, site.id))!;
     expect(stopped).toMatchObject({ phase: "copy", owner: null, last_error: expect.stringContaining("loop stopped") });
-    expect(await versionFileCount(JSON.parse(stopped.inventory_json).versionId)).toBe(30);
+    // The 30th receipt commits only with its checkpoint, so it rolled back.
+    expect(await versionFileCount(JSON.parse(stopped.inventory_json).versionId)).toBe(29);
     expect(await activeVersion(site.id)).toBeNull();
     expect((await advanceLegacySiteConversion(env, site.id, unbounded())).phase).toBe("complete");
     expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM storage_allocations WHERE site_id = ?").bind(site.id).first())?.n).toBe(BULK_TOTAL);
@@ -284,7 +352,7 @@ describe("durable legacy site conversion", () => {
     ).toBeNull();
     await finish(site.id);
   });
-  it("resumes after a receipt was recorded but its progress checkpoint failed", async () => {
+  it("rolls back a receipt with its failed progress checkpoint, then resumes from the stored copy", async () => {
     const site = await fixture();
     for (let i = 0; i < 4; i++) await advanceLegacySiteConversion(env, site.id);
     await env.DB.prepare(
@@ -307,7 +375,7 @@ describe("durable legacy site conversion", () => {
           .bind(site.id)
           .first()
       )?.n,
-    ).toBe(1);
+    ).toBe(0);
     await finish(site.id);
     expect(
       (

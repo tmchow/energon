@@ -305,6 +305,7 @@ export function schedulePurgeExpiredFile(
 export async function sweepExpired(
   env: Env,
   ctx: ExecutionContext | undefined,
+  scheduled = false,
 ): Promise<{ sites: number; files: number }> {
   const now = new Date().toISOString();
   let sites = 0;
@@ -328,7 +329,7 @@ export async function sweepExpired(
     if (await purgeExpiredFile(env, ctx, row.id, row.handle, row.filename)) files += 1;
   }
 
-  await sweepLegacySiteStorage(env);
+  await sweepLegacySiteStorage(env, new Date(), scheduled);
   await sweepSiteStorage(env.DB, env.BUCKET);
   return { sites, files };
 }

@@ -28,7 +28,10 @@ const CALLS = { claim: 10, inventoryPage: 3, inventoryObject: 2, reserve: 4, cop
 export type ConversionBudget = { calls: number; bytes: number; deadline: number };
 export const conversionBudget = (calls: number, bytes: number, ms: number): ConversionBudget =>
   ({ calls, bytes, deadline: Date.now() + ms });
-const sweepBudget = () => conversionBudget(400, 8 * MIB, 10_000);
+// Cron invocations may run 15 minutes, so calls and bytes bind first; at ~250 ms per D1/R2 round
+// trip, 400 calls take ~100 s. Staying under the 5-minute cron interval keeps sweeps from overlapping.
+// Admin "Sweep now" runs inside an HTTP request and keeps the short deadline.
+const sweepBudget = (scheduled: boolean) => conversionBudget(400, 8 * MIB, scheduled ? 180_000 : 10_000);
 const requestBudget = () => conversionBudget(150, 4 * MIB, 5_000);
 const exhausted = (budget: ConversionBudget) =>
   budget.calls <= 0 || budget.bytes <= 0 || Date.now() >= budget.deadline;
@@ -113,14 +116,14 @@ export async function getSiteConversion(
     .first<SiteConversion>();
 }
 
-async function save(
+function checkpointStatement(
   db: D1Database,
   siteId: string,
   owner: string,
   phase: string,
   inventory: Inventory,
-  cursor: string | null = null,
-) {
+  cursor: string | null,
+): D1PreparedStatement {
   const json = JSON.stringify(inventory);
   if (new TextEncoder().encode(json).byteLength > INVENTORY_BYTES)
     throw new ApiError(
@@ -128,22 +131,13 @@ async function save(
       "site_busy",
       "Legacy inventory exceeds the bounded conversion metadata budget; repair or a paged inventory migration is required.",
     );
-  const changed = await db
+  const now = new Date().toISOString();
+  return db
     .prepare(
       `UPDATE site_conversions SET phase = ?, inventory_json = ?, cursor = ?, updated_at = ?
     WHERE site_id = ? AND owner = ? AND owner_expires_at > ?`,
     )
-    .bind(
-      phase,
-      json,
-      cursor,
-      new Date().toISOString(),
-      siteId,
-      owner,
-      new Date().toISOString(),
-    )
-    .run();
-  if (!changed.meta.changes) throw busy();
+    .bind(phase, json, cursor, now, siteId, owner, now);
 }
 
 /**
@@ -231,8 +225,12 @@ export async function advanceLegacySiteConversion(
     cursor = row.cursor;
   let leased: { lease: VersionLease; heartbeat: ReturnType<typeof startVersionLeaseHeartbeat> } | null = null;
   let units = 0;
-  const checkpoint = async (next: string, nextCursor: string | null = null) => {
-    await save(env.DB, siteId, owner, next, state, nextCursor);
+  const checkpoint = async (next: string, nextCursor: string | null = null, ...before: D1PreparedStatement[]) => {
+    const results = await env.DB.batch([
+      ...before,
+      checkpointStatement(env.DB, siteId, owner, next, state, nextCursor),
+    ]);
+    if (results.some((result) => !result.meta.changes)) throw busy();
     phase = next;
     cursor = nextCursor;
   };
@@ -359,17 +357,28 @@ export async function advanceLegacySiteConversion(
         if (file && budget && units > 1 && file.size > budget.bytes) break;
         charge(CALLS.copy);
         if (file) {
-          const receipt = await env.DB.prepare(
-            "SELECT path FROM site_version_files WHERE version_id = ? AND path = ?",
-          )
-            .bind(state.versionId, file.path)
-            .first();
-          if (!receipt) {
-            const allocation = await env.DB.prepare(
-              "SELECT * FROM storage_allocations WHERE id = ?",
-            )
-              .bind(file.allocationId)
-              .first<StorageAllocation>();
+          // One round trip reads the receipt, renews an unused reservation, then reads the allocation.
+          const [receipt, renewed, current] = await env.DB.batch([
+            env.DB.prepare(
+              "SELECT path FROM site_version_files WHERE version_id = ? AND path = ?",
+            ).bind(state.versionId, file.path),
+            env.DB.prepare(
+              `UPDATE storage_allocations SET writer_expires_at = ? WHERE id = ? AND state = 'reserved'
+              AND EXISTS (SELECT 1 FROM site_conversions WHERE site_id = ? AND owner = ? AND owner_expires_at > ?)`,
+            ).bind(
+              new Date(Date.now() + VERSION_LEASE_MS).toISOString(),
+              file.allocationId,
+              siteId,
+              owner,
+              new Date().toISOString(),
+            ),
+            env.DB.prepare("SELECT * FROM storage_allocations WHERE id = ?").bind(
+              file.allocationId,
+            ),
+          ]);
+          const recordReceipt: D1PreparedStatement[] = [];
+          if (!receipt.results.length) {
+            const allocation = current.results[0] as StorageAllocation | undefined;
             if (!allocation || allocation.state === "released") {
               file.allocationId = undefined;
               state.next = 0;
@@ -383,21 +392,8 @@ export async function advanceLegacySiteConversion(
               await cleanupAllocation(env.DB, env.BUCKET, allocation.id);
               throw busy();
             }
-            if (allocation.state === "reserved") {
-              const renewed = await env.DB.prepare(
-                `UPDATE storage_allocations SET writer_expires_at = ? WHERE id = ? AND state = 'reserved'
-                AND EXISTS (SELECT 1 FROM site_conversions WHERE site_id = ? AND owner = ? AND owner_expires_at > ?)`,
-              )
-                .bind(
-                  new Date(Date.now() + VERSION_LEASE_MS).toISOString(),
-                  allocation.id,
-                  siteId,
-                  owner,
-                  new Date().toISOString(),
-                )
-                .run();
-              if (!renewed.meta.changes) throw busy();
-            }
+            if (allocation.state === "reserved" && !renewed.meta.changes)
+              throw busy();
             if (!leased) {
               const lease = await acquireVersionLease(
                 env.DB,
@@ -449,7 +445,7 @@ export async function advanceLegacySiteConversion(
             charge(0, file.size);
             leased.heartbeat.assertActive();
             if (ownershipLost) throw busy();
-            const recorded = await env.DB.prepare(
+            recordReceipt.push(env.DB.prepare(
               `INSERT INTO site_version_files (version_id, path, allocation_id, object_key, size, sha256, content_type)
               SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM site_conversions WHERE site_id = ? AND owner = ? AND owner_expires_at > ?)
               ON CONFLICT(version_id, path) DO NOTHING`,
@@ -465,12 +461,10 @@ export async function advanceLegacySiteConversion(
                 siteId,
                 owner,
                 new Date().toISOString(),
-              )
-              .run();
-            if (!recorded.meta.changes) throw busy();
+              ));
           }
           state.next++;
-          await checkpoint("copy");
+          await checkpoint("copy", null, ...recordReceipt);
         } else await checkpoint("switch");
       } else if (phase === "switch") {
         charge(CALLS.switch);
@@ -623,8 +617,9 @@ export async function cleanupLegacySite(
 export async function sweepLegacySiteStorage(
   env: Env,
   now = new Date(),
+  scheduled = false,
 ): Promise<void> {
-  const budget = sweepBudget();
+  const budget = sweepBudget(scheduled);
   const pending = env.SITE_VERSIONING_ENABLED === "true" ? (await env.DB.prepare(`SELECT s.id FROM sites s
     LEFT JOIN site_conversions c ON c.site_id = s.id WHERE s.active_version_id IS NULL
     AND s.lifecycle_state = 'live' AND (s.expires_at IS NULL OR s.expires_at > ?)
