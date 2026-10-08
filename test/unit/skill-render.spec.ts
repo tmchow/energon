@@ -5,12 +5,13 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   brandFromName,
@@ -19,6 +20,8 @@ import {
   runRender,
   tokenEnvFromBrand,
 } from "../../scripts/render-skill.mjs";
+import { render } from "../../scripts/skill-template.mjs";
+import skillTemplates from "../../src/generated/skill-templates.js";
 import { WRITE_PASSWORD_HEADER } from "../../src/config";
 import { GRANT_AUTH_HEADER, GRANT_UPLOAD_PREFIX } from "../../src/grant-protocol";
 
@@ -66,6 +69,7 @@ function makeDisposableRepo() {
   writeProductVersion(root);
   mkdirSync(join(root, "scripts"), { recursive: true });
   cpSync(resolve("scripts/render-skill.mjs"), join(root, "scripts/render-skill.mjs"));
+  cpSync(resolve("scripts/skill-template.mjs"), join(root, "scripts/skill-template.mjs"));
   cpSync(resolve("templates"), join(root, "templates"), { recursive: true });
   mkdirSync(join(root, "plugins", "old-plugin", "skills", "old-skill"), { recursive: true });
   writeFileSync(join(root, "plugins", "old-plugin", "skills", "old-skill", "SKILL.md"), "old skill\n");
@@ -130,6 +134,48 @@ describe("skill template", () => {
 
   it("skill:init requires --name or --skill, and --origin", () => {
     expect(() => runRender(["--init"])).toThrow(/--name \(or --skill\) and --origin/);
+  });
+});
+
+describe("shared skill renderer", () => {
+  it("rejects unknown keys and leftover tokens", () => {
+    expect(() => render("a {{KNOWN}} {{NOPE}}", { KNOWN: "x" })).toThrow("unknown template keys: NOPE");
+    expect(() => render("{{A}}", { A: "{{B}}" })).toThrow("unreplaced template tokens remain");
+  });
+
+  it("the build bundles exactly the files under templates/skill with their raw contents", () => {
+    const dir = resolve("templates/skill");
+    const walk = (d: string): string[] =>
+      readdirSync(d, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walk(join(d, e.name)) : [relative(dir, join(d, e.name)).split(sep).join("/")],
+      );
+    const files = walk(dir).sort();
+    expect(files).toContain("SKILL.md.tmpl");
+    expect(Object.keys(skillTemplates).sort()).toEqual(files);
+    for (const file of files) expect(skillTemplates[file]).toBe(readFileSync(join(dir, file), "utf8"));
+  });
+
+  it("renders the bundled skill from runtime identity without ORG", () => {
+    const vars = {
+      SKILL_NAME: "acme-energon",
+      PLUGIN_NAME: "acme-energon",
+      MARKETPLACE_NAME: "acme-energon",
+      ORIGIN: "https://energon.acme.test",
+      ORIGIN_HOST: "energon.acme.test",
+      TOKEN_ENV: "ACME_ENERGON_TOKEN",
+      TOKEN_PREFIX: "ee_live_",
+      PRODUCT: "Energon",
+      MARKETPLACE_REPO: "acme/energon",
+      MARKETPLACE_URL: "https://github.com/acme/energon",
+      INSTALL_LINE: "acme-energon@acme-energon",
+      VERSION: TEST_VERSION,
+    };
+    for (const [file, template] of Object.entries(skillTemplates)) {
+      if (!file.endsWith(".tmpl")) continue;
+      const text = render(template, vars);
+      expect(text).not.toMatch(/\{\{[A-Z0-9_]+\}\}/);
+    }
+    expect(render(skillTemplates["SKILL.md.tmpl"], vars)).toContain("energon.acme.test");
   });
 });
 

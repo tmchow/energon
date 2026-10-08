@@ -24,6 +24,7 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { render } from "./skill-template.mjs";
 
 const SCRIPT_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SKILL_TMPL_DIR = join(SCRIPT_ROOT, "templates", "skill");
@@ -331,20 +332,6 @@ function instancePayload(opts) {
     marketplaceRepo: opts.repo,
     marketplaceUrl: opts.marketplaceUrl,
   };
-}
-
-function render(template, vars) {
-  const missing = new Set();
-  const text = template.replace(/\{\{([A-Z0-9_]+)\}\}/g, (_, key) => {
-    if (!(key in vars)) {
-      missing.add(key);
-      return `{{${key}}}`;
-    }
-    return String(vars[key]);
-  });
-  if (missing.size) throw new Error(`unknown template keys: ${[...missing].join(", ")}`);
-  if (/\{\{[A-Z0-9_]+\}\}/.test(text)) throw new Error("unreplaced template tokens remain");
-  return text;
 }
 
 function withTrailingNewline(text) {
