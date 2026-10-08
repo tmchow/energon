@@ -21,6 +21,7 @@ import urllib.parse
 import urllib.request
 import uuid
 import zipfile
+from http.client import HTTPException
 
 HELPER_VERSION = "1"
 DEFAULT_ORIGIN = "{{ORIGIN}}"
@@ -114,7 +115,7 @@ def http(method, url, secret=None, body_path=None, json_body=None, content_type=
         if 300 <= err.code < 400:
             fail("redirect_refused", method + " " + url + " answered " + str(err.code) + "; redirects are not followed.")
         return err.code, _parse(err.read())
-    except (urllib.error.URLError, OSError) as err:
+    except (urllib.error.URLError, HTTPException, OSError) as err:
         raise LostResponse(str(getattr(err, "reason", err)))
     finally:
         if handle:
@@ -323,9 +324,26 @@ def prepare_folder(folder, include_hidden, state_dir, rebuild=False, restart=Fal
     return state, state_path, True
 
 
+def served_paths(files):
+    """Mirror the server: skip ZIP junk, then strip a first folder shared by every entry. Returns (paths, stripped)."""
+    kept = [f for f in files if "__MACOSX" not in f.split("/") and f.rsplit("/", 1)[-1] not in (".DS_Store", "Thumbs.db")]
+    first = kept[0].split("/")[0] if kept else ""
+    if first and all(f.startswith(first + "/") for f in kept):
+        return [f[len(first) + 1:] for f in kept], first
+    return kept, None
+
+
+def note_stripped(state):
+    stripped = served_paths(state["files"])[1]
+    if stripped:
+        note("Every file sits under " + stripped + "/; the site serves them without that folder (" + stripped
+             + "/index.html is served as index.html).")
+
+
 def inspect_output(state, state_path):
+    note_stripped(state)
     return {"kind": "folder", "folder": state["folder"], "size": state["archive"]["size"],
-            "sha256": state["archive"]["sha256"], "archive": state["archive"], "files": state["files"],
+            "sha256": state["archive"]["sha256"], "archive": state["archive"], "files": served_paths(state["files"])[0],
             "idempotency_key": state["idempotency_key"], "deployment_id": state.get("deployment_id"),
             "state_path": state_path, "archive_path": state["archive_path"]}
 
@@ -359,6 +377,9 @@ def cmd_publish_file(args):
         content = discover_content_origin(args.origin)
         require_origin(upload_url, content, "upload_url")
         status, body = call("PUT", upload_url, secret=grant["secret"], body_path=args.file)
+        if status == 410 and body.get("error") == "grant_used" and body.get("url"):
+            note("The grant was already used; its upload is published.")
+            return {"url": body["url"], "result_id": body.get("result_id"), "grant_used": True}
         return ok(status, body, 200, 201)
     token = read_token()
     if args.file_id:
@@ -389,6 +410,7 @@ def cmd_publish_folder(args):
         if not args.site_id:
             fail("bad_arguments", "Token mode needs --site-id (create the site first with POST /v1/sites).")
     state, state_path, built = prepare_folder(args.folder, args.include_hidden, args.state_dir)
+    note_stripped(state)
     if not built:
         current_files = folder_files(args.folder, state["include_hidden"])
         if fingerprint(args.folder, current_files) != state.get("fingerprint"):

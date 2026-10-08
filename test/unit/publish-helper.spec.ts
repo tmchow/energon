@@ -86,8 +86,20 @@ function run(helper: string, args: string[], opts: { env?: Record<string, string
 type Logged = { method: string; path: string; headers: IncomingHttpHeaders; body: Buffer };
 
 /** Minimal Energon stand-in: one site S1, one archive deployment D1, served on hub and grant paths. */
-async function stubEnergon(opts: { contentOrigin?: (origin: string) => string | null; dropFirstCommit?: boolean } = {}) {
+async function stubEnergon(
+  opts: {
+    contentOrigin?: (origin: string) => string | null;
+    dropFirstCommit?: boolean;
+    truncateFirstCommit?: boolean;
+    dropFirstGrantPut?: boolean;
+    dropCreate?: boolean;
+  } = {},
+) {
   const log: Logged[] = [];
+  let truncateCommit = opts.truncateFirstCommit ?? false;
+  let grantConsumed = false;
+  let dropGrantPut = opts.dropFirstGrantPut ?? false;
+  const fileUrl = "https://content.test/f/F1";
   let archive: Buffer | null = null;
   let prepares = 0;
   let committed = false;
@@ -139,7 +151,28 @@ async function stubEnergon(opts: { contentOrigin?: (origin: string) => string | 
             return;
           }
           committed = true;
+          if (truncateCommit) {
+            truncateCommit = false;
+            res.writeHead(200, { "content-type": "application/json", "content-length": "4096" });
+            res.write('{"state":');
+            setTimeout(() => req.socket.destroy(), 20);
+            return;
+          }
           send(200, status());
+        },
+        "POST /v1/files": () => {
+          if (opts.dropCreate) return void req.socket.destroy();
+          send(201, { id: "F1", url: fileUrl, content_generation: 1 });
+        },
+        "PUT /v1/files/F1": () => send(200, { id: "F1", url: fileUrl, content_generation: 2 }),
+        "PUT /_grants/FG1": () => {
+          if (grantConsumed) return send(410, { error: "grant_used", message: "This grant was already used.", url: fileUrl, result_id: "F1" });
+          grantConsumed = true;
+          if (dropGrantPut) {
+            dropGrantPut = false;
+            return void req.socket.destroy();
+          }
+          send(201, { id: "F1", url: fileUrl, content_generation: 1 });
         },
       };
       if (handlers[route]) return handlers[route]();
@@ -326,5 +359,102 @@ describe("upload helper", () => {
     }
     writeFileSync(join(site, "grant_report.md"), "ordinary name");
     expect((await run(helper, ["inspect", join(site, "grant_report.md")])).status).toBe(0);
+  });
+  it("treats a truncated commit response as lost and recovers through the status URL", async () => {
+    const { helper, stateDir, site } = setup();
+    const stub = await stubEnergon({ truncateFirstCommit: true });
+    const publish = await run(helper, ["publish-folder", site, "--site-id", "S1", "--origin", stub.origin, "--state-dir", stateDir], {
+      env: { [TOKEN_ENV]: TOKEN },
+    });
+    expect(publish.stderr).not.toMatch(/Traceback/);
+    expect(publish.status, publish.stderr).toBe(0);
+    expect(publish.json).toMatchObject({ state: "committed", url: "https://content.test/s/acme/" });
+    expect(stub.log.filter((r) => r.method === "POST" && r.path.endsWith("/commit"))).toHaveLength(1);
+  });
+
+  it("reports the served paths when the server will strip a wrapping folder", async () => {
+    const { root, helper, stateDir } = setup();
+    const wrapped = join(root, "wrapped");
+    mkdirSync(join(wrapped, "docs", "css"), { recursive: true });
+    writeFileSync(join(wrapped, "docs", "index.html"), "<h1>hi</h1>");
+    writeFileSync(join(wrapped, "docs", "css", "app.css"), "body{}");
+    const inspect = await run(helper, ["inspect", wrapped, "--state-dir", stateDir]);
+    expect(inspect.status, inspect.stderr).toBe(0);
+    expect(inspect.json.files).toEqual(["css/app.css", "index.html"]);
+    expect(inspect.stderr).toMatch(/docs\//);
+  });
+
+  describe("publish-file", () => {
+    const fileIn = (root: string) => {
+      const file = join(root, "note.md");
+      writeFileSync(file, "# hi");
+      return file;
+    };
+    const grant = (origin: string) => JSON.stringify({ secret: "grant_filesecret", upload_url: `${origin}/_grants/FG1` });
+
+    it("publishes with a grant using the Bearer grant secret and no X-Filename", async () => {
+      const { root, helper } = setup();
+      const stub = await stubEnergon();
+      const result = await run(helper, ["publish-file", fileIn(root), "--grant-file", "-", "--origin", stub.origin], { input: grant(stub.origin) });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.json).toMatchObject({ id: "F1", url: "https://content.test/f/F1" });
+      const put = stub.log.find((r) => r.method === "PUT")!;
+      expect(put.path).toBe("/_grants/FG1");
+      expect(put.headers.authorization).toBe("Bearer grant_filesecret");
+      expect(put.headers["x-filename"]).toBeUndefined();
+      expect(put.body.toString()).toBe("# hi");
+    });
+
+    it("treats grant_used with a url after a lost grant PUT response as the published receipt", async () => {
+      const { root, helper } = setup();
+      const stub = await stubEnergon({ dropFirstGrantPut: true });
+      const result = await run(helper, ["publish-file", fileIn(root), "--grant-file", "-", "--origin", stub.origin], { input: grant(stub.origin) });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.json).toMatchObject({ url: "https://content.test/f/F1", result_id: "F1" });
+      expect(stub.log.filter((r) => r.method === "PUT")).toHaveLength(2);
+    });
+
+    it("creates with X-Filename in token mode and never retries the create", async () => {
+      const { root, helper } = setup();
+      const stub = await stubEnergon();
+      const file = fileIn(root);
+      const created = await run(helper, ["publish-file", file, "--filename", "Notes.md", "--origin", stub.origin], { env: { [TOKEN_ENV]: TOKEN } });
+      expect(created.status, created.stderr).toBe(0);
+      expect(created.json).toMatchObject({ id: "F1", content_generation: 1 });
+      const post = stub.log.find((r) => r.method === "POST")!;
+      expect(post.path).toBe("/v1/files");
+      expect(post.headers["x-filename"]).toBe("Notes.md");
+      expect(post.headers.authorization).toBe(`Bearer ${TOKEN}`);
+
+      const lost = await stubEnergon({ dropCreate: true });
+      const dropped = await run(helper, ["publish-file", file, "--origin", lost.origin], { env: { [TOKEN_ENV]: TOKEN } });
+      expect(dropped.status).toBe(1);
+      expect(dropped.json.error).toBe("no_response");
+      expect(lost.log.filter((r) => r.method === "POST")).toHaveLength(1);
+    });
+
+    it("replaces with --file-id and sends --expected-version as X-Energon-Expected-Version", async () => {
+      const { root, helper } = setup();
+      const stub = await stubEnergon();
+      const result = await run(helper, ["publish-file", fileIn(root), "--file-id", "F1", "--expected-version", "1", "--origin", stub.origin], {
+        env: { [TOKEN_ENV]: TOKEN },
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.json).toMatchObject({ id: "F1", content_generation: 2 });
+      const put = stub.log.find((r) => r.method === "PUT")!;
+      expect(put.path).toBe("/v1/files/F1");
+      expect(put.headers["x-energon-expected-version"]).toBe("1");
+    });
+
+    it("rejects --expected-version without --file-id before any request", async () => {
+      const { root, helper } = setup();
+      const stub = await stubEnergon();
+      const result = await run(helper, ["publish-file", fileIn(root), "--expected-version", "1", "--origin", stub.origin], {
+        env: { [TOKEN_ENV]: TOKEN },
+      });
+      expect(result.status).toBe(1);
+      expect(result.json.error).toBe("bad_arguments");
+      expect(stub.log).toEqual([]);
+    });
   });
 });

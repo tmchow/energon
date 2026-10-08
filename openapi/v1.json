@@ -114,7 +114,7 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Origins, policy, and SOP. Top-level keys: product, hub, content_origin, account, openapi, auth_url, connection_url, env, skill, marketplace, install, auth, token_prefix, limits, retention, tokens, identity, sop, routes.",
+            "description": "Origins, policy, and SOP. Top-level keys: product, hub, content_origin, account, openapi, auth_url, connection_url, env, skill, marketplace, install, agent_skills_url (string or null), auth, token_prefix, limits, retention, tokens, identity, sop, routes.",
             "content": {
               "application/json": {
                 "schema": {
