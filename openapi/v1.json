@@ -1180,6 +1180,123 @@
         }
       }
     },
+    "/v1/files/{id}/duplicate": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/FileId"
+        }
+      ],
+      "post": {
+        "operationId": "duplicateFile",
+        "x-energon-gateway": true,
+        "tags": [
+          "files"
+        ],
+        "summary": "Copy a loose file to a new id",
+        "description": "Copies an existing loose file into a new file you own, with a new id and URL. The body is a JSON object of options only; it never carries file bytes. Anyone who can read via /v1 can duplicate. Share and write passwords are not copied; set them here or later with PATCH /v1/files/{id}.",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileCopyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LooseFileDuplicated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Body is not a JSON object, or a bad filename, ttl, write_policy, or password.",
+            "x-error-codes": [
+              "bad_json",
+              "bad_filename",
+              "bad_ttl",
+              "ttl_required",
+              "ttl_too_long",
+              "bad_write_policy",
+              "bad_password"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenDomain"
+          },
+          "404": {
+            "description": "No file with that id.",
+            "x-error-codes": [
+              "file_not_found"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "410": {
+            "$ref": "#/components/responses/Expired"
+          },
+          "413": {
+            "description": "The copy would exceed the platform storage cap.",
+            "x-error-codes": [
+              "storage_cap"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "copy_failed",
+              "id_failed",
+              "handle_failed",
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/ContentOriginNotConfigured"
+          }
+        }
+      }
+    },
     "/v1/export": {
       "get": {
         "operationId": "exportOwned",
@@ -5975,6 +6092,28 @@
             "$ref": "#/components/schemas/WritePolicy"
           }
         }
+      },
+      "FileCopyRequest": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string",
+            "description": "New filename; defaults to the source filename. Path segments are dropped."
+          },
+          "password": {
+            "$ref": "#/components/schemas/SharePassword"
+          },
+          "write_password": {
+            "$ref": "#/components/schemas/WritePassword"
+          },
+          "ttl": {
+            "$ref": "#/components/schemas/Ttl"
+          },
+          "write_policy": {
+            "$ref": "#/components/schemas/WritePolicy"
+          }
+        },
+        "description": "Options for POST /v1/files/{id}/duplicate. All fields are optional; an empty object copies with the source filename."
       },
       "FileUploadForm": {
         "type": "object",

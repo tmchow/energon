@@ -155,7 +155,7 @@ describe("openapi/v1.json", () => {
 const GATEWAY_OPERATIONS = [
   "getHelp", "getHealth", "getLlmsTxt", "getGatewayOpenapi", "whoami",
   "listSites", "createSite", "getSite", "patchSite", "deleteSite", "getSiteFile", "deleteSiteFile",
-  "listFiles", "getFile", "patchFile", "deleteFile",
+  "listFiles", "getFile", "patchFile", "deleteFile", "duplicateFile",
   "cleanup", "mintGrant", "getGrant",
   "createDeployment", "getDeployment", "cancelDeployment", "prepareDeployment", "commitDeployment",
 ];
