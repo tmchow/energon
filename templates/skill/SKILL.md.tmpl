@@ -180,6 +180,8 @@ Compatibility: `POST /v1/sites/{id}/import` with `Content-Type: application/zip`
 
 Public URLs stay the same. Every request resolves one active version, but a page and its later asset requests can cross a commit. There is no page-wide pinning, browsable history, or rollback API.
 
+When they need a link that keeps showing exactly what was published (a release, a deliverable cited later, a page people keep open while you update), publish each one as a new site or file instead of revising in place. Start from the previous one with `duplicate_from` (Scenario H) and set `write_policy: owner` so others cannot change it. For one link that always points to the newest, keep a small pointer site whose `index.html` redirects to the latest copy, and update only that. The address bar ends on the copy's URL, and a password-protected copy prompts after the redirect. {{PRODUCT}} does not record which copy came from which; keep that list yourself, and set a TTL so old copies expire.
+
 ## Scenario F — No token, expired token, or 401
 
 Stop using a rejected or expired token. Then, in order:
@@ -234,7 +236,7 @@ If they asked for real ACLs or named-user ownership, say {{PRODUCT}} does not ha
 
 ## Scenario H — Make a copy
 
-They want the same bytes under a **new** URL (fork an owner-locked site, copy a large file, edit one path after). Do **not** zip the site through context. Do **not** GET+PUT every path.
+They want the same bytes under a **new** URL (fork an owner-locked site, copy a large file, edit one path after, or keep the current version fixed while a new one is published; see the end of Scenario E). Do **not** zip the site through context. Do **not** GET+PUT every path.
 
 1. `POST /v1/sites` with `{"slug":"new-slug","duplicate_from":"existing-id"}`.
 2. Or `POST /v1/files` with `{"duplicate_from":"id"}` (optional `filename`).
