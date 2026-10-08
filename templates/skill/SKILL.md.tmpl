@@ -65,7 +65,7 @@ python3 "$dir/energon_publish.py" --help
 4. `mintGrant` with `{"target":{"type":"site_deployment","deployment_id":"<deployment_id>"}}`.
 5. `python3 scripts/energon_publish.py publish-folder ./dist --grant-file -` with the mint response on stdin. It uploads the archive, prepares, commits, and prints `url` and `version_id`.
 
-If the run is interrupted, rerun the same `publish-folder` command. If the grant secret is lost or expired, check `getDeployment`; while it is still `uploading` or `ready`, mint a new `site_deployment` grant for the same `deployment_id` and rerun. Do not create a second deployment or run `inspect --restart` for the same release.
+If the run is interrupted, rerun the same `publish-folder` command. If the grant secret is lost or expired, check `getDeployment`; while it is still `uploading` or `ready`, mint a new `site_deployment` grant for the same `deployment_id` and rerun. Do not create a second deployment or run `inspect --restart` for the same release unless the helper reports the deployment expired (sessions last one hour); then run `inspect --restart`, create a new deployment with the new key and archive, mint a new grant, and publish again. In token mode the helper starts the new deployment itself.
 
 A machine with no tools and no token that holds only a grant someone handed it does not need this skill: it follows the content origin's `/llms.txt` (`content_origin` in `/v1/help`).
 

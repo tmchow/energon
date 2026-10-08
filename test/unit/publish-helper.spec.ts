@@ -94,6 +94,8 @@ async function stubEnergon(
     truncateFirstCommit?: boolean;
     dropFirstGrantPut?: boolean;
     dropCreate?: boolean;
+    expireFirstCreate?: boolean;
+    expiredSession?: boolean;
   } = {},
 ) {
   const log: Logged[] = [];
@@ -106,6 +108,7 @@ async function stubEnergon(
   let committed = false;
   let dropCommit = opts.dropFirstCommit ?? false;
   let created = false;
+  let expireCreate = opts.expireFirstCreate ?? false;
   const status = () => {
     const ready = archive !== null && prepares >= 2;
     return {
@@ -133,10 +136,15 @@ async function stubEnergon(
         "GET /v1/help": () => send(200, { content_origin: opts.contentOrigin?.(origin) ?? null }),
         "GET /v1/sites/S1": () => send(200, { id: "S1", content_generation: 7 }),
         "POST /v1/sites/S1/deployments": () => {
+          if (expireCreate) {
+            expireCreate = false;
+            return send(410, { error: "idempotency_expired", message: "The retry identity is outside its creation window." });
+          }
           send(created ? 200 : 201, status());
           created = true;
         },
-        "GET session": () => send(200, status()),
+        "GET session": () =>
+          opts.expiredSession ? send(410, { error: "deployment_expired", message: "Preparation deadline has passed." }) : send(200, status()),
         "PUT session/archive": () => {
           archive = body;
           send(201, { stored: true });
@@ -279,6 +287,48 @@ describe("upload helper", () => {
     expect(second.status, second.stderr).toBe(0);
     expect(second.json.deployment_id).toBeNull();
     expect(second.json.idempotency_key).not.toBe(first.json.idempotency_key);
+  });
+
+  it("starts a new deployment under a fresh key when the server says the old identity expired", async () => {
+    const { helper, stateDir, site } = setup();
+    const stub = await stubEnergon({ expireFirstCreate: true });
+    const inspect = await run(helper, ["inspect", site, "--state-dir", stateDir]);
+    const publish = await run(helper, ["publish-folder", site, "--site-id", "S1", "--origin", stub.origin, "--state-dir", stateDir], {
+      env: { [TOKEN_ENV]: TOKEN },
+    });
+    expect(publish.status, publish.stderr).toBe(0);
+    expect(publish.json).toMatchObject({ state: "committed" });
+    const keys = stub.log
+      .filter((r) => r.method === "POST" && r.path === "/v1/sites/S1/deployments")
+      .map((r) => JSON.parse(r.body.toString()).idempotency_key);
+    expect(keys).toHaveLength(2);
+    expect(keys[0]).toBe(inspect.json.idempotency_key);
+    expect(keys[1]).not.toBe(keys[0]);
+    expect(sha256(stub.archived()!)).toBe(inspect.json.archive.sha256);
+  });
+
+  it("replaces an unused key older than the server's creation window", async () => {
+    const { helper, stateDir, site } = setup();
+    const first = await run(helper, ["inspect", site, "--state-dir", stateDir]);
+    const saved = JSON.parse(readFileSync(first.json.state_path, "utf8"));
+    const oldKey = `${Date.now() - 2 * 60 * 60 * 1000}.${saved.idempotency_key.split(".")[1]}`;
+    writeFileSync(first.json.state_path, JSON.stringify({ ...saved, idempotency_key: oldKey }));
+    const second = await run(helper, ["inspect", site, "--state-dir", stateDir]);
+    expect(second.status, second.stderr).toBe(0);
+    expect(second.json.idempotency_key).not.toBe(oldKey);
+    expect(Number(second.json.idempotency_key.split(".")[0])).toBeGreaterThan(Date.now() - 60_000);
+  });
+
+  it("tells a grant publish to start over when its deployment expired", async () => {
+    const { helper, stateDir, site } = setup();
+    const stub = await stubEnergon({ expiredSession: true });
+    await run(helper, ["inspect", site, "--state-dir", stateDir]);
+    const publish = await run(helper, ["publish-folder", site, "--grant-file", "-", "--origin", stub.origin, "--state-dir", stateDir], {
+      input: grantFor(stub.origin, "deployment_grant_expiredsecret"),
+    });
+    expect(publish.status).toBe(1);
+    expect(publish.json).toMatchObject({ error: "deployment_expired" });
+    expect(publish.stderr).toMatch(/inspect --restart/);
   });
 
   it("still publishes the persisted archive when the folder later grows past the cap", async () => {

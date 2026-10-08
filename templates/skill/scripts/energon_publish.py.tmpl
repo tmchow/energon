@@ -39,6 +39,9 @@ FIXED_ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 SESSION_URLS = ("status_url", "archive_url", "prepare_url", "commit_url")
 # Sessions expire after an hour, so older leftovers can never resume; they only keep private archives on disk.
 STALE_STATE_SECONDS = 24 * 60 * 60
+# The server accepts a new idempotency key for an hour after its timestamp; refresh unused keys before that.
+KEY_FRESH_SECONDS = 55 * 60
+EXPIRED_CODES = ("idempotency_expired", "deployment_expired", "deployment_missing")
 
 
 class Fail(Exception):
@@ -315,6 +318,20 @@ def new_key():
     return str(int(time.time() * 1000)) + "." + str(uuid.uuid4())
 
 
+def key_is_fresh(key):
+    try:
+        return time.time() - int(str(key).split(".")[0]) / 1000 < KEY_FRESH_SECONDS
+    except ValueError:
+        return False
+
+
+def reset_identity(state):
+    """Forget an expired server session; the persisted archive stays and publishes under a new key."""
+    for field in ("deployment_id", "status_url", "expected_version", "site_id"):
+        state.pop(field, None)
+    state["idempotency_key"] = new_key()
+
+
 def prepare_folder(folder, include_hidden, state_dir, rebuild=False, restart=False):
     """Return (state, state_path, built). Reuses the persisted archive unless asked to rebuild before a session exists."""
     if not os.path.isdir(folder) or os.path.islink(folder):
@@ -327,6 +344,9 @@ def prepare_folder(folder, include_hidden, state_dir, rebuild=False, restart=Fal
         if previous.get("include_hidden") != include_hidden:
             fail("state_mismatch", "The persisted archive was built " + ("with" if previous.get("include_hidden") else "without")
                  + " --include-hidden. Pass the same flag, or run inspect --restart to rebuild.")
+        if not previous.get("deployment_id") and not key_is_fresh(previous.get("idempotency_key")):
+            previous["idempotency_key"] = new_key()
+            save_state(state_path, previous)
         return previous, state_path, False
     files = folder_files(folder, include_hidden)
     tmp = archive_path + ".tmp"
@@ -335,6 +355,8 @@ def prepare_folder(folder, include_hidden, state_dir, rebuild=False, restart=Fal
     os.replace(tmp, archive_path)
     # Same bytes keep the same key (and any recorded session base) so a replay matches; new bytes need a new key.
     state = previous if previous and previous.get("archive") == archive else {"idempotency_key": new_key()}
+    if not state.get("deployment_id") and not key_is_fresh(state.get("idempotency_key")):
+        state["idempotency_key"] = new_key()
     state.update(host=socket.gethostname(), folder=os.path.realpath(folder), include_hidden=include_hidden, files=files,
                  fingerprint=fingerprint(folder, files), archive=archive, archive_path=archive_path)
     save_state(state_path, state)
@@ -415,29 +437,8 @@ def cmd_publish_file(args):
     return ok(status, body, 200, 201)
 
 
-def cmd_publish_folder(args):
-    grant = token = None
-    if args.grant_file:
-        grant = read_grant(args.grant_file)
-        if not grant.get("archive_url") and grant.get("upload_url"):
-            fail("bad_grant", "This is a single-file grant; use publish-file.")
-        urls = grant_urls(grant, SESSION_URLS)
-    else:
-        token = read_token()
-        if not args.site_id:
-            fail("bad_arguments", "Token mode needs --site-id (create the site first with POST /v1/sites).")
-    state, state_path, built = prepare_folder(args.folder, args.include_hidden, args.state_dir)
-    note_stripped(state)
-    if not built:
-        # Only decides a warning; the persisted archive is what publishes, so the live folder must not block it.
-        try:
-            changed = fingerprint(args.folder, folder_files(args.folder, state["include_hidden"])) != state.get("fingerprint")
-        except Fail:
-            changed = True
-        if changed:
-            note("The folder changed since inspect; publishing the archive inspect built (sha256 "
-                 + state["archive"]["sha256"] + "). Run inspect --restart first to publish current content.")
-
+def run_session(args, state, state_path, grant, token, urls):
+    """Create or resume the deployment, upload, prepare, and commit. Returns the committed status body."""
     if grant:
         content = discover_content_origin(args.origin)
         for name, url in urls.items():
@@ -489,6 +490,44 @@ def cmd_publish_folder(args):
         raise Fail(dict(current, error=current.get("error") or "not_committed",
                         message="The deployment is " + str(current.get("state")) + ", not committed."),
                    "Rerun the same publish-folder command to resume" + (" (mint a new grant for the same deployment if this one expired)." if grant else "."))
+    return current
+
+
+def cmd_publish_folder(args):
+    grant = token = None
+    if args.grant_file:
+        grant = read_grant(args.grant_file)
+        if not grant.get("archive_url") and grant.get("upload_url"):
+            fail("bad_grant", "This is a single-file grant; use publish-file.")
+        urls = grant_urls(grant, SESSION_URLS)
+    else:
+        token = read_token()
+        if not args.site_id:
+            fail("bad_arguments", "Token mode needs --site-id (create the site first with POST /v1/sites).")
+    state, state_path, built = prepare_folder(args.folder, args.include_hidden, args.state_dir)
+    note_stripped(state)
+    if not built:
+        # Only decides a warning; the persisted archive is what publishes, so the live folder must not block it.
+        try:
+            changed = fingerprint(args.folder, folder_files(args.folder, state["include_hidden"])) != state.get("fingerprint")
+        except Fail:
+            changed = True
+        if changed:
+            note("The folder changed since inspect; publishing the archive inspect built (sha256 "
+                 + state["archive"]["sha256"] + "). Run inspect --restart first to publish current content.")
+
+    try:
+        current = run_session(args, state, state_path, grant, token, urls if grant else None)
+    except Fail as err:
+        if err.body.get("status") != 410 or err.body.get("error") not in EXPIRED_CODES:
+            raise
+        if grant:
+            raise Fail(err.body, "The deployment expired. Run inspect --restart, have the gateway create a new deployment with "
+                                 "the new idempotency_key and archive, mint a new grant, and publish again.")
+        note("The earlier deployment expired (" + err.body["error"] + "); starting a new one from the persisted archive.")
+        reset_identity(state)
+        save_state(state_path, state)
+        current = run_session(args, state, state_path, grant, token, None)
     drop_state(state_path, state["archive_path"])
     return {"state": "committed", "url": current.get("url"), "version_id": current.get("version_id"),
             "deployment_id": current.get("deployment_id") or state.get("deployment_id"), "site_id": state.get("site_id")}
