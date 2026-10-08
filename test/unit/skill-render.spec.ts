@@ -20,7 +20,7 @@ import {
   runRender,
   tokenEnvFromBrand,
 } from "../../scripts/render-skill.mjs";
-import { render } from "../../scripts/skill-template.mjs";
+import { render, skillTemplateVars } from "../../scripts/skill-template.mjs";
 import skillTemplates from "../../src/generated/skill-templates.js";
 import { WRITE_PASSWORD_HEADER } from "../../src/config";
 import { GRANT_AUTH_HEADER, GRANT_UPLOAD_PREFIX } from "../../src/grant-protocol";
@@ -34,6 +34,18 @@ const CATALOG_PATHS = [
 
 const disposableRoots: string[] = [];
 const TEST_VERSION = "9.9.9";
+const ACME_VARS = skillTemplateVars({
+  skill: "acme-energon",
+  plugin: "acme-energon",
+  marketplace: "acme-energon",
+  origin: "https://energon.acme.test",
+  tokenEnv: "ACME_ENERGON_TOKEN",
+  tokenPrefix: "ee_live_",
+  product: "Energon",
+  marketplaceRepo: "acme/energon",
+  marketplaceUrl: "https://github.com/acme/energon",
+  version: TEST_VERSION,
+});
 
 function writeProductVersion(root: string, version = TEST_VERSION) {
   writeFileSync(join(root, "version.txt"), `${version}\n`);
@@ -133,15 +145,7 @@ describe("skill template", () => {
   });
 
   it("rendered SKILL.md teaches gateway mode and the bundled helper", () => {
-    const skill = render(skillTemplates["SKILL.md.tmpl"], {
-      SKILL_NAME: "acme-energon",
-      ORIGIN: "https://energon.acme.test",
-      ORIGIN_HOST: "energon.acme.test",
-      TOKEN_ENV: "ACME_ENERGON_TOKEN",
-      TOKEN_PREFIX: "ee_live_",
-      PRODUCT: "Energon",
-      INSTALL_LINE: "acme-energon@acme-energon",
-    });
+    const skill = render(skillTemplates["SKILL.md.tmpl"], ACME_VARS);
     const hardRules = skill.slice(skill.indexOf("## Hard rules"), skill.indexOf("## Gateway mode"));
     expect(hardRules).toMatch(/1\. \*\*Gateway mode first\.\*\*.*search.*`mintGrant`.*`createDeployment`/);
     expect(hardRules).toContain("follow **Gateway mode** below instead");
@@ -187,36 +191,18 @@ describe("shared skill renderer", () => {
   });
 
   it("renders the bundled skill from runtime identity without ORG", () => {
-    const vars = {
-      SKILL_NAME: "acme-energon",
-      PLUGIN_NAME: "acme-energon",
-      MARKETPLACE_NAME: "acme-energon",
-      ORIGIN: "https://energon.acme.test",
-      ORIGIN_HOST: "energon.acme.test",
-      TOKEN_ENV: "ACME_ENERGON_TOKEN",
-      TOKEN_PREFIX: "ee_live_",
-      PRODUCT: "Energon",
-      MARKETPLACE_REPO: "acme/energon",
-      MARKETPLACE_URL: "https://github.com/acme/energon",
-      INSTALL_LINE: "acme-energon@acme-energon",
-      VERSION: TEST_VERSION,
-    };
+    expect(ACME_VARS.ORIGIN_HOST).toBe("energon.acme.test");
+    expect(ACME_VARS.INSTALL_LINE).toBe("acme-energon@acme-energon");
     for (const [file, template] of Object.entries(skillTemplates)) {
       if (!file.endsWith(".tmpl")) continue;
-      const text = render(template, vars);
+      const text = render(template, ACME_VARS);
       expect(text).not.toMatch(/\{\{[A-Z0-9_]+\}\}/);
     }
-    expect(render(skillTemplates["SKILL.md.tmpl"], vars)).toContain("energon.acme.test");
+    expect(render(skillTemplates["SKILL.md.tmpl"], ACME_VARS)).toContain("energon.acme.test");
   });
 
   it("renders the upload helper with the instance identity and no leftover placeholders", () => {
-    const helper = render(skillTemplates["scripts/energon_publish.py.tmpl"], {
-      SKILL_NAME: "acme-energon",
-      ORIGIN: "https://energon.acme.test",
-      TOKEN_ENV: "ACME_ENERGON_TOKEN",
-      TOKEN_PREFIX: "ee_live_",
-      PRODUCT: "Energon",
-    });
+    const helper = render(skillTemplates["scripts/energon_publish.py.tmpl"], ACME_VARS);
     expect(helper).not.toMatch(/\{\{[A-Z0-9_]+\}\}/);
     expect(helper).toContain('DEFAULT_ORIGIN = "https://energon.acme.test"');
     expect(helper).toContain('TOKEN_ENV = "ACME_ENERGON_TOKEN"');

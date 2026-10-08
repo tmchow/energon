@@ -12,3 +12,38 @@ export function render(template, vars) {
   if (/\{\{[A-Z0-9_]+\}\}/.test(text)) throw new Error("unreplaced template tokens remain");
   return text;
 }
+
+/** The `{{KEY}}` map every skill template shares; render-skill adds ORG, which has no runtime source. */
+export function skillTemplateVars({
+  skill,
+  plugin,
+  marketplace,
+  origin,
+  tokenEnv,
+  tokenPrefix,
+  product,
+  marketplaceRepo,
+  marketplaceUrl,
+  version,
+}) {
+  let host = origin;
+  try {
+    host = new URL(origin).host;
+  } catch {
+    /* keep raw */
+  }
+  return {
+    SKILL_NAME: skill,
+    PLUGIN_NAME: plugin,
+    MARKETPLACE_NAME: marketplace,
+    ORIGIN: origin,
+    ORIGIN_HOST: host,
+    TOKEN_ENV: tokenEnv,
+    TOKEN_PREFIX: tokenPrefix,
+    PRODUCT: product,
+    MARKETPLACE_REPO: marketplaceRepo,
+    MARKETPLACE_URL: marketplaceUrl,
+    INSTALL_LINE: `${plugin}@${marketplace}`,
+    VERSION: version,
+  };
+}

@@ -7,7 +7,7 @@ import {
   TOKEN_SECRET_LEN,
   formatBytes,
 } from "./config";
-import { agentSkillsInstallLine, agentSkillsUrl } from "./agent-skills";
+import { agentSkillsLink } from "./agent-skills";
 import { helpGrantSop } from "./grant-protocol";
 import { helpGuestWriteSop } from "./guest-write-protocol";
 import { assertNever } from "./catalog";
@@ -480,7 +480,7 @@ export async function revokeToken(env: Env, email: string, id: string, userId?: 
 export function helpBody(origin: string, env?: Env): unknown {
   const id = identityFromEnv(env || {});
   const policy = instancePolicy(env || {});
-  const wellKnown = agentSkillsInstallLine(origin, env);
+  const wellKnown = agentSkillsLink(origin, env);
   return {
     product: PRODUCT,
     hub: origin,
@@ -493,7 +493,7 @@ export function helpBody(origin: string, env?: Env): unknown {
     skill: id.skill,
     marketplace: id.marketplace,
     install: installLine(id),
-    agent_skills_url: agentSkillsUrl(origin, env),
+    agent_skills_url: wellKnown?.url ?? null,
     auth: `Authorization: Bearer ${id.tokenPrefix}<secret>`,
     token_prefix: id.tokenPrefix,
     limits: {
@@ -522,7 +522,7 @@ export function helpBody(origin: string, env?: Env): unknown {
       `When your task is done and nothing else will use this token, DELETE /v1/whoami revokes it (self only: it cannot list or revoke other tokens). Later calls with it are 401. Do not do this to a token the human stored for reuse, such as CI.`,
       "Private plugin installation and updates need GitHub read access in the installing client, separate from the Energon API token. If private marketplaces are unsupported, use a local authenticated copy of the generated publish skill or the documented HTTP API. Never make the repository public to install it.",
       `This Energon's skill is ${id.skill} (install ${installLine(id)}). The origin is ${origin}. Do not guess another Energon.`,
-      ...(wellKnown ? [wellKnown] : []),
+      ...(wellKnown ? [wellKnown.installLine] : []),
       `The HTTP schema (paths, request and response bodies, status codes, error codes) is ${origin}/v1/openapi.json. This document describes this Energon: origins, token env, retention presets, token lifetimes, limits.`,
       `Decide: a site (named folder of files) vs a file (one file, short id). Public URLs are /{handle}/s/{id}/{slug}/ and /{handle}/f/{id}/{filename}. Both stay put when you PUT again.`,
       `New site: POST /v1/sites with the human's slug and optional ttl (${policy.presets.map((p) => p.id).join(", ")}). Omit ttl to use ${policy.defaultTtl}. Response includes id. Same slug always creates a new site (new id).`,

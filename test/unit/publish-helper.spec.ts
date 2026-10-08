@@ -18,6 +18,9 @@ import { join, resolve } from "node:path";
 import { unzipSync } from "fflate";
 import { afterEach, describe, expect, it } from "vitest";
 import { render } from "../../scripts/skill-template.mjs";
+import { MAX_IMPORT_FILES } from "../../src/config";
+import { DEPLOYMENT_GRANT_SECRET_PREFIX } from "../../src/deployment-grants";
+import { GRANT_SECRET_PREFIX } from "../../src/grants";
 
 const TOKEN_ENV = "ACME_ENERGON_TOKEN";
 const TOKEN = "ee_live_testtoken123";
@@ -169,6 +172,14 @@ const sha256 = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex
 const mode = (path: string) => statSync(path).mode & 0o777;
 
 describe("upload helper", () => {
+  it("pins MAX_FILES and secret prefixes to the Worker's constants", () => {
+    const helper = render(readFileSync(resolve("templates/skill/scripts/energon_publish.py.tmpl"), "utf8"), VARS);
+    expect(helper).toContain(`\nMAX_FILES = ${MAX_IMPORT_FILES}\n`);
+    const prefixes = /SECRET_PATTERN = .*?for p in \(([^)]*)\)/s.exec(helper)?.[1] ?? "";
+    expect(prefixes).toContain(JSON.stringify(GRANT_SECRET_PREFIX));
+    expect(prefixes).toContain(JSON.stringify(DEPLOYMENT_GRANT_SECRET_PREFIX));
+  });
+
   it("publishes the archive inspect persisted even after the folder changes, then removes its state", async () => {
     const { helper, stateDir, site } = setup();
     const stub = await stubEnergon();

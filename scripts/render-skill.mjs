@@ -24,7 +24,7 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { render } from "./skill-template.mjs";
+import { render, skillTemplateVars } from "./skill-template.mjs";
 
 const SCRIPT_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SKILL_TMPL_DIR = join(SCRIPT_ROOT, "templates", "skill");
@@ -295,27 +295,7 @@ function parseArgs(argv, root) {
 }
 
 function varsFrom(opts, version) {
-  let host = opts.origin;
-  try {
-    host = new URL(opts.origin).host;
-  } catch {
-    /* keep raw */
-  }
-  return {
-    SKILL_NAME: opts.skill,
-    PLUGIN_NAME: opts.plugin,
-    MARKETPLACE_NAME: opts.marketplace,
-    ORIGIN: opts.origin,
-    ORIGIN_HOST: host,
-    TOKEN_ENV: opts.tokenEnv,
-    TOKEN_PREFIX: opts.tokenPrefix,
-    PRODUCT: opts.product,
-    ORG: opts.org,
-    MARKETPLACE_REPO: opts.marketplaceRepo,
-    MARKETPLACE_URL: opts.marketplaceUrl,
-    INSTALL_LINE: `${opts.plugin}@${opts.marketplace}`,
-    VERSION: version,
-  };
+  return { ...skillTemplateVars({ ...opts, version }), ORG: opts.org };
 }
 
 function instancePayload(opts) {

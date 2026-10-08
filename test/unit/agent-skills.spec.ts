@@ -48,6 +48,14 @@ describe("well-known agent skills", () => {
     expect(skill).not.toContain("{{");
   });
 
+  it("advertises nothing when CONTENT_ORIGIN is set but invalid", () => {
+    for (const bad of [HUB, `${CONTENT}/skills`]) {
+      const env = { ...BASE, CONTENT_ORIGIN: bad } as Env;
+      expect((helpBody(HUB, env) as { agent_skills_url: string | null }).agent_skills_url).toBeNull();
+      expect(llmsTxt(HUB, env)).not.toContain("/.well-known/agent-skills/");
+    }
+  });
+
   it("uses the public origin when no content origin is configured", () => {
     const env = { PUBLIC_ORIGIN: "http://127.0.0.1:8787" } as Env;
     expect((helpBody("http://127.0.0.1:8787", env) as { agent_skills_url: string | null }).agent_skills_url).toBe(

@@ -34,6 +34,7 @@ RETRY_CODES = ("grant_busy", "file_busy")
 SECRET_PATTERN = re.compile("(?:" + "|".join(re.escape(p) for p in ("grant_", "deployment_grant_", TOKEN_PREFIX) if p)
                             + ")[A-Za-z0-9]{16,}")
 FIXED_ZIP_TIME = (1980, 1, 1, 0, 0, 0)
+SESSION_URLS = ("status_url", "archive_url", "prepare_url", "commit_url")
 
 
 class Fail(Exception):
@@ -196,7 +197,7 @@ def grant_urls(grant, names):
     missing = [n for n in names if not isinstance(grant.get(n), str) or not grant[n]]
     if missing:
         fail("bad_grant", "Grant JSON is missing " + ", ".join(missing) + ".")
-    return [grant[n] for n in names]
+    return {n: grant[n] for n in names}
 
 
 # ---------- Files and archives ----------
@@ -225,11 +226,12 @@ def folder_files(folder, include_hidden):
             if (not include_hidden and name.startswith(".")) or os.path.islink(full) or not os.path.isfile(full):
                 continue
             found.append(os.path.relpath(full, folder).replace(os.sep, "/"))
+            if len(found) > MAX_FILES:
+                fail("too_many_files", folder + " has more than " + str(MAX_FILES) + " files; a site deployment takes at most "
+                     + str(MAX_FILES) + ".")
     found.sort()
     if not found:
         fail("empty_folder", folder + " has no files to publish.")
-    if len(found) > MAX_FILES:
-        fail("too_many_files", folder + " has " + str(len(found)) + " files; a site deployment takes at most " + str(MAX_FILES) + ".")
     return found
 
 
@@ -351,7 +353,7 @@ def cmd_publish_file(args):
         grant = read_grant(args.grant_file)
         if grant.get("archive_url"):
             fail("bad_grant", "This is a site deployment grant; use publish-folder.")
-        (upload_url,) = grant_urls(grant, ["upload_url"])
+        upload_url = grant_urls(grant, ["upload_url"])["upload_url"]
         if "{" in upload_url:
             fail("bad_grant", "upload_url is a template, not a file grant URL.")
         content = discover_content_origin(args.origin)
@@ -381,23 +383,23 @@ def cmd_publish_folder(args):
         grant = read_grant(args.grant_file)
         if not grant.get("archive_url") and grant.get("upload_url"):
             fail("bad_grant", "This is a single-file grant; use publish-file.")
-        urls = grant_urls(grant, ["status_url", "archive_url", "prepare_url", "commit_url"])
+        urls = grant_urls(grant, SESSION_URLS)
     else:
         token = read_token()
         if not args.site_id:
             fail("bad_arguments", "Token mode needs --site-id (create the site first with POST /v1/sites).")
     state, state_path, built = prepare_folder(args.folder, args.include_hidden, args.state_dir)
     if not built:
-        current = folder_files(args.folder, state["include_hidden"])
-        if fingerprint(args.folder, current) != state.get("fingerprint"):
+        current_files = folder_files(args.folder, state["include_hidden"])
+        if fingerprint(args.folder, current_files) != state.get("fingerprint"):
             note("The folder changed since inspect; publishing the archive inspect built (sha256 "
                  + state["archive"]["sha256"] + "). Run inspect --restart first to publish current content.")
 
     if grant:
         content = discover_content_origin(args.origin)
-        for url, name in zip(urls, ["status_url", "archive_url", "prepare_url", "commit_url"]):
+        for name, url in urls.items():
             require_origin(url, content, name)
-        status_url, archive_url, prepare_url, commit_url = urls
+        status_url, archive_url, prepare_url, commit_url = (urls[n] for n in SESSION_URLS)
         secret = grant["secret"]
         target = grant.get("target") or {}
         state.update(deployment_id=target.get("deployment_id"), site_id=target.get("site_id"), status_url=status_url)
