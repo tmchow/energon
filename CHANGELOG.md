@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.13.1](https://github.com/tmchow/energon/compare/v1.13.0...v1.13.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* **verify:** derive fixture identities from the doctor email domain ([#159](https://github.com/tmchow/energon/issues/159)) ([9cc67e4](https://github.com/tmchow/energon/commit/9cc67e45030bad731a8f2780d12f0032df27a6e8))
+
+
+### Performance
+
+* **sites:** let cron sweeps convert legacy sites under a 3-minute budget ([#157](https://github.com/tmchow/energon/issues/157)) ([c5fbefc](https://github.com/tmchow/energon/commit/c5fbefcd0d8f630e81552dc8b855cf46da482875))
+
 ## [1.13.0](https://github.com/tmchow/energon/compare/v1.12.0...v1.13.0) (2026-10-08)
 
 
