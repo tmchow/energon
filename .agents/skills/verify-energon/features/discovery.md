@@ -6,7 +6,7 @@ Discovery documents are the unauthenticated first reads on this Energon: `/v1/he
 
 - `help` returns JSON with `hub` and `content_origin` equal to this origin, `env`, `token_prefix`, limits, retention, token policy, `sop`, and `routes`.
 - `help-openapi` sets `openapi` to `$ORIGIN/v1/openapi.json` and lists `GET /v1/openapi.json` in `routes`.
-- `openapi` returns OpenAPI 3.1.0 with `servers[0].url` equal to this origin, no token, CORS `*`.
+- `openapi` returns OpenAPI 3.1.0 with `servers[0].url` equal to this origin, no token, CORS `*`. Every operation has a readable operationId and a tag (`deployments.createDeployment`). With a dedicated content origin, `/_deployment-grants/*` paths carry their own `servers` set to it; local runs share one origin, so those paths have none.
 - `auth` returns public Markdown with this Energon's token env, token prefix, `/tokens` and `/v1/whoami` URLs, credential boundaries, and recovery instructions. `help.auth_url` and token-rejection JSON `auth_url` point to it.
 - `private-install`: `/setup`, help, and llms distinguish GitHub repository access from Energon token approval and offer a local-skill or API fallback.
 - `health` returns `{"ok":true}` at `/health` and `/v1/health`.

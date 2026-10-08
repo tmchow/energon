@@ -52,6 +52,9 @@ describe("host and route contracts", () => {
     expect(doc.body.openapi).toBe("3.1.0");
     expect(doc.body.servers).toEqual([{ url: "https://hub.energon.example.com" }]);
     expect(doc.body.paths["/v1/sites"].post.operationId).toBe("createSite");
+    expect(doc.body.paths["/v1/sites"].servers).toBeUndefined();
+    expect(doc.body.paths["/_deployment-grants/{grantId}/commit"].servers).toEqual([{ url: "https://energon.example.com" }]);
+    expect(doc.body.paths["/v1/sites/{id}/deployments"].post.operationId).toBe("createDeployment");
 
     const head = await req("/v1/openapi.json", { method: "HEAD" });
     expect(head.status).toBe(200);

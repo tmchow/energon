@@ -30,6 +30,10 @@
       "description": "A site is a named folder of files at a stable id. The slug is unique per handle and appears in the public URL after the id."
     },
     {
+      "name": "deployments",
+      "description": "Atomic site deployments. Stage a complete replacement (files or one ZIP archive) against the site's content_generation, prepare it, then explicitly commit; a stale generation fails instead of overwriting."
+    },
+    {
       "name": "files",
       "description": "A loose file is one file at a short id."
     },
@@ -3057,7 +3061,10 @@
         }
       ],
       "post": {
-        "operationId": "postVSitesIdDeployments",
+        "operationId": "createDeployment",
+        "tags": [
+          "deployments"
+        ],
         "summary": "create immutable full-replacement intent; expected_version, idempotency_key, files or archive; 201 new, 200 identical replay",
         "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota.",
         "responses": {
@@ -3195,7 +3202,10 @@
         }
       ],
       "get": {
-        "operationId": "getVSitesIdDeploymentsDeploymentid",
+        "operationId": "getDeployment",
+        "tags": [
+          "deployments"
+        ],
         "summary": "read session progress or committed receipt",
         "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota.",
         "responses": {
@@ -3282,7 +3292,10 @@
         }
       },
       "delete": {
-        "operationId": "deleteVSitesIdDeploymentsDeploymentid",
+        "operationId": "cancelDeployment",
+        "tags": [
+          "deployments"
+        ],
         "summary": "abort unpublished session (204)",
         "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota.",
         "responses": {
@@ -3390,7 +3403,10 @@
         }
       ],
       "put": {
-        "operationId": "putVSitesIdDeploymentsDeploymentidFilesPath",
+        "operationId": "uploadDeploymentFile",
+        "tags": [
+          "deployments"
+        ],
         "summary": "upload exact declared bytes; 201 first receipt, 200 identical retry",
         "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota.",
         "responses": {
@@ -3540,7 +3556,10 @@
         }
       ],
       "put": {
-        "operationId": "putVSitesIdDeploymentsDeploymentidArchive",
+        "operationId": "uploadDeploymentArchive",
+        "tags": [
+          "deployments"
+        ],
         "summary": "upload declared ZIP bytes",
         "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota.",
         "responses": {
@@ -3690,7 +3709,10 @@
         }
       ],
       "post": {
-        "operationId": "postVSitesIdDeploymentsDeploymentidPrepare",
+        "operationId": "prepareDeployment",
+        "tags": [
+          "deployments"
+        ],
         "summary": "validate and prepare; 202 progress or 200 ready; does not publish",
         "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota.",
         "responses": {
@@ -3807,7 +3829,10 @@
         }
       ],
       "post": {
-        "operationId": "postVSitesIdDeploymentsDeploymentidCommit",
+        "operationId": "commitDeployment",
+        "tags": [
+          "deployments"
+        ],
         "summary": "publish complete replacement atomically or recover receipt (200)",
         "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota.",
         "responses": {
@@ -3906,7 +3931,10 @@
         }
       ],
       "get": {
-        "operationId": "getDeploymentGrantsGrantid",
+        "operationId": "getDeploymentGrant",
+        "tags": [
+          "grants"
+        ],
         "summary": "content-origin status with grant bearer secret",
         "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota. Use the content origin returned by /v1/help. Revocation blocks receipt recovery; expiry permits recovery of an already committed receipt.",
         "responses": {
@@ -4018,7 +4046,10 @@
         }
       ],
       "put": {
-        "operationId": "putDeploymentGrantsGrantidFilesPath",
+        "operationId": "uploadDeploymentGrantFile",
+        "tags": [
+          "grants"
+        ],
         "summary": "content-origin declared file upload with grant bearer secret",
         "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota. Use the content origin returned by /v1/help. Revocation blocks receipt recovery; expiry permits recovery of an already committed receipt.",
         "responses": {
@@ -4165,7 +4196,10 @@
         }
       ],
       "put": {
-        "operationId": "putDeploymentGrantsGrantidArchive",
+        "operationId": "uploadDeploymentGrantArchive",
+        "tags": [
+          "grants"
+        ],
         "summary": "content-origin declared archive upload with grant bearer secret",
         "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota. Use the content origin returned by /v1/help. Revocation blocks receipt recovery; expiry permits recovery of an already committed receipt.",
         "responses": {
@@ -4312,7 +4346,10 @@
         }
       ],
       "post": {
-        "operationId": "postDeploymentGrantsGrantidPrepare",
+        "operationId": "prepareDeploymentGrant",
+        "tags": [
+          "grants"
+        ],
         "summary": "content-origin prepare with grant bearer secret; no body",
         "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota. Use the content origin returned by /v1/help. Revocation blocks receipt recovery; expiry permits recovery of an already committed receipt.",
         "responses": {
@@ -4426,7 +4463,10 @@
         }
       ],
       "post": {
-        "operationId": "postDeploymentGrantsGrantidCommit",
+        "operationId": "commitDeploymentGrant",
+        "tags": [
+          "grants"
+        ],
         "summary": "content-origin atomic commit with grant bearer secret; no body",
         "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota. Use the content origin returned by /v1/help. Revocation blocks receipt recovery; expiry permits recovery of an already committed receipt.",
         "responses": {

@@ -2,16 +2,19 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { helpBody } from "../../src/auth";
+import { openapiResponse } from "../../src/openapi";
+import type { Env } from "../../src/types";
 import { v1PathLiterals, v1PathPatterns } from "../../src/v1-routes";
 
 const METHODS = ["get", "post", "put", "patch", "delete"] as const;
 const ORIGIN = "https://hub.energon.example.com";
 const SAMPLE_PARAMS: Record<string, string> = { slug: "my-slug", id: "abc123", path: "docs/a.txt", deploymentId: "deployment123", grantId: "grant123" };
 
-type Operation = { operationId?: string; responses?: Record<string, unknown>; security?: unknown[] };
+type Operation = { operationId?: string; tags?: string[]; responses?: Record<string, unknown>; security?: unknown[] };
 type PathItem = Partial<Record<(typeof METHODS)[number], Operation>>;
 type Spec = {
   openapi: string;
+  tags: { name: string }[];
   paths: Record<string, PathItem>;
   components: { schemas: { Error: { properties: { error: { enum: string[] } } } } };
 };
@@ -77,6 +80,26 @@ describe("openapi/v1.json", () => {
       expect(op.operationId, key).toMatch(/^\w+$/);
       expect(Object.keys(op.responses ?? {}).length, key).toBeGreaterThan(0);
     }
+  });
+
+  it("gives every operation a unique verb-noun operationId and a declared tag", () => {
+    const ops = operations();
+    const ids = ops.map(({ op }) => op.operationId);
+    expect(new Set(ids).size).toBe(ids.length);
+    const declared = new Set(spec.tags.map((tag) => tag.name));
+    for (const { key, op } of ops) {
+      expect(op.operationId, key).not.toMatch(/^(get|post|put|patch|delete)V[A-Z]|[a-z]id(?:[A-Z]|$)/);
+      expect(op.tags?.length, key).toBeGreaterThan(0);
+      expect(declared.has(op.tags![0]), key).toBe(true);
+    }
+  });
+
+  it("serves deployment-grant paths on the dedicated content origin only", async () => {
+    const split = await openapiResponse({ PUBLIC_ORIGIN: ORIGIN, CONTENT_ORIGIN: "https://share.example.com" } as Env).json() as Spec & { paths: Record<string, { servers?: unknown }> };
+    expect(split.paths["/_deployment-grants/{grantId}/commit"].servers).toEqual([{ url: "https://share.example.com" }]);
+    const local = await openapiResponse({ PUBLIC_ORIGIN: "http://127.0.0.1:8787", CONTENT_ORIGIN: "http://127.0.0.1:8787" } as Env);
+    expect(local.status).toBe(200);
+    expect(((await local.json()) as { paths: Record<string, { servers?: unknown }> }).paths["/_deployment-grants/{grantId}/commit"].servers).toBeUndefined();
   });
 
   it("lists the same operations as GET /v1/help routes", () => {
