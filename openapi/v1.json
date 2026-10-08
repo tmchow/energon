@@ -400,8 +400,8 @@
         "tags": [
           "sites"
         ],
-        "summary": "Create a site or duplicate a site",
-        "description": "201 always creates a new site with a fresh id, even when the slug matches an existing site on this handle. duplicate_from copies another site's files (by id) into the new site (201).",
+        "summary": "Create a site to publish into, or duplicate a site",
+        "description": "To publish a local folder, create the site here, then follow createDeployment and a site_deployment grant as the attached Energon skill describes. This call never carries file bytes.\n\n201 always creates a new site with a fresh id, even when the slug matches an existing site on this handle. duplicate_from copies another site's files (by id) into the new site (201).",
         "requestBody": {
           "required": true,
           "content": {
@@ -763,7 +763,7 @@
         "tags": [
           "files"
         ],
-        "summary": "Read the file's bytes",
+        "summary": "Read the file's stored bytes (fetch the public URL for large or binary files)",
         "description": "Token read; the share password is not needed. Any token can read.",
         "parameters": [
           {
@@ -1192,7 +1192,7 @@
         "tags": [
           "files"
         ],
-        "summary": "Copy a loose file to a new id",
+        "summary": "Copy a published file to a new id you own",
         "description": "Copies an existing loose file into a new file you own, with a new id and URL. The body is a JSON object of options only; it never carries file bytes. Anyone who can read via /v1 can duplicate. Share and write passwords are not copied; set them here or later with PATCH /v1/files/{id}.",
         "requestBody": {
           "required": false,
@@ -2536,7 +2536,7 @@
         "tags": [
           "sites"
         ],
-        "summary": "Read one file's bytes",
+        "summary": "Read one site file's stored bytes (fetch the public URL for large or binary files)",
         "description": "Token read; the share password is not needed. Markdown comes back as source, not rendered HTML.",
         "responses": {
           "200": {
@@ -3064,8 +3064,8 @@
         "tags": [
           "grants"
         ],
-        "summary": "Mint a single-use upload grant",
-        "description": "The minting account must be able to write the target now. The upload re-checks that, and fails if the minting token is revoked or expired first. The tokenless client PUTs raw bytes to upload_url with Authorization: Bearer <secret>; success publishes immediately and uses the grant up. Retryable upload failures (busy target, storage cap) leave the grant usable until it expires; a deleted target or lost permission ends it. Read the result with GET /v1/grants/{id}. For target site_deployment, bind an existing owned immutable session. The secret authorizes only its returned status/files/archive/prepare/commit URLs and is consumed at commit. The session deadline and minting token expiry bound grant lifetime. A file target with expected_version is conditional: the upload replaces the file only if its content_generation still matches, and a mismatch ends the grant as failed with last_error file_conflict.",
+        "summary": "Publish, share, or upload a local file: mint a single-use upload grant",
+        "description": "Publish or upload a local file without sending its bytes through tool arguments: inspect it on the machine (size, SHA-256), mint a grant here, upload from the machine with the helper from the attached Energon skill, verify the SHA-256, then return the URL and expiry.\n\nThe minting account must be able to write the target now. The upload re-checks that, and fails if the minting token is revoked or expired first. The tokenless client PUTs raw bytes to upload_url with Authorization: Bearer <secret>; success publishes immediately and uses the grant up. Retryable upload failures (busy target, storage cap) leave the grant usable until it expires; a deleted target or lost permission ends it. Read the result with GET /v1/grants/{id}. For target site_deployment, bind an existing owned immutable session. The secret authorizes only its returned status/files/archive/prepare/commit URLs and is consumed at commit. The session deadline and minting token expiry bound grant lifetime. A file target with expected_version is conditional: the upload replaces the file only if its content_generation still matches, and a mismatch ends the grant as failed with last_error file_conflict.",
         "requestBody": {
           "required": true,
           "content": {
@@ -3248,8 +3248,8 @@
         "tags": [
           "deployments"
         ],
-        "summary": "create immutable full-replacement intent; expected_version, idempotency_key, files or archive; 201 new, 200 identical replay",
-        "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota.",
+        "summary": "Publish a local folder as a site: create a full-replacement deployment",
+        "description": "Publish or replace a whole site from a local folder: create this deployment with file or archive descriptors only (size, SHA-256), mint a site_deployment grant, upload from the machine with the helper from the attached Energon skill, then prepare and commit.\n\nSessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota.",
         "responses": {
           "200": {
             "description": "create immutable full-replacement intent; expected_version, idempotency_key, files or archive; 201 new, 200 identical replay",

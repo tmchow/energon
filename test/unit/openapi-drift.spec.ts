@@ -20,7 +20,7 @@ type Spec = {
 };
 
 const spec = JSON.parse(readFileSync("openapi/v1.json", "utf8")) as Spec;
-const help = helpBody(ORIGIN) as { openapi: string; routes: Record<string, string> };
+const help = helpBody(ORIGIN) as { openapi: string; gateway_openapi: string; sop: string[]; routes: Record<string, string> };
 
 function operations(): { key: string; op: Operation }[] {
   const found: { key: string; op: Operation }[] = [];
@@ -149,6 +149,8 @@ describe("openapi/v1.json", () => {
   it("is advertised by GET /v1/help", () => {
     expect(help.openapi).toBe(`${ORIGIN}/v1/openapi.json`);
     expect(help.routes["GET /v1/openapi.json"]).toContain("no auth");
+    expect(help.gateway_openapi).toBe(`${ORIGIN}/v1/openapi-gateway.json`);
+    expect(help.sop.join("\n")).toContain(`import ${ORIGIN}/v1/openapi-gateway.json, not openapi.json, and bind the gateway credential to ${ORIGIN} only`);
   });
 });
 
@@ -260,6 +262,20 @@ describe("gateway catalog", () => {
       { responses: { Bytes: { content: { "application/octet-stream": {} } } } },
     ))).toEqual(["synthetic returns application/octet-stream"]);
     expect(() => gatewayShapeViolations(syntheticDoc({ responses: { "200": { $ref: "#/components/responses/Missing" } } }))).toThrow("unresolvable");
+  });
+
+  it("steers publishing searches to grants and the skill", async () => {
+    const doc = await gatewayOpenapiResponse(SPLIT_ENV).json() as { paths: Record<string, Record<string, { summary: string; description: string }>> };
+    for (const [path, method] of [["/v1/grants", "post"], ["/v1/sites/{id}/deployments", "post"]]) {
+      const op = doc.paths[path][method];
+      expect(op.summary.toLowerCase()).toContain("publish");
+      const lead = op.description.split("\n")[0];
+      expect(lead).toContain("helper");
+      expect(lead).toContain("Energon skill");
+    }
+    expect(doc.paths["/v1/grants"].post.summary).toContain("upload a local file");
+    expect(doc.paths["/v1/files/{id}"].get.summary).toContain("stored bytes");
+    expect(doc.paths["/v1/sites/{id}/files/{path}"].get.summary).toContain("stored bytes");
   });
 
   it("strips the gateway marker from both served documents", async () => {
