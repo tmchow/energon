@@ -54,6 +54,7 @@
     "/auth.md": {
       "get": {
         "operationId": "getAuthMarkdown",
+        "x-energon-gateway": false,
         "tags": [
           "discovery"
         ],
@@ -80,6 +81,7 @@
     "/llms.txt": {
       "get": {
         "operationId": "getLlmsTxt",
+        "x-energon-gateway": true,
         "tags": [
           "discovery"
         ],
@@ -106,6 +108,7 @@
     "/v1/help": {
       "get": {
         "operationId": "getHelp",
+        "x-energon-gateway": true,
         "tags": [
           "discovery"
         ],
@@ -133,6 +136,7 @@
     "/v1/health": {
       "get": {
         "operationId": "getHealth",
+        "x-energon-gateway": true,
         "tags": [
           "discovery"
         ],
@@ -159,6 +163,7 @@
     "/v1/openapi.json": {
       "get": {
         "operationId": "getOpenapi",
+        "x-energon-gateway": false,
         "tags": [
           "discovery"
         ],
@@ -183,9 +188,38 @@
         }
       }
     },
+    "/v1/openapi-gateway.json": {
+      "get": {
+        "operationId": "getGatewayOpenapi",
+        "x-energon-gateway": true,
+        "tags": [
+          "discovery"
+        ],
+        "summary": "OpenAPI catalog for tool gateways",
+        "description": "The OpenAPI 3.1 catalog a tool gateway should import. It lists grant, deployment, metadata, and read operations, and leaves out every operation that carries file bytes in the request, returns a zip, runs on the content origin, revokes the calling key, runs the connection flow, or needs an admin key. Local bytes move through upload grants redeemed on the machine that owns the files. servers[0].url is this Energon's PUBLIC_ORIGIN; bind the gateway credential to that origin only. Cacheable for 300 seconds; access-control-allow-origin: *. HEAD is accepted.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The gateway OpenAPI document.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          }
+        }
+      }
+    },
     "/v1/whoami": {
       "get": {
         "operationId": "whoami",
+        "x-energon-gateway": true,
         "tags": [
           "discovery"
         ],
@@ -224,6 +258,7 @@
       },
       "delete": {
         "operationId": "revokeSelf",
+        "x-energon-gateway": false,
         "tags": [
           "discovery"
         ],
@@ -278,6 +313,7 @@
     "/v1/sites": {
       "get": {
         "operationId": "listSites",
+        "x-energon-gateway": true,
         "tags": [
           "sites"
         ],
@@ -360,6 +396,7 @@
       },
       "post": {
         "operationId": "createSite",
+        "x-energon-gateway": true,
         "tags": [
           "sites"
         ],
@@ -487,6 +524,7 @@
     "/v1/files": {
       "get": {
         "operationId": "listFiles",
+        "x-energon-gateway": true,
         "tags": [
           "files"
         ],
@@ -569,6 +607,7 @@
       },
       "post": {
         "operationId": "createFile",
+        "x-energon-gateway": false,
         "tags": [
           "files"
         ],
@@ -720,6 +759,7 @@
       ],
       "get": {
         "operationId": "getFile",
+        "x-energon-gateway": true,
         "tags": [
           "files"
         ],
@@ -798,6 +838,7 @@
       },
       "put": {
         "operationId": "putFile",
+        "x-energon-gateway": false,
         "tags": [
           "files"
         ],
@@ -941,6 +982,7 @@
       },
       "patch": {
         "operationId": "patchFile",
+        "x-energon-gateway": true,
         "tags": [
           "files"
         ],
@@ -1056,6 +1098,7 @@
       },
       "delete": {
         "operationId": "deleteFile",
+        "x-energon-gateway": true,
         "tags": [
           "files"
         ],
@@ -1140,6 +1183,7 @@
     "/v1/export": {
       "get": {
         "operationId": "exportOwned",
+        "x-energon-gateway": false,
         "tags": [
           "cleanup"
         ],
@@ -1218,6 +1262,7 @@
     "/v1/cleanup": {
       "post": {
         "operationId": "cleanup",
+        "x-energon-gateway": true,
         "tags": [
           "cleanup"
         ],
@@ -1325,6 +1370,7 @@
     "/v1/admin/audit": {
       "get": {
         "operationId": "listAdminAudit",
+        "x-energon-gateway": false,
         "tags": [
           "admin"
         ],
@@ -1386,6 +1432,7 @@
     "/v1/admin/tokens": {
       "get": {
         "operationId": "listAdminTokens",
+        "x-energon-gateway": false,
         "tags": [
           "admin"
         ],
@@ -1455,6 +1502,7 @@
     "/v1/admin/tokens/revoke": {
       "post": {
         "operationId": "revokeAdminTokens",
+        "x-energon-gateway": false,
         "tags": [
           "admin"
         ],
@@ -1545,6 +1593,7 @@
     "/v1/admin/cleanup": {
       "post": {
         "operationId": "adminCleanup",
+        "x-energon-gateway": false,
         "tags": [
           "admin"
         ],
@@ -1653,6 +1702,7 @@
     "/v1/admin/health": {
       "get": {
         "operationId": "getAdminHealth",
+        "x-energon-gateway": false,
         "tags": [
           "admin"
         ],
@@ -1694,6 +1744,7 @@
     "/v1/admin/quota/recompute": {
       "post": {
         "operationId": "recomputePlatformQuota",
+        "x-energon-gateway": false,
         "tags": [
           "admin"
         ],
@@ -1735,6 +1786,7 @@
     "/v1/admin/sweep": {
       "post": {
         "operationId": "sweepExpiredNow",
+        "x-energon-gateway": false,
         "tags": [
           "admin"
         ],
@@ -1776,6 +1828,7 @@
     "/v1/admin/gates/unlock": {
       "post": {
         "operationId": "unlockShareGate",
+        "x-energon-gateway": false,
         "tags": [
           "admin"
         ],
@@ -1850,6 +1903,7 @@
     "/v1/connections": {
       "post": {
         "operationId": "startConnection",
+        "x-energon-gateway": false,
         "tags": [
           "discovery"
         ],
@@ -1939,6 +1993,7 @@
     "/v1/connections/{id}/token": {
       "post": {
         "operationId": "exchangeConnection",
+        "x-energon-gateway": false,
         "tags": [
           "discovery"
         ],
@@ -2092,6 +2147,7 @@
       ],
       "get": {
         "operationId": "getSite",
+        "x-energon-gateway": true,
         "tags": [
           "sites"
         ],
@@ -2165,6 +2221,7 @@
       },
       "patch": {
         "operationId": "patchSite",
+        "x-energon-gateway": true,
         "tags": [
           "sites"
         ],
@@ -2281,6 +2338,7 @@
       },
       "delete": {
         "operationId": "deleteSite",
+        "x-energon-gateway": true,
         "tags": [
           "sites"
         ],
@@ -2357,6 +2415,7 @@
       ],
       "get": {
         "operationId": "getSiteFile",
+        "x-energon-gateway": true,
         "tags": [
           "sites"
         ],
@@ -2434,6 +2493,7 @@
       },
       "put": {
         "operationId": "putSiteFile",
+        "x-energon-gateway": false,
         "tags": [
           "sites"
         ],
@@ -2553,6 +2613,7 @@
       },
       "delete": {
         "operationId": "deleteSiteFile",
+        "x-energon-gateway": true,
         "tags": [
           "sites"
         ],
@@ -2645,6 +2706,7 @@
       ],
       "post": {
         "operationId": "importSite",
+        "x-energon-gateway": false,
         "tags": [
           "sites"
         ],
@@ -2781,6 +2843,7 @@
       ],
       "get": {
         "operationId": "exportSite",
+        "x-energon-gateway": false,
         "tags": [
           "sites"
         ],
@@ -2880,6 +2943,7 @@
     "/v1/grants": {
       "post": {
         "operationId": "mintGrant",
+        "x-energon-gateway": true,
         "tags": [
           "grants"
         ],
@@ -2998,6 +3062,7 @@
     "/v1/grants/{id}": {
       "get": {
         "operationId": "getGrant",
+        "x-energon-gateway": true,
         "tags": [
           "grants"
         ],
@@ -3062,6 +3127,7 @@
       ],
       "post": {
         "operationId": "createDeployment",
+        "x-energon-gateway": true,
         "tags": [
           "deployments"
         ],
@@ -3203,6 +3269,7 @@
       ],
       "get": {
         "operationId": "getDeployment",
+        "x-energon-gateway": true,
         "tags": [
           "deployments"
         ],
@@ -3293,6 +3360,7 @@
       },
       "delete": {
         "operationId": "cancelDeployment",
+        "x-energon-gateway": true,
         "tags": [
           "deployments"
         ],
@@ -3404,6 +3472,7 @@
       ],
       "put": {
         "operationId": "uploadDeploymentFile",
+        "x-energon-gateway": false,
         "tags": [
           "deployments"
         ],
@@ -3557,6 +3626,7 @@
       ],
       "put": {
         "operationId": "uploadDeploymentArchive",
+        "x-energon-gateway": false,
         "tags": [
           "deployments"
         ],
@@ -3710,6 +3780,7 @@
       ],
       "post": {
         "operationId": "prepareDeployment",
+        "x-energon-gateway": true,
         "tags": [
           "deployments"
         ],
@@ -3830,6 +3901,7 @@
       ],
       "post": {
         "operationId": "commitDeployment",
+        "x-energon-gateway": true,
         "tags": [
           "deployments"
         ],
@@ -3932,6 +4004,7 @@
       ],
       "get": {
         "operationId": "getDeploymentGrant",
+        "x-energon-gateway": false,
         "tags": [
           "grants"
         ],
@@ -4047,6 +4120,7 @@
       ],
       "put": {
         "operationId": "uploadDeploymentGrantFile",
+        "x-energon-gateway": false,
         "tags": [
           "grants"
         ],
@@ -4197,6 +4271,7 @@
       ],
       "put": {
         "operationId": "uploadDeploymentGrantArchive",
+        "x-energon-gateway": false,
         "tags": [
           "grants"
         ],
@@ -4347,6 +4422,7 @@
       ],
       "post": {
         "operationId": "prepareDeploymentGrant",
+        "x-energon-gateway": false,
         "tags": [
           "grants"
         ],
@@ -4464,6 +4540,7 @@
       ],
       "post": {
         "operationId": "commitDeploymentGrant",
+        "x-energon-gateway": false,
         "tags": [
           "grants"
         ],

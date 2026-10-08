@@ -19,7 +19,7 @@ import { cleanupResponse } from "./cleanup";
 import { AGENT_SKILLS_PREFIX, agentSkillsResponse } from "./agent-skills";
 import { llmsResponse } from "./llms";
 import { authMarkdownResponse } from "./auth-doc";
-import { openapiResponse } from "./openapi";
+import { gatewayOpenapiResponse, openapiResponse } from "./openapi";
 import { PRODUCT, RESERVED_HANDLES } from "./config";
 import { ensureSchema } from "./db";
 import { sweepExpired } from "./expire";
@@ -136,6 +136,7 @@ const DISCOVERY_ROUTES: readonly PlainRoute[] = [
   { path: "/auth.md", methods: getOrHead((c) => authMarkdownResponse(c.env)), strict: true },
   { path: "/v1/help", methods: { GET: (c) => json(helpBody(publicOrigin(c.env), c.env)) }, strict: true },
   { path: "/v1/openapi.json", methods: getOrHead((c) => openapiResponse(c.env)), strict: true },
+  { path: "/v1/openapi-gateway.json", methods: getOrHead((c) => gatewayOpenapiResponse(c.env)), strict: true },
   { path: "/v1/health", methods: HEALTH, strict: true },
   { path: /^\/static\/ui\//, methods: getOrHead((c) => serveUiAsset(c.env, c.request)), strict: true },
   { path: "/favicon.svg", methods: getOrHead(serveLogo) },

@@ -569,6 +569,7 @@ export function helpBody(origin: string, env?: Env): unknown {
       "GET /v1/help": "this document, no auth",
       "GET /v1/health": "liveness, no auth",
       "GET /v1/openapi.json": "OpenAPI 3.1 HTTP contract, no auth",
+      "GET /v1/openapi-gateway.json": "OpenAPI catalog for tool gateways without byte uploads, exports, or admin operations, no auth",
       "GET /v1/whoami": "token label, owner email, expires_at (null = never), scope (account|admin), and admin (true only for an admin-scoped token whose owner is still on ADMIN_EMAILS)",
       "DELETE /v1/whoami": "revoke the calling token (self only); later calls with it are 401",
       "POST /v1/sites": '{ "slug", "password"?: string, "write_password"?: string, "ttl"?: string, "write_policy"?: "owner"|"org", "duplicate_from"?: id }',

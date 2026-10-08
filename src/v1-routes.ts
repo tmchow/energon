@@ -48,7 +48,7 @@ import type { Env } from "./types";
 import { withUpload } from "./upload";
 import { deploymentApi, importSiteArchive } from "./site-deployment-api";
 
-export const V1_PRE_SCHEMA_LITERALS = ["/v1/help", "/v1/openapi.json", "/v1/health"] as const;
+export const V1_PRE_SCHEMA_LITERALS = ["/v1/help", "/v1/openapi.json", "/v1/openapi-gateway.json", "/v1/health"] as const;
 
 export const V1_CONNECTION_TOKEN = /^\/v1\/connections\/([^/]+)\/token$/;
 export const V1_LOOSE_ONE = /^\/v1\/files\/([^/]+)(?:\/[^/]+)?$/;
