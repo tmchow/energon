@@ -6,13 +6,14 @@ const CONTENT_ORIGIN_PATH_PREFIX = "/_deployment-grants/";
 const GATEWAY_MARKER = "x-energon-gateway";
 const METHODS = ["get", "post", "put", "patch", "delete"] as const;
 
-type PathItem = Record<string, unknown>;
+type Operation = Record<string, unknown>;
+type PathItem = Record<string, unknown> & Partial<Record<(typeof METHODS)[number], Operation>>;
 type Document = { paths: Record<string, PathItem>; tags: { name: string }[] };
 
 function document(): Document {
   const doc: Document = structuredClone(spec);
   for (const item of Object.values(doc.paths)) {
-    for (const method of METHODS) delete (item[method] as Record<string, unknown> | undefined)?.[GATEWAY_MARKER];
+    for (const method of METHODS) delete item[method]?.[GATEWAY_MARKER];
   }
   return doc;
 }
@@ -35,20 +36,27 @@ export function openapiResponse(env: Env): Response {
   return serve(doc, env);
 }
 
+let gatewayDocument: Document | null = null;
+
 // Opt-in: an operation reaches gateways only when openapi/v1.json marks it true.
-export function gatewayOpenapiResponse(env: Env): Response {
+function buildGatewayDocument(): Document {
   const doc = document();
+  const source = spec.paths as Record<string, PathItem>;
   const paths: Record<string, PathItem> = {};
   const used = new Set<string>();
-  for (const [path, source] of Object.entries(spec.paths as Record<string, PathItem>)) {
-    const item = doc.paths[path];
+  for (const [path, item] of Object.entries(doc.paths)) {
     for (const method of METHODS) {
-      const op = source[method] as Record<string, unknown> | undefined;
+      const op = source[path][method];
       if (!op) continue;
       if (op[GATEWAY_MARKER] === true) for (const tag of (op.tags as string[] | undefined) ?? []) used.add(tag);
       else delete item[method];
     }
     if (METHODS.some((method) => item[method])) paths[path] = item;
   }
-  return serve({ ...doc, paths, tags: doc.tags.filter((tag) => used.has(tag.name)) }, env);
+  return { ...doc, paths, tags: doc.tags.filter((tag) => used.has(tag.name)) };
+}
+
+export function gatewayOpenapiResponse(env: Env): Response {
+  gatewayDocument ??= buildGatewayDocument();
+  return serve(gatewayDocument, env);
 }

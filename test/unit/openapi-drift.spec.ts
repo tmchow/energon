@@ -240,7 +240,7 @@ describe("gateway catalog", () => {
       expect(Object.values(doc.paths).some((item) => "servers" in item)).toBe(false);
       expect(doc.servers).toEqual([{ url: env.PUBLIC_ORIGIN }]);
       for (const item of Object.values(doc.paths)) expect(METHODS.some((method) => item[method])).toBe(true);
-      expect(doc.paths["/v1/files/{id}"].parameters).toEqual(spec.paths["/v1/files/{id}"] && (spec.paths["/v1/files/{id}"] as Record<string, unknown>).parameters);
+      expect(doc.paths["/v1/files/{id}"].parameters).toEqual((spec.paths["/v1/files/{id}"] as Record<string, unknown>).parameters);
       const used = new Set(Object.values(doc.paths).flatMap((item) => METHODS.flatMap((method) => (item[method] as Operation | undefined)?.tags ?? [])));
       expect(doc.tags.map((tag) => tag.name).sort()).toEqual([...used].sort());
     }
