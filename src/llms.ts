@@ -1,3 +1,4 @@
+import { agentSkillsInstallLine } from "./agent-skills";
 import { PRODUCT, formatBytes } from "./config";
 import { grantLlmsSection, hubGrantSection } from "./grant-protocol";
 import { guestWriteLlmsBody, hubGuestWriteSection } from "./guest-write-protocol";
@@ -10,6 +11,7 @@ export function llmsTxt(origin: string, env?: Env): string {
   const id = identityFromEnv(env || {});
   const policy = instancePolicy(env || {});
   const content = env?.CONTENT_ORIGIN?.trim() || origin;
+  const wellKnown = agentSkillsInstallLine(origin, env);
   const presets = policy.presets.map((p) => `${p.id} (${p.label})`).join(", ");
   return `# ${PRODUCT}
 
@@ -61,7 +63,7 @@ ${hubGrantSection(content)}
 ## Optional
 
 - Agent skill for this Energon: install at user (global) scope with \`npx skills add ${id.repo} --skill ${id.skill} -g\`, or add marketplace \`${id.repo}\` (\`https://github.com/${id.repo}\`) and install \`${id.plugin}\` (\`${id.plugin}@${id.marketplace}\`). Do not install at project or workspace scope unless the human asked for that. The skill files name this origin (${id.origin}). A deployment repository generates its own skill with \`npm run skill:init\`. Private repository installation and updates require GitHub read access in the installing client, separate from the Energon API token. If private marketplaces are unsupported, install a local authenticated copy of the generated publish skill; if skills are unavailable, use this document and /v1/help directly. Never make the repository public to install it.
-- WebMCP tools register only on the signed-in hub. Agents that are not in that tab should use HTTP + the token.
+${wellKnown ? `- ${wellKnown}\n` : ""}- WebMCP tools register only on the signed-in hub. Agents that are not in that tab should use HTTP + the token.
 `;
 }
 

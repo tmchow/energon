@@ -26,6 +26,48 @@ describe("host and route contracts", () => {
     }
   });
 
+  it("serves the rendered skill at the content origin's well-known path and not on the hub", async () => {
+    const base = "https://energon.example.com/.well-known/agent-skills";
+    const index = await req(`${base}/index.json`);
+    expect(index.status).toBe(200);
+    expect(index.headers.get("content-type")).toContain("application/json");
+    expect(index.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(index.headers.get("access-control-allow-origin")).toBe("*");
+    expect(index.headers.get("cache-control")).toBe("public, max-age=300");
+    const body = (await index.json()) as { skills: { name: string; description: string; files: string[] }[] };
+    expect(body.skills).toHaveLength(1);
+    const [skill] = body.skills;
+    expect(skill.name).toBe("energon");
+    expect(skill.description).toContain("https://hub.energon.example.com");
+    expect(skill.files).toEqual(expect.arrayContaining(["SKILL.md", "references/api.md"]));
+
+    for (const file of skill.files) {
+      const type = file.endsWith(".py") ? "text/x-python; charset=utf-8" : "text/markdown; charset=utf-8";
+      for (const method of ["GET", "HEAD"]) {
+        const res = await req(`${base}/energon/${file}`, { method });
+        expect(res.status, `${method} ${file}`).toBe(200);
+        expect(res.headers.get("content-type")).toBe(type);
+        expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+        expect(res.headers.get("access-control-allow-origin")).toBe("*");
+        expect(res.headers.get("cache-control")).toBe("public, max-age=300");
+        const text = await res.text();
+        if (method === "HEAD") expect(text).toBe("");
+        else expect(text).not.toContain("{{");
+      }
+    }
+
+    const skillMd = await (await req(`${base}/energon/SKILL.md`)).text();
+    expect(skillMd).toContain("https://hub.energon.example.com");
+    expect(skillMd).toContain("ENERGON_TOKEN");
+    expect((await req(`${base}/index.json`, { method: "POST" })).status).toBe(405);
+    expect((await req(`${base}/energon/secrets.txt`)).status).toBe(404);
+    expect((await req(`${base}/`)).status).toBe(404);
+
+    expect((await req("/.well-known/agent-skills/index.json")).status).toBe(200);
+    expect((await req("https://hub.energon.example.com/.well-known/agent-skills/index.json")).status).toBe(404);
+    expect((await json("/v1/help")).body.agent_skills_url).toBe("https://energon.example.com/.well-known/agent-skills/");
+  });
+
   it("blocks the human hub on workers.dev and keeps /v1/health up", async () => {
     const hub = await req("https://energon.workers.dev/");
     expect(hub.status).toBe(403);

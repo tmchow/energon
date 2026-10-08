@@ -10,6 +10,7 @@
   "skill": "energon",
   "marketplace": "energon",
   "install": "energon@energon",
+  "agent_skills_url": "https://energon.example.com/.well-known/agent-skills/",
   "auth": "Authorization: Bearer ee_live_<secret>",
   "token_prefix": "ee_live_",
   "limits": {
@@ -171,6 +172,7 @@
     "When your task is done and nothing else will use this token, DELETE /v1/whoami revokes it (self only: it cannot list or revoke other tokens). Later calls with it are 401. Do not do this to a token the human stored for reuse, such as CI.",
     "Private plugin installation and updates need GitHub read access in the installing client, separate from the Energon API token. If private marketplaces are unsupported, use a local authenticated copy of the generated publish skill or the documented HTTP API. Never make the repository public to install it.",
     "This Energon's skill is energon (install energon@energon). The origin is https://hub.energon.example.com. Do not guess another Energon.",
+    "Well-known skill, no repository access needed: `npx skills add https://energon.example.com -g` installs this Energon's rendered skill from https://energon.example.com/.well-known/agent-skills/index.json. A tool gateway can load the same URL.",
     "The HTTP schema (paths, request and response bodies, status codes, error codes) is https://hub.energon.example.com/v1/openapi.json. This document describes this Energon: origins, token env, retention presets, token lifetimes, limits.",
     "Decide: a site (named folder of files) vs a file (one file, short id). Public URLs are /{handle}/s/{id}/{slug}/ and /{handle}/f/{id}/{filename}. Both stay put when you PUT again.",
     "New site: POST /v1/sites with the human's slug and optional ttl (30m, 1h, 1d, 7d, 14d, 30d, 60d, 90d, 180d, 365d, never). Omit ttl to use never. Response includes id. Same slug always creates a new site (new id).",

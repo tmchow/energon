@@ -16,6 +16,7 @@ import { hubAdminHealthResponse, hubAdminRecomputeResponse, hubAdminSweepRespons
 import { hubAdminTokensListResponse, revokeAdminTokens } from "./admin-tokens";
 import { adminResponse } from "./admin";
 import { cleanupResponse } from "./cleanup";
+import { AGENT_SKILLS_PREFIX, agentSkillsResponse } from "./agent-skills";
 import { llmsResponse } from "./llms";
 import { authMarkdownResponse } from "./auth-doc";
 import { openapiResponse } from "./openapi";
@@ -316,6 +317,9 @@ function enforceContentHost(request: Request, env: Env, url: URL, configuredCont
     if (!configuredContentOrigin) return json(CONTENT_ORIGIN_NOT_CONFIGURED, 503);
     const status = method === "PUT" || method === "DELETE" ? 307 : 302;
     return Response.redirect(`${configuredContentOrigin}${path}${url.search}`, status);
+  }
+  if (path.startsWith(AGENT_SKILLS_PREFIX) && (onContentHost || isLocalHost(url.hostname))) {
+    return agentSkillsResponse(request, env, path);
   }
   if (!onContentHost) return null;
   if (path === "/llms.txt" && (method === "GET" || method === "HEAD")) return llmsResponse(env, "content");
