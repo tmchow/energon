@@ -177,6 +177,19 @@ describe("shared skill renderer", () => {
     }
     expect(render(skillTemplates["SKILL.md.tmpl"], vars)).toContain("energon.acme.test");
   });
+
+  it("renders the upload helper with the instance identity and no leftover placeholders", () => {
+    const helper = render(skillTemplates["scripts/energon_publish.py.tmpl"], {
+      SKILL_NAME: "acme-energon",
+      ORIGIN: "https://energon.acme.test",
+      TOKEN_ENV: "ACME_ENERGON_TOKEN",
+      TOKEN_PREFIX: "ee_live_",
+      PRODUCT: "Energon",
+    });
+    expect(helper).not.toMatch(/\{\{[A-Z0-9_]+\}\}/);
+    expect(helper).toContain('DEFAULT_ORIGIN = "https://energon.acme.test"');
+    expect(helper).toContain('TOKEN_ENV = "ACME_ENERGON_TOKEN"');
+  });
 });
 
 describe("skill brand", () => {

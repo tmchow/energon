@@ -39,7 +39,7 @@ describe("host and route contracts", () => {
     const [skill] = body.skills;
     expect(skill.name).toBe("energon");
     expect(skill.description).toContain("https://hub.energon.example.com");
-    expect(skill.files).toEqual(expect.arrayContaining(["SKILL.md", "references/api.md"]));
+    expect(skill.files).toEqual(expect.arrayContaining(["SKILL.md", "references/api.md", "scripts/energon_publish.py"]));
 
     for (const file of skill.files) {
       const type = file.endsWith(".py") ? "text/x-python; charset=utf-8" : "text/markdown; charset=utf-8";
