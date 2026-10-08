@@ -9,6 +9,7 @@ import {
   rmSync,
   statSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
@@ -245,6 +246,39 @@ describe("upload helper", () => {
     expect(put.headers["user-agent"]).toMatch(/^energon-publish\//);
     expect(existsSync(inspect.json.state_path)).toBe(false);
     expect(existsSync(inspect.json.archive_path)).toBe(false);
+  });
+
+  it("deletes abandoned state and archives older than a day, keeping fresh ones", async () => {
+    const { helper, stateDir, site } = setup();
+    mkdirSync(stateDir, { recursive: true });
+    const day = 24 * 60 * 60;
+    for (const [name, age] of [["stale", 2 * day], ["recent", 60]] as const) {
+      for (const ext of ["json", "zip"]) {
+        const path = join(stateDir, `${name}.${ext}`);
+        writeFileSync(path, "{}");
+        const when = Date.now() / 1000 - age;
+        utimesSync(path, when, when);
+      }
+    }
+    const inspect = await run(helper, ["inspect", site, "--state-dir", stateDir]);
+    expect(inspect.status, inspect.stderr).toBe(0);
+    expect(existsSync(join(stateDir, "stale.json"))).toBe(false);
+    expect(existsSync(join(stateDir, "stale.zip"))).toBe(false);
+    expect(existsSync(join(stateDir, "recent.json"))).toBe(true);
+    expect(existsSync(inspect.json.archive_path)).toBe(true);
+  });
+
+  it("starts a new transfer when the saved state came from another host", async () => {
+    const { helper, stateDir, site } = setup();
+    const first = await run(helper, ["inspect", site, "--state-dir", stateDir]);
+    expect(first.status, first.stderr).toBe(0);
+    const saved = JSON.parse(readFileSync(first.json.state_path, "utf8"));
+    expect(typeof saved.host).toBe("string");
+    writeFileSync(first.json.state_path, JSON.stringify({ ...saved, host: "some-other-host", deployment_id: "D9" }));
+    const second = await run(helper, ["inspect", site, "--state-dir", stateDir]);
+    expect(second.status, second.stderr).toBe(0);
+    expect(second.json.deployment_id).toBeNull();
+    expect(second.json.idempotency_key).not.toBe(first.json.idempotency_key);
   });
 
   it("still publishes the persisted archive when the folder later grows past the cap", async () => {

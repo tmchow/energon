@@ -13,6 +13,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import sys
 import tempfile
 import time
@@ -36,6 +37,8 @@ SECRET_PATTERN = re.compile("(?:" + "|".join(re.escape(p) for p in ("grant_", "d
                             + ")[A-Za-z0-9]{16,}")
 FIXED_ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 SESSION_URLS = ("status_url", "archive_url", "prepare_url", "commit_url")
+# Sessions expire after an hour, so older leftovers can never resume; they only keep private archives on disk.
+STALE_STATE_SECONDS = 24 * 60 * 60
 
 
 class Fail(Exception):
@@ -264,7 +267,19 @@ def state_root(arg):
                                "energon-publish")
     os.makedirs(root, mode=0o700, exist_ok=True)
     os.chmod(root, 0o700)
+    prune_stale(root)
     return root
+
+
+def prune_stale(root):
+    cutoff = time.time() - STALE_STATE_SECONDS
+    for name in os.listdir(root):
+        path = os.path.join(root, name)
+        try:
+            if os.path.isfile(path) and not os.path.islink(path) and os.path.getmtime(path) < cutoff:
+                os.remove(path)
+        except OSError:
+            pass
 
 
 def state_paths(root, folder):
@@ -306,6 +321,8 @@ def prepare_folder(folder, include_hidden, state_dir, rebuild=False, restart=Fal
         fail("not_a_folder", folder + " is not a folder.")
     state_path, archive_path = state_paths(state_root(state_dir), folder)
     previous = None if restart else load_state(state_path)
+    if previous and previous.get("host") != socket.gethostname():
+        previous = None  # State from another machine is a new local transfer, never a resume.
     if previous and os.path.isfile(archive_path) and not (rebuild and not previous.get("deployment_id")):
         if previous.get("include_hidden") != include_hidden:
             fail("state_mismatch", "The persisted archive was built " + ("with" if previous.get("include_hidden") else "without")
@@ -318,7 +335,7 @@ def prepare_folder(folder, include_hidden, state_dir, rebuild=False, restart=Fal
     os.replace(tmp, archive_path)
     # Same bytes keep the same key (and any recorded session base) so a replay matches; new bytes need a new key.
     state = previous if previous and previous.get("archive") == archive else {"idempotency_key": new_key()}
-    state.update(folder=os.path.realpath(folder), include_hidden=include_hidden, files=files,
+    state.update(host=socket.gethostname(), folder=os.path.realpath(folder), include_hidden=include_hidden, files=files,
                  fingerprint=fingerprint(folder, files), archive=archive, archive_path=archive_path)
     save_state(state_path, state)
     return state, state_path, True
