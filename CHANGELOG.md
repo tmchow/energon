@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.0](https://github.com/tmchow/energon/compare/v1.12.0...v1.13.0) (2026-10-08)
+
+
+### Features
+
+* **hub:** call agent credentials keys and move /tokens to /keys ([#155](https://github.com/tmchow/energon/issues/155)) ([525edc9](https://github.com/tmchow/energon/commit/525edc9410c54da2223b98c318c4137d32ac76a9))
+
 ## [1.12.0](https://github.com/tmchow/energon/compare/v1.11.0...v1.12.0) (2026-10-08)
 
 
