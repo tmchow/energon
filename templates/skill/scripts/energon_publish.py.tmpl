@@ -412,8 +412,12 @@ def cmd_publish_folder(args):
     state, state_path, built = prepare_folder(args.folder, args.include_hidden, args.state_dir)
     note_stripped(state)
     if not built:
-        current_files = folder_files(args.folder, state["include_hidden"])
-        if fingerprint(args.folder, current_files) != state.get("fingerprint"):
+        # Only decides a warning; the persisted archive is what publishes, so the live folder must not block it.
+        try:
+            changed = fingerprint(args.folder, folder_files(args.folder, state["include_hidden"])) != state.get("fingerprint")
+        except Fail:
+            changed = True
+        if changed:
             note("The folder changed since inspect; publishing the archive inspect built (sha256 "
                  + state["archive"]["sha256"] + "). Run inspect --restart first to publish current content.")
 

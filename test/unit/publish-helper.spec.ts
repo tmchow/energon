@@ -247,6 +247,21 @@ describe("upload helper", () => {
     expect(existsSync(inspect.json.archive_path)).toBe(false);
   });
 
+  it("still publishes the persisted archive when the folder later grows past the cap", async () => {
+    const { helper, stateDir, site } = setup();
+    const stub = await stubEnergon();
+    const inspect = await run(helper, ["inspect", site, "--state-dir", stateDir]);
+    expect(inspect.status).toBe(0);
+    for (let i = 0; i < 201; i++) writeFileSync(join(site, `extra-${i}.txt`), "x");
+    const publish = await run(helper, ["publish-folder", site, "--site-id", "S1", "--origin", stub.origin, "--state-dir", stateDir], {
+      env: { [TOKEN_ENV]: TOKEN },
+    });
+    expect(publish.status, publish.stderr).toBe(0);
+    expect(publish.json).toMatchObject({ state: "committed" });
+    expect(publish.stderr).toMatch(/changed since inspect/);
+    expect(sha256(stub.archived()!)).toBe(inspect.json.archive.sha256);
+  });
+
   it("leaves out hidden paths and symlinks unless --include-hidden, which still never adds a symlink", async () => {
     const { root, helper, stateDir, site } = setup();
     const outside = join(tempDir("energon-outside-"), "secret.txt");
