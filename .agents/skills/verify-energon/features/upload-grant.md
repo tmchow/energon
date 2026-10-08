@@ -12,6 +12,7 @@ An upload grant lets a token holder hand a machine without a token a short-lived
 - `grant-protected` creates a new file with the share password set at mint, so it is gated from the moment it lands.
 - `grant-checksum` rejects bytes that do not match `sha256` with `400 checksum_mismatch` and leaves the grant usable.
 - `grant-revoked` ends the grant with `410 grant_failed` (`reason: token_revoked`) once the minting token is revoked.
+- `grant-conditional` binds a `file` target to `expected_version`; if the file is replaced after mint, the upload writes nothing and ends the grant `failed` with `last_error` `file_conflict`.
 - `grant-status` shows `unused`, `uploading` (an upload in flight), `consumed` with `url` and `result_id`, `failed` with `last_error`, or `expired` to any token of the minting account.
 
 ## How to get to it (user POV)
@@ -36,6 +37,7 @@ Preconditions:
 - **Default — Revoked token ends grants.** `bin/mint-token grant-revoke`, mint a grant with that token, `DELETE $ORIGIN/v1/whoami` with it, then PUT → `410` `grant_failed`, `reason` `token_revoked`. Status with `$TOKEN` from the same account shows `failed`.
 - **Default — Protected new file.** Mint `{"target":{"type":"new_file","filename":"locked.txt","password":"grant-pw"}}` → `201`, `target.password` is `grant-pw`. PUT `locked` → `201`. Public GET of `url` without a password → `401` (gate page); with `X-Energon-Password: grant-pw` → `locked`. Status `target` has no `password`.
 - **Default — Discovery.** `GET $ORIGIN/llms.txt` contains `/_grants/` and `Authorization: Bearer <secret>`.
+- **Default — Stale grant does not overwrite newer work.** `POST /v1/files` with `X-Filename: plan.md` and body `older draft` (`content_generation` `1`). Mint `{"target":{"type":"file","id":"$FILE_ID","expected_version":1}}` → `201`, `target.expected_version` is `1`. `PUT /v1/files/$FILE_ID` with `$TOKEN` and body `newer work` → `200`, `content_generation` `2`. Tokenless PUT of `older draft, revised` to the grant `upload_url` → `410` `grant_failed`, `reason` `file_conflict`. Status → `failed`, `last_error` `file_conflict`. Public GET of the file still returns `newer work`. Minting again with `"expected_version":1` → `409 file_conflict` with `content_generation` `2`.
 - **Extra (grant-replace) — Replace keeps type.** `POST /v1/files` with `X-Filename: NOTES` and `content-type: text/plain`, mint `{"target":{"type":"file","id":"$FILE_ID"}}`, PUT with `content-type: text/html` → `200`, `content_type` still `text/plain`. Drive when replacement or content-type handling changes.
 - **Extra (grant-mint) — Errors.** `"expires_in":"2h"` → `400 bad_ttl`. A wrong secret and an unknown id both → `404 grant_invalid` with identical bodies. Drive when mint validation or secret checks change.
 - **Proof.** Default: mint body (secret redacted in notes), upload `201`, public GET bytes, second PUT `410` with `result_id`, status `consumed` with `result_id`, protected file `401` then bytes with the password, checksum `400` then `201`, revoked `410`.

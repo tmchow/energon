@@ -41,6 +41,7 @@ import {
   patchSite,
   postSite,
   putSiteFile,
+  rejectSiteExpectedVersion,
   serveSite,
 } from "./sites";
 import { sweepStaleTmp, withUpload } from "./upload";
@@ -415,6 +416,7 @@ async function mintAccountToken(c: RouteContext, actor: Actor): Promise<Response
 
 async function putAccountSiteFile(c: RouteContext, actor: Actor): Promise<Response> {
   const { request, env, ctx, params } = c;
+  rejectSiteExpectedVersion(request);
   const result = await withUpload(request, env, instancePolicy(env).fileBytes, publicOrigin(env), (upload) => putSiteFile(
     env,
     ctx,

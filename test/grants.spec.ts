@@ -279,6 +279,8 @@ describe("minting and reading upload grants", () => {
     expect((await mintGrant(token, { target: { type: "new_file", filename: "a.txt", ttl: "forever" } })).body.error).toBe("bad_ttl");
     expect((await mintGrant(token, { target: { type: "new_file", filename: "a.txt", password: "x".repeat(129) } })).body.error).toBe("bad_password");
     expect((await mintGrant(token, { target: { type: "new_file", filename: "a.txt", password: 7 } })).status).toBe(400);
+    expect((await mintGrant(token, { target: { type: "file", id: "Abc123", expected_version: "1" } })).body.error).toBe("bad_expected_version");
+    expect((await mintGrant(token, { target: { type: "site_path", site_id: "Abc123", path: "a.txt", expected_version: 1 } })).body.error).toBe("bad_target");
   });
 
   it("caps max_bytes at the instance file limit", async () => {
@@ -353,14 +355,43 @@ describe("redeeming upload grants", () => {
     expect(row).toEqual({ file_password: null, file_write_password: null });
   });
 
-  it("replaces an existing loose file at the same URL", async () => {
+  it("replaces an existing loose file at the same URL, unconditionally without expected_version", async () => {
     const token = await mint("redeem-replace");
     const created = await json("/v1/files", { method: "POST", headers: auth(token, { "X-Filename": "r.txt" }), body: "old" });
     const minted = await mintGrant(token, { target: { type: "file", id: created.body.id } });
+    await json(`/v1/files/${created.body.id}`, { method: "PUT", headers: auth(token), body: "newer" });
     const put = await redeem(minted.body.upload_url, minted.body.secret, "new");
     expect(put.status).toBe(200);
-    expect(put.body.url).toBe(created.body.url);
+    expect(put.body).toMatchObject({ url: created.body.url, content_generation: 3 });
     expect(await (await SELF.fetch(created.body.url)).text()).toBe("new");
+  });
+
+  it("refuses a grant minted for an older version once newer work has landed, and ends it", async () => {
+    const token = await mint("redeem-conditional");
+    const created = await json("/v1/files", { method: "POST", headers: auth(token, { "X-Filename": "plan.md" }), body: "older draft" });
+    const minted = await mintGrant(token, { target: { type: "file", id: created.body.id, expected_version: 1 } });
+    expect(minted.body.target).toEqual({ type: "file", id: created.body.id, expected_version: 1 });
+    const newer = await json(`/v1/files/${created.body.id}`, { method: "PUT", headers: auth(token), body: "newer work" });
+    expect(newer.body.content_generation).toBe(2);
+
+    const put = await redeem(minted.body.upload_url, minted.body.secret, "older draft, revised");
+    expect(put.status).toBe(410);
+    expect(put.body).toMatchObject({ error: "grant_failed", reason: "file_conflict" });
+    expect((await json(`/v1/grants/${minted.body.id}`, { headers: auth(token) })).body).toMatchObject({
+      state: "failed",
+      last_error: "file_conflict",
+      target: { type: "file", id: created.body.id, expected_version: 1 },
+    });
+    expect(await (await SELF.fetch(created.body.url)).text()).toBe("newer work");
+    const row = await env.DB.prepare("SELECT content_generation FROM loose_files WHERE id = ?").bind(created.body.id).first<{ content_generation: number }>();
+    expect(row?.content_generation).toBe(2);
+    expect((await redeem(minted.body.upload_url, minted.body.secret, "again")).body.error).toBe("grant_failed");
+
+    const matching = await mintGrant(token, { target: { type: "file", id: created.body.id, expected_version: 2 } });
+    expect((await redeem(matching.body.upload_url, matching.body.secret, "reconciled")).body.content_generation).toBe(3);
+    const staleMint = await mintGrant(token, { target: { type: "file", id: created.body.id, expected_version: 2 } });
+    expect(staleMint.status).toBe(409);
+    expect(staleMint.body).toMatchObject({ error: "file_conflict", content_generation: 3 });
   });
 
   it("keeps the stored type of an extensionless file it replaces", async () => {
@@ -513,6 +544,7 @@ describe("redeeming upload grants", () => {
     const token = await mint("redeem-headers");
     const minted = await mintGrant(token, { target: { type: "new_file", filename: "h.txt" } });
     expect((await redeem(minted.body.upload_url, minted.body.secret, "x", { "x-filename": "evil.html" })).status).toBe(400);
+    expect((await redeem(minted.body.upload_url, minted.body.secret, "x", { "X-Energon-Expected-Version": "1" })).status).toBe(400);
     const options = await SELF.fetch(minted.body.upload_url, { method: "OPTIONS" });
     expect(options.status).toBe(405);
     expect(options.headers.get("allow")).toBe("PUT");

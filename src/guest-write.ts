@@ -43,9 +43,10 @@ import {
   tooLarge,
   type R2ObjectSnapshot,
 } from "./http";
+import { assertGeneration, expectedVersionHeader, generationGuard, throwIfGenerationMoved } from "./files";
 import { contentTypeFor } from "./mime";
 import { instancePolicy } from "./policy";
-import { assertFilePath, assertSlug, getSiteById } from "./sites";
+import { assertFilePath, assertSlug, getSiteById, rejectSiteExpectedVersion } from "./sites";
 import type { Env, SiteRow, WriteAuthority } from "./types";
 import { putUpload, withUpload, type Upload } from "./upload";
 import { filePublicUrl, isFileId, isSiteId, sitePublicUrl, urlFilename } from "./urls";
@@ -61,6 +62,7 @@ type GuestLooseRow = {
   last_written_by: string | null;
   updated_at: string | null;
   write_password_hash: string | null;
+  content_generation: number;
 };
 
 export const FORBIDDEN_PUT_HEADERS = [
@@ -127,7 +129,7 @@ async function guestLoose(
 ): Promise<Response> {
   if (!isFileId(target.id)) throw notFoundFile();
   const row = await env.DB.prepare(
-    `SELECT id, handle, filename, size, content_type, expires_at, created_by, last_written_by, updated_at, write_password_hash
+    `SELECT id, handle, filename, size, content_type, expires_at, created_by, last_written_by, updated_at, write_password_hash, content_generation
      FROM loose_files WHERE id = ?`,
   )
     .bind(target.id)
@@ -151,9 +153,10 @@ async function guestLoose(
     throw notFoundFile();
   }
   if (filenameSeg !== urlFilename(row.filename)) throw notFoundFile();
+  const expectedVersion = expectedVersionHeader(request);
 
   return withUpload(request, env, instancePolicy(env).fileBytes, contentOrigin(env), (upload) =>
-    guestPutLoose(env, ctx, request, target, row, authority, objectPath, upload));
+    guestPutLoose(env, ctx, request, target, row, authority, objectPath, upload, expectedVersion));
 }
 
 async function guestPutLoose(
@@ -165,6 +168,7 @@ async function guestPutLoose(
   authority: WriteAuthority,
   objectPath: string,
   upload: Upload,
+  expectedVersion: number | undefined,
 ): Promise<Response> {
   const policy = instancePolicy(env);
   if (upload.size > policy.fileBytes) throw tooLarge(upload.size, "", policy.fileBytes);
@@ -194,22 +198,29 @@ async function guestPutLoose(
   let previousState: R2ObjectSnapshot | null = null;
   let metadataCommitted = false;
   let wroteObject = false;
+  let contentGeneration = 0;
   const ts = new Date().toISOString();
   try {
+    // After the claim, so file_busy and file_recovery_required outrank a stale generation; before any bytes move.
+    assertGeneration(row.content_generation, expectedVersion);
     reserved = await assertStorageRoom(env.DB, upload.size, row.size, policy.platformBytes);
     previousState = await snapshotR2Object(env, key);
     await putUpload(env.BUCKET, key, upload, { httpMetadata: { contentType: row.content_type } });
     wroteObject = true;
+    const conditional = generationGuard(expectedVersion);
     const updated = await env.DB.prepare(
       `UPDATE loose_files
-       SET size = ?, updated_at = ?, written_via = ?
-       WHERE id = ? AND last_written_by = ? AND write_password_hash = ?`,
+       SET size = ?, updated_at = ?, written_via = ?, content_generation = content_generation + 1
+       WHERE id = ? AND last_written_by = ? AND write_password_hash = ?${conditional.sql}
+       RETURNING content_generation`,
     )
-      .bind(upload.size, ts, WRITTEN_VIA_WRITE_PASSWORD, row.id, claim.token, authority.hash)
-      .run();
+      .bind(upload.size, ts, WRITTEN_VIA_WRITE_PASSWORD, row.id, claim.token, authority.hash, ...conditional.binds)
+      .all<{ content_generation: number }>();
     if (!d1Changed(updated)) {
+      await throwIfGenerationMoved(env, row.id, expectedVersion);
       throw new ApiError(409, "file_write_lost", "The file changed during replacement; retry.");
     }
+    contentGeneration = updated.results[0]!.content_generation;
     metadataCommitted = true;
   } catch (err) {
     if (!metadataCommitted) {
@@ -237,6 +248,7 @@ async function guestPutLoose(
       filename: row.filename,
       size: upload.size,
       content_type: row.content_type,
+      content_generation: contentGeneration,
     },
     200,
   );
@@ -283,6 +295,7 @@ async function guestSite(
   const objectPath = `/${site.handle}/s/${site.id}/${slug}/`;
   const authority = await authorizeWrite(env, request, site.write_password_hash, objectPath);
   if (method === "PUT") rejectForbiddenPutHeaders(request);
+  rejectSiteExpectedVersion(request);
 
   const writer = accountWriter(site.last_written_by, site.created_by);
   if (method === "DELETE") {

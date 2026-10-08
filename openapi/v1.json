@@ -741,6 +741,13 @@
                   "$ref": "#/components/schemas/WritePolicy"
                 },
                 "description": "Who can write this file."
+              },
+              "X-Energon-Content-Generation": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "The content_generation of the file these bytes were read from. Pass it as X-Energon-Expected-Version on a later PUT."
               }
             },
             "content": {
@@ -791,13 +798,16 @@
           "files"
         ],
         "summary": "Replace the bytes; same id and URL",
-        "description": "Raw body (optional X-Filename to rename) or multipart field file (multipart bodies are capped at 25 MB). Does not extend expiry and does not change write_policy; use PATCH for those. 404 if the id does not exist; there is no implicit create.",
+        "description": "Raw body (optional X-Filename to rename) or multipart field file (multipart bodies are capped at 25 MB). Does not extend expiry and does not change write_policy; use PATCH for those. 404 if the id does not exist; there is no implicit create. Send X-Energon-Expected-Version (or multipart expected_version) with the content_generation you last read to replace only if nobody replaced the file since; a mismatch is 409 file_conflict and changes nothing.",
         "parameters": [
           {
             "$ref": "#/components/parameters/XFilename"
           },
           {
             "$ref": "#/components/parameters/XEnergonSetPassword"
+          },
+          {
+            "$ref": "#/components/parameters/XEnergonExpectedVersion"
           }
         ],
         "requestBody": {
@@ -828,11 +838,12 @@
             }
           },
           "400": {
-            "description": "Bad filename, multipart without a file field, or a bad password.",
+            "description": "Bad filename, multipart without a file field, a bad password, or an expected_version that is not a positive integer.",
             "x-error-codes": [
               "bad_filename",
               "missing_file",
-              "bad_password"
+              "bad_password",
+              "bad_expected_version"
             ],
             "content": {
               "application/json": {
@@ -873,11 +884,12 @@
             }
           },
           "409": {
-            "description": "Another write is in progress or landed first; retry. file_recovery_required means an interrupted earlier write left storage unreconciled: do not retry; an administrator must reconcile it (GET /v1/admin/health lists it).",
+            "description": "Another write is in progress or landed first; retry. file_recovery_required means an interrupted earlier write left storage unreconciled: do not retry; an administrator must reconcile it (GET /v1/admin/health lists it). file_conflict: expected_version no longer matches; the body carries the current content_generation. Read the file again and reconcile before replacing; do not retry the same bytes blindly. A file blocked on recovery reports file_recovery_required even when expected_version is stale.",
             "x-error-codes": [
               "file_busy",
               "file_recovery_required",
-              "file_write_lost"
+              "file_write_lost",
+              "file_conflict"
             ],
             "content": {
               "application/json": {
@@ -2422,7 +2434,7 @@
           "sites"
         ],
         "summary": "Create or replace one path with the request body",
-        "description": "Raw bytes, one call per file. Last write wins on this path only; other paths are untouched. Does not extend expiry. The request content-type is a hint; the stored type is sniffed from the path and bytes.",
+        "description": "Raw bytes, one call per file. Last write wins on this path only; other paths are untouched. Does not extend expiry. The request content-type is a hint; the stored type is sniffed from the path and bytes. Sending X-Energon-Expected-Version is 400 bad_expected_version: path writes and imports are not conditional. For a conditional site update, use POST /v1/sites/{id}/deployments with expected_version.",
         "requestBody": {
           "required": true,
           "description": "The file bytes. Capped at GET /v1/help limits.file_bytes.",
@@ -2453,11 +2465,12 @@
             }
           },
           "400": {
-            "description": "Bad slug or path.",
+            "description": "Bad slug or path, or X-Energon-Expected-Version sent to a non-conditional site write.",
             "x-error-codes": [
               "bad_slug",
               "reserved_slug",
-              "bad_path"
+              "bad_path",
+              "bad_expected_version"
             ],
             "content": {
               "application/json": {
@@ -2552,11 +2565,12 @@
             }
           },
           "400": {
-            "description": "Bad slug or path.",
+            "description": "Bad slug or path, or X-Energon-Expected-Version sent to a non-conditional site write.",
             "x-error-codes": [
               "bad_slug",
               "reserved_slug",
-              "bad_path"
+              "bad_path",
+              "bad_expected_version"
             ],
             "content": {
               "application/json": {
@@ -2615,7 +2629,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Sending X-Energon-Expected-Version is 400 bad_expected_version: path writes and imports are not conditional. For a conditional site update, use POST /v1/sites/{id}/deployments with expected_version."
       }
     },
     "/v1/sites/{id}/import": {
@@ -2630,7 +2645,7 @@
           "sites"
         ],
         "summary": "Unpack a zip into the site",
-        "description": "Merge ZIP paths into a complete snapshot. Default synchronous 200. Prefer: respond-async returns 202 with a staged session; prepare until ready and explicitly commit. Import and expansion caps are independent of the export cap.",
+        "description": "Merge ZIP paths into a complete snapshot. Default synchronous 200. Prefer: respond-async returns 202 with a staged session; prepare until ready and explicitly commit. Import and expansion caps are independent of the export cap. Sending X-Energon-Expected-Version is 400 bad_expected_version: path writes and imports are not conditional. For a conditional site update, use POST /v1/sites/{id}/deployments with expected_version.",
         "requestBody": {
           "required": true,
           "description": "A zip archive.",
@@ -2650,14 +2665,15 @@
             }
           },
           "400": {
-            "description": "Bad slug, unreadable or empty zip, unsafe entry path, or too many entries.",
+            "description": "Bad slug, unreadable or empty zip, unsafe entry path, or too many entries, or X-Energon-Expected-Version sent to a non-conditional site write.",
             "x-error-codes": [
               "bad_slug",
               "reserved_slug",
               "invalid_zip",
               "empty_zip",
               "bad_zip_path",
-              "too_many_files"
+              "too_many_files",
+              "bad_expected_version"
             ],
             "content": {
               "application/json": {
@@ -2864,7 +2880,7 @@
           "grants"
         ],
         "summary": "Mint a single-use upload grant",
-        "description": "The minting account must be able to write the target now. The upload re-checks that, and fails if the minting token is revoked or expired first. The tokenless client PUTs raw bytes to upload_url with Authorization: Bearer <secret>; success publishes immediately and uses the grant up. Retryable upload failures (busy target, storage cap) leave the grant usable until it expires; a deleted target or lost permission ends it. Read the result with GET /v1/grants/{id}. For target site_deployment, bind an existing owned immutable session. The secret authorizes only its returned status/files/archive/prepare/commit URLs and is consumed at commit. The session deadline and minting token expiry bound grant lifetime.",
+        "description": "The minting account must be able to write the target now. The upload re-checks that, and fails if the minting token is revoked or expired first. The tokenless client PUTs raw bytes to upload_url with Authorization: Bearer <secret>; success publishes immediately and uses the grant up. Retryable upload failures (busy target, storage cap) leave the grant usable until it expires; a deleted target or lost permission ends it. Read the result with GET /v1/grants/{id}. For target site_deployment, bind an existing owned immutable session. The secret authorizes only its returned status/files/archive/prepare/commit URLs and is consumed at commit. The session deadline and minting token expiry bound grant lifetime. A file target with expected_version is conditional: the upload replaces the file only if its content_generation still matches, and a mismatch ends the grant as failed with last_error file_conflict.",
         "requestBody": {
           "required": true,
           "content": {
@@ -2911,7 +2927,8 @@
               "bad_path",
               "bad_write_policy",
               "ttl_required",
-              "ttl_too_long"
+              "ttl_too_long",
+              "bad_expected_version"
             ]
           },
           "401": {
@@ -2947,6 +2964,20 @@
           },
           "405": {
             "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "409": {
+            "description": "The file target's expected_version does not match its current content_generation; the body carries the current value. A file blocked on storage recovery reports file_recovery_required instead.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "x-error-codes": [
+              "file_conflict",
+              "file_recovery_required"
+            ]
           },
           "410": {
             "$ref": "#/components/responses/Expired"
@@ -4504,7 +4535,7 @@
     "schemas": {
       "Error": {
         "type": "object",
-        "description": "Every non-2xx JSON body. Some codes add fields: token_expired, cleanup_drift, and cleanup_too_many are typed below; too_large and storage_cap add limit_bytes plus actual_bytes or used_bytes; GET /v1/export too_many_files and too_large also add sites, files, and actual_files; bad_ttl, ttl_required, and ttl_too_long add presets and default_ttl or max_ttl; forbidden_domain adds allowed_email_domains; site_not_found adds hint; bad_query adds fields (the malformed cleanup target filters). bad_target comes from POST /v1/cleanup and POST /v1/admin/gates/unlock. bad_action and bad_confirm come only from POST /v1/cleanup. empty_export is GET /v1/export with no owned sites or files. password_required (401) and rate_limited (429) come from the public content gate, not /v1. bad_label, bad_origin, and token_not_found come from the hub /account API. not_found is any unknown route. bad_path is also returned for a URL that is not valid percent-encoding. connection_bad_code and connection_decided come from the human /account/connections API. grant_invalid (404), grant_used (410, adds url and result_id), grant_failed (410, adds reason), grant_expired (410), grant_busy (409, retryable), and checksum_mismatch (400) come from the upload grant route on the content origin, PUT {content_origin}/_grants/{id}, not /v1. file_recovery_required (409, not retryable) also answers a guest write-password PUT on the content origin, and ends an upload grant for that file as grant_failed with reason file_recovery_required.",
+        "description": "Every non-2xx JSON body. Some codes add fields: token_expired, cleanup_drift, and cleanup_too_many are typed below; too_large and storage_cap add limit_bytes plus actual_bytes or used_bytes; GET /v1/export too_many_files and too_large also add sites, files, and actual_files; bad_ttl, ttl_required, and ttl_too_long add presets and default_ttl or max_ttl; forbidden_domain adds allowed_email_domains; site_not_found adds hint; file_conflict adds content_generation (the file's current generation) and expected_version (what you sent); bad_query adds fields (the malformed cleanup target filters). bad_target comes from POST /v1/cleanup and POST /v1/admin/gates/unlock. bad_action and bad_confirm come only from POST /v1/cleanup. empty_export is GET /v1/export with no owned sites or files. password_required (401) and rate_limited (429) come from the public content gate, not /v1. bad_label, bad_origin, and token_not_found come from the hub /account API. not_found is any unknown route. bad_path is also returned for a URL that is not valid percent-encoding. connection_bad_code and connection_decided come from the human /account/connections API. grant_invalid (404), grant_used (410, adds url and result_id), grant_failed (410, adds reason), grant_expired (410), grant_busy (409, retryable), and checksum_mismatch (400) come from the upload grant route on the content origin, PUT {content_origin}/_grants/{id}, not /v1. file_recovery_required (409, not retryable) also answers a guest write-password PUT on the content origin, and ends an upload grant for that file as grant_failed with reason file_recovery_required.",
         "required": [
           "error",
           "message"
@@ -4517,6 +4548,7 @@
               "bad_confirm",
               "bad_content_type",
               "bad_duplicate",
+              "bad_expected_version",
               "bad_filename",
               "bad_json",
               "bad_label",
@@ -4556,6 +4588,7 @@
               "expired",
               "export_failed",
               "file_busy",
+              "file_conflict",
               "file_delete_lost",
               "file_delete_rollback_failed",
               "file_not_found",
@@ -5872,6 +5905,11 @@
           "password": {
             "type": "string",
             "description": "Share password; empty clears. X-Energon-Set-Password overrides it."
+          },
+          "expected_version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Replace only if the file's content_generation still equals this value; otherwise 409 file_conflict and nothing changes. X-Energon-Expected-Version overrides it."
           }
         }
       },
@@ -5891,7 +5929,8 @@
           "write_password_protected",
           "ttl",
           "expires_at",
-          "write_policy"
+          "write_policy",
+          "content_generation"
         ],
         "properties": {
           "url": {
@@ -5953,6 +5992,11 @@
           },
           "write_policy": {
             "$ref": "#/components/schemas/WritePolicy"
+          },
+          "content_generation": {
+            "type": "integer",
+            "const": 1,
+            "description": "A new file or copy starts at 1. See LooseFileSummary.content_generation."
           }
         }
       },
@@ -5997,7 +6041,8 @@
           "replaced",
           "password_protected",
           "password",
-          "write_password_protected"
+          "write_password_protected",
+          "content_generation"
         ],
         "properties": {
           "url": {
@@ -6039,6 +6084,11 @@
               "null"
             ],
             "description": "The share password you just set, trimmed, or null when none was set or it was cleared. `/v1` GET never returns it."
+          },
+          "content_generation": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Counter that goes up by one each time the file's bytes are replaced. Metadata changes (PATCH) do not change it. Send it back as expected_version to replace only if nobody else has replaced the file since."
           }
         }
       },
@@ -6056,7 +6106,8 @@
           "write_password",
           "write_password_protected",
           "expires_at",
-          "write_policy"
+          "write_policy",
+          "content_generation"
         ],
         "properties": {
           "id": {
@@ -6111,6 +6162,11 @@
           },
           "write_policy": {
             "$ref": "#/components/schemas/WritePolicy"
+          },
+          "content_generation": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Counter that goes up by one each time the file's bytes are replaced. Metadata changes (PATCH) do not change it. Send it back as expected_version to replace only if nobody else has replaced the file since."
           }
         }
       },
@@ -6132,7 +6188,8 @@
           "write_password_protected",
           "expires_at",
           "last_read_at",
-          "write_policy"
+          "write_policy",
+          "content_generation"
         ],
         "properties": {
           "id": {
@@ -6207,6 +6264,11 @@
           },
           "write_policy": {
             "$ref": "#/components/schemas/WritePolicy"
+          },
+          "content_generation": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Counter that goes up by one each time the file's bytes are replaced. Metadata changes (PATCH) do not change it. Send it back as expected_version to replace only if nobody else has replaced the file since."
           }
         }
       },
@@ -7067,7 +7129,7 @@
         "description": "Site capability id minted by POST /v1/sites. Same shape as a loose file id. A slug does not resolve a site."
       },
       "GrantTarget": {
-        "description": "Exactly one target. new_file creates a loose file owned by the minting account when the upload lands; file replaces an existing loose file; site_path adds or replaces one path in an existing site.",
+        "description": "Exactly one target. new_file creates a loose file owned by the minting account when the upload lands; file replaces an existing loose file; site_path adds or replaces one path in an existing site. A file target may set expected_version so the upload replaces the file only if it is still at that content_generation.",
         "oneOf": [
           {
             "type": "object",
@@ -7115,6 +7177,11 @@
               },
               "id": {
                 "$ref": "#/components/schemas/FileId"
+              },
+              "expected_version": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "The file's content_generation when you minted the grant. Checked at mint (409 file_conflict) and again atomically when the upload commits. If the file was replaced in between, the upload fails, nothing is written, and the grant ends as failed with last_error file_conflict. Omit it for an unconditional replacement."
               }
             },
             "additionalProperties": false
@@ -7316,7 +7383,7 @@
               "string",
               "null"
             ],
-            "description": "Why a failed grant ended, for example token_revoked or file_not_found."
+            "description": "Why a failed grant ended, for example token_revoked, file_not_found, or file_conflict (a file target's expected_version no longer matched when the upload committed)."
           },
           "max_bytes": {
             "type": "integer"
@@ -7812,6 +7879,15 @@
           "maxLength": 128
         },
         "description": "Set the share password on the file being written; an empty value clears it. Overrides the multipart password field. This is not X-Energon-Password, which unlocks a gated public URL and is not a /v1 header."
+      },
+      "XEnergonExpectedVersion": {
+        "name": "X-Energon-Expected-Version",
+        "in": "header",
+        "schema": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "description": "Conditional replacement: the content_generation you last read. The replacement commits only if the file is still at that generation; otherwise 409 file_conflict with the current content_generation, and the bytes and catalog stay unchanged. Omit it to replace unconditionally. Overrides the multipart expected_version field. This is not If-Match: the public URL's ETag is a storage etag, not a generation. Loose files only: site path writes and imports reject it with 400 bad_expected_version."
       },
       "XEnergonSetWritePassword": {
         "name": "X-Energon-Set-Write-Password",

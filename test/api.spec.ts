@@ -2822,3 +2822,28 @@ describe("Energon", () => {
     });
   });
 });
+
+describe("site writes are not conditional", () => {
+  it("refuses X-Energon-Expected-Version on every account site write instead of writing unconditionally", async () => {
+    const token = await mint("site-expected-version", "site-ev@esperlabs.app");
+    const site = await createSite(token, "site-ev");
+    const id = site.body.id as string;
+    expect((await req(`/v1/sites/${id}/files/index.html`, { method: "PUT", headers: auth(token), body: "kept" })).status).toBe(201);
+    const before = (await json(`/v1/sites/${id}`, { headers: auth(token) })).body.content_generation;
+    const conditional = { "X-Energon-Expected-Version": String(before) };
+    const attempts: [string, RequestInit][] = [
+      [`/v1/sites/${id}/files/index.html`, { method: "PUT", headers: auth(token, conditional), body: "token put" }],
+      [`/v1/sites/${id}/files/index.html`, { method: "DELETE", headers: auth(token, conditional) }],
+      [`/v1/sites/${id}/import`, { method: "POST", headers: auth(token, { ...conditional, "content-type": "application/zip" }), body: zipSync({ "index.html": strToU8("zip") }) }],
+      [`/account/sites/${id}/files/index.html`, { method: "PUT", headers: access("site-ev@esperlabs.app", conditional), body: "hub put" }],
+    ];
+    for (const [path, init] of attempts) {
+      const res = await json(path, init);
+      expect(res.status, `${init.method} ${path}`).toBe(400);
+      expect(res.body.error).toBe("bad_expected_version");
+      expect(res.body.message).toContain("/v1/sites/{id}/deployments");
+    }
+    expect(await (await req(`/v1/sites/${id}/files/index.html`, { headers: auth(token) })).text()).toBe("kept");
+    expect((await json(`/v1/sites/${id}`, { headers: auth(token) })).body.content_generation).toBe(before);
+  });
+});

@@ -8,7 +8,7 @@ import {
   type ListPage,
   type ListQuery,
 } from "./catalog";
-import { fileKey } from "./config";
+import { CONTENT_GENERATION_HEADER, EXPECTED_VERSION_HEADER, fileKey } from "./config";
 import { mintObjectId } from "./ids";
 import {
   expiredError,
@@ -101,6 +101,50 @@ export function assertFilename(raw: string, fallback: string): string {
   return filename;
 }
 
+/** Absent means an unconditional write; anything present must be a content_generation. */
+export function readExpectedVersion(raw: string | null | undefined): number | undefined {
+  if (raw === null || raw === undefined) return undefined;
+  const value = raw.trim();
+  if (!/^[1-9][0-9]{0,14}$/.test(value)) {
+    throw new ApiError(400, "bad_expected_version", "expected_version must be the file's content_generation, a positive integer.");
+  }
+  return Number(value);
+}
+
+export function expectedVersionHeader(request: Request): number | undefined {
+  return readExpectedVersion(request.headers.get(EXPECTED_VERSION_HEADER));
+}
+
+export function fileConflict(current: number, expected: number): ApiError {
+  return new ApiError(
+    409,
+    "file_conflict",
+    `The file is at content_generation ${current}, not ${expected}. Read it again and reconcile before replacing it.`,
+    { content_generation: current, expected_version: expected },
+  );
+}
+
+export function assertGeneration(current: number, expected: number | undefined): void {
+  if (expected !== undefined && current !== expected) throw fileConflict(current, expected);
+}
+
+/** The WHERE fragment that makes a replacement commit conditional on the expected generation. */
+export function generationGuard(expected: number | undefined): { sql: string; binds: number[] } {
+  return expected === undefined ? { sql: "", binds: [] } : { sql: " AND content_generation = ?", binds: [expected] };
+}
+
+/** A stale expected_version on a file blocked on storage recovery reports the recovery: reconciling and retrying cannot succeed. */
+export async function generationConflict(env: Env, id: string, current: number, expected: number): Promise<ApiError> {
+  return await looseFileReservation(env.DB, id) === "recovery_required" ? fileRecoveryRequired() : fileConflict(current, expected);
+}
+
+/** Explains a guarded replacement commit that matched no row because the file moved past the expected generation. */
+export async function throwIfGenerationMoved(env: Env, id: string, expected: number | undefined): Promise<void> {
+  if (expected === undefined) return;
+  const row = await env.DB.prepare(`SELECT content_generation FROM loose_files WHERE id = ?`).bind(id).first<{ content_generation: number }>();
+  if (row && row.content_generation !== expected) throw await generationConflict(env, id, row.content_generation, expected);
+}
+
 export async function createLooseFile(
   env: Env,
   ctx: ExecutionContext | undefined,
@@ -183,6 +227,7 @@ export async function createLooseFile(
     ttl: resolved.ttl,
     expires_at: resolved.expiresAt,
     write_policy: storedWrite,
+    content_generation: 1,
   };
   return jsonMaybeSecret(body, 201);
 }
@@ -278,6 +323,7 @@ export async function duplicateLooseFile(
     ttl: resolved.ttl,
     expires_at: resolved.expiresAt,
     write_policy: storedWrite,
+    content_generation: 1,
     duplicated: true,
     duplicated_from: source.id,
   };
@@ -502,12 +548,13 @@ async function commitLooseFileReplacement(
     ts: string;
     hash: string | null | undefined;
     password: string | undefined;
+    expectedVersion: number | undefined;
   },
   guard: GrantGuard | undefined,
   reserved: Awaited<ReturnType<typeof assertStorageRoom>>,
   previousObject: { key: string; bytes: number } | undefined,
-): Promise<void> {
-  const { handle, filename, size, contentType, ts, hash, password } = replacement;
+): Promise<number> {
+  const { handle, filename, size, contentType, ts, hash, password, expectedVersion } = replacement;
   const assignments = [
     "handle = COALESCE(handle, ?)",
     "filename = ?",
@@ -515,16 +562,19 @@ async function commitLooseFileReplacement(
     "content_type = ?",
     "updated_at = ?",
     "last_written_by = ?",
+    "content_generation = content_generation + 1",
   ];
   const values: unknown[] = [handle, filename, size, contentType, ts, claimToken];
   assignPasswordStore(assignments, values, hash, password, "password_hash", "password_secret");
-  const update = `UPDATE loose_files SET ${assignments.join(", ")} WHERE id = ? AND last_written_by = ?`;
-  let updated: D1Result;
+  const conditional = generationGuard(expectedVersion);
+  const where = [id, claimToken, ...conditional.binds];
+  const update = `UPDATE loose_files SET ${assignments.join(", ")} WHERE id = ? AND last_written_by = ?${conditional.sql}`;
+  let updated: D1Result<{ content_generation: number }>;
   if (guard) {
     const now = new Date(ts);
     const live = `(expires_at IS NULL OR expires_at > ?)`;
-    [updated] = await env.DB.batch([
-      env.DB.prepare(`${update} AND ${live} AND ${GRANT_LEASE_SQL}`).bind(...values, id, claimToken, ts, ...grantLeaseBinds(guard, now)),
+    [updated] = await env.DB.batch<{ content_generation: number }>([
+      env.DB.prepare(`${update} AND ${live} AND ${GRANT_LEASE_SQL} RETURNING content_generation`).bind(...values, ...where, ts, ...grantLeaseBinds(guard, now)),
       legacyHandoffStatement(env.DB, reserved, previousObject),
       consumeGrantStatement(
         env,
@@ -537,8 +587,8 @@ async function commitLooseFileReplacement(
       legacyQuotaStatement(env.DB),
     ]);
   } else {
-    [updated] = await env.DB.batch([
-      env.DB.prepare(update).bind(...values, id, claimToken),
+    [updated] = await env.DB.batch<{ content_generation: number }>([
+      env.DB.prepare(`${update} RETURNING content_generation`).bind(...values, ...where),
       legacyHandoffStatement(env.DB, reserved, previousObject),
       legacyQuotaStatement(env.DB),
     ]);
@@ -546,13 +596,15 @@ async function commitLooseFileReplacement(
   if (!d1Changed(updated)) {
     const grantProblem = guard ? await grantCommitFailure(env, guard) : null;
     if (grantProblem) throw grantProblem;
+    await throwIfGenerationMoved(env, id, expectedVersion);
     throw new ApiError(409, "file_write_lost", "The file changed during replacement; retry.");
   }
+  return updated.results[0]!.content_generation;
 }
 
 type ReplaceableLooseFile = Pick<
   LooseFileRow,
-  "id" | "handle" | "filename" | "size" | "content_type" | "expires_at" | "created_by" | "last_written_by" | "updated_at" | "write_policy" | "owner_id" | "password_hash"
+  "id" | "handle" | "filename" | "size" | "content_type" | "expires_at" | "created_by" | "last_written_by" | "updated_at" | "write_policy" | "owner_id" | "password_hash" | "content_generation"
 >;
 
 async function loadReplaceableLooseFile(
@@ -562,7 +614,7 @@ async function loadReplaceableLooseFile(
   id: string,
 ): Promise<ReplaceableLooseFile> {
   const existing = await env.DB.prepare(
-    `SELECT id, handle, filename, size, content_type, expires_at, created_by, last_written_by, updated_at, write_policy, owner_id, password_hash FROM loose_files WHERE id = ?`,
+    `SELECT id, handle, filename, size, content_type, expires_at, created_by, last_written_by, updated_at, write_policy, owner_id, password_hash, content_generation FROM loose_files WHERE id = ?`,
   )
     .bind(id)
     .first<ReplaceableLooseFile>();
@@ -642,6 +694,7 @@ export async function putLooseFile(
   hintType: string | null,
   password?: string,
   guard?: GrantGuard,
+  expectedVersion?: number,
 ): Promise<Response> {
   if (!isFileId(id)) {
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
@@ -669,7 +722,11 @@ export async function putLooseFile(
   let wroteObject = false;
   let writeStarted = false;
   let retainSnapshot = false;
+  let contentGeneration = 0;
   try {
+    // After the claim, so file_busy and file_recovery_required outrank a stale generation; before any bytes move.
+    // The commit repeats the check atomically.
+    assertGeneration(existing.content_generation, expectedVersion);
     reserved = await assertStorageRoom(env.DB, upload.size, existing.size, policy.platformBytes,
       { fileId: id, targetKey: newKey, operation: "replace", ownerId: existing.owner_id || actor.email, claimToken: claim.token });
     previousState = renamed ? null : await snapshotR2Object(env, oldKey);
@@ -678,8 +735,8 @@ export async function putLooseFile(
     await putUpload(env.BUCKET, newKey, upload, { httpMetadata: { contentType } });
     wroteObject = true;
     await markLegacyReservation(env.DB, reserved, "stored", { snapshotKey: previousState?.stagedKey });
-    await commitLooseFileReplacement(env, id, claim.token,
-      { handle, filename, size: upload.size, contentType, ts, hash, password }, guard, reserved,
+    contentGeneration = await commitLooseFileReplacement(env, id, claim.token,
+      { handle, filename, size: upload.size, contentType, ts, hash, password, expectedVersion }, guard, reserved,
       renamed ? { key: oldKey, bytes: existing.size } : undefined);
     metadataCommitted = true;
     if (renamed) {
@@ -714,6 +771,7 @@ export async function putLooseFile(
     size: upload.size,
     content_type: contentType,
     replaced: true,
+    content_generation: contentGeneration,
     password_protected: hash === undefined ? Boolean(existing.password_hash) : Boolean(hash),
     password: passwordEcho(password, hash) ?? null,
   });
@@ -796,7 +854,7 @@ export async function patchLoose(
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
   const existing = await env.DB.prepare(
-    `SELECT id, handle, filename, password_hash, write_password_hash, expires_at, created_by, last_written_by, updated_at, write_policy, owner_id FROM loose_files WHERE id = ?`,
+    `SELECT id, handle, filename, password_hash, write_password_hash, expires_at, created_by, last_written_by, updated_at, write_policy, owner_id, content_generation FROM loose_files WHERE id = ?`,
   )
     .bind(id)
     .first<{
@@ -811,6 +869,7 @@ export async function patchLoose(
       updated_at: string | null;
       write_policy: string | null;
       owner_id: string | null;
+      content_generation: number;
     }>();
   if (!existing) {
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
@@ -861,6 +920,7 @@ export async function patchLoose(
     expires_at: resolved ? resolved.expiresAt : existing.expires_at ?? null,
     ttl: resolved ? resolved.ttl : undefined,
     write_policy: nextWrite,
+    content_generation: existing.content_generation,
   };
   return jsonMaybeSecret(body);
 }
@@ -943,9 +1003,11 @@ export async function putLooseFromRequest(
       );
     }
     if (file.size > policy.fileBytes) throw tooLarge(file.size, origin, policy.fileBytes);
-    return putLooseFile(env, ctx, actor, id, await uploadFromFile(file), file.name || null, file.type || null, formPassword(request, form));
+    const expectedVersion = readExpectedVersion(formOrHeader(form, "expected_version", request.headers.get(EXPECTED_VERSION_HEADER) ?? undefined));
+    return putLooseFile(env, ctx, actor, id, await uploadFromFile(file), file.name || null, file.type || null, formPassword(request, form), undefined, expectedVersion);
   }
   const filename = filenameHeader(request);
+  const expectedVersion = expectedVersionHeader(request);
   return withUpload(request, env, instancePolicy(env).fileBytes, origin, (upload) => putLooseFile(
     env,
     ctx,
@@ -955,6 +1017,8 @@ export async function putLooseFromRequest(
     filename,
     request.headers.get("content-type"),
     readSetPasswordHeader(request),
+    undefined,
+    expectedVersion,
   ));
 }
 
@@ -968,7 +1032,7 @@ export async function getLooseFile(
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
   const row = await env.DB.prepare(
-    `SELECT id, handle, filename, content_type, expires_at, write_policy, last_read_at FROM loose_files WHERE id = ?`,
+    `SELECT id, handle, filename, content_type, expires_at, write_policy, last_read_at, content_generation FROM loose_files WHERE id = ?`,
   )
     .bind(id)
     .first<{
@@ -979,6 +1043,7 @@ export async function getLooseFile(
       expires_at: string | null;
       write_policy: string | null;
       last_read_at: string | null;
+      content_generation: number;
     }>();
   if (!row) {
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
@@ -1002,6 +1067,7 @@ export async function getLooseFile(
   headers.set("cache-control", "private, no-store");
   headers.set("content-disposition", contentDisposition(opts?.attachment ? "attachment" : "inline", row.filename));
   headers.set("x-energon-write-policy", resolveWritePolicy(row.write_policy));
+  headers.set(CONTENT_GENERATION_HEADER, String(row.content_generation));
   if (obj.size != null) headers.set("content-length", String(obj.size));
   return new Response(obj.body, { headers });
 }
@@ -1115,6 +1181,7 @@ export async function listLooseFor(
     created_by: string;
     updated_at: string | null;
     last_written_by: string | null;
+    content_generation: number;
     password_protected: boolean;
     write_password_protected: boolean;
     written_via: string | null;
@@ -1134,7 +1201,7 @@ export async function listLooseFor(
     .first<{ n: number }>();
   const total = Number(countRow?.n ?? 0);
   const rows = await env.DB.prepare(
-    `SELECT id, handle, filename, size, content_type, created_at, created_by, updated_at, last_written_by, password_hash, write_password_hash, written_via, expires_at, last_read_at, write_policy
+    `SELECT id, handle, filename, size, content_type, created_at, created_by, updated_at, last_written_by, content_generation, password_hash, write_password_hash, written_via, expires_at, last_read_at, write_policy
      FROM loose_files
      WHERE ${clauses.where}
      ORDER BY ${cursor.order}
@@ -1185,7 +1252,7 @@ export async function serveLoose(
   }
   filename = basename(filename);
   const row = await env.DB.prepare(
-    `SELECT id, handle, filename, password_hash, write_password_hash, expires_at, last_read_at FROM loose_files WHERE id = ?`,
+    `SELECT id, handle, filename, password_hash, write_password_hash, expires_at, last_read_at, content_generation FROM loose_files WHERE id = ?`,
   )
     .bind(id)
     .first<{
@@ -1196,6 +1263,7 @@ export async function serveLoose(
       write_password_hash: string | null;
       expires_at: string | null;
       last_read_at: string | null;
+      content_generation: number;
     }>();
   if (!row || (row.handle && row.handle !== handle)) {
     return new Response("Not found", { status: 404, headers: { "cache-control": "no-store" } });
@@ -1224,7 +1292,9 @@ export async function serveLoose(
   if (!obj) return new Response("Not found", { status: 404, headers: { "cache-control": "no-store" } });
   noteRead(env, ctx, { table: "loose_files", id: row.id, last_read_at: row.last_read_at });
   if (isMarkdownName(row.filename)) {
-    return respondMarkdown(request, obj, row.filename);
+    const rendered = await respondMarkdown(request, obj, row.filename);
+    rendered.headers.set(CONTENT_GENERATION_HEADER, String(row.content_generation));
+    return rendered;
   }
   const remaining = remainingCacheSeconds(row.expires_at);
   const cacheable = !row.password_hash && unlocked !== "unlocked";
@@ -1240,6 +1310,7 @@ export async function serveLoose(
   headers.set("cache-control", cacheable ? publicCacheControl(remaining) : privateCacheControl());
   if (cacheable) headers.set("cache-tag", fileCacheTag(id));
   headers.set("etag", obj.httpEtag);
+  headers.set(CONTENT_GENERATION_HEADER, String(row.content_generation));
   if (obj.size != null) headers.set("content-length", String(obj.size));
   return new Response(obj.body, { headers });
 }

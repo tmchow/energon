@@ -59,14 +59,14 @@ Keep implementation details out of the map. Name only user paths, stable handles
 
 - [Discovery documents](./discovery.md) covers unauthenticated `GET /v1/help`, `GET /v1/openapi.json`, `GET /v1/health`, `GET /llms.txt`, and `GET /auth.md`.
 - [Publish a site](./publish-site.md) covers creating a named folder, writing files, serving the public URL, duplicate slug behavior, duplicate, sandboxed HTML and XML, mermaid on HTML markdown, and wide-table expand without mermaid.
-- [Publish a file](./publish-file.md) covers minting a loose file with a stable id, replacing bytes, downloading, and uploads over 25 MB.
+- [Publish a file](./publish-file.md) covers minting a loose file with a stable id, replacing bytes, conditional replacement with `content_generation` and `X-Energon-Expected-Version`, downloading, and uploads over 25 MB.
 - [Connect an agent](./connect-agent.md) covers request, confirming a code from the link or typing it, approval/denial, one-time delivery, and revocation.
 - [Mint a token](./mint-token.md) covers mint with a lifetime, whoami with `expires_at`, `DELETE /v1/whoami` self-revoke, the expired-token `401 token_expired`, revoke on the Tokens page and hub API, the `Stale` badge and `Live`/`Stale`/`All` filter, and bulk revoke with preview-then-confirm.
 - [Share password](./share-password.md) covers setting a password, the public gate, header unlock, and clearing.
 - [Hub catalog](./hub-catalog.md) covers listing, search, scope, never-expires / 24h / 7d / size / oldest / last-read filters, Expires urgency, opening a public URL, and delete.
 - [Hub cleanup](./hub-cleanup.md) covers bulk Set expiry, Expire soon, and Delete from the hub catalog: row checkboxes, select all matching filters, preview, count-to-confirm, and confirm-hash drift.
 - [Guest write password](./guest-write-password.md) covers setting a write password, guest PUT/DELETE on the public URL, Hub Link access, and catalog lockup.
-- [Upload grant](./upload-grant.md) covers minting a single-use grant, the tokenless `PUT` to its upload URL, single use with `result_id`, a new file password-protected at mint, checksum, revoked-token failure, and the grant status read.
+- [Upload grant](./upload-grant.md) covers minting a single-use grant, the tokenless `PUT` to its upload URL, single use with `result_id`, a new file password-protected at mint, a conditional replacement that refuses to overwrite newer work, checksum, revoked-token failure, and the grant status read.
 - [Cleanup](./cleanup.md) covers the list filters and sorts (`expires`, `expires_before`, `expires_within=24h|7d`, `updated_before`, `min_size`, `sort=size|age|last_read`), the `POST /v1/cleanup` dry run, confirm-to-execute, drift, skip reasons, the 100-object cap, and body validation.
 - [Account export](./account-export.md) covers `GET /v1/export` and Hub `#account-export`, the owned zip layout and `manifest.json`, a second identity's absence, empty ownership, and the file-count cap.
 - [Admin cleanup](./admin-cleanup.md) covers `/admin` for operators on `ADMIN_EMAILS`, `POST /v1/admin/cleanup` with an admin token, owner and `last_read_before` filters, the 7-day `set_ttl` default, `expire_not_own`, and the audit log.

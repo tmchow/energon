@@ -1,10 +1,11 @@
 import { mintDeploymentGrant } from "./deployment-grants";
 import { grantActor, parseBearer } from "./auth";
 import { d1Changed, expiredError, isExpired, isPurgeClaimed } from "./expire";
-import { assertFilename, createLooseFile, putLooseFile } from "./files";
+import { assertFilename, createLooseFile, generationConflict, putLooseFile } from "./files";
 import { hashesEqual, passwordHashFromInput, storedPasswordSecret, writePasswordHashFromInput } from "./gate";
 import { GRANT_UPLOAD_PREFIX } from "./grant-protocol";
 import { grantBusy, type GrantGuard } from "./grant-guard";
+import { EXPECTED_VERSION_HEADER } from "./config";
 import { FORBIDDEN_PUT_HEADERS } from "./guest-write";
 import { ApiError, contentOrigin, json, nanoid, publicOrigin, secretJson, sha256Hex } from "./http";
 import {
@@ -48,6 +49,7 @@ type GrantRow = {
   file_write_policy: string | null;
   file_password: string | null;
   file_write_password: string | null;
+  expected_version: number | null;
   max_bytes: number;
   sha256: string | null;
   state: "unused" | "uploading" | "consumed" | "failed";
@@ -62,7 +64,7 @@ type GrantRow = {
 
 type Target =
   | { kind: "new_file"; filename: string; ttl: string | null; writePolicy: string | null; password: string | null; writePassword: string | null }
-  | { kind: "file"; fileId: string; url: string }
+  | { kind: "file"; fileId: string; url: string; expectedVersion: number | null }
   | { kind: "site_path"; siteId: string; path: string; url: string };
 
 async function hashGrantSecret(secret: string): Promise<string> {
@@ -84,6 +86,9 @@ async function resolveTarget(env: Env, actor: Actor, raw: unknown): Promise<Targ
     throw new ApiError(400, "bad_target", 'target must be an object with type "new_file", "file", or "site_path".');
   }
   const target = raw as Record<string, unknown>;
+  if (target.expected_version !== undefined && target.type !== "file") {
+    throw new ApiError(400, "bad_target", "target.expected_version applies only to a file target. Use a site_deployment for a conditional site replacement.");
+  }
   if (target.type === "new_file") return resolveNewFileTarget(env, target);
   if (target.type === "file") return resolveFileTarget(env, actor, target);
   if (target.type === "site_path") return resolveSiteTarget(env, actor, target);
@@ -109,19 +114,29 @@ async function resolveNewFileTarget(env: Env, target: Record<string, unknown>): 
   return { kind: "new_file", filename, ttl, writePolicy, password, writePassword };
 }
 
+function readGrantExpectedVersion(raw: unknown): number | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "number" || !Number.isSafeInteger(raw) || raw < 1) {
+    throw new ApiError(400, "bad_expected_version", "target.expected_version must be the file's content_generation, a positive integer.");
+  }
+  return raw;
+}
+
 async function resolveFileTarget(env: Env, actor: Actor, target: Record<string, unknown>): Promise<Target> {
   const fileId = optionalString(target.id, "target.id") ?? "";
+  const expectedVersion = readGrantExpectedVersion(target.expected_version);
   const row = isFileId(fileId)
     ? await env.DB.prepare(
-        `SELECT id, handle, filename, expires_at, created_by, last_written_by, write_policy, owner_id FROM loose_files WHERE id = ?`,
+        `SELECT id, handle, filename, expires_at, created_by, last_written_by, write_policy, owner_id, content_generation FROM loose_files WHERE id = ?`,
       )
         .bind(fileId)
-        .first<{ id: string; handle: string; filename: string; expires_at: string | null; created_by: string; last_written_by: string | null; write_policy: string | null; owner_id: string | null }>()
+        .first<{ id: string; handle: string; filename: string; expires_at: string | null; created_by: string; last_written_by: string | null; write_policy: string | null; owner_id: string | null; content_generation: number }>()
     : null;
   if (!row) throw new ApiError(404, "file_not_found", "No loose file with that id.");
   if (isPurgeClaimed(row.last_written_by) || isExpired(row.expires_at)) throw expiredError("file");
   assertCanMutate(actor, row);
-  return { kind: "file", fileId: row.id, url: filePublicUrl(env, row.handle, row.id, row.filename) };
+  if (expectedVersion !== null && expectedVersion !== row.content_generation) throw await generationConflict(env, row.id, row.content_generation, expectedVersion);
+  return { kind: "file", fileId: row.id, url: filePublicUrl(env, row.handle, row.id, row.filename), expectedVersion };
 }
 
 async function resolveSiteTarget(env: Env, actor: Actor, target: Record<string, unknown>): Promise<Target> {
@@ -156,10 +171,14 @@ function newFileTargetJson(filename: string | null, ttl: string | null, writePol
   return { type: "new_file", filename, ...(ttl ? { ttl } : {}), ...(writePolicy ? { write_policy: writePolicy } : {}) };
 }
 
+function fileTargetJson(id: string | null, expectedVersion: number | null) {
+  return { type: "file", id, ...(expectedVersion === null ? {} : { expected_version: expectedVersion }) };
+}
+
 function targetJson(row: GrantRow) {
   if (row.target_kind === "site_deployment") return { type: "site_deployment", site_id: row.site_id, deployment_id: row.deployment_id };
   if (row.target_kind === "new_file") return newFileTargetJson(row.filename, row.file_ttl, row.file_write_policy);
-  if (row.target_kind === "file") return { type: "file", id: row.file_id };
+  if (row.target_kind === "file") return fileTargetJson(row.file_id, row.expected_version);
   return { type: "site_path", site_id: row.site_id, path: row.path };
 }
 
@@ -174,8 +193,8 @@ export async function mintGrant(env: Env, actor: Actor, body: Record<string, unk
   const id = nanoid(24);
   const secret = `${GRANT_SECRET_PREFIX}${nanoid(43)}`;
   await env.DB.prepare(
-    `INSERT INTO upload_grants (id, secret_hash, token_id, user_email, user_id, target_kind, file_id, site_id, path, filename, file_ttl, file_write_policy, file_password, file_write_password, max_bytes, sha256, state, created_at, expires_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unused', ?, ?)`,
+    `INSERT INTO upload_grants (id, secret_hash, token_id, user_email, user_id, target_kind, file_id, site_id, path, filename, file_ttl, file_write_policy, file_password, file_write_password, expected_version, max_bytes, sha256, state, created_at, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unused', ?, ?)`,
   )
     .bind(
       id,
@@ -192,6 +211,7 @@ export async function mintGrant(env: Env, actor: Actor, body: Record<string, unk
       target.kind === "new_file" ? target.writePolicy : null,
       target.kind === "new_file" ? target.password : null,
       target.kind === "new_file" ? target.writePassword : null,
+      target.kind === "file" ? target.expectedVersion : null,
       maxBytes,
       sha256,
       now.toISOString(),
@@ -218,7 +238,7 @@ export async function mintGrant(env: Env, actor: Actor, body: Record<string, unk
               ...(target.writePassword ? { write_password: target.writePassword } : {}),
             }
           : target.kind === "file"
-            ? { type: "file", id: target.fileId }
+            ? fileTargetJson(target.fileId, target.expectedVersion)
             : { type: "site_path", site_id: target.siteId, path: target.path },
       url: target.kind === "new_file" ? null : target.url,
       status_url: `${publicOrigin(env)}/v1/grants/${id}`,
@@ -323,7 +343,7 @@ function rejectForbiddenHeaders(request: Request): void {
   if (ctype.includes("multipart/form-data")) {
     throw new ApiError(400, "bad_content_type", "Upload grants accept raw bytes only.");
   }
-  for (const name of FORBIDDEN_PUT_HEADERS) {
+  for (const name of [...FORBIDDEN_PUT_HEADERS, EXPECTED_VERSION_HEADER]) {
     if (request.headers.get(name) !== null) {
       throw new ApiError(400, "bad_request", `Upload grants do not accept ${name}. Send raw bytes and the Authorization header only.`);
     }
@@ -413,7 +433,7 @@ async function commit(env: Env, ctx: ExecutionContext, actor: Actor, row: GrantR
     return looseResult(res, true);
   }
   if (row.target_kind === "file") {
-    return looseResult(await putLooseFile(env, ctx, actor, row.file_id ?? "", upload, null, null, undefined, guard), false);
+    return looseResult(await putLooseFile(env, ctx, actor, row.file_id ?? "", upload, null, null, undefined, guard, row.expected_version ?? undefined), false);
   }
   const result = await putSiteFile(env, ctx, actor, row.site_id ?? "", row.path ?? "", upload, null, guard);
   return grantJson(
@@ -423,8 +443,8 @@ async function commit(env: Env, ctx: ExecutionContext, actor: Actor, row: GrantR
 }
 
 async function looseResult(res: Response, created: boolean): Promise<Response> {
-  const body = (await res.json()) as { url: string; id: string; size: number; content_type: string };
-  return grantJson({ ok: true, created, url: body.url, id: body.id, size: body.size, content_type: body.content_type }, created ? 201 : 200);
+  const body = (await res.json()) as { url: string; id: string; size: number; content_type: string; content_generation: number };
+  return grantJson({ ok: true, created, url: body.url, id: body.id, size: body.size, content_type: body.content_type, content_generation: body.content_generation }, created ? 201 : 200);
 }
 
 /** Retryable failures hand the grant back; permanent ones end it with a reason the status read can show. */

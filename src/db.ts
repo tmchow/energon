@@ -163,7 +163,8 @@ const TABLE_STATEMENTS = [
     write_password_hash TEXT,
     write_password_secret TEXT,
     written_via TEXT,
-    last_read_at TEXT
+    last_read_at TEXT,
+    content_generation INTEGER NOT NULL DEFAULT 1
   )`,
   `CREATE TABLE IF NOT EXISTS tokens (
     id TEXT PRIMARY KEY,
@@ -217,6 +218,7 @@ const TABLE_STATEMENTS = [
     file_write_policy TEXT,
     file_password TEXT,
     file_write_password TEXT,
+    expected_version INTEGER,
     max_bytes INTEGER NOT NULL,
     sha256 TEXT,
     state TEXT NOT NULL,
@@ -311,14 +313,14 @@ export async function ensureSchema(db: D1Database): Promise<void> {
     await db.prepare(sql).run();
   }
   if (existing) {
-    await ensureColumns(db, "loose_files", ["updated_at", "last_written_by", "password_hash", "password_secret", "handle", "owner_id", "expires_at", "write_policy", "write_password_hash", "write_password_secret", "written_via", "last_read_at"]);
+    await ensureColumns(db, "loose_files", ["updated_at", "last_written_by", "password_hash", "password_secret", "handle", "owner_id", "expires_at", "write_policy", "write_password_hash", "write_password_secret", "written_via", "last_read_at", "content_generation INTEGER NOT NULL DEFAULT 1"]);
     await ensureColumns(db, "sites", ["active_version_id TEXT", "content_generation INTEGER NOT NULL DEFAULT 0", "lifecycle_state TEXT NOT NULL DEFAULT 'live'", "conversion_state TEXT NOT NULL DEFAULT 'legacy'", "id", "password_hash", "password_secret", "handle", "owner_id", "expires_at", "write_policy", "write_password_hash", "write_password_secret", "written_via", "last_read_at"]);
     await ensureColumns(db, "site_files", ["site_id"]);
     await ensureColumns(db, "storage_allocations", ["recovery_json TEXT"]);
     await backfillSiteIds(db);
     await ensureColumns(db, "tokens", ["token_secret", "token_hint", "user_id", "expires_at", "scope"]);
     await ensureColumns(db, "users", ["idp_sub"]);
-    await ensureColumns(db, "upload_grants", ["deployment_id TEXT", "deployment_intent_hash TEXT", "deployment_base_generation INTEGER", "receipt_expires_at TEXT", "file_password", "file_write_password"]);
+    await ensureColumns(db, "upload_grants", ["deployment_id TEXT", "deployment_intent_hash TEXT", "deployment_base_generation INTEGER", "receipt_expires_at TEXT", "file_password", "file_write_password", "expected_version INTEGER"]);
     await db.prepare(`UPDATE tokens SET token_secret = NULL WHERE token_secret IS NOT NULL`).run();
     await db.prepare(
       `UPDATE tokens SET user_id = (SELECT id FROM users WHERE users.email = tokens.user_email) WHERE user_id IS NULL`,

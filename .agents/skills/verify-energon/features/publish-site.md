@@ -13,6 +13,7 @@ Publish a site lets a user create a named folder of files at a stable `/{handle}
 - `site-duplicate-slug` always creates a new site (new id) even when the slug matches an existing site.
 - `site-duplicate` copies from a source **id** into a new site owned by the caller.
 - `site-hub` stages a folder or zip on the hub and publishes with Publish.
+- `site-not-conditional` refuses `X-Energon-Expected-Version` on site path PUT/DELETE and import with `400 bad_expected_version` instead of writing unconditionally.
 
 ## How to get to it (user POV)
 
@@ -37,6 +38,7 @@ Preconditions:
 - **Extra (site-mermaid) — Mermaid HTML.** PUT `diagram.md` with a `mermaid` fence (`graph LR` / `A-->B`). `GET "$ORIGIN/$HANDLE/s/$SITE_ID/verify-site/diagram.md"` with `Accept: text/html` contains `class="en-md-page"`, `class="mermaid"`, `/static/mermaid/mermaid.esm.min.mjs`, `/static/md-expand.mjs`, `mountMarkdownExpand`, `prefers-color-scheme: light` (spaces optional), and does not contain `jsdelivr`. Drive when markdown HTML, mermaid, or `/static/md-expand.mjs` changes.
 - **Extra (site-md-table) — Table expand without mermaid.** PUT `grid.md` with a GFM table (header plus one row, at least eight columns). `GET "$ORIGIN/$HANDLE/s/$SITE_ID/verify-site/grid.md"` with `Accept: text/html` contains `<table`, `/static/md-expand.mjs`, and `mountMarkdownExpand`, and does not contain `/static/mermaid/`. PUT `plain.md` with `# Hi` only. `GET` that file with `Accept: text/html` does not contain `/static/md-expand.mjs` or `<script type="module"`. Drive when markdown HTML or `/static/md-expand.mjs` changes.
 - **Default — API GET.** Run `curl -sS -o "$EVIDENCE/publish-site/api.html" -w '%{http_code}' "$ORIGIN/v1/sites/$SITE_ID/files/index.html" -H "Authorization: Bearer $TOKEN"`. Status `200`. Body matches the PUT.
+- **Extra (site-not-conditional) — Expected version refused.** `PUT "$ORIGIN/v1/sites/$SITE_ID/files/index.html"` with the token, `-H "X-Energon-Expected-Version: 1"`, and body `<h1>should-not-land</h1>` → `400`, body `error` `bad_expected_version`, message names `/v1/sites/{id}/deployments`. Public GET still shows `verify-site-ok`. Drive when site write header handling changes.
 - **Extra (site-sandbox) — Sandboxed HTML and XML.** PUT `feed.xml` with `content-type: application/xml` and body `<feed/>`. Public GET of `$ORIGIN/$HANDLE/s/$SITE_ID/verify-site/feed.xml` is `200` with a `content-security-policy` header that starts with `sandbox`. The public homepage GET carries the same header. Drive when content-type isolation or CSP changes.
 - **Extra (site-duplicate-slug) — Duplicate slug creates.** Run the create POST again with the same slug. Status `201`, `created` true, and `id` differs from `SITE_ID`. Drive when site create or slug uniqueness changes.
 - **Extra (site-duplicate) — Duplicate.** Run `curl -sS -X POST "$ORIGIN/v1/sites" -H "Authorization: Bearer $TOKEN" -H "content-type: application/json" --data "{\"slug\":\"verify-site-copy\",\"duplicate_from\":\"$SITE_ID\"}"`. Status `201`. Read the copy `id`. `GET $ORIGIN/$HANDLE/s/<copy-id>/verify-site-copy/` contains the current homepage. Drive when `duplicate_from` changes.

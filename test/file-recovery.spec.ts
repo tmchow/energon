@@ -81,6 +81,37 @@ describe("loose-file storage recovery", () => {
     }
   });
 
+  it("reports recovery or busy before a stale expected_version on every conditional path", async () => {
+    const token = await mint("recover-conditional", EMAIL);
+    const file = await publish(token, "conditional.txt");
+    const target = JSON.stringify({ target: { type: "file", id: file.id, expected_version: 1 } });
+    const grant = await json("/v1/grants", { method: "POST", headers: auth(token, { "content-type": "application/json" }), body: target });
+    expect((await json(`/v1/files/${file.id}`, { method: "PUT", headers: auth(token), body: "v2" })).body.content_generation).toBe(2);
+    const stale = { "X-Energon-Expected-Version": "1" };
+    const attempt = async () => ({
+      put: (await json(`/v1/files/${file.id}`, { method: "PUT", headers: auth(token, stale), body: "stale" })).body.error,
+      guest: (await json(file.url, { method: "PUT", headers: { [WRITE_PASSWORD_HEADER]: "guest-write-ok", ...stale }, body: "stale" })).body.error,
+      mint: (await json("/v1/grants", { method: "POST", headers: auth(token, { "content-type": "application/json" }), body: target })).body.error,
+    });
+    expect(await attempt()).toEqual({ put: "file_conflict", guest: "file_conflict", mint: "file_conflict" });
+
+    const busy = await seedReservation(file.id, { state: "writing" });
+    try {
+      expect(await attempt()).toMatchObject({ put: "file_busy", guest: "file_busy" });
+    } finally {
+      await release(busy);
+    }
+    const stuck = await seedReservation(file.id, { state: "uncertain", cleanupError: "injected" });
+    try {
+      expect(await attempt()).toEqual({ put: "file_recovery_required", guest: "file_recovery_required", mint: "file_recovery_required" });
+      const redeemed = await SELF.fetch(grant.body.upload_url, { method: "PUT", headers: { authorization: `Bearer ${grant.body.secret}` }, body: "old draft" });
+      expect(await redeemed.json()).toMatchObject({ error: "grant_failed", reason: "file_recovery_required" });
+      expect(await (await req(`/v1/files/${file.id}`, { headers: auth(token) })).text()).toBe("v2");
+    } finally {
+      await release(stuck);
+    }
+  });
+
   it("lists unresolved reservations on admin health, recovery-required first", async () => {
     const token = await mint("recover-health", EMAIL);
     const busy = await publish(token, "busy.txt");

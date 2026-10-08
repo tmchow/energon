@@ -101,6 +101,7 @@ export type LooseFileRow = {
   write_password_secret?: string | null;
   written_via?: string | null;
   last_read_at?: string | null;
+  content_generation: number;
 };
 
 export type TokenRow = {

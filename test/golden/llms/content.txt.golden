@@ -16,6 +16,8 @@ Wrong or missing write password on PUT or DELETE: 401 naming `X-Energon-Write-Pa
 
 If the object is gone: 404. If expired: 410. If another write is in progress: 409; retry it. Except 409 `file_recovery_required` on a file: an earlier write left its storage unreconciled, so do not retry; tell the person who shared the link that an administrator must reconcile it.
 
+A file GET returns `X-Energon-Content-Generation`, a counter that goes up each time its bytes are replaced. Send it back as `X-Energon-Expected-Version` on PUT to replace only if nobody replaced the file since. A mismatch is 409 `file_conflict` with the current `content_generation` and changes nothing: GET the file again and reconcile before you PUT. Site paths are not conditional: sending this header on a site PUT or DELETE is 400 `bad_expected_version` and writes nothing.
+
 Do not send the share-password header to write. That header does not authorize PUT or DELETE.
 
 # Upload grant
@@ -28,7 +30,7 @@ Success is `201` (new file or path) or `200` (replaced) with the public `url`. T
 
 - `404 grant_invalid`: wrong id or secret.
 - `410 grant_used`: already used; the body names the published `url` and its `result_id`.
-- `410 grant_expired` or `410 grant_failed`: stop and ask for a new grant. If `reason` is `file_recovery_required`, a new grant will fail too: tell the person that an administrator must reconcile storage for that file first.
+- `410 grant_expired` or `410 grant_failed`: stop and ask for a new grant. If `reason` is `file_recovery_required`, a new grant will fail too: tell the person that an administrator must reconcile storage for that file first. `reason: file_conflict` means someone replaced the file after the grant was issued; nothing was written, so tell whoever gave you the grant.
 - `409 grant_busy`, `409 file_busy`, or a `5xx`: retry the same upload.
 - `413 too_large` or `400 checksum_mismatch`: fix the bytes and retry; nothing was published.
 

@@ -1,3 +1,4 @@
+import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { createLooseFile, deleteLooseFile, patchLoose, putLooseFile } from "../src/files";
 import { uploadFromBytes } from "../src/upload";
@@ -116,7 +117,7 @@ describe("putLooseFile", () => {
             return null;
           },
           async run() {
-            return sql.includes("UPDATE loose_files") ? { meta: { changes: 1 } } : {};
+            return sql.includes("UPDATE loose_files") ? { meta: { changes: 1 }, results: [{ content_generation: 2 }] } : {};
           },
         };
       },
@@ -199,7 +200,7 @@ describe("putLooseFile", () => {
             return null;
           },
           async run() {
-            return sql.includes("UPDATE loose_files") ? { meta: { changes: 1 } } : {};
+            return sql.includes("UPDATE loose_files") ? { meta: { changes: 1 }, results: [{ content_generation: 2 }] } : {};
           },
         };
       },
@@ -605,5 +606,106 @@ describe("deleteLooseFile", () => {
 
     expect(new TextDecoder().decode(objects.get(key))).toBe("original");
     expect(lastWrittenBy).toBe("ada@esperlabs.app");
+  });
+});
+
+describe("loose file content generation", () => {
+  async function created(token: string, filename: string, body: string) {
+    const res = await json("/v1/files", { method: "POST", headers: auth(token, { "X-Filename": filename, "content-type": "text/plain" }), body });
+    expect(res.body.content_generation).toBe(1);
+    return res.body as { id: string; url: string };
+  }
+
+  async function state(id: string) {
+    const row = await env.DB.prepare("SELECT content_generation, size, last_written_by FROM loose_files WHERE id = ?").bind(id)
+      .first<{ content_generation: number; size: number; last_written_by: string }>();
+    const pending = await env.DB.prepare(`SELECT COUNT(*) AS n FROM storage_allocations WHERE kind = 'legacy_reservation'
+      AND state != 'released' AND json_extract(recovery_json, '$.fileId') = ?`).bind(id).first<{ n: number }>();
+    const quota = await env.DB.prepare("SELECT used FROM platform_quota WHERE id = 1").first<{ used: number }>();
+    return { ...row, pending: pending?.n, quota: quota?.used };
+  }
+
+  async function readBack(token: string, id: string) {
+    const res = await SELF.fetch(`http://127.0.0.1/v1/files/${id}`, { headers: auth(token) });
+    return { text: await res.text(), generation: res.headers.get("X-Energon-Content-Generation") };
+  }
+
+  it("counts byte replacements but not metadata patches", async () => {
+    const token = await mint("generation-count");
+    const file = await created(token, "count.txt", "one");
+    const patched = await json(`/v1/files/${file.id}`, {
+      method: "PATCH",
+      headers: auth(token, { "content-type": "application/json" }),
+      body: JSON.stringify({ password: "pw", ttl: "7d", write_policy: "org", write_password: "wpw" }),
+    });
+    expect(patched.body.content_generation).toBe(1);
+    const replaced = await json(`/v1/files/${file.id}`, { method: "PUT", headers: auth(token, { "X-Filename": "renamed.txt" }), body: "two" });
+    expect(replaced.body.content_generation).toBe(2);
+    expect(await readBack(token, file.id)).toEqual({ text: "two", generation: "2" });
+    const listed = await json("/v1/files?q=renamed.txt", { headers: auth(token) });
+    expect(listed.body.files.find((f: { id: string }) => f.id === file.id).content_generation).toBe(2);
+  });
+
+  it("replaces only at the expected generation, over raw and multipart bodies", async () => {
+    const token = await mint("generation-conditional");
+    const file = await created(token, "draft.txt", "draft");
+    const matched = await json(`/v1/files/${file.id}`, { method: "PUT", headers: auth(token, { "X-Energon-Expected-Version": "1" }), body: "newer" });
+    expect(matched.status).toBe(200);
+    expect(matched.body.content_generation).toBe(2);
+    const before = await state(file.id);
+
+    const stale = await json(`/v1/files/${file.id}`, { method: "PUT", headers: auth(token, { "X-Energon-Expected-Version": "1" }), body: "stale!" });
+    expect(stale.status).toBe(409);
+    expect(stale.body).toMatchObject({ error: "file_conflict", content_generation: 2, expected_version: 1 });
+    const form = new FormData();
+    form.set("file", new File(["stale form"], "draft.txt", { type: "text/plain" }));
+    form.set("expected_version", "1");
+    const staleForm = await json(`/v1/files/${file.id}`, { method: "PUT", headers: auth(token), body: form });
+    expect(staleForm.status).toBe(409);
+    expect(staleForm.body.error).toBe("file_conflict");
+
+    expect(await state(file.id)).toEqual(before);
+    expect(await readBack(token, file.id)).toEqual({ text: "newer", generation: "2" });
+    const malformed = await json(`/v1/files/${file.id}`, { method: "PUT", headers: auth(token, { "X-Energon-Expected-Version": "two" }), body: "x" });
+    expect(malformed.body.error).toBe("bad_expected_version");
+  });
+
+  it("refuses at the commit when another replacement lands after the pre-check, and restores the bytes", async () => {
+    const token = await mint("generation-commit-race");
+    const file = await created(token, "race.txt", "original");
+    const db = env.DB;
+    const originalPrepare = db.prepare.bind(db);
+    let raced = false;
+    // Lands a competing replacement right after putLooseFile reads the row it pre-checks.
+    db.prepare = ((sql: string) => {
+      const statement = originalPrepare(sql);
+      if (raced || !sql.startsWith("SELECT id, handle, filename, size, content_type, expires_at")) return statement;
+      raced = true;
+      return {
+        ...statement,
+        bind: (...args: unknown[]) => {
+          const bound = statement.bind(...args);
+          return {
+            ...bound,
+            first: async () => {
+              const row = await bound.first();
+              await originalPrepare("UPDATE loose_files SET content_generation = content_generation + 1 WHERE id = ?").bind(file.id).run();
+              return row;
+            },
+          };
+        },
+      };
+    }) as typeof db.prepare;
+    const before = { quota: (await state(file.id)).quota };
+    try {
+      await expect(
+        putLooseFile(env, undefined, { email: "ada@esperlabs.app", via: "token" }, file.id, uploadFromBytes(new TextEncoder().encode("stale")), null, "text/plain", undefined, undefined, 1),
+      ).rejects.toMatchObject({ status: 409, code: "file_conflict", extra: { content_generation: 2 } });
+    } finally {
+      db.prepare = originalPrepare;
+    }
+    expect(raced).toBe(true);
+    expect(await state(file.id)).toMatchObject({ content_generation: 2, size: 8, last_written_by: "ada@esperlabs.app", pending: 0, quota: before.quota });
+    expect((await readBack(token, file.id)).text).toBe("original");
   });
 });
