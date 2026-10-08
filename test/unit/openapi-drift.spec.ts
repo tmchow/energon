@@ -266,12 +266,11 @@ describe("gateway catalog", () => {
 
   it("steers publishing searches to grants and the skill", async () => {
     const doc = await gatewayOpenapiResponse(SPLIT_ENV).json() as { paths: Record<string, Record<string, { summary: string; description: string }>> };
-    for (const [path, method] of [["/v1/grants", "post"], ["/v1/sites/{id}/deployments", "post"]]) {
+    for (const [path, method] of [["/v1/grants", "post"], ["/v1/sites/{id}/deployments", "post"], ["/v1/sites", "post"], ["/v1/files/{id}/duplicate", "post"]]) {
       const op = doc.paths[path][method];
-      expect(op.summary.toLowerCase()).toContain("publish");
+      expect(op.summary.toLowerCase(), path).toMatch(/publish|share/);
       const lead = op.description.split("\n")[0];
-      expect(lead).toContain("helper");
-      expect(lead).toContain("Energon skill");
+      for (const step of ["mint", "helper", "SHA-256", "URL and expiry", "Energon skill"]) expect(lead, `${path} ${step}`).toContain(step);
     }
     expect(doc.paths["/v1/grants"].post.summary).toContain("upload a local file");
     expect(doc.paths["/v1/files/{id}"].get.summary).toContain("stored bytes");

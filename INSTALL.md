@@ -349,6 +349,8 @@ A tool gateway that imports OpenAPI holds one credential for many machines. Poin
 
 A gateway that already imported `/v1/openapi.json` keeps the byte-upload tools until you re-point its import to the gateway catalog.
 
+A minted grant's secret and URLs pass through the gateway's tool output. They are short-lived bearer credentials, so keep them out of persistent gateway logs and transcripts.
+
 <a id="refresh-an-installed-plugin"></a>
 
 ### Refresh an installed plugin
