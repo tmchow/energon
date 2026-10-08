@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.11.0](https://github.com/tmchow/energon/compare/v1.10.0...v1.11.0) (2026-10-08)
+
+
+### Features
+
+* **files:** reject stale loose-file replacements with expected_version ([#150](https://github.com/tmchow/energon/issues/150)) ([6ff1203](https://github.com/tmchow/energon/commit/6ff12031e94dee763eb2c525e2348d0e9e32e4fc))
+
+
+### Bug Fixes
+
+* **files:** return file_recovery_required for files blocked on storage recovery ([#149](https://github.com/tmchow/energon/issues/149)) ([9dba861](https://github.com/tmchow/energon/commit/9dba86184ae3b6d35c4879220e752c840a5eb1f8))
+
+
+### Performance
+
+* **sites:** convert legacy sites in budgeted batches ([#147](https://github.com/tmchow/energon/issues/147)) ([bfc76ff](https://github.com/tmchow/energon/commit/bfc76ff8dbf885cbef47fe260fbf519c0d783213))
+
 ## [1.10.0](https://github.com/tmchow/energon/compare/v1.9.0...v1.10.0) (2026-10-07)
 
 
