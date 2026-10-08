@@ -86,7 +86,7 @@ export default {
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     await ensureSchema(env.DB);
     await remapLegacySiteR2(env, ctx);
-    await sweepExpired(env, ctx);
+    await sweepExpired(env, ctx, true);
     await purgeConnections(env);
     await purgeGrants(env);
     await sweepStaleTmp(env.BUCKET);
