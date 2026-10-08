@@ -61,7 +61,7 @@
     try {
       const body = action === 'approve' ? { user_code: code, ttl } : {};
       await api(`/account/connections/${encodeURIComponent(data.connection.id)}/${action}`, jsonBody('POST', body));
-      status = action === 'approve' ? 'Connection approved. Return to your agent to finish connecting; it receives the token on its next poll.' : 'Connection denied. Your agent is told to stop on its next poll.';
+      status = action === 'approve' ? 'Connection approved. Return to your agent to finish connecting; it receives its key on its next poll.' : 'Connection denied. Your agent is told to stop on its next poll.';
       complete = true;
     } catch (err) { status = errorMessage(err); failed = true; }
     finally { busy = false; }
@@ -89,5 +89,5 @@
     <div id="connect-status" class="en-connect-status" aria-live="polite">{#if status}<Flash tone={failed ? 'err' : 'ok'}>{status}</Flash>{/if}</div>
     <p class="en-connect-meta">{#if !inactive}The agent will act as your account. It can read work on this host, including password-protected links, and publish, update, or delete where you have permission. Approve only a code you asked for. {/if}{metaTail}</p>
   </Card>
-  <p class="en-connect-account">Signed in as <code>{data.email}</code> · <a href="/tokens">Manage tokens</a></p>
+  <p class="en-connect-account">Signed in as <code>{data.email}</code> · <a href="/keys">Manage agent keys</a></p>
 </main>

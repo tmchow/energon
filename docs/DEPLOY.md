@@ -42,9 +42,9 @@ Two paths, on purpose:
 
 R2 lifecycle rules cannot do per-object `expires_at`. The Worker owns the clock.
 
-API tokens expire on their own clock, separate from content. A human picks a lifetime on `/tokens` when minting (`1d`, `7d`, `30d`, `60d`, `90d`, `180d`, `365d`; default `90d`; `never` only when `ALLOW_UNLIMITED_TOKENS` allows it). Auth rejects an expired token with `401 token_expired`; the row stays listed on `/tokens` as expired so the owner can see why an agent stopped, and can still revoke it. There is no renew: the human mints a new token. Tokens minted before this column existed have no expiry.
+API tokens expire on their own clock, separate from content. A human picks a lifetime on `/keys` when minting (`1d`, `7d`, `30d`, `60d`, `90d`, `180d`, `365d`; default `90d`; `never` only when `ALLOW_UNLIMITED_TOKENS` allows it). Auth rejects an expired token with `401 token_expired`; the row stays listed on `/keys` as expired so the owner can see why an agent stopped, and can still revoke it. There is no renew: the human mints a new token. Tokens minted before this column existed have no expiry.
 
-`ADMIN_EMAILS` is a comma list of operator addresses. Only those people can mint an **admin** token from `/tokens` (`scope: admin`). Connect never grants that scope. Admin tokens last at most 7 days (default 1 day) and cannot be never. Admin routes also check that the owner is still on the list, so removing an email strips admin from every token at once. Ordinary `/v1` calls with an admin token still act as that account.
+`ADMIN_EMAILS` is a comma list of operator addresses. Only those people can create an **admin** key from `/keys` (`scope: admin`). Connect never grants that scope. Admin tokens last at most 7 days (default 1 day) and cannot be never. Admin routes also check that the owner is still on the list, so removing an email strips admin from every token at once. Ordinary `/v1` calls with an admin token still act as that account.
 
 ## Generated plugin maintenance
 
@@ -70,7 +70,7 @@ Strings only (Wrangler).
 | `DEFAULT_TTL` | `never` | `7d` (`never` if unlimited is on and this is unset) |
 | `MAX_TTL` | `never` | `30d` (`never` if unlimited) |
 | `TTL_PRESETS` | omit (full catalog) | code catalog ∩ `MAX_TTL` |
-| `ALLOW_UNLIMITED_TOKENS` | `true` | `true` (Never on the token lifetime menu; `false` removes it). Only affects future mints — tokens minted before, and Never tokens minted before you flip it, keep working until revoked on `/tokens`. |
+| `ALLOW_UNLIMITED_TOKENS` | `true` | `true` (Never on the token lifetime menu; `false` removes it). Only affects future mints — tokens minted before, and Never tokens minted before you flip it, keep working until revoked on `/keys`. |
 | `AGENT_SKILLS_DISCOVERY` | `false` to turn off | on: `CONTENT_ORIGIN` serves the rendered publish skill at `/.well-known/agent-skills/` (`index.json` plus files) without credentials, and `/v1/help` reports `agent_skills_url`. Once set, only `1`, `true`, or `yes` keeps it on. Responses are cached for five minutes, so turning it off can take up to five minutes at the edge. |
 | `ALLOWED_EMAIL_DOMAINS` | `your.co,your.com` | empty (any Access email) |
 | `ADMIN_EMAILS` | `you@your.co` | empty (no one is admin; admin tokens and `/v1/admin` refuse) |
@@ -239,6 +239,6 @@ Do not reuse another Energon’s D1 `database_id` or R2 bucket. Do not put Acces
 
 ## Agent connections
 
-Keep `/connect` behind the same Access policy as `/tokens`; keep `/v1/connections` and its token polling endpoint under the existing `/v1*` bypass. Humans still authorize every credential. The new connection endpoints do not implement OAuth or public signup.
+Keep `/connect` behind the same Access policy as `/keys`; keep `/v1/connections` and its token polling endpoint under the existing `/v1*` bypass. Humans still authorize every credential. The new connection endpoints do not implement OAuth or public signup.
 
 Migration `0014_agent_connections.sql` adds short-lived connection records. Request creation is limited to 20 per IP and 1000 on this Energon per ten minutes; pending clients poll at most every five seconds. Cron removes records more than a day past expiry. No API token or poll secret is stored in plaintext. The delivered credential appears in the existing Tokens UI. If delivery is lost, revoke that token before approving a replacement.

@@ -107,7 +107,7 @@ describe("signed-in pages", () => {
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect((await req(`https://energon.example.com${asset}`)).status).toBe(404);
     expect((await req(asset, { method: "POST" })).status).toBe(405);
-    expect(html.indexOf('href="/tokens"')).toBeLessThan(html.indexOf('href="/setup"'));
+    expect(html.indexOf('href="/keys"')).toBeLessThan(html.indexOf('href="/setup"'));
     expect(html.indexOf('href="/setup"')).toBeLessThan(html.indexOf('href="/about"'));
     expect(html).not.toContain('href="/admin"');
     const adminHub = await (await req("/", { headers: access("admin@esperlabs.app") })).text();
@@ -274,7 +274,7 @@ describe("signed-in pages", () => {
     expect(setupHtml).toContain("https://github.com/tmchow/energon");
     expect(setupHtml).not.toContain("agent-plugins.org");
     expect(setupHtml).toContain("energon");
-    expect(setupHtml).toContain('href="/tokens"');
+    expect(setupHtml).toContain('href="/keys"');
     expect(setupHtml).toContain('id="agent-install"');
     expect(setupHtml).toContain("Install and connect in one step");
     expect(setupHtml).toContain("user (global) scope");
@@ -291,10 +291,11 @@ describe("signed-in pages", () => {
     assertDomBindings(setupHtml);
 
     const secret = await mint("svelte-token-row", "dev@esperlabs.app");
-    const tokens = await req("/tokens");
+    const tokens = await req("/keys");
     expect(tokens.status).toBe(200);
     const tokensHtml = await tokens.text();
-    expect(tokensHtml).toContain("Mint token");
+    expect(tokensHtml).toContain("Create key");
+    expect(tokensHtml).toContain("<title>Agent keys");
     expect(tokensHtml).toContain("ENERGON_TOKEN");
     expect(tokensHtml).toContain("shown once");
     expect(tokensHtml).not.toContain(secret);
@@ -304,7 +305,7 @@ describe("signed-in pages", () => {
     expect(tokensHtml).not.toContain("Reveal returns the full secret");
     expect(tokensHtml).not.toContain("function reveal(");
     expect(tokensHtml).toContain('id="mint-ttl"');
-    expect(tokensHtml).toContain('aria-label="Token lifetime"');
+    expect(tokensHtml).toContain('aria-label="Key lifetime"');
     expect(tokensHtml).toMatch(/"token_policy":\{"presets":\[\{"id":"1d"/);
     expect(tokensHtml).toContain('"default":"90d"');
     expect(tokensHtml).toContain('"allow_never":true');
@@ -312,21 +313,21 @@ describe("signed-in pages", () => {
     expect(tokensHtml).toContain('href="/setup"');
     expect(tokensHtml).not.toContain('class="app-footer"');
     expect(tokensHtml).not.toContain("__FOOTER__");
-    expect(tokensHtml.indexOf('href="/tokens"')).toBeLessThan(tokensHtml.indexOf('href="/setup"'));
-    expect(tokensHtml.indexOf(">Tokens</h2>")).toBeLessThan(tokensHtml.indexOf("Mint a token by hand"));
+    expect(tokensHtml.indexOf('href="/keys"')).toBeLessThan(tokensHtml.indexOf('href="/setup"'));
+    expect(tokensHtml.indexOf(">Keys</h2>")).toBeLessThan(tokensHtml.indexOf("Create a key by hand"));
     expect(tokensHtml).toContain('id="tokens-show"');
-    expect(tokensHtml).toContain('aria-label="Show tokens"');
+    expect(tokensHtml).toContain('aria-label="Show keys"');
     expect(tokensHtml).toContain('id="revoke-stale"');
     expect(tokensHtml).toContain('id="revoke-all"');
     expect(tokensHtml).toContain("Stale means unused for 30 days.");
     assertDomBindings(tokensHtml);
-    const emptyHtml = await (await req("/tokens", { headers: access("notokens@esperlabs.app") })).text();
-    expect(emptyHtml).toContain("No live tokens");
+    const emptyHtml = await (await req("/keys", { headers: access("notokens@esperlabs.app") })).text();
+    expect(emptyHtml).toContain("No live keys");
     expect(emptyHtml).toContain("Set up your agent and approve its code");
 
-    const adminHtml = await (await req("/tokens", { headers: access("admin@esperlabs.app") })).text();
+    const adminHtml = await (await req("/keys", { headers: access("admin@esperlabs.app") })).text();
     expect(adminHtml).toContain('id="mint-scope"');
-    expect(adminHtml).toContain('aria-label="Token authority"');
+    expect(adminHtml).toContain('aria-label="Key authority"');
     expect(adminHtml).toContain('href="/admin"');
     expect(bootstrap(adminHtml).data.admin).toBe(true);
     expect(tokensHtml).not.toContain('id="mint-scope"');
@@ -421,7 +422,7 @@ describe("signed-in pages", () => {
     expect(page.status).toBe(200);
     const html = await page.text();
     expect(html).toContain(">Admin</h1>");
-    expect(html).toContain("Check this Energon, retire unused work, and revoke tokens.");
+    expect(html).toContain("Check this Energon, retire unused work, and revoke agent keys.");
     expect(html).toContain('id="admin-health"');
     expect(html).toContain("Quota used is the ledger");
     expect(html).toContain("Expired awaiting purge");
@@ -446,7 +447,7 @@ describe("signed-in pages", () => {
     expect(html).toContain('id="admin-revoke-stale"');
     expect(html).toContain('id="admin-revoke-all"');
     expect(html).toContain('id="admin-tokens-dlg"');
-    expect(html).toContain("Tokens across accounts");
+    expect(html).toContain("Keys across accounts");
     expect(html).toContain('aria-label="Cleanup action"');
     expect(html).toContain("The owner sees Expires");
     expect(html).toContain("Set expiry is the safe default");

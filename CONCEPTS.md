@@ -47,23 +47,23 @@ If a mutation fails before catalog commit, claim rollback restores the observed 
 
 ## Authentication
 
-### API Token
-A credential this Energon issues that authorizes an agent to use the authenticated API as its owning account.
+### Agent Key
+A credential this Energon issues that authorizes an agent to use the authenticated API as its owning account. Humans create and revoke them at `/keys`. Say "key" in hub copy and human-facing docs, because people read "token" as LLM usage. Code, the schema, and the `/v1` contract keep `token` (`tokens` table, `ENERGON_TOKEN`, `token_*` fields, `token_expired`); agent-facing docs may say token.
 
 ### Admin
-An account whose email is on `ADMIN_EMAILS` for this Energon. Admins mint Admin Tokens at `/tokens`. Removing the email from the list strips admin from every token they already minted.
+An account whose email is on `ADMIN_EMAILS` for this Energon. Admins create Admin Keys at `/keys`. Removing the email from the list strips admin from every token they already minted.
 
-### Admin Token
-An API Token minted with admin scope by an Admin at `/tokens`. The connect flow never grants that scope. It still acts as the owning account for ordinary `/v1` calls. Admin routes also require the owner to still be on `ADMIN_EMAILS`. Lifetime is at most 7 days and cannot be never. The stored hint uses `admin` after the Token Prefix so a human reading a catalog or audit row can tell it from an account token.
+### Admin Key
+An Agent Key minted with admin scope by an Admin at `/keys`. The connect flow never grants that scope. It still acts as the owning account for ordinary `/v1` calls. Admin routes also require the owner to still be on `ADMIN_EMAILS`. Lifetime is at most 7 days and cannot be never. The stored hint uses `admin` after the Key Prefix so a human reading a catalog or audit row can tell it from an account token.
 
-### Token Prefix
-The marker at the beginning of an API Token that identifies which token format this Energon accepts. It must stay consistent when tokens are minted, authenticated, masked, or described to agents.
+### Key Prefix
+The marker at the beginning of an Agent Key that identifies which token format this Energon accepts. It must stay consistent when tokens are minted, authenticated, masked, or described to agents.
 
-### Token Expiry
-The lifetime a human chooses when minting an API Token, after which authentication rejects it. An expired token is kept in the account's token list as a record and can still be revoked, but it cannot be renewed; like every API Token it has no recoverable secret. Token expiry is governed by its own policy on this Energon, separate from content retention.
+### Key Expiry
+The lifetime a human chooses when minting an Agent Key, after which authentication rejects it. An expired token is kept in the account's token list as a record and can still be revoked, but it cannot be renewed; like every Agent Key it has no recoverable secret. Token expiry is governed by its own policy on this Energon, separate from content retention.
 
 ### Write Password
-A per-object shared secret that lets someone outside the host replace bytes at a published URL without an API Token, Access, or `/connect`. It is independent of the share password. The write header authorizes PUT (and site-path DELETE). The write header also unlocks GET. The HTML gate form accepts the write password for reading when a share password is also set. The cookie never authorizes PUT or DELETE. It is not an account and is not recorded as Last writer. The Hub keeps the phrase for the creator so they can copy it again. `/v1` GET returns only whether it is set.
+A per-object shared secret that lets someone outside the host replace bytes at a published URL without an Agent Key, Access, or `/connect`. It is independent of the share password. The write header authorizes PUT (and site-path DELETE). The write header also unlocks GET. The HTML gate form accepts the write password for reading when a share password is also set. The cookie never authorizes PUT or DELETE. It is not an account and is not recorded as Last writer. The Hub keeps the phrase for the creator so they can copy it again. `/v1` GET returns only whether it is set.
 
 ### Share Password
 A per-object shared secret that gates reading a published URL. Browsers use the gate form and cookie. Agents send the share-password header. If a write password is also set, that phrase also unlocks the gate form. The share-password header does not accept the write phrase. The cookie never authorizes PUT or DELETE. The Hub keeps the phrase so the signed-in owner can copy it again. `/v1` GET returns only whether it is set. Verification still uses a hash.
@@ -71,17 +71,17 @@ A per-object shared secret that gates reading a published URL. Browsers use the 
 ### Upload Grant
 A short-lived, single-use credential a token holder mints so a machine without a token can upload one file: a new loose file, a replacement for an existing one, or one path in a site. The machine sends the bytes straight to the grant's upload URL on the content origin.
 
-It acts as the minting account: the upload must pass that account's write policy, and the minter becomes the writer. It is not an account and cannot be used as an API Token. A successful upload publishes at once and uses the grant up in the same commit as the catalog write. A grant for an existing Loose file can name the Content generation it expects; if the file was replaced after minting, the upload writes nothing and the grant fails permanently. Its lifetime is its own credential policy, separate from Token Expiry and content retention, and never outlasts the minting token. Revoking or expiring that token ends the grant.
+It acts as the minting account: the upload must pass that account's write policy, and the minter becomes the writer. It is not an account and cannot be used as an Agent Key. A successful upload publishes at once and uses the grant up in the same commit as the catalog write. A grant for an existing Loose file can name the Content generation it expects; if the file was replaced after minting, the upload writes nothing and the grant fails permanently. Its lifetime is its own credential policy, separate from Key Expiry and content retention, and never outlasts the minting token. Revoking or expiring that token ends the grant.
 
 ## Org, this Energon, and host
 
 ### This Energon
 The deployed product: one Worker, D1, R2, Access app, and rendered skill. Speak of “this Energon” or “your Energon.” The user-facing CTA is **Want to deploy your own Energon?**
 
-`GET /v1/help` describes this Energon: origins, skill and marketplace coordinates, token environment variable, Token Prefix, retention, token policy, limits. Those values come from deployment configuration with project defaults as fallbacks, so this Energon does not advertise or issue credentials in a format it will reject.
+`GET /v1/help` describes this Energon: origins, skill and marketplace coordinates, token environment variable, Key Prefix, retention, token policy, limits. Those values come from deployment configuration with project defaults as fallbacks, so this Energon does not advertise or issue credentials in a format it will reject.
 
 ### Well-known skill
-This Energon's rendered skill, served publicly from its content origin under `/.well-known/agent-skills/` so installers and tool gateways can load it by URL without access to the deployment repository. It names the same origin, token environment variable, and Token Prefix as `GET /v1/help`, and holds no credentials. `/v1/help` `agent_skills_url` is null when the operator turns it off with `AGENT_SKILLS_DISCOVERY`.
+This Energon's rendered skill, served publicly from its content origin under `/.well-known/agent-skills/` so installers and tool gateways can load it by URL without access to the deployment repository. It names the same origin, token environment variable, and Key Prefix as `GET /v1/help`, and holds no credentials. `/v1/help` `agent_skills_url` is null when the operator turns it off with `AGENT_SKILLS_DISCOVERY`.
 
 ### Org
 Everyone who can mint a token on this Energon (Cloudflare Access, with an optional email-domain lock). Not a database entity. Write policy `org` means any of those tokens may write the object. Hub copy says “Anyone in the org.”
@@ -92,11 +92,11 @@ Locative only: the place (this origin, vs someone not on this host). Not the nam
 ## Relationships
 
 - A Site contains Site files; a Loose file is published outside any Site.
-- This Energon’s Token Prefix is the format an API Token from that Energon uses.
-- An API Token authenticates against the Energon that issued it.
+- This Energon’s Key Prefix is the format an Agent Key from that Energon uses.
+- An Agent Key authenticates against the Energon that issued it.
 - Purge claims and Write claims make competing content mutations resolve before storage changes begin.
 - A Share Password gates reading a published URL. A Write Password authorizes guest PUT (and site-path DELETE) on that same object without an account.
-- An Upload Grant authorizes one upload to one target on behalf of the API Token that minted it.
+- An Upload Grant authorizes one upload to one target on behalf of the Agent Key that minted it.
 - The Well-known skill and `GET /v1/help` describe the same Energon; neither carries a credential.
 
 ## Schema lifecycle

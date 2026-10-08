@@ -43,8 +43,8 @@ export function unauthorized(origin: string, detail?: string, env?: Env): ApiErr
     401,
     "unauthorized",
     detail ||
-      `${PRODUCT} needs an API token. Use ${id.tokenEnv} if set. Otherwise, if a human can respond, connect with a code per ${origin}/auth.md; if not, stop and ask a human to mint one at ${origin}/tokens. Send it as Authorization: Bearer ${id.tokenPrefix}…. Do not invent a token.`,
-    { auth_url: `${origin}/auth.md`, tokens_url: `${origin}/tokens` },
+      `${PRODUCT} needs an API token. Use ${id.tokenEnv} if set. Otherwise, if a human can respond, connect with a code per ${origin}/auth.md; if not, stop and ask a human to create an agent key at ${origin}/keys. Send it as Authorization: Bearer ${id.tokenPrefix}…. Do not invent a token.`,
+    { auth_url: `${origin}/auth.md`, tokens_url: `${origin}/keys` },
   );
 }
 
@@ -55,8 +55,8 @@ export function tokenExpiredError(origin: string, expiredAt: string, env?: Env):
   return new ApiError(
     401,
     "token_expired",
-    `That API token expired${when}. Tokens cannot be extended. Ask the human to approve a new connection (see ${origin}/auth.md) or mint a replacement at ${origin}/tokens and export it as ${id.tokenEnv}. Do not retry with this token. Do not invent a token.`,
-    { expired_at: expiredAt, auth_url: `${origin}/auth.md`, tokens_url: `${origin}/tokens` },
+    `That API token expired${when}. Tokens cannot be extended. Ask the human to approve a new connection (see ${origin}/auth.md) or create a replacement agent key at ${origin}/keys and export it as ${id.tokenEnv}. Do not retry with this token. Do not invent a token.`,
+    { expired_at: expiredAt, auth_url: `${origin}/auth.md`, tokens_url: `${origin}/keys` },
   );
 }
 
@@ -107,7 +107,7 @@ export async function requireToken(request: Request, env: Env): Promise<Actor> {
   if (rejection === "missing" || rejection === "revoked") {
     throw unauthorized(
       origin,
-      `That API token is missing or revoked. Stop using it. If a human can respond, connect again with a code per ${origin}/auth.md; if not, ask a human to mint a replacement at ${origin}/tokens and store it as ${id.tokenEnv}.`,
+      `That API token is missing or revoked. Stop using it. If a human can respond, connect again with a code per ${origin}/auth.md; if not, ask a human to create a replacement agent key at ${origin}/keys and store it as ${id.tokenEnv}.`,
       env,
     );
   }
@@ -288,7 +288,7 @@ export function requireAdmin(actor: Actor, origin: string): void {
     403,
     "forbidden_admin",
     actor.via === "token"
-      ? `That request needs an admin token minted at ${origin}/tokens by someone on ADMIN_EMAILS. Account tokens and the connect flow cannot do this.`
+      ? `That request needs an admin token minted at ${origin}/keys by someone on ADMIN_EMAILS. Account tokens and the connect flow cannot do this.`
       : "That page is only for operators listed on ADMIN_EMAILS.",
   );
 }
@@ -516,9 +516,9 @@ export function helpBody(origin: string, env?: Env): unknown {
       repo: id.repo,
     },
     sop: [
-      `Look for env ${id.tokenEnv}. If missing and a human can respond, follow ${origin}/auth.md to connect with a code and save the delivered token as ${id.tokenEnv} where this environment keeps secrets. If no human can respond, stop and ask for a token provisioned at ${origin}/tokens. The secret is delivered once. Do not invent a token.`,
-      `Tokens expire after the lifetime the human picked at mint (default 90 days; see tokens.presets). A 401 with error token_expired is terminal: stop using it, connect again with a code or ask the human to provision a replacement at ${origin}/tokens, and do not retry the expired token. Tokens cannot be extended. GET /v1/whoami shows your token's expires_at.`,
-      `An admin token is opt-in at mint on /tokens by someone on ADMIN_EMAILS. Connect never grants it. whoami.admin is true only while that token's scope is admin and the owner is still on the list. Removing the email strips admin from every token at once. Admin tokens still act as the account for ordinary /v1 calls. They last at most 7 days (default 1 day) and cannot be never. Their hint inserts admin after the token prefix, then an ellipsis and the last four. GET /v1/admin/health shows quota used versus the cap, expired objects awaiting purge, stale purge claims, and file recoveries (files blocked by unresolved storage reservations). POST /v1/admin/quota/recompute sets the ledger from stored sizes. POST /v1/admin/sweep runs one expiry batch. POST /v1/admin/gates/unlock clears a locked share gate by scope. GET /v1/admin/audit lists recorded admin actions (who, which token, what, filters, counts, when). Needs an admin token.`,
+      `Look for env ${id.tokenEnv}. If missing and a human can respond, follow ${origin}/auth.md to connect with a code and save the delivered token as ${id.tokenEnv} where this environment keeps secrets. If no human can respond, stop and ask a human to create an agent key at ${origin}/keys. The secret is delivered once. Do not invent a token.`,
+      `Tokens expire after the lifetime the human picked at mint (default 90 days; see tokens.presets). A 401 with error token_expired is terminal: stop using it, connect again with a code or ask the human to provision a replacement at ${origin}/keys, and do not retry the expired token. Tokens cannot be extended. GET /v1/whoami shows your token's expires_at.`,
+      `An admin token is opt-in at mint on /keys by someone on ADMIN_EMAILS. Connect never grants it. whoami.admin is true only while that token's scope is admin and the owner is still on the list. Removing the email strips admin from every token at once. Admin tokens still act as the account for ordinary /v1 calls. They last at most 7 days (default 1 day) and cannot be never. Their hint inserts admin after the token prefix, then an ellipsis and the last four. GET /v1/admin/health shows quota used versus the cap, expired objects awaiting purge, stale purge claims, and file recoveries (files blocked by unresolved storage reservations). POST /v1/admin/quota/recompute sets the ledger from stored sizes. POST /v1/admin/sweep runs one expiry batch. POST /v1/admin/gates/unlock clears a locked share gate by scope. GET /v1/admin/audit lists recorded admin actions (who, which token, what, filters, counts, when). Needs an admin token.`,
       `When your task is done and nothing else will use this token, DELETE /v1/whoami revokes it (self only: it cannot list or revoke other tokens). Later calls with it are 401. Do not do this to a token the human stored for reuse, such as CI.`,
       "Private plugin installation and updates need GitHub read access in the installing client, separate from the Energon API token. If private marketplaces are unsupported, use a local authenticated copy of the generated publish skill or the documented HTTP API. Never make the repository public to install it.",
       `This Energon's skill is ${id.skill} (install ${installLine(id)}). The origin is ${origin}. Do not guess another Energon.`,

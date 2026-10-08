@@ -118,7 +118,7 @@
 
 <main class="en-wrap">
   <PageTitle kicker={kicker} title="Admin" wide>
-    <p class="en-lede">Check this Energon, retire unused work, and revoke tokens. Set a short expiry on sites and files nobody marked, across every account. The owner sees Expires in their catalog and can push it back. Deleting is an explicit choice. Every preview and execute is recorded.</p>
+    <p class="en-lede">Check this Energon, retire unused work, and revoke agent keys. Set a short expiry on sites and files nobody marked, across every account. The owner sees Expires in their catalog and can push it back. Deleting is an explicit choice. Every preview and execute is recorded.</p>
   </PageTitle>
   <div id="admin-messages">{#if error}<Flash tone="err">{error}</Flash>{/if}{#if notice}<Flash tone="ok">{notice}</Flash>{/if}</div>
   {#if upstream}<AdminUpstream snapshot={upstream} {dismissed} onDismiss={() => onDismiss?.()} />{/if}
@@ -149,13 +149,13 @@
   <CleanupReview {preview} {action} bind:confirmOpen bind:confirmError {busy} showOwner className="en-admin-card" sampleId="admin-sample" confirmId="admin-dlg" confirmButtonId="admin-confirm" onConfirm={() => { void runConfirm(); }} />
   <AdminTokens />
   <Card title="Audit" className="en-admin-card" tight>
-    <p class="en-muted-copy en-admin-note">Who, which token, what, which filters, how many, when. Metadata only.</p>
+    <p class="en-muted-copy en-admin-note">Who, which key, what, which filters, how many, when. Metadata only.</p>
     <div id="admin-audit">
       {#if events.length}
         <Table rows={events} rowKey={(event) => event.id} columns={[
           { header: 'When', cell: auditWhen },
           { header: 'Who', cell: auditWho },
-          { header: 'Token', cell: auditToken },
+          { header: 'Key', cell: auditToken },
           { header: 'Action', cell: auditWhat },
           { header: 'Filters', cell: auditFilters },
           { header: 'Counts', cell: auditCounts },

@@ -16,8 +16,8 @@ Gateway mode: when a tool gateway exposes these operations as tools (often `<tag
 
 | Status | Typical `error` | What you do |
 | --- | --- | --- |
-| 401 | `unauthorized` | Stop. Connect with a code (auth.md) or have the human provision a token at {{ORIGIN}}/tokens |
-| 401 | `token_expired` | Terminal. The token passed its lifetime and cannot be extended. Do not retry with it; connect again or the human provisions a new one at {{ORIGIN}}/tokens (`expired_at` and `tokens_url` are in the body) |
+| 401 | `unauthorized` | Stop. Connect with a code (auth.md) or have the human provision a token at {{ORIGIN}}/keys |
+| 401 | `token_expired` | Terminal. The token passed its lifetime and cannot be extended. Do not retry with it; connect again or the human provisions a new one at {{ORIGIN}}/keys (`expired_at` and `tokens_url` are in the body) |
 | 401 | `password_required` | Retry the human URL with `X-Energon-Password` to read, or `X-Energon-Write-Password` to write. Token `api_url` still skips the share password. |
 | 404 | `site_not_found` / `file_not_found` | Create the site first; never implicit-create. For files, check the path or id. |
 | 410 | `expired` | Content passed `expires_at`. It is gone or about to be purged. Do not retry the same URL. |
@@ -127,7 +127,7 @@ Expired public and `/v1` reads are `410`. A cron sweep deletes the R2 objects an
 
 ## Token lifetime
 
-Humans pick a lifetime when minting on {{ORIGIN}}/tokens. `GET /v1/help` → `tokens` lists the presets (`1d`…`365d`, plus `never` only when this Energon allows it), the default (`90d`), `allow_never`, and `tokens_url`. This is separate from content `retention`. After expiry every `/v1` call is `401 token_expired`; there is no renew. `GET /v1/whoami` shows `expires_at` (`null` = never). `DELETE /v1/whoami` revokes the calling token when a session-only token is done; `/v1` cannot list or revoke other tokens.
+Humans pick a lifetime when minting on {{ORIGIN}}/keys. `GET /v1/help` → `tokens` lists the presets (`1d`…`365d`, plus `never` only when this Energon allows it), the default (`90d`), `allow_never`, and `tokens_url`. This is separate from content `retention`. After expiry every `/v1` call is `401 token_expired`; there is no renew. `GET /v1/whoami` shows `expires_at` (`null` = never). `DELETE /v1/whoami` revokes the calling token when a session-only token is done; `/v1` cannot list or revoke other tokens.
 
 ## Other
 
@@ -143,7 +143,7 @@ Limits: 100 MB per file, 100 MiB ZIP input, 500 MiB expanded ZIP, and 25 MiB ZIP
 
 ## Connect with a code
 
-Read {{ORIGIN}}/auth.md for POST `/v1/connections` and POST `/v1/connections/{id}/token`. No bearer is needed to start; polling requires the private `poll_token`. No file access is granted until a signed-in human confirms the agent code (from the link or by typing it) and approves. The delivered token is an ordinary account token with the lifetime the human chose; save it as `{{TOKEN_ENV}}` per auth.md. Humans can also create tokens ahead of time on {{ORIGIN}}/tokens for CI and unattended runs.
+Read {{ORIGIN}}/auth.md for POST `/v1/connections` and POST `/v1/connections/{id}/token`. No bearer is needed to start; polling requires the private `poll_token`. No file access is granted until a signed-in human confirms the agent code (from the link or by typing it) and approves. The delivered token is an ordinary account token with the lifetime the human chose; save it as `{{TOKEN_ENV}}` per auth.md. Humans can also create tokens ahead of time on {{ORIGIN}}/keys for CI and unattended runs.
 
 ## Atomic site deployments
 

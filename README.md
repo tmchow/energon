@@ -64,7 +64,7 @@ setup and verification.
 
 Open that Energon's `/setup` page, or read `GET {origin}/v1/help`. Both name the marketplace repo, plugin, and token environment variable. Install at user scope with `npx skills add {owner/repo} --skill {plugin} -g`, or your agent's normal plugin flow; [INSTALL.md](./INSTALL.md#connect-an-agent) lists the commands for the Skills CLI, Claude Code, Cursor, Codex, Grok, and GitHub Copilot.
 
-The agent then follows `{origin}/auth.md`. If the token variable is already set, it uses it. Otherwise it shows you a link and an eight-digit code; you sign in, approve, and the agent saves the delivered token. For CI and hosted sandboxes, mint a token at `{origin}/tokens` and store it in the environment's secret store. Tokens are shown once.
+The agent then follows `{origin}/auth.md`. If the token variable is already set, it uses it. Otherwise it shows you a link and an eight-digit code; you sign in, approve, and the agent saves the delivered token. For CI and hosted sandboxes, create an agent key at `{origin}/keys` and store it in the environment's secret store. Keys are shown once.
 
 ### Run the source locally
 

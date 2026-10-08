@@ -138,7 +138,7 @@ All executable, all from repo root:
 | `bin/doctor` | Read-only health/help/ownership check. Exit 1 → do not drive. Once per session. |
 | `bin/ready` | After doctor: mint a token if `state.env` has none. Prints origin/handle/evidence. Source `state.env` for `$TOKEN`. |
 | `bin/save [--expect CODE] FEATURE NAME METHOD URL …` | Curl into `$EVIDENCE/FEATURE/NAME.{code,headers,body}`. Prints the status. `--expect` fails the script on mismatch. |
-| `bin/mint-token [label] [ttl]` | `POST /account/tokens` (same path as the Tokens page). Optional `ttl`. Use `bin/ready` unless you need a second label. |
+| `bin/mint-token [label] [ttl]` | `POST /account/tokens` (same path as the Agent keys page). Optional `ttl`. Use `bin/ready` unless you need a second label. |
 | `bin/cleanup` | Kill this run, remove persist, keep evidence. |
 
 `bin/_lib.sh` is sourced by those scripts; do not invoke it directly.

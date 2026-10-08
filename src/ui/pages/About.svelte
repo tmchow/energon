@@ -8,7 +8,7 @@
     [{ label: 'Session A', icon: 'terminal' }, { label: '/f/{id}/file', charged: true }, { label: 'Session B', icon: 'terminal' }],
     [{ label: 'Ada', icon: 'person' }, { label: 'notes.md', charged: true }, { label: 'Bob', icon: 'person' }],
     [{ label: 'Mon' }, { label: 'Wed' }, { label: 'Fri', charged: true }],
-    [{ label: 'Sign in', icon: 'person' }, { label: 'A token', icon: 'key' }, { label: 'Public', charged: true, icon: 'external' }],
+    [{ label: 'Sign in', icon: 'person' }, { label: 'A key', icon: 'key' }, { label: 'Public', charged: true, icon: 'external' }],
   ];
 </script>
 <main class="en-wrap">

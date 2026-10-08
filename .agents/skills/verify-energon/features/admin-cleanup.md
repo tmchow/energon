@@ -16,7 +16,7 @@ Operators listed on `ADMIN_EMAILS` retire old sites and loose files across every
 ## How to get to it (user POV)
 
 - Operator, hub: open `/admin` (nav `Admin` after Stats). Fill filters, choose `Preview`, read the table, type the eligible count in `#admin-dlg`, confirm.
-- Operator, agent: mint `scope: admin` at `/tokens`, then `POST /v1/admin/cleanup` with `{ "target", "action" }` to preview and the same body plus `confirm` to execute. `GET /v1/admin/audit` lists the record.
+- Operator, agent: mint `scope: admin` at `/keys`, then `POST /v1/admin/cleanup` with `{ "target", "action" }` to preview and the same body plus `confirm` to execute. `GET /v1/admin/audit` lists the record.
 - `GET $ORIGIN/v1/openapi.json` documents `/v1/admin/cleanup` and `/v1/admin/audit`; `GET $ORIGIN/v1/help` `routes` names both.
 - A person not on `ADMIN_EMAILS` has no Admin nav control. Their `/admin` request is `403`.
 

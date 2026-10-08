@@ -144,7 +144,7 @@ For an existing deployment, use [read-only verification](docs/ACCESS-SETUP.md#ve
 
 Copy the returned `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` into `[vars]`. The audience must belong to the hub application, not its bypass application. Energon verifies the signed hostname Access JWT before trusting an identity; an email header alone is not authentication.
 
-The whole hub requires sign-in, including `/admin`, `/tokens`, `/connect`, and future hub pages. The six public hub paths are described in the [Access command contract](docs/ACCESS-SETUP.md#apply-and-record-the-results). Keep Access off the content hostname. Worker-level Access is unsuitable because this Worker also serves public content. The same applications and policies can be configured in the dashboard if the API path is unavailable.
+The whole hub requires sign-in, including `/admin`, `/keys`, `/connect`, and future hub pages. The six public hub paths are described in the [Access command contract](docs/ACCESS-SETUP.md#apply-and-record-the-results). Keep Access off the content hostname. Worker-level Access is unsuitable because this Worker also serves public content. The same applications and policies can be configured in the dashboard if the API path is unavailable.
 
 ### 6. Commit and deploy
 
@@ -321,12 +321,12 @@ copilot plugin install yourco-energon@yourco-energon
 
 ### 2. Connect the agent
 
-Ask the agent to connect. It reads `{origin}/auth.md`, uses `{TOKEN_ENV}` if it is already set, and otherwise shows you a verification link that includes an eight-digit code. Open the link, sign in through Access, confirm the code matches, choose a lifetime, and connect. The token goes directly to the waiting agent, which saves it as `{TOKEN_ENV}` in this machine's secret store or a user-only file and tells you where. It appears on `/tokens` for revocation. There is no public signup.
+Ask the agent to connect. It reads `{origin}/auth.md`, uses `{TOKEN_ENV}` if it is already set, and otherwise shows you a verification link that includes an eight-digit code. Open the link, sign in through Access, confirm the code matches, choose a lifetime, and connect. The token goes directly to the waiting agent, which saves it as `{TOKEN_ENV}` in this machine's secret store or a user-only file and tells you where. It appears on `/keys` for revocation. There is no public signup.
 
-For CI, scheduled jobs, or a hosted sandbox with a secret store, provision the token yourself:
+For CI, scheduled jobs, or a hosted sandbox with a secret store, create an agent key yourself:
 
-1. Human opens `{origin}/tokens` while signed in through Access.
-2. Create a token with a label and lifetime. The secret is shown once. It cannot be revealed later.
+1. Human opens `{origin}/keys` while signed in through Access.
+2. Create a key with a label and lifetime. The secret is shown once. It cannot be revealed later.
 3. Export it. Do **not** invent a token. Do **not** commit it.
 
 ```

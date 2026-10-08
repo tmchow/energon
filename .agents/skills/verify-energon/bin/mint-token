@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Mint a token on the verification instance via the same hub endpoint the Tokens page uses.
+# Mint a token on the verification instance via the same hub endpoint the Agent keys page uses.
 # Usage: .agents/skills/verify-energon/bin/mint-token [label] [ttl]
 # ttl is a token preset (1d, 7d, 30d, 60d, 90d, 180d, 365d, never); omitted = instance default.
 # Prints the token on stdout. When state.env has no TOKEN (or ENERGON_VERIFY_SAVE_TOKEN=1),

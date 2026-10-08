@@ -15,7 +15,7 @@ export function registerHubTools(): () => void {
     inputSchema: { type: 'object', properties: {} }, execute: async () => text(await api('/v1/help')),
   });
   context.registerTool({
-    name: 'energon_list', description: 'List sites, files, and token labels visible on this signed-in hub. Does not return token secrets.',
+    name: 'energon_list', description: 'List sites, files, and agent key labels visible on this signed-in hub. Does not return key secrets.',
     inputSchema: { type: 'object', properties: {} },
     async execute() {
       const data = await api<CatalogData>('/account/data?limit=50');

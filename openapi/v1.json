@@ -4564,7 +4564,7 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Authorization: Bearer {token}. A human mints the token at {origin}/tokens while signed in and exports it under the env var named by GET /v1/help env; the token starts with GET /v1/help token_prefix. The secret is shown once. Never invent a token. A 401 token_expired is terminal: the human mints a new one."
+        "description": "Authorization: Bearer {token}. A human mints the token at {origin}/keys while signed in and exports it under the env var named by GET /v1/help env; the token starts with GET /v1/help token_prefix. The secret is shown once. Never invent a token. A 401 token_expired is terminal: the human mints a new one."
       },
       "deploymentGrant": {
         "type": "http",
@@ -7992,7 +7992,7 @@
         }
       },
       "ForbiddenAdmin": {
-        "description": "Needs an admin token minted at /tokens by someone still on ADMIN_EMAILS. Account tokens, the connect flow, and a stripped email all refuse.",
+        "description": "Needs an admin token minted at /keys by someone still on ADMIN_EMAILS. Account tokens, the connect flow, and a stripped email all refuse.",
         "x-error-codes": [
           "forbidden_admin",
           "forbidden_domain"
