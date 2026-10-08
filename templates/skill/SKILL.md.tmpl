@@ -15,7 +15,7 @@ This skill is bound to **{{ORIGIN}}**. Do not send traffic to another Energon. A
 
 ## Hard rules
 
-1. Look for env `{{TOKEN_ENV}}`. If it is missing and a human can respond, read {{ORIGIN}}/auth.md and connect with a code: show the link and code, ask them to confirm the code matches, wait for approval, save the delivered token as `{{TOKEN_ENV}}` (see Scenario F). If no human can respond (CI, unattended runs), stop and report that `{{TOKEN_ENV}}` must be provisioned from {{ORIGIN}}/tokens. Do not automate the human approval. Do **not** invent a token. Do **not** reuse a token you saw in chat history unless they just pasted it. A token that has expired (`401` with `error: token_expired`) is the same stop: it cannot be renewed; connect again or have the human provision a replacement.
+1. **Gateway mode first.** If this skill was loaded through a tool gateway, or {{PRODUCT}} operations are reachable as tools (including through a code-mode gateway's tool search: search for `mintGrant` or `createDeployment`, not only the visible tool list), follow **Gateway mode** below instead: use those tools, never ask for or provision a token on this machine, and skip the connect flow. Otherwise, look for env `{{TOKEN_ENV}}`. If it is missing and a human can respond, read {{ORIGIN}}/auth.md and connect with a code: show the link and code, ask them to confirm the code matches, wait for approval, save the delivered token as `{{TOKEN_ENV}}` (see Scenario F). If no human can respond (CI, unattended runs), stop and report that `{{TOKEN_ENV}}` must be provisioned from {{ORIGIN}}/tokens. Do not automate the human approval. Do **not** invent a token. Do **not** reuse a token you saw in chat history unless they just pasted it. A token that has expired (`401` with `error: token_expired`) is the same stop: it cannot be renewed; connect again or have the human provision a replacement.
 2. Last write wins **on that path only**. Putting a file does not delete other files. There is no merge, no comments, no presence.
 3. Published `/{handle}/s/{id}/{slug}/` and `/{handle}/f/{id}/{filename}` URLs are **not** behind Access. Anyone with the link can open them unless you set a share password. Agents can GET the human URL (send `X-Energon-Password` if set) or use `api_url` (`GET /v1/...`) with their token — token reads skip the share password.
 4. Default is **no password**. Set a share password only if they ask. Set a write password only if they want someone outside this host to update the public URL without a token. Write responses echo the secret you just set so you can tell them. `/v1` GET never returns the phrase. Do **not** write secrets into the published file. Change with `PATCH` `{ "password": "new" }` or `{ "write_password": "new" }`; clear with an empty string. Only the creator can set or clear `write_password`.
@@ -33,6 +33,41 @@ Authorization: Bearer ${{TOKEN_ENV}}
 ```
 
 Tokens look like `{{TOKEN_PREFIX}}…`. For authentication setup, credential boundaries, and recovery, read `GET {{ORIGIN}}/auth.md` (no auth).
+
+## Gateway mode
+
+You are in gateway mode when a tool gateway loaded this skill or exposes {{PRODUCT}}'s `/v1` operations as tools. A code-mode gateway may hide them until you search, so search the gateway for `mintGrant` or `createDeployment` before deciding there are none. Tool names usually follow `<tag>.<operationId>`: `sites.createSite`, `sites.getSite`, `deployments.createDeployment`, `deployments.getDeployment`, `grants.mintGrant`, `grants.getGrant`.
+
+- The gateway holds the credential. Never ask for, look for, or provision `{{TOKEN_ENV}}` here, and skip Scenarios F and K. Where a scenario shows `curl` with `${{TOKEN_ENV}}`, call the matching tool.
+- Tools cannot carry local bytes. Mint an upload grant through the tools, then call its URLs (`upload_url`, or a deployment grant's `status_url`, `archive_url`, `prepare_url`, `commit_url`) from this machine with the helper or `curl`, never through the gateway. That includes the `uploadDeploymentGrant*`, `prepareDeploymentGrant`, and `commitDeploymentGrant` tools if the gateway lists them.
+- Pass a mint response to the helper on stdin (a heredoc) or in a mode-600 temp file, never as a flag or in a URL. The secret is shown once.
+
+**The helper.** If this skill is installed with its files, run `python3 scripts/energon_publish.py` from the skill directory. If not (the gateway served only the text), `GET {{ORIGIN}}/v1/help`, take `agent_skills_url`, and download the helper to a temp dir; use that path wherever this skill says `scripts/energon_publish.py`. Always run it with `python3`. If `agent_skills_url` is `null`, use `curl` on the grant URLs as in Scenario M and the whole-site grant handoff.
+
+```bash
+AGENT_SKILLS_URL=$(curl -fsS {{ORIGIN}}/v1/help | python3 -c 'import json,sys; print(json.load(sys.stdin)["agent_skills_url"])')
+dir=$(mktemp -d)
+curl -fsS "${AGENT_SKILLS_URL}{{SKILL_NAME}}/scripts/energon_publish.py" -o "$dir/energon_publish.py"
+python3 "$dir/energon_publish.py" --help
+```
+
+**One file.**
+
+1. `python3 scripts/energon_publish.py inspect report.pdf` prints `size` and `sha256`.
+2. Call `mintGrant` with `{"target":{"type":"new_file","filename":"report.pdf","ttl":"7d"},"sha256":"<sha256>","max_bytes":<size>}`. To replace an existing file use `{"type":"file","id":"<id>","expected_version":<content_generation>}`.
+3. `python3 scripts/energon_publish.py publish-file report.pdf --grant-file -` with the mint response on stdin. It prints the published `url`.
+
+**A folder** (replaces the whole site):
+
+1. `python3 scripts/energon_publish.py inspect ./dist` prints the archive descriptor, `idempotency_key`, and `files`. Hidden files and symlinks are left out (`--include-hidden` adds hidden files). Review the file list, with the human when it matters, before minting.
+2. `createSite` for a new site, or `getSite`. Save `content_generation`.
+3. `createDeployment` with `{"expected_version":<content_generation>,"idempotency_key":"<from inspect>","archive":<archive from inspect>}`. Save `deployment_id`.
+4. `mintGrant` with `{"target":{"type":"site_deployment","deployment_id":"<deployment_id>"}}`.
+5. `python3 scripts/energon_publish.py publish-folder ./dist --grant-file -` with the mint response on stdin. It uploads the archive, prepares, commits, and prints `url` and `version_id`.
+
+If the run is interrupted, rerun the same `publish-folder` command. If the grant secret is lost or expired, check `getDeployment`; while it is still `uploading` or `ready`, mint a new `site_deployment` grant for the same `deployment_id` and rerun. Do not create a second deployment or run `inspect --restart` for the same release.
+
+A machine with no tools and no token that holds only a grant someone handed it does not need this skill: it follows the content origin's `/llms.txt` (`content_origin` in `/v1/help`).
 
 ## Decide: site or loose file?
 
@@ -72,6 +107,8 @@ curl -sS -X PUT {{ORIGIN}}/v1/sites/{id}/files/index.html \
   -H "content-type: text/html" \
   --data-binary @index.html
 ```
+
+For a whole folder, prefer Scenario E (or its one-command helper form) over one PUT per file.
 
 A site does **not** need `index.html`. `index.md` is the homepage if `index.html` is missing. If you only PUT `notes.md`, `/{handle}/s/{id}/{slug}/` shows a file list and `/{handle}/s/{id}/{slug}/notes.md` serves the file (rendered in a browser, raw to `curl` / `?raw=1`).
 
@@ -173,6 +210,8 @@ Each write publishes a complete snapshot preserving other paths. Concurrent writ
 6. **Explicitly POST `/v1/sites/{id}/deployments/{deploymentId}/commit` without a body.** Save its `version_id` and stable `url`; GET the public URL and check `X-Energon-Site-Version`. A stale generation returns 409 rather than overwriting another release. Read the new state and make a new intent if the replacement is still wanted.
 
 A ZIP can replace the manifest: pass `archive: {"size":N,"sha256":"<hex>","max_extracted_bytes":N,"max_files":200}` instead of `files`, PUT the ZIP to the session's `/archive`, then prepare and explicitly commit. One wrapping directory is stripped. Traversal, duplicate normalized paths, unsupported ZIP features, and invalid checksums are rejected. Import bytes and expanded bytes have independent caps: `limits.zip_import_bytes` (100 MiB default) and `limits.zip_extracted_bytes` (500 MiB default). Each individual file must fit `limits.file_bytes`.
+
+The bundled helper does steps 2–6 with a ZIP archive: `python3 scripts/energon_publish.py inspect ./dist` lists the files it will publish (review them first; hidden files and symlinks are left out), then `python3 scripts/energon_publish.py publish-folder ./dist --site-id {id}` reads `content_generation`, creates the deployment, uploads, prepares, and commits. It keeps the key and archive in a local state file, so after an interruption rerun the same command.
 
 Sessions last one hour. GET status after a lost response, and resume missing files or preparation; repeat a lost commit using the same session. Committed receipts remain for seven days. Do not create a new idempotency identity just to retry a timed-out request. DELETE the unpublished session to abort. Staging, old releases, and pending cleanup all count toward quota; allow room for old and new content together.
 
@@ -351,6 +390,8 @@ Deployment sessions resume between files and preparation steps; they do not resu
      --data-binary @demo.mp4
    ```
 
+   The helper sends the same raw body: `python3 scripts/energon_publish.py publish-file demo.mp4` creates a file at this Energon's default TTL (`PATCH` the `ttl` afterwards if needed), and `--file-id {id}` replaces one.
+
    A 413 whose body is **not** {{PRODUCT}}'s JSON (an HTML page from Cloudflare) means the request hit Cloudflare's plan limit. Treat it as step 4.
 
 4. **Over that:** stop and tell the human the file size and the cap. Do not quietly change their content. Offer these, in this order, and let them choose:
@@ -377,7 +418,7 @@ They want a machine that has no token (a CI runner, a sandbox, another agent's h
 1. You must be able to write the target. Pick one: a new loose file (`filename`), an existing loose file (`id`), or one path in an existing site (`site_id` and `path`). For an atomic folder replacement, create the immutable deployment intent from Scenario E first, then mint `{"target":{"type":"site_deployment","deployment_id":"..."}}`.
 2. `POST /v1/grants` with the target and, if useful, `expires_in` (`5m`, `15m` default, `30m`, `1h`), `max_bytes`, and the expected `sha256`. For an existing file that others may revise, add `expected_version` (its current `content_generation`) to the `file` target. The upload then replaces the file only if nobody replaced it after you minted; otherwise nothing is written and the grant ends `failed` with `last_error: file_conflict`. Read the file again and decide with the human before minting a new grant.
 3. Hand the other machine the returned `upload_url` and `secret`, plus `max_bytes` and `sha256` if you set them so it knows the limits. The secret is shown once. Never put it in a URL or a published file.
-4. That machine sends `PUT` to `upload_url` with `Authorization: Bearer <secret>` and the raw body. It can read the content-origin `/llms.txt` for the protocol. Success publishes immediately and uses the grant up.
+4. That machine sends `PUT` to `upload_url` with `Authorization: Bearer <secret>` and the raw body. It can read the content-origin `/llms.txt` for the protocol, or run the helper: `python3 energon_publish.py publish-file report.pdf --grant-file -` with the grant JSON on stdin. Success publishes immediately and uses the grant up.
 5. Read the result with `GET /v1/grants/{id}`: `consumed` with `url`, `failed` with `last_error`, or `expired`. If it is `failed` or `expired`, mint a new grant; the old secret is dead. Exception: `last_error: file_recovery_required` means the file needs an administrator to reconcile storage first, so tell the human instead of minting another grant. If it is still `unused` before `expires_at`, the same secret can be retried. Revoking your token ends every grant it minted.
 
 ```bash

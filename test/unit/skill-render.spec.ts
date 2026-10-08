@@ -132,6 +132,37 @@ describe("skill template", () => {
     expect(api).toContain(GRANT_UPLOAD_PREFIX);
   });
 
+  it("rendered SKILL.md teaches gateway mode and the bundled helper", () => {
+    const skill = render(skillTemplates["SKILL.md.tmpl"], {
+      SKILL_NAME: "acme-energon",
+      ORIGIN: "https://energon.acme.test",
+      ORIGIN_HOST: "energon.acme.test",
+      TOKEN_ENV: "ACME_ENERGON_TOKEN",
+      TOKEN_PREFIX: "ee_live_",
+      PRODUCT: "Energon",
+      INSTALL_LINE: "acme-energon@acme-energon",
+    });
+    const hardRules = skill.slice(skill.indexOf("## Hard rules"), skill.indexOf("## Gateway mode"));
+    expect(hardRules).toMatch(/1\. \*\*Gateway mode first\.\*\*.*search.*`mintGrant`.*`createDeployment`/);
+    expect(hardRules).toContain("follow **Gateway mode** below instead");
+
+    const gateway = skill.slice(skill.indexOf("## Gateway mode"), skill.indexOf("## Decide: site or loose file?"));
+    expect(gateway).toContain("search the gateway");
+    expect(gateway).toContain("never through the gateway");
+    expect(gateway).toContain("GET https://energon.acme.test/v1/help");
+    expect(gateway).toContain("agent_skills_url");
+    expect(gateway).toContain('curl -fsS "${AGENT_SKILLS_URL}acme-energon/scripts/energon_publish.py"');
+    expect(gateway).toContain("python3 scripts/energon_publish.py publish-file");
+    expect(gateway).toContain("python3 scripts/energon_publish.py publish-folder");
+    expect(gateway).toContain('"type":"site_deployment"');
+    expect(gateway).toContain("same `deployment_id`");
+    expect(gateway).toContain("/llms.txt");
+    expect(gateway).not.toContain("Bearer $ACME_ENERGON_TOKEN");
+
+    const scenarioE = skill.slice(skill.indexOf("## Scenario E"), skill.indexOf("## Scenario F"));
+    expect(scenarioE).toContain("python3 scripts/energon_publish.py publish-folder ./dist --site-id {id}");
+  });
+
   it("skill:init requires --name or --skill, and --origin", () => {
     expect(() => runRender(["--init"])).toThrow(/--name \(or --skill\) and --origin/);
   });

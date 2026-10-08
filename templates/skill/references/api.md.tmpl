@@ -12,6 +12,8 @@ The hub (`/`, `/account`) is behind Cloudflare Access. Published `/{handle}/s/{i
 
 This skill talks only to **{{ORIGIN}}**. Install a separately rendered skill for any other Energon.
 
+Gateway mode: when a tool gateway exposes these operations as tools (often `<tag>.<operationId>`; search for `mintGrant` or `createDeployment` in a code-mode gateway), call them as tools and keep no token on the machine. Grant URLs on the content origin (`/_grants/…`, `/_deployment-grants/…`) are always called from the machine, never through the gateway. The helper `python3 scripts/energon_publish.py` (`inspect`, `publish-file`, `publish-folder`; `--help`) does the local hashing, archiving, and grant or token uploads; without an installed skill, download it from `{agent_skills_url}{{SKILL_NAME}}/scripts/energon_publish.py` (`agent_skills_url` is in `GET /v1/help`).
+
 | Status | Typical `error` | What you do |
 | --- | --- | --- |
 | 401 | `unauthorized` | Stop. Connect with a code (auth.md) or have the human provision a token at {{ORIGIN}}/tokens |
@@ -155,6 +157,8 @@ Read `GET /v1/sites/{id}` for `content_generation` and `version_id`. POST `/v1/s
 | POST | `/prepare` | 202 progress or 200 ready; never publishes |
 | POST | `/commit` | 200 complete atomic publication or retained receipt |
 | DELETE | (none) | 204 abort of unpublished session |
+
+OperationIds: `createDeployment`, `getDeployment`, `uploadDeploymentFile`, `uploadDeploymentArchive`, `prepareDeployment`, `commitDeployment`, `cancelDeployment`. The grant-side equivalents are `getDeploymentGrant`, `uploadDeploymentGrantFile`, `uploadDeploymentGrantArchive`, `prepareDeploymentGrant`, `commitDeploymentGrant`. Grants are `mintGrant` and `getGrant`.
 
 Sessions last one hour and receipts seven days. A changed base returns 409 `deployment_conflict`. A changed intent under the same identity returns 409 `idempotency_conflict`. `X-Energon-Site-Version` is a read-only response header, not a requested-version selector. Stable URLs select independently per request; no page-wide pinning, history, or rollback. Old and pending bytes remain quota-charged through safe cleanup (five-minute old-version grace plus active read leases).
 
