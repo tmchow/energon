@@ -20,6 +20,7 @@ import { grantStatus, mintGrant } from "./grants";
 import {
   json,
   jsonMaybeSecret,
+  methodNotAllowed,
   publicOrigin,
   readJson,
   secretJson,
@@ -227,6 +228,10 @@ export const V1_TOKEN = {
       path: V1_LOOSE_DUPLICATE,
       methods: {
         POST: async (c) => duplicateLooseFromJson(c.env, c.ctx, c.actor, decodeURIComponent(c.params[0]), await readJson(c.request)),
+        // Without these, V1_LOOSE_ONE's filename-suffix alias would apply them to the source file.
+        PUT: () => methodNotAllowed(),
+        PATCH: () => methodNotAllowed(),
+        DELETE: () => methodNotAllowed(),
       },
     },
     {

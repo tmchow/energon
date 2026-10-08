@@ -801,6 +801,28 @@ describe("Energon", () => {
     expect(download.status).toBe(200);
     expect(await download.text()).toBe("# report");
 
+    const gated = await json(`/v1/files/${source}/duplicate`, {
+      method: "POST",
+      headers: auth(bob, { "content-type": "application/json" }),
+      body: JSON.stringify({ password: "share-phrase", write_password: "write-phrase", write_policy: "owner" }),
+    });
+    expect(gated.status).toBe(201);
+    expect(gated.body.password_protected).toBe(true);
+    expect(gated.body.password).toBe("share-phrase");
+    expect(gated.body.write_password_protected).toBe(true);
+    expect(gated.body.write_password).toBe("write-phrase");
+    expect(gated.body.write_policy).toBe("owner");
+
+    for (const method of ["PUT", "PATCH", "DELETE"]) {
+      const res = await json(`/v1/files/${source}/duplicate`, {
+        method,
+        headers: auth(ada, { "content-type": "application/json" }),
+        body: method === "DELETE" ? undefined : "{}",
+      });
+      expect(res.status, method).toBe(405);
+    }
+    expect((await req(`/v1/files/${source}`, { headers: auth(ada) })).status).toBe(200);
+
     expect((await json(`/v1/files/${source}/duplicate`, { method: "POST" })).status).toBe(401);
   });
 
