@@ -14,7 +14,7 @@ describe("authentication discovery", () => {
 
   it("describes this Energon and only its available token lifetimes", () => {
     const doc = authMarkdown(env);
-    expect(doc).toContain("https://hub.acme.test/tokens");
+    expect(doc).toContain("https://hub.acme.test/keys");
     expect(doc).toContain("https://hub.acme.test/v1/whoami");
     expect(doc).toContain("https://files.acme.test");
     expect(doc).toContain("Authorization: Bearer $ACME_TOKEN");
@@ -36,7 +36,7 @@ describe("authentication discovery", () => {
       expect(response.status).toBe(401);
       expect(await response.json()).toMatchObject({
         auth_url: "https://hub.acme.test/auth.md",
-        tokens_url: "https://hub.acme.test/tokens",
+        tokens_url: "https://hub.acme.test/keys",
       });
     }
   });

@@ -73,9 +73,9 @@ describe("Energon", () => {
     expect(body.retention.write_policy).toBe("org");
     expect(body.tokens.default).toBe("90d");
     expect(body.tokens.allow_never).toBe(true);
-    expect(body.tokens.tokens_url).toBe("https://hub.energon.example.com/tokens");
+    expect(body.tokens.tokens_url).toBe("https://hub.energon.example.com/keys");
     expect(body.tokens.presets.map((p: { id: string }) => p.id)).toEqual(["1d", "7d", "30d", "60d", "90d", "180d", "365d", "never"]);
-    expect(body.sop.some((line: string) => line.includes("token_expired") && line.includes("/tokens"))).toBe(true);
+    expect(body.sop.some((line: string) => line.includes("token_expired") && line.includes("/keys"))).toBe(true);
   });
 
   it("curl without token to /v1/sites is 401 pointing at hub", async () => {
@@ -83,7 +83,7 @@ describe("Energon", () => {
     expect(status).toBe(401);
     expect(body.error).toBe("unauthorized");
     expect(body.hub).toBe("https://hub.energon.example.com/account");
-    expect(body.message).toContain("/tokens");
+    expect(body.message).toContain("/keys");
     expect(body.message).toContain("ENERGON_TOKEN");
   });
 
@@ -483,7 +483,7 @@ describe("Energon", () => {
     const put = await createSite(token, "after-revoke");
     expect(put.status).toBe(401);
     expect(put.body.message).toContain("/auth.md");
-    expect(put.body.message).toContain("/tokens");
+    expect(put.body.message).toContain("/keys");
   });
 
   describe("token lifetime", () => {
@@ -852,10 +852,10 @@ describe("Energon", () => {
     });
     expect(put.status).toBe(401);
     expect(put.body.error).toBe("token_expired");
-    for (const clause of ["/tokens", "ENERGON_TOKEN", "2000-01-01", "mint", "cannot be extended", "Do not retry", "Do not invent"]) {
+    for (const clause of ["/keys", "ENERGON_TOKEN", "2000-01-01", "agent key", "cannot be extended", "Do not retry", "Do not invent"]) {
       expect(put.body.message).toContain(clause);
     }
-    expect(put.body).toMatchObject({ expired_at: "2000-01-01T00:00:00.000Z", tokens_url: "https://hub.energon.example.com/tokens" });
+    expect(put.body).toMatchObject({ expired_at: "2000-01-01T00:00:00.000Z", tokens_url: "https://hub.energon.example.com/keys" });
     expect(put.body.hub).toBeDefined();
     for (const leak of ["token_hash", "token_hint", "user_email", "user_id"]) {
       expect(put.body).not.toHaveProperty(leak);

@@ -8,7 +8,7 @@ The visual idea is a dark instrument lit from within. Violet charge marks activi
 
 ## Where this guide applies
 
-Use this file when adding or changing the Hub, Tokens, Setup, Connect, About, Stats, Admin, password gate, or Markdown viewer. It governs Energon's interface, including the wrapper around published Markdown. It does not prescribe the design of uploaded sites or rewrite the author's document content.
+Use this file when adding or changing the Hub, Agent keys, Setup, Connect, About, Stats, Admin, password gate, or Markdown viewer. It governs Energon's interface, including the wrapper around published Markdown. It does not prescribe the design of uploaded sites or rewrite the author's document content.
 
 This is design guidance, not the publishing SOP or build manual. Follow [AGENTS.md](AGENTS.md) for repository changes, [STRATEGY.md](STRATEGY.md) for positioning and product boundaries, and [docs/design/README.md](docs/design/README.md) for implementation and verification.
 
@@ -19,7 +19,7 @@ Before choosing components, identify what someone came to do, what they need to 
 | Surface | What should lead | What must remain available |
 | --- | --- | --- |
 | Hub | Choose work, inspect staging, publish | Existing catalog, search, public URL, expiry, write policy, item actions |
-| Tokens | Mint a token and understand its authority | One-time secret reveal, redacted catalog, expiry, revoke consequence |
+| Agent keys | Create a key and understand its authority | One-time secret reveal, redacted catalog, expiry, revoke consequence |
 | Setup | A usable instruction for connecting an agent | Details for this Energon and the next step |
 | Connect | Identify the requesting agent and confirm its code | Expiry, scope, explicit connect and deny actions; code entry when the link has no code |
 | About | A concrete publishing or reference workflow | What people and agents can do with the same work |
@@ -129,13 +129,13 @@ Write plain, declarative copy. Lead with the consequence, then explain the mecha
 | “There is no recycle bin. Type the name to confirm.” | A vague “Are you sure?” for irreversible deletion |
 | Last read; None when unset; Changed since last open; Reads lag up to about a day. | Never, none recorded, or No recorded read on personal catalog last-read cells; stuffing the stamp mechanism into the control |
 
-Use no emoji, exclamation marks, invented urgency, or promotional filler in app copy. Buttons name actions: Publish, Mint token, Approve connection, Deny connection, Revoke, Delete, Copy, Open. Busy labels describe current work, such as “Publishing…”. Show errors with enough context to recover; preserve useful input after a failure.
+Use no emoji, exclamation marks, invented urgency, or promotional filler in app copy. Buttons name actions: Publish, Create key, Approve connection, Deny connection, Revoke, Delete, Copy, Open. Busy labels describe current work, such as “Publishing…”. Show errors with enough context to recover; preserve useful input after a failure.
 
 Do not let visual simplification alter these contracts:
 
 - Publishing collisions require an explicit choice before replacing existing work.
 - Destructive dialogs retain exact-name confirmation and explain what is lost.
-- Minted token secrets are shown once; the token catalog remains redacted.
+- Agent key secrets are shown once; the key catalog remains redacted. Hub copy says "key", never "token", so people do not read it as LLM usage.
 - Share and write passwords stay visible on Hub Link access so they can be copied after creation. They are sharing secrets, not login passwords. `/v1` GET does not return them. Each door has an Off/On control. Phrase, generate, and copy appear only when that door is On. Off and Save removes it. Do not treat an emptied field as remove.
 - Connection approval remains a deliberate human action. Do not prefill or bypass the code step for convenience.
 - Read access, write policy, expiry, and share passwords remain distinct concepts. Catalog marks name those doors on hover: View password, Write password, Org can write, Org cannot write. Do not add a Password chip next to the lock. Show expiry in its own column only when a date is set; do not label unlimited work as Never.

@@ -350,7 +350,7 @@ describe("tokenPolicy", () => {
 
   it("projects presets, default, allow_never, and the tokens page URL", () => {
     const pub = tokenPolicyPublic(tokenPolicy(env({ ALLOW_UNLIMITED_TOKENS: "false" })), "https://energon.example.com");
-    expect(pub).toMatchObject({ default: "90d", allow_never: false, tokens_url: "https://energon.example.com/tokens" });
+    expect(pub).toMatchObject({ default: "90d", allow_never: false, tokens_url: "https://energon.example.com/keys" });
     expect((pub.presets as { id: string }[]).map((p) => p.id)).toEqual([...TOKEN_TTL_CATALOG]);
   });
 });

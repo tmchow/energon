@@ -6,6 +6,6 @@ Install this plugin from **this {{PRODUCT}} repo** (your deployment repository),
 
 Private repositories require GitHub read access in the installing client, including for updates. Keep GitHub credentials separate from the Energon API token. If a client cannot install a private marketplace, follow [Private repository access](../../INSTALL.md#private-repository-access) for a local-skill installation or direct API access. Never put credentials in repository URLs or make the repository public to install the plugin.
 
-After the host exists, ask your agent to connect: it reads {{ORIGIN}}/auth.md, shows you a link and code, and saves the approved token as the env named in `GET {{ORIGIN}}/v1/help`. For CI, create a token at {{ORIGIN}}/tokens and store it under that name.
+After the host exists, ask your agent to connect: it reads {{ORIGIN}}/auth.md, shows you a link and code, and saves the approved token as the env named in `GET {{ORIGIN}}/v1/help`. For CI, create an agent key at {{ORIGIN}}/keys and store it under that name.
 
 Humans and agents: [INSTALL.md](../../INSTALL.md). Copy-paste prompts: [README.md](../../README.md).

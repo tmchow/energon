@@ -5,14 +5,14 @@ Operators listed on `ADMIN_EMAILS` list and revoke API token metadata across acc
 ## Sub-features
 
 - `admin-tokens-list` GETs `/account/admin/tokens` (hub) or `/v1/admin/tokens` (admin token) and returns `tokens` with owner email and handle, label, hint, scope, created, last used, expires, and status (`live` | `stale` | `expired` | `revoked`). `?owner=` is a handle or email. `?limit=` and `?cursor=` page like audit. Never the secret, never the hash.
-- `admin-tokens-page` is the Tokens across accounts card on `/admin`: `#admin-tokens-owner`, `#admin-tokens-list`, `#admin-tokens-table`, `#admin-tokens-show`, `#admin-revoke-stale`, `#admin-revoke-all`, `#admin-tokens-dlg`.
+- `admin-tokens-page` is the Keys across accounts card on `/admin`: `#admin-tokens-owner`, `#admin-tokens-list`, `#admin-tokens-table`, `#admin-tokens-show`, `#admin-revoke-stale`, `#admin-revoke-all`, `#admin-tokens-dlg`.
 - `admin-tokens-revoke` POSTs `/account/admin/tokens/revoke` (hub) or `/v1/admin/tokens/revoke` (admin token) with `{ "owner", "target": "stale"|"all" }` and returns `executed: false`, `matched`, `sample`, and a 32-hex `confirm`. Resend with `confirm` to execute. Drift is `409 token_revoke_drift`. Missing or unknown owner is `400 bad_owner`. The calling admin token is excluded.
 - `admin-tokens-refuse` is `403 forbidden_admin` for a non-admin on `GET /account/admin/tokens`, `GET /v1/admin/tokens`, `POST /account/admin/tokens/revoke`, and `POST /v1/admin/tokens/revoke`.
 - `admin-tokens-audit` records every preview and execute (`action` `tokens`) at `GET /v1/admin/audit` and `GET /account/admin/audit`. Never secrets.
 
 ## How to get to it (user POV)
 
-- Operator, agent: mint `scope: admin` at `/tokens`, then `GET /v1/admin/tokens?owner=handle`. `POST /v1/admin/tokens/revoke` with `{ "owner", "target" }` to preview and the same body plus `confirm` to execute.
+- Operator, agent: mint `scope: admin` at `/keys`, then `GET /v1/admin/tokens?owner=handle`. `POST /v1/admin/tokens/revoke` with `{ "owner", "target" }` to preview and the same body plus `confirm` to execute.
 - Operator, hub: open `/admin`. Fill `#admin-tokens-owner`, choose List, read `#admin-tokens-table`, choose Revoke stale or Revoke all, type the count in `#admin-tokens-dlg`.
 - `GET $ORIGIN/v1/openapi.json` documents `/v1/admin/tokens` and `/v1/admin/tokens/revoke`; `GET $ORIGIN/v1/help` `routes` names both.
 - A person not on `ADMIN_EMAILS` gets `403 forbidden_admin` on both routes. An account token does too.

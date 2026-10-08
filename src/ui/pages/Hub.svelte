@@ -567,10 +567,10 @@
     {#if staged.kind === 'loose'}<div id="stage-loose"><Field label="Filename" htmlFor="stage-filename" note="The last part of the public URL."><UrlField id="stage-filename" prefix={`${contentOrigin}/${handle}/f/{id}/`} bind:value={staged.filename} disabled={stageSettingsLocked} /></Field></div>
     {:else}<div id="stage-site"><Field label="Site slug" htmlFor="stage-slug" note="The last part of the public URL."><UrlField id="stage-slug" prefix={`${contentOrigin}/${handle}/s/{id}/`} suffix="/" bind:value={staged.slug} disabled={stageSettingsLocked} /></Field></div>{/if}
     <Field label="Expiration" htmlFor="stage-ttl" noteId="stage-ttl-note" note={ttlNote}><Select id="stage-ttl" aria-describedby="stage-ttl-note" options={ttlOptions} bind:value={stageTtl} disabled={stageSettingsLocked} /></Field>
-    <Field label="Who can write" htmlFor="stage-write" note="Controls who with a token can update or delete this work. It does not grant or deny the write-password door."><Select id="stage-write" aria-label="Who can write" options={writeOptions} bind:value={stageWrite} disabled={stageSettingsLocked} /></Field>
+    <Field label="Who can write" htmlFor="stage-write" note="Controls who with a key can update or delete this work. It does not grant or deny the write-password door."><Select id="stage-write" aria-label="Who can write" options={writeOptions} bind:value={stageWrite} disabled={stageSettingsLocked} /></Field>
     <details id="stage-access" class="en-stage-access" bind:open={stageAccessOpen}>
       <summary>Link access</summary>
-      <Field label="Share password" htmlFor="stage-password" noteId="stage-password-note" note="Leave empty so anyone with the link can open it. Valid API tokens on this host can read the work even with a share password."><PasswordField id="stage-password" generateId="stage-pw-gen" copyId="stage-pw-copy" words={data.words} bind:value={stagePassword} describedby="stage-password-note" disabled={stageSettingsLocked} /></Field>
+      <Field label="Share password" htmlFor="stage-password" noteId="stage-password-note" note="Leave empty so anyone with the link can open it. Valid API keys on this host can read the work even with a share password."><PasswordField id="stage-password" generateId="stage-pw-gen" copyId="stage-pw-copy" words={data.words} bind:value={stagePassword} describedby="stage-password-note" disabled={stageSettingsLocked} /></Field>
       <Field label="Write password" htmlFor="stage-write-password" noteId="stage-write-password-note" note={staged.kind === 'loose' ? 'Replaces this file only. Leave empty to keep guests from writing.' : 'Full control of served bytes, including replacing index.html. Leave empty to keep guests from writing.'}><PasswordField id="stage-write-password" generateId="stage-wpw-gen" copyId="stage-wpw-copy" words={data.words} bind:value={stageWritePassword} describedby="stage-write-password-note" disabled={stageSettingsLocked} /></Field>
     </details>
     {#if staged.createdSite && !busy}<p class="en-note">Retry continues the same site with these settings.</p>{/if}
@@ -584,7 +584,7 @@
 <Dialog dismissible={!mutationBusy} id="pw-dlg" bind:open={passwordOpen} title="Link access" message="Copy a phrase to share the link. Turn a password off and save to remove it.">
   {#if modalError}<Flash tone="err">{modalError}</Flash>{/if}
   <form onsubmit={e => { e.preventDefault(); void saveLinkAccess(); }}>
-    <Field label="Share password" htmlFor={shareDoor === 'on' ? 'pw-dlg-input' : undefined} noteId="pw-dlg-note" note={shareDoor === 'off' ? 'Anyone with the link can open it. Valid API tokens on this host can still read the work.' : shareUnrecovered && !password.trim() ? 'This password was set before Energon kept phrases for display. Generate a new one to copy it, or turn it off.' : 'Anyone with this password can open the link. Valid API tokens on this host can still read the work.'}>
+    <Field label="Share password" htmlFor={shareDoor === 'on' ? 'pw-dlg-input' : undefined} noteId="pw-dlg-note" note={shareDoor === 'off' ? 'Anyone with the link can open it. Valid API keys on this host can still read the work.' : shareUnrecovered && !password.trim() ? 'This password was set before Energon kept phrases for display. Generate a new one to copy it, or turn it off.' : 'Anyone with this password can open the link. Valid API keys on this host can still read the work.'}>
       {#snippet action()}
         <SegmentedControl id="pw-dlg-share-door" className="en-seg--door" bind:value={shareDoor} onChange={setShareDoor} ariaLabel="Share password" options={doorOptions} disabled={linkAccessBusy} />
       {/snippet}
@@ -593,7 +593,7 @@
       {/if}
     </Field>
     {#if isTargetCreator}
-      <Field label="Write password" htmlFor={writeDoor === 'on' ? 'pw-dlg-write-input' : undefined} noteId="pw-dlg-write-note" note={writeDoor === 'off' ? 'Turn on so someone not on this host can write. Valid tokens still follow Who can write.' : writeUnrecovered && !writePassword.trim() ? 'This password was set before Energon kept phrases for display. Generate a new one to copy it, or turn it off.' : writePasswordNote}>
+      <Field label="Write password" htmlFor={writeDoor === 'on' ? 'pw-dlg-write-input' : undefined} noteId="pw-dlg-write-note" note={writeDoor === 'off' ? 'Turn on so someone not on this host can write. Valid keys still follow Who can write.' : writeUnrecovered && !writePassword.trim() ? 'This password was set before Energon kept phrases for display. Generate a new one to copy it, or turn it off.' : writePasswordNote}>
         {#snippet action()}
           <SegmentedControl id="pw-dlg-write-door" className="en-seg--door" bind:value={writeDoor} onChange={setWriteDoor} ariaLabel="Write password" options={doorOptions} disabled={linkAccessBusy} />
         {/snippet}

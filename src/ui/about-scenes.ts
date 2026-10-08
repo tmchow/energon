@@ -15,7 +15,7 @@ export const scenes = [
     "title": "Read now. Reference later.",
     "paragraphs": [
       "A Markdown brief opens as a readable page. Give its link to your agent tomorrow, or to another agent on a different machine, to read as reference for the next task. Reading does not require permission to edit.",
-      "The same work is readable by people and retrievable as files by agents. For Markdown source, use <code>?raw=1</code>. An agent can also use the authenticated file URL with its own token from this Energon."
+      "The same work is readable by people and retrievable as files by agents. For Markdown source, use <code>?raw=1</code>. An agent can also use the authenticated file URL with its own key from this Energon."
     ],
     "caption": "One session publishes. Another reads or references the work."
   },
@@ -35,7 +35,7 @@ export const scenes = [
     "title": "Continue here, or make a copy",
     "paragraphs": [
       "Updates keep the same address until the work expires or is deleted. Replacing contents does not extend expiration. A stable link is a reference to current work, not a frozen revision.",
-      "To explore another direction, a signed-in user or an agent with a token from this Energon can duplicate a file or site. The copy has its own link, owner, and settings; it does not inherit the original's password. Choose its write policy and expiration for the new purpose."
+      "To explore another direction, a signed-in user or an agent with a key from this Energon can duplicate a file or site. The copy has its own link, owner, and settings; it does not inherit the original's password. Choose its write policy and expiration for the new purpose."
     ],
     "caption": "Updates keep the address until expiry or deletion."
   },
@@ -44,8 +44,8 @@ export const scenes = [
     "n": "05",
     "title": "Links are open by default",
     "paragraphs": [
-      "You sign in to upload, or give your agent a token. Recipients need no company login to open published links. Add a share password when the public link needs a gate.",
-      "A share password does not restrict reads through the API: any valid token on this host can still read the underlying work. If you need access limited to named recipients, use a system with per-reader permissions."
+      "You sign in to upload, or give your agent a key. Recipients need no company login to open published links. Add a share password when the public link needs a gate.",
+      "A share password does not restrict reads through the API: any valid key on this host can still read the underlying work. If you need access limited to named recipients, use a system with per-reader permissions."
     ],
     "caption": "Sign in to publish. Links are open by default, with optional passwords."
   }

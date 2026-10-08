@@ -159,7 +159,8 @@ const HUB_ROUTES: readonly PlainRoute[] = [
       POST: human(async (c, actor) => decideConnection(c.env, c.params[0], actor, await readJson(c.request, CONNECTION_JSON_MAX_BYTES), c.params[1] === "approve")),
     },
   },
-  { path: "/tokens", methods: { GET: (c) => serveTokens(c.request, c.env, c.ctx) } },
+  { path: "/keys", methods: { GET: (c) => serveTokens(c.request, c.env, c.ctx) } },
+  { path: "/tokens", methods: { GET: (c) => Response.redirect(`${c.url.origin}/keys${c.url.search}`, 301) } },
   { path: "/account/data", methods: { GET: serveAccountData } },
   { path: "/account/admin/audit", methods: { GET: admin(async (c) => json(await listAdminAudit(c.env, c.url))) } },
   { path: "/account/admin/health", methods: { GET: (c) => hubAdminHealthResponse(c.request, c.env, c.ctx) } },
@@ -485,7 +486,7 @@ async function serveTokens(request: Request, env: Env, ctx: ExecutionContext): P
     admin_token_policy: tokenPolicyPublic(adminTokenPolicy(), publicOrigin(env)),
   };
   const chrome = await pageChrome(env, Boolean(actor.admin));
-  return new Response(uiPage(`Tokens — ${PRODUCT}`, { page: "tokens", data: { ...bootstrap, now: Date.now() }, footer: chrome.footer, upstream: chrome.upstream }), { headers: PRIVATE_HTML_HEADERS });
+  return new Response(uiPage(`Agent keys — ${PRODUCT}`, { page: "tokens", data: { ...bootstrap, now: Date.now() }, footer: chrome.footer, upstream: chrome.upstream }), { headers: PRIVATE_HTML_HEADERS });
 }
 
 export type { Env };

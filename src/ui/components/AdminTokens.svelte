@@ -14,9 +14,9 @@
   import ConfirmDialog from './ConfirmDialog.svelte';
   type Show = 'live' | 'stale' | 'all';
   const SHOWS: Record<Show, { statuses: TokenStatus[]; empty: string; hint: string }> = {
-    live: { statuses: ['live', 'stale'], empty: 'No live tokens', hint: 'This owner has no live tokens, or list a different account.' },
-    stale: { statuses: ['stale'], empty: 'No stale tokens', hint: 'Every live token for this owner was used in the last 30 days.' },
-    all: { statuses: ['live', 'stale', 'expired', 'revoked'], empty: 'No tokens', hint: 'Nothing minted for this owner.' },
+    live: { statuses: ['live', 'stale'], empty: 'No live keys', hint: 'This owner has no live keys, or list a different account.' },
+    stale: { statuses: ['stale'], empty: 'No stale keys', hint: 'Every live key for this owner was used in the last 30 days.' },
+    all: { statuses: ['live', 'stale', 'expired', 'revoked'], empty: 'No keys', hint: 'Nothing created for this owner.' },
   };
   const ROW_CLASS: Record<TokenStatus, string> = { live: '', stale: 'row-stale', expired: 'expired row-expired', revoked: 'expired row-revoked' };
   let owner = $state('');
@@ -39,14 +39,14 @@
     { value: 'stale', label: `Stale (${staleCount})` },
     { value: 'all', label: `All (${tokens.length})` },
   ]);
-  const bulkTitle = $derived(bulk?.target === 'all' ? 'Revoke all tokens' : 'Revoke stale tokens');
-  const bulkMatch = $derived(bulk ? `${bulk.matched} ${bulk.matched === 1 ? 'token' : 'tokens'}` : '');
+  const bulkTitle = $derived(bulk?.target === 'all' ? 'Revoke all keys' : 'Revoke stale keys');
+  const bulkMatch = $derived(bulk ? `${bulk.matched} ${bulk.matched === 1 ? 'key' : 'keys'}` : '');
   const bulkMessage = $derived.by(() => {
     if (!bulk) return '';
     const labels = bulk.sample.map(t => t.label).join(', ');
     const more = bulk.matched > bulk.sample.length ? ` and ${bulk.matched - bulk.sample.length} more` : '';
-    const who = bulk.target === 'all' ? `Every token on ${listedOwner}` : `Every token unused for 30 days on ${listedOwner}`;
-    return `${who} is revoked: ${labels}${more}. Agents using them will get 401. The token making this request stays live. Type the count to confirm.`;
+    const who = bulk.target === 'all' ? `Every key on ${listedOwner}` : `Every key unused for 30 days on ${listedOwner}`;
+    return `${who} is revoked: ${labels}${more}. Agents using them will get 401. The key making this request stays live. Type the count to confirm.`;
   });
   async function refresh() {
     const listed = await api<{ tokens: AdminToken[] }>(`/account/admin/tokens?owner=${encodeURIComponent(listedOwner)}&limit=50`);
@@ -80,12 +80,12 @@
     try {
       const result = await api<BulkRevokeResult>('/account/admin/tokens/revoke', jsonBody('POST', { owner: listedOwner, target: bulk.target, confirm: bulk.confirm }));
       bulkOpen = false;
-      notice = `Revoked ${result.revoked} ${result.revoked === 1 ? 'token' : 'tokens'}.`;
+      notice = `Revoked ${result.revoked} ${result.revoked === 1 ? 'key' : 'keys'}.`;
       await refresh();
     } catch (err) {
       if (err instanceof RequestError && err.status === 409) {
         bulk = await api<BulkRevokePreview>('/account/admin/tokens/revoke', jsonBody('POST', { owner: listedOwner, target: bulk.target })).catch(() => bulk);
-        error = 'Those tokens changed since this preview. Review the new count and confirm again.';
+        error = 'Those keys changed since this preview. Review the new count and confirm again.';
       } else error = errorMessage(err);
     }
     finally { busy = false; }
@@ -100,14 +100,14 @@
 {#snippet expires(token: AdminToken)}{#if token.status === 'revoked'}Revoked{:else if token.status === 'expired'}Expired{:else}<Timestamp value={token.expires_at} dateOnly empty="Never" />{/if}{/snippet}
 {#snippet tools()}
   <div class="en-toolbar en-tokens-tools">
-    <SegmentedControl id="admin-tokens-show" ariaLabel="Show tokens" options={showOptions} bind:value={show} disabled={!loaded} />
+    <SegmentedControl id="admin-tokens-show" ariaLabel="Show keys" options={showOptions} bind:value={show} disabled={!loaded} />
     <Button id="admin-revoke-stale" size="sm" variant="danger" disabled={busy || !staleCount} onclick={() => preview('stale')}>Revoke stale</Button>
     <Button id="admin-revoke-all" size="sm" variant="danger" disabled={busy || !revocable} onclick={() => preview('all')}>Revoke all</Button>
   </div>
 {/snippet}
 
-<Card title="Tokens across accounts" className="en-admin-card" tight headEnd={tools}>
-  <p class="en-muted-copy en-admin-note">Pick an owner, then revoke unused keys or every key on that account. Metadata only. The token making this request stays live.</p>
+<Card title="Keys across accounts" className="en-admin-card" tight headEnd={tools}>
+  <p class="en-muted-copy en-admin-note">Pick an owner, then revoke unused keys or every key on that account. Metadata only. The key making this request stays live.</p>
   <form id="admin-tokens-filters" class="en-form-stack" onsubmit={load}>
     <div class="en-admin-filters">
       <Field label="Owner" htmlFor="admin-tokens-owner" note="Handle or email">
@@ -131,7 +131,7 @@
     {:else if loaded}
       <EmptyState title={SHOWS[show].empty}>{SHOWS[show].hint}</EmptyState>
     {:else}
-      <EmptyState title="No tokens listed">Enter a handle or email, then list.</EmptyState>
+      <EmptyState title="No keys listed">Enter a handle or email, then list.</EmptyState>
     {/if}
   </div>
 </Card>

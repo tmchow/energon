@@ -8,7 +8,7 @@ An agent requests a connection, then a signed-in human confirms its code (from t
 - `approve`: `/connect?request={id}&user_code={code}` is a chrome-less confirmation page that names the hub host, the requested label, the signed-in account, permissions, the offered code, lifetime, and connect/deny controls. It does not auto-approve. `/connect?request={id}` without `user_code` is the same page with an eight-digit code input instead.
 - `ended`: GET `/connect?request=` after expiry, consume, approval, or denial is HTML (not JSON). Expired and consumed pages show `This request has expired; ask your agent to start a new one.` and hide `#connect-code` and `#connect-offered-code`. Agent poll of `/v1/connections/{id}/token` stays JSON `410 connection_expired` / `403 connection_denied`.
 - `delivery`: POST `/v1/connections/{id}/token` with the private poll token returns 202 pending before approval and the token once after approval.
-- `revocation`: the issued token appears on `/tokens` and obeys ordinary expiry/revocation rules.
+- `revocation`: the issued token appears on `/keys` and obeys ordinary expiry/revocation rules.
 
 ## How to get to it (user POV)
 

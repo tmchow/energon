@@ -21,7 +21,7 @@ This file is how to **change this tree**. It is not a product README and not the
 
 ## Hard stops
 
-- Do not invent a token. Humans mint at `{origin}/tokens` or approve agent connection requests at `/connect`. Never automate human approval.
+- Do not invent a token. Humans create agent keys at `{origin}/keys` or approve agent connection requests at `/connect`. Never automate human approval.
 - Never default to `overwrite: true`. Never claim a guessed slug that already exists without the human confirming.
 - Development work does not authorize production changes. When an operator explicitly requests installation or deployment of their deployment repository, follow INSTALL.md for account selection, remote migrations, and deployment within that scope. Human sign-in and connection approval remain human steps; never run interactive `wrangler login` in an unattended cloud agent. Never stamp `d1_migrations` or execute ad hoc schema SQL against production. New schema belongs in `migrations/` first.
 - Do not `pkill -f wrangler` / `workerd`. Do not delete `.wrangler/state` (the human's local DB).

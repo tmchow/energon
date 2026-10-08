@@ -8,7 +8,7 @@ describe("host and route contracts", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/markdown");
     expect(response.headers.get("access-control-allow-origin")).toBe("*");
-    expect(await response.text()).toContain("https://hub.energon.example.com/tokens");
+    expect(await response.text()).toContain("https://hub.energon.example.com/keys");
     const head = await req("/auth.md", { method: "HEAD" });
     expect(head.status).toBe(200);
     expect(await head.text()).toBe("");
@@ -111,6 +111,13 @@ describe("host and route contracts", () => {
     expect(help.body.openapi).toBe("https://hub.energon.example.com/v1/openapi.json");
     expect(help.body.routes["GET /v1/openapi.json"]).toBe("OpenAPI 3.1 HTTP contract, no auth");
     expect(help.body.routes["GET /v1/export"]).toContain("owner_id");
+  });
+
+  it("moves the old token page to /keys", async () => {
+    const res = await req("https://hub.energon.example.com/tokens?x=1", { redirect: "manual" });
+    expect(res.status).toBe(301);
+    expect(res.headers.get("location")).toBe("https://hub.energon.example.com/keys?x=1");
+    expect((await req("https://energon.example.com/tokens", { redirect: "manual" })).status).toBe(404);
   });
 
   it("redirects a site URL without a trailing slash", async () => {

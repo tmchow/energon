@@ -116,7 +116,7 @@ npm run setup:access -- --config /path/to/access-setup.json --apply
 
 The command creates two reusable policies and two applications:
 
-1. The entire hub hostname requires sign-in through the selected provider and allows only the listed emails. This covers `/admin` and future hub pages as well as `/tokens` and `/connect`.
+1. The entire hub hostname requires sign-in through the selected provider and allows only the listed emails. This covers `/admin` and future hub pages as well as `/keys` and `/connect`.
 2. A more-specific application bypasses Access for `/v1*`, `/health`, `/llms.txt`, `/auth.md`, `/favicon.svg`, and `/static*` on the hub.
 
 No Access application is created on the content hostname. Apps use a 24-hour Access session; this is separate from API token lifetime and content retention.

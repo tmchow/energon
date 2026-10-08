@@ -219,7 +219,7 @@ export function tokenPolicyPublic(policy: TokenPolicy, origin: string) {
     presets: policy.presets,
     default: policy.defaultTtl,
     allow_never: policy.allowUnlimited,
-    tokens_url: `${origin}/tokens`,
+    tokens_url: `${origin}/keys`,
   };
 }
 

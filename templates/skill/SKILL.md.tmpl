@@ -15,7 +15,7 @@ This skill is bound to **{{ORIGIN}}**. Do not send traffic to another Energon. A
 
 ## Hard rules
 
-1. **Gateway mode first.** If this skill was loaded through a tool gateway, or {{PRODUCT}} operations are reachable as tools (including through a code-mode gateway's tool search: search for `mintGrant` or `createDeployment`, not only the visible tool list), follow **Gateway mode** below instead: use those tools, never ask for or provision a token on this machine, and skip the connect flow. Otherwise, look for env `{{TOKEN_ENV}}`. If it is missing and a human can respond, read {{ORIGIN}}/auth.md and connect with a code: show the link and code, ask them to confirm the code matches, wait for approval, save the delivered token as `{{TOKEN_ENV}}` (see Scenario F). If no human can respond (CI, unattended runs), stop and report that `{{TOKEN_ENV}}` must be provisioned from {{ORIGIN}}/tokens. Do not automate the human approval. Do **not** invent a token. Do **not** reuse a token you saw in chat history unless they just pasted it. A token that has expired (`401` with `error: token_expired`) is the same stop: it cannot be renewed; connect again or have the human provision a replacement.
+1. **Gateway mode first.** If this skill was loaded through a tool gateway, or {{PRODUCT}} operations are reachable as tools (including through a code-mode gateway's tool search: search for `mintGrant` or `createDeployment`, not only the visible tool list), follow **Gateway mode** below instead: use those tools, never ask for or provision a token on this machine, and skip the connect flow. Otherwise, look for env `{{TOKEN_ENV}}`. If it is missing and a human can respond, read {{ORIGIN}}/auth.md and connect with a code: show the link and code, ask them to confirm the code matches, wait for approval, save the delivered token as `{{TOKEN_ENV}}` (see Scenario F). If no human can respond (CI, unattended runs), stop and report that `{{TOKEN_ENV}}` must be provisioned from {{ORIGIN}}/keys. Do not automate the human approval. Do **not** invent a token. Do **not** reuse a token you saw in chat history unless they just pasted it. A token that has expired (`401` with `error: token_expired`) is the same stop: it cannot be renewed; connect again or have the human provision a replacement.
 2. Last write wins **on that path only**. Putting a file does not delete other files. There is no merge, no comments, no presence.
 3. Published `/{handle}/s/{id}/{slug}/` and `/{handle}/f/{id}/{filename}` URLs are **not** behind Access. Anyone with the link can open them unless you set a share password. Agents can GET the human URL (send `X-Energon-Password` if set) or use `api_url` (`GET /v1/...`) with their token — token reads skip the share password.
 4. Default is **no password**. Set a share password only if they ask. Set a write password only if they want someone outside this host to update the public URL without a token. Write responses echo the secret you just set so you can tell them. `/v1` GET never returns the phrase. Do **not** write secrets into the published file. Change with `PATCH` `{ "password": "new" }` or `{ "write_password": "new" }`; clear with an empty string. Only the creator can set or clear `write_password`.
@@ -226,9 +226,9 @@ When they need a link that keeps showing exactly what was published (a release, 
 Stop using a rejected or expired token. Then, in order:
 
 1. Check `{{TOKEN_ENV}}` again. If it is set and was not the rejected token, use it.
-2. If a human can respond, connect with a code. Read {{ORIGIN}}/auth.md, POST `/v1/connections`, show the returned `verification_uri` (it includes the code) and `user_code`, ask them to confirm the code matches on the page, and poll with the private `poll_token` until approved. Denial is terminal; a lost delivery requires human revocation on {{ORIGIN}}/tokens before a new approval.
+2. If a human can respond, connect with a code. Read {{ORIGIN}}/auth.md, POST `/v1/connections`, show the returned `verification_uri` (it includes the code) and `user_code`, ask them to confirm the code matches on the page, and poll with the private `poll_token` until approved. Denial is terminal; a lost delivery requires human revocation on {{ORIGIN}}/keys before a new approval.
 3. Save the delivered token before anything else. Set `{{TOKEN_ENV}}` for this session, then persist it where this environment keeps secrets: the host's credential store if there is one, otherwise a user-level env file or shell profile, otherwise a file in the user's home directory readable only by them (mode 600). Never write it into the project, a flag, a URL, a log, a commit, or your reply. Tell the human where it went, the label, and `expires_at`. If nothing persists here, say the next session will need a new approval or a provisioned `{{TOKEN_ENV}}`.
-4. If no human can respond, stop. Report that a human must create a token at {{ORIGIN}}/tokens (label, lifetime, shown once) and store it as `{{TOKEN_ENV}}` in this environment's secret store.
+4. If no human can respond, stop. Report that a human must create an agent key at {{ORIGIN}}/keys (label, lifetime, shown once) and store it as `{{TOKEN_ENV}}` in this environment's secret store.
 
 Then retry with the **new** token. Do not scrape HTML for a token. Do not automate approval or mint through the human hub API; only the connection flow delivers a token after human approval.
 
@@ -349,7 +349,7 @@ Objects you cannot write (someone else's `owner` policy) are skipped, not an err
 
 ## Scenario K — Done with this token
 
-The task is finished, the token came from this session's connection (Scenario F), and nothing else stores it. Revoke it yourself so the human does not have to find it later on {{ORIGIN}}/tokens:
+The task is finished, the token came from this session's connection (Scenario F), and nothing else stores it. Revoke it yourself so the human does not have to find it later on {{ORIGIN}}/keys:
 
 ```bash
 curl -sS -X DELETE {{ORIGIN}}/v1/whoami \
@@ -357,7 +357,7 @@ curl -sS -X DELETE {{ORIGIN}}/v1/whoami \
 # { "ok": true, "revoked": true, "label": "…" }
 ```
 
-Afterwards every call with that token is `401 unauthorized`, so run it last and unset `{{TOKEN_ENV}}` where you stored it. Tell the human the label you revoked. Skip this when the token is the human's stored `{{TOKEN_ENV}}` for CI or scheduled runs, or when they asked you to keep it. `/v1` cannot revoke any other token; that stays on {{ORIGIN}}/tokens.
+Afterwards every call with that token is `401 unauthorized`, so run it last and unset `{{TOKEN_ENV}}` where you stored it. Tell the human the label you revoked. Skip this when the token is the human's stored `{{TOKEN_ENV}}` for CI or scheduled runs, or when they asked you to keep it. `/v1` cannot revoke any other token; that stays on {{ORIGIN}}/keys.
 
 ## Scenario L — File is too big
 

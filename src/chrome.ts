@@ -97,7 +97,7 @@ export function documentShell(opts: {
 export function appHeader(opts: { active?: HubPage; email?: string | null; end?: string }): string {
   const links: { href: string; id: HubPage; label: string }[] = [
     { href: "/", id: "hub", label: "Hub" },
-    { href: "/tokens", id: "tokens", label: "Tokens" },
+    { href: "/keys", id: "tokens", label: "Keys" },
     { href: "/setup", id: "setup", label: "Setup" },
     { href: "/about", id: "about", label: "About" },
     { href: "/stats", id: "stats", label: "Stats" },

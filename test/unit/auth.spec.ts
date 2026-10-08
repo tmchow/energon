@@ -285,7 +285,7 @@ describe("requireToken", () => {
     await expect(requireToken(request, env)).rejects.toMatchObject({
       status: 401,
       code: "token_expired",
-      extra: { expired_at: "2000-01-01T00:00:00.000Z", tokens_url: "https://energon.example.com/tokens" },
+      extra: { expired_at: "2000-01-01T00:00:00.000Z", tokens_url: "https://energon.example.com/keys" },
     });
     expect(updateRun).not.toHaveBeenCalled();
   });
