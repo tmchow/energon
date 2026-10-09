@@ -162,6 +162,8 @@ describe("skill template", () => {
     expect(gateway).toContain("same `deployment_id`");
     expect(gateway).toContain("/llms.txt");
     expect(gateway).not.toContain("Bearer $ACME_ENERGON_TOKEN");
+    expect(gateway).toContain("https://energon.acme.test/v1/openapi-gateway.json");
+    expect(gateway).toContain("`files.duplicateFile`");
 
     const scenarioE = skill.slice(skill.indexOf("## Scenario E"), skill.indexOf("## Scenario F"));
     expect(scenarioE).toContain("python3 scripts/energon_publish.py publish-folder ./dist --site-id {id}");

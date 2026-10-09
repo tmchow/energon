@@ -26,7 +26,7 @@ This skill is bound to **{{ORIGIN}}**. Do not send traffic to another Energon. A
 9. Bulk cleanup (`POST /v1/cleanup`) is a **dry run** unless you send the `confirm` from its own preview. Always show the human the preview first (Scenario J). Delete has no recycle bin. `GET /v1/export` first if they need a copy of what they own; cleanup `{}` is involvement, which is wider than ownership.
 10. When your task is done and the token was connected for this session only (Scenario F delivered it and nothing else stores it), `DELETE /v1/whoami` revokes it so it does not linger. Self only: `/v1` cannot list or revoke other tokens. Never revoke a token the human provisioned for reuse (CI, scheduled jobs, `{{TOKEN_ENV}}` in a secret store) unless they ask.
 
-Auth on every `/v1` call except `/v1/help`, `/v1/health`, `/v1/openapi.json`, and the connection request/poll endpoints documented in `/auth.md`:
+Auth on every `/v1` call except `/v1/help`, `/v1/health`, `/v1/openapi.json`, `/v1/openapi-gateway.json`, and the connection request/poll endpoints documented in `/auth.md`:
 
 ```
 Authorization: Bearer ${{TOKEN_ENV}}
@@ -36,10 +36,13 @@ Tokens look like `{{TOKEN_PREFIX}}…`. For authentication setup, credential bou
 
 ## Gateway mode
 
-You are in gateway mode when a tool gateway loaded this skill or exposes {{PRODUCT}}'s `/v1` operations as tools. A code-mode gateway may hide them until you search, so search the gateway for `mintGrant` or `createDeployment` before deciding there are none. Tool names usually follow `<tag>.<operationId>`: `sites.createSite`, `sites.getSite`, `deployments.createDeployment`, `deployments.getDeployment`, `grants.mintGrant`, `grants.getGrant`.
+You are in gateway mode when a tool gateway loaded this skill or exposes {{PRODUCT}}'s `/v1` operations as tools. A code-mode gateway may hide them until you search, so search the gateway for `mintGrant` or `createDeployment` before deciding there are none. Tool names usually follow `<tag>.<operationId>`: `sites.createSite`, `sites.getSite`, `deployments.createDeployment`, `deployments.getDeployment`, `grants.mintGrant`, `grants.getGrant`, `files.duplicateFile`.
+
+The gateway should import {{ORIGIN}}/v1/openapi-gateway.json, which leaves out every tool that carries file bytes, and bind its credential to {{ORIGIN}} only. If the gateway lists byte-upload tools such as `files.createFile`, it imported the full `openapi.json`; do not use them for local files, and tell the operator to re-point the import.
 
 - The gateway holds the credential. Never ask for, look for, or provision `{{TOKEN_ENV}}` here, and skip Scenarios F and K. Where a scenario shows `curl` with `${{TOKEN_ENV}}`, call the matching tool.
 - Tools cannot carry local bytes. Mint an upload grant through the tools, then call its URLs (`upload_url`, or a deployment grant's `status_url`, `archive_url`, `prepare_url`, `commit_url`) from this machine with the helper or `curl`, never through the gateway. That includes the `uploadDeploymentGrant*`, `prepareDeploymentGrant`, and `commitDeploymentGrant` tools if the gateway lists them.
+- To copy a published file, call `files.duplicateFile` with the file's id. For a site, call `createSite` with `duplicate_from`.
 - Pass a mint response to the helper on stdin (a heredoc) or in a mode-600 temp file, never as a flag or in a URL. The secret is shown once.
 
 **The helper.** If this skill is installed with its files, run `python3 scripts/energon_publish.py` from the skill directory. If not (the gateway served only the text), `GET {{ORIGIN}}/v1/help`, take `agent_skills_url`, and download the helper to a temp dir; use that path wherever this skill says `scripts/energon_publish.py`. Always run it with `python3`. If `agent_skills_url` is `null`, use `curl` on the grant URLs as in Scenario M and the whole-site grant handoff.

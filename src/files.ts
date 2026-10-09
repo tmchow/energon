@@ -351,6 +351,26 @@ function formWritePassword(request: Request, form: FormData): string | undefined
   return formOrHeader(form, "write_password", readSetWritePasswordHeader(request));
 }
 
+export function duplicateLooseFromJson(
+  env: Env,
+  ctx: ExecutionContext | undefined,
+  actor: Actor,
+  fromId: string,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  return duplicateLooseFile(
+    env,
+    ctx,
+    actor,
+    fromId,
+    typeof body.filename === "string" ? body.filename : null,
+    passwordField(body),
+    body.ttl,
+    body.write_policy,
+    writePasswordField(body),
+  );
+}
+
 async function postLooseJson(
   env: Env,
   ctx: ExecutionContext | undefined,

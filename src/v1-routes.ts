@@ -8,6 +8,7 @@ import { CONNECTION_JSON_MAX_BYTES, exchangeConnection, startConnection } from "
 import { exportOwnedZip } from "./export";
 import {
   deleteLooseFile,
+  duplicateLooseFromJson,
   getLooseFile,
   listLooseJson,
   patchLoose,
@@ -19,6 +20,7 @@ import { grantStatus, mintGrant } from "./grants";
 import {
   json,
   jsonMaybeSecret,
+  methodNotAllowed,
   publicOrigin,
   readJson,
   secretJson,
@@ -48,9 +50,10 @@ import type { Env } from "./types";
 import { withUpload } from "./upload";
 import { deploymentApi, importSiteArchive } from "./site-deployment-api";
 
-export const V1_PRE_SCHEMA_LITERALS = ["/v1/help", "/v1/openapi.json", "/v1/health"] as const;
+export const V1_PRE_SCHEMA_LITERALS = ["/v1/help", "/v1/openapi.json", "/v1/openapi-gateway.json", "/v1/health"] as const;
 
 export const V1_CONNECTION_TOKEN = /^\/v1\/connections\/([^/]+)\/token$/;
+export const V1_LOOSE_DUPLICATE = /^\/v1\/files\/([^/]+)\/duplicate$/;
 export const V1_LOOSE_ONE = /^\/v1\/files\/([^/]+)(?:\/[^/]+)?$/;
 export const V1_SITE_IMPORT = /^\/v1\/sites\/([^/]+)\/import$/;
 export const V1_SITE_EXPORT = /^\/v1\/sites\/([^/]+)\/export$/;
@@ -219,6 +222,16 @@ export const V1_TOKEN = {
       path: "/v1/cleanup",
       methods: {
         POST: async (c) => cleanupResponse(c.env, c.ctx, c.actor, await readJson(c.request)),
+      },
+    },
+    {
+      path: V1_LOOSE_DUPLICATE,
+      methods: {
+        POST: async (c) => duplicateLooseFromJson(c.env, c.ctx, c.actor, decodeURIComponent(c.params[0]), await readJson(c.request)),
+        // Without these, V1_LOOSE_ONE's filename-suffix alias would apply them to the source file.
+        PUT: () => methodNotAllowed(),
+        PATCH: () => methodNotAllowed(),
+        DELETE: () => methodNotAllowed(),
       },
     },
     {

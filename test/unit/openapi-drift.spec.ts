@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { helpBody } from "../../src/auth";
-import { openapiResponse } from "../../src/openapi";
+import { gatewayOpenapiResponse, openapiResponse } from "../../src/openapi";
 import type { Env } from "../../src/types";
 import { v1PathLiterals, v1PathPatterns } from "../../src/v1-routes";
 
@@ -10,7 +10,7 @@ const METHODS = ["get", "post", "put", "patch", "delete"] as const;
 const ORIGIN = "https://hub.energon.example.com";
 const SAMPLE_PARAMS: Record<string, string> = { slug: "my-slug", id: "abc123", path: "docs/a.txt", deploymentId: "deployment123", grantId: "grant123" };
 
-type Operation = { operationId?: string; tags?: string[]; responses?: Record<string, unknown>; security?: unknown[] };
+type Operation = { operationId?: string; tags?: string[]; responses?: Record<string, unknown>; security?: unknown[]; "x-energon-gateway"?: unknown };
 type PathItem = Partial<Record<(typeof METHODS)[number], Operation>>;
 type Spec = {
   openapi: string;
@@ -20,7 +20,7 @@ type Spec = {
 };
 
 const spec = JSON.parse(readFileSync("openapi/v1.json", "utf8")) as Spec;
-const help = helpBody(ORIGIN) as { openapi: string; routes: Record<string, string> };
+const help = helpBody(ORIGIN) as { openapi: string; gateway_openapi: string; sop: string[]; routes: Record<string, string> };
 
 function operations(): { key: string; op: Operation }[] {
   const found: { key: string; op: Operation }[] = [];
@@ -114,7 +114,7 @@ describe("openapi/v1.json", () => {
       .filter(({ op }) => Array.isArray(op.security) && op.security.length === 0)
       .map(({ key }) => key)
       .sort();
-    expect(open).toEqual(["GET /auth.md", "GET /llms.txt", "GET /v1/health", "GET /v1/help", "GET /v1/openapi.json", "POST /v1/connections", "POST /v1/connections/{id}/token"]);
+    expect(open).toEqual(["GET /auth.md", "GET /llms.txt", "GET /v1/health", "GET /v1/help", "GET /v1/openapi-gateway.json", "GET /v1/openapi.json", "POST /v1/connections", "POST /v1/connections/{id}/token"]);
   });
 
   it("documents every /v1 path the router serves, and nothing the router does not", () => {
@@ -149,5 +149,143 @@ describe("openapi/v1.json", () => {
   it("is advertised by GET /v1/help", () => {
     expect(help.openapi).toBe(`${ORIGIN}/v1/openapi.json`);
     expect(help.routes["GET /v1/openapi.json"]).toContain("no auth");
+    expect(help.gateway_openapi).toBe(`${ORIGIN}/v1/openapi-gateway.json`);
+    expect(help.sop.join("\n")).toContain(`import ${ORIGIN}/v1/openapi-gateway.json, not openapi.json, and bind the gateway credential to ${ORIGIN} only`);
+  });
+});
+
+const GATEWAY_OPERATIONS = [
+  "getHelp", "getHealth", "getLlmsTxt", "getGatewayOpenapi", "whoami",
+  "listSites", "createSite", "getSite", "patchSite", "deleteSite", "getSiteFile", "deleteSiteFile",
+  "listFiles", "getFile", "patchFile", "deleteFile", "duplicateFile",
+  "cleanup", "mintGrant", "getGrant",
+  "createDeployment", "getDeployment", "cancelDeployment", "prepareDeployment", "commitDeployment",
+];
+const EXCLUDED_OPERATIONS = [
+  "createFile", "putFile", "putSiteFile", "importSite", "uploadDeploymentFile", "uploadDeploymentArchive",
+  "exportOwned", "exportSite",
+  "getDeploymentGrant", "uploadDeploymentGrantFile", "uploadDeploymentGrantArchive", "prepareDeploymentGrant", "commitDeploymentGrant",
+  "revokeSelf", "startConnection", "exchangeConnection", "getAuthMarkdown", "getOpenapi",
+  "listAdminAudit", "listAdminTokens", "revokeAdminTokens", "adminCleanup", "getAdminHealth", "recomputePlatformQuota", "sweepExpiredNow", "unlockShareGate",
+];
+const BYTE_RESPONSE_EXCEPTIONS = ["getFile", "getSiteFile"];
+const SUCCESS_CONTENT = ["application/json", "text/markdown"];
+
+type AnyDoc = { paths: Record<string, Record<string, unknown>>; components?: Record<string, Record<string, unknown>> };
+
+function resolve(doc: AnyDoc, node: unknown): Record<string, unknown> {
+  let current = node as Record<string, unknown> | undefined;
+  for (let hops = 0; current && typeof current.$ref === "string"; hops++) {
+    const ref = current.$ref as string;
+    if (hops > 10 || !ref.startsWith("#/")) throw new Error(`unresolvable $ref ${ref}`);
+    let target: unknown = doc;
+    for (const part of ref.slice(2).split("/")) target = (target as Record<string, unknown> | undefined)?.[part];
+    if (!target) throw new Error(`unresolvable $ref ${ref}`);
+    current = target as Record<string, unknown>;
+  }
+  return current ?? {};
+}
+
+function gatewayShapeViolations(doc: AnyDoc): string[] {
+  const violations: string[] = [];
+  for (const [path, item] of Object.entries(doc.paths)) {
+    for (const method of METHODS) {
+      const op = item[method] as (Operation & { requestBody?: unknown }) | undefined;
+      if (!op) continue;
+      const id = op.operationId ?? `${method} ${path}`;
+      if (op.requestBody) {
+        for (const type of Object.keys(resolve(doc, op.requestBody).content ?? {})) {
+          if (type !== "application/json") violations.push(`${id} accepts ${type}`);
+        }
+      }
+      for (const [code, response] of Object.entries(op.responses ?? {})) {
+        if (!/^(2\d\d|2XX|default)$/.test(code)) continue;
+        for (const type of Object.keys(resolve(doc, response).content ?? {})) {
+          if (!SUCCESS_CONTENT.includes(type) && !BYTE_RESPONSE_EXCEPTIONS.includes(id)) violations.push(`${id} returns ${type}`);
+        }
+      }
+    }
+  }
+  return violations;
+}
+
+function operationIds(doc: AnyDoc): string[] {
+  return Object.values(doc.paths).flatMap((item) => METHODS.flatMap((method) => {
+    const op = item[method] as Operation | undefined;
+    return op?.operationId ? [op.operationId] : [];
+  }));
+}
+
+function syntheticDoc(operation: Record<string, unknown>, components: Record<string, Record<string, unknown>> = {}): AnyDoc {
+  return { paths: { "/v1/x": { put: { operationId: "synthetic", responses: { "200": { content: { "application/json": {} } } }, ...operation } } }, components };
+}
+
+const SPLIT_ENV = { PUBLIC_ORIGIN: ORIGIN, CONTENT_ORIGIN: "https://share.example.com" } as Env;
+const SAME_ENV = { PUBLIC_ORIGIN: "http://127.0.0.1:8787", CONTENT_ORIGIN: "http://127.0.0.1:8787" } as Env;
+
+describe("gateway catalog", () => {
+  it("classifies every operation in or out of the gateway catalog", () => {
+    for (const { key, op } of operations()) expect(typeof op["x-energon-gateway"], key).toBe("boolean");
+    const marked = operations().filter(({ op }) => op["x-energon-gateway"] === true).map(({ op }) => op.operationId).sort();
+    expect(marked).toEqual([...GATEWAY_OPERATIONS].sort());
+    const unmarked = operations().filter(({ op }) => op["x-energon-gateway"] === false).map(({ op }) => op.operationId).sort();
+    expect(unmarked).toEqual([...EXCLUDED_OPERATIONS].sort());
+  });
+
+  it("serves exactly the gateway operations on the hub origin", async () => {
+    for (const env of [SPLIT_ENV, SAME_ENV]) {
+      const doc = await gatewayOpenapiResponse(env).json() as AnyDoc & { servers: unknown; tags: { name: string }[] };
+      expect(operationIds(doc).sort()).toEqual([...GATEWAY_OPERATIONS].sort());
+      expect(Object.keys(doc.paths).some((path) => path.startsWith("/_deployment-grants/"))).toBe(false);
+      expect(Object.values(doc.paths).some((item) => "servers" in item)).toBe(false);
+      expect(doc.servers).toEqual([{ url: env.PUBLIC_ORIGIN }]);
+      for (const item of Object.values(doc.paths)) expect(METHODS.some((method) => item[method])).toBe(true);
+      expect(doc.paths["/v1/files/{id}"].parameters).toEqual((spec.paths["/v1/files/{id}"] as Record<string, unknown>).parameters);
+      const used = new Set(Object.values(doc.paths).flatMap((item) => METHODS.flatMap((method) => (item[method] as Operation | undefined)?.tags ?? [])));
+      expect(doc.tags.map((tag) => tag.name).sort()).toEqual([...used].sort());
+    }
+  });
+
+  it("keeps byte uploads and binary downloads out of the gateway catalog", async () => {
+    const doc = await gatewayOpenapiResponse(SPLIT_ENV).json() as AnyDoc;
+    expect(gatewayShapeViolations(doc)).toEqual([]);
+    expect(BYTE_RESPONSE_EXCEPTIONS).toEqual(["getFile", "getSiteFile"]);
+  });
+
+  it("fails the shape check on byte bodies and binary responses", () => {
+    expect(gatewayShapeViolations(syntheticDoc({ requestBody: { content: { "application/octet-stream": {} } } }))).toEqual(["synthetic accepts application/octet-stream"]);
+    expect(gatewayShapeViolations(syntheticDoc({ requestBody: { content: { "application/zip": {} } } }))).toEqual(["synthetic accepts application/zip"]);
+    expect(gatewayShapeViolations(syntheticDoc({ responses: { "200": { content: { "image/png": {} } } } }))).toEqual(["synthetic returns image/png"]);
+    expect(gatewayShapeViolations(syntheticDoc({ responses: { default: { content: { "application/gzip": {} } } } }))).toEqual(["synthetic returns application/gzip"]);
+    expect(gatewayShapeViolations(syntheticDoc(
+      { responses: { "200": { $ref: "#/components/responses/Bytes" } } },
+      { responses: { Bytes: { content: { "application/octet-stream": {} } } } },
+    ))).toEqual(["synthetic returns application/octet-stream"]);
+    expect(() => gatewayShapeViolations(syntheticDoc({ responses: { "200": { $ref: "#/components/responses/Missing" } } }))).toThrow("unresolvable");
+  });
+
+  it("steers publishing searches to grants and the skill", async () => {
+    const doc = await gatewayOpenapiResponse(SPLIT_ENV).json() as { paths: Record<string, Record<string, { summary: string; description: string }>> };
+    for (const [path, method] of [["/v1/grants", "post"], ["/v1/sites/{id}/deployments", "post"], ["/v1/sites", "post"], ["/v1/files/{id}/duplicate", "post"]]) {
+      const op = doc.paths[path][method];
+      expect(op.summary.toLowerCase(), path).toMatch(/publish|share/);
+      // Executor shows only the summary in tool search, so the skill pointer must be there too.
+      expect(op.summary, path).toContain("Energon skill");
+      const lead = op.description.split("\n")[0];
+      for (const step of ["mint", "helper", "SHA-256", "URL and expiry", "Energon skill"]) expect(lead, `${path} ${step}`).toContain(step);
+    }
+    expect(doc.paths["/v1/grants"].post.summary).toContain("upload a local file");
+    expect(doc.paths["/v1/files/{id}"].get.summary).toContain("stored bytes");
+    expect(doc.paths["/v1/sites/{id}/files/{path}"].get.summary).toContain("stored bytes");
+  });
+
+  it("strips the gateway marker from both served documents", async () => {
+    expect(await openapiResponse(SPLIT_ENV).text()).not.toContain("x-energon-gateway");
+    expect(await gatewayOpenapiResponse(SPLIT_ENV).text()).not.toContain("x-energon-gateway");
+  });
+
+  it("keeps every existing operation in the full document", async () => {
+    const doc = await openapiResponse(SPLIT_ENV).json() as AnyDoc;
+    expect(operationIds(doc).sort()).toEqual([...GATEWAY_OPERATIONS, ...EXCLUDED_OPERATIONS].sort());
   });
 });

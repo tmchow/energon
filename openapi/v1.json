@@ -54,6 +54,7 @@
     "/auth.md": {
       "get": {
         "operationId": "getAuthMarkdown",
+        "x-energon-gateway": false,
         "tags": [
           "discovery"
         ],
@@ -80,6 +81,7 @@
     "/llms.txt": {
       "get": {
         "operationId": "getLlmsTxt",
+        "x-energon-gateway": true,
         "tags": [
           "discovery"
         ],
@@ -106,6 +108,7 @@
     "/v1/help": {
       "get": {
         "operationId": "getHelp",
+        "x-energon-gateway": true,
         "tags": [
           "discovery"
         ],
@@ -133,6 +136,7 @@
     "/v1/health": {
       "get": {
         "operationId": "getHealth",
+        "x-energon-gateway": true,
         "tags": [
           "discovery"
         ],
@@ -159,6 +163,7 @@
     "/v1/openapi.json": {
       "get": {
         "operationId": "getOpenapi",
+        "x-energon-gateway": false,
         "tags": [
           "discovery"
         ],
@@ -183,9 +188,38 @@
         }
       }
     },
+    "/v1/openapi-gateway.json": {
+      "get": {
+        "operationId": "getGatewayOpenapi",
+        "x-energon-gateway": true,
+        "tags": [
+          "discovery"
+        ],
+        "summary": "OpenAPI catalog for tool gateways",
+        "description": "The OpenAPI 3.1 catalog a tool gateway should import. It lists grant, deployment, metadata, and read operations, and leaves out every operation that carries file bytes in the request, returns a zip, runs on the content origin, revokes the calling key, runs the connection flow, or needs an admin key. Local bytes move through upload grants redeemed on the machine that owns the files. servers[0].url is this Energon's PUBLIC_ORIGIN; bind the gateway credential to that origin only. Cacheable for 300 seconds; access-control-allow-origin: *. HEAD is accepted.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The gateway OpenAPI document.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          }
+        }
+      }
+    },
     "/v1/whoami": {
       "get": {
         "operationId": "whoami",
+        "x-energon-gateway": true,
         "tags": [
           "discovery"
         ],
@@ -224,6 +258,7 @@
       },
       "delete": {
         "operationId": "revokeSelf",
+        "x-energon-gateway": false,
         "tags": [
           "discovery"
         ],
@@ -278,6 +313,7 @@
     "/v1/sites": {
       "get": {
         "operationId": "listSites",
+        "x-energon-gateway": true,
         "tags": [
           "sites"
         ],
@@ -360,11 +396,12 @@
       },
       "post": {
         "operationId": "createSite",
+        "x-energon-gateway": true,
         "tags": [
           "sites"
         ],
-        "summary": "Create a site or duplicate a site",
-        "description": "201 always creates a new site with a fresh id, even when the slug matches an existing site on this handle. duplicate_from copies another site's files (by id) into the new site (201).",
+        "summary": "Create a site to publish a local folder into (see the Energon skill), or duplicate a site",
+        "description": "Publish a local folder: create the site here, then inspect the folder on the machine, create a deployment with its descriptors, mint a site_deployment grant, upload from the machine with the helper from the attached Energon skill, verify the SHA-256, and return the URL and expiry. This call never carries file bytes.\n\n201 always creates a new site with a fresh id, even when the slug matches an existing site on this handle. duplicate_from copies another site's files (by id) into the new site (201).",
         "requestBody": {
           "required": true,
           "content": {
@@ -487,6 +524,7 @@
     "/v1/files": {
       "get": {
         "operationId": "listFiles",
+        "x-energon-gateway": true,
         "tags": [
           "files"
         ],
@@ -569,6 +607,7 @@
       },
       "post": {
         "operationId": "createFile",
+        "x-energon-gateway": false,
         "tags": [
           "files"
         ],
@@ -720,10 +759,11 @@
       ],
       "get": {
         "operationId": "getFile",
+        "x-energon-gateway": true,
         "tags": [
           "files"
         ],
-        "summary": "Read the file's bytes",
+        "summary": "Read the file's stored bytes (fetch the public URL for large or binary files)",
         "description": "Token read; the share password is not needed. Any token can read.",
         "parameters": [
           {
@@ -798,6 +838,7 @@
       },
       "put": {
         "operationId": "putFile",
+        "x-energon-gateway": false,
         "tags": [
           "files"
         ],
@@ -941,6 +982,7 @@
       },
       "patch": {
         "operationId": "patchFile",
+        "x-energon-gateway": true,
         "tags": [
           "files"
         ],
@@ -1056,6 +1098,7 @@
       },
       "delete": {
         "operationId": "deleteFile",
+        "x-energon-gateway": true,
         "tags": [
           "files"
         ],
@@ -1137,9 +1180,127 @@
         }
       }
     },
+    "/v1/files/{id}/duplicate": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/FileId"
+        }
+      ],
+      "post": {
+        "operationId": "duplicateFile",
+        "x-energon-gateway": true,
+        "tags": [
+          "files"
+        ],
+        "summary": "Copy a published file to share under a new id; to publish a local file, see the Energon skill",
+        "description": "Copy an already published file without sending its bytes. To publish or share a local file instead, mint an upload grant, upload from the machine with the helper from the attached Energon skill, verify the SHA-256, and return the URL and expiry.\n\nCopies an existing loose file into a new file you own, with a new id and URL. The body is a JSON object of options only; it never carries file bytes. Anyone who can read via /v1 can duplicate. Share and write passwords are not copied; set them here or later with PATCH /v1/files/{id}.",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileCopyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LooseFileDuplicated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Body is not a JSON object, or a bad filename, ttl, write_policy, or password.",
+            "x-error-codes": [
+              "bad_json",
+              "bad_filename",
+              "bad_ttl",
+              "ttl_required",
+              "ttl_too_long",
+              "bad_write_policy",
+              "bad_password"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenDomain"
+          },
+          "404": {
+            "description": "No file with that id.",
+            "x-error-codes": [
+              "file_not_found"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "410": {
+            "$ref": "#/components/responses/Expired"
+          },
+          "413": {
+            "description": "The copy would exceed the platform storage cap.",
+            "x-error-codes": [
+              "storage_cap"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "500": {
+            "description": "Server error.",
+            "x-error-codes": [
+              "copy_failed",
+              "id_failed",
+              "handle_failed",
+              "internal"
+            ],
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/ContentOriginNotConfigured"
+          }
+        }
+      }
+    },
     "/v1/export": {
       "get": {
         "operationId": "exportOwned",
+        "x-energon-gateway": false,
         "tags": [
           "cleanup"
         ],
@@ -1218,6 +1379,7 @@
     "/v1/cleanup": {
       "post": {
         "operationId": "cleanup",
+        "x-energon-gateway": true,
         "tags": [
           "cleanup"
         ],
@@ -1325,6 +1487,7 @@
     "/v1/admin/audit": {
       "get": {
         "operationId": "listAdminAudit",
+        "x-energon-gateway": false,
         "tags": [
           "admin"
         ],
@@ -1386,6 +1549,7 @@
     "/v1/admin/tokens": {
       "get": {
         "operationId": "listAdminTokens",
+        "x-energon-gateway": false,
         "tags": [
           "admin"
         ],
@@ -1455,6 +1619,7 @@
     "/v1/admin/tokens/revoke": {
       "post": {
         "operationId": "revokeAdminTokens",
+        "x-energon-gateway": false,
         "tags": [
           "admin"
         ],
@@ -1545,6 +1710,7 @@
     "/v1/admin/cleanup": {
       "post": {
         "operationId": "adminCleanup",
+        "x-energon-gateway": false,
         "tags": [
           "admin"
         ],
@@ -1653,6 +1819,7 @@
     "/v1/admin/health": {
       "get": {
         "operationId": "getAdminHealth",
+        "x-energon-gateway": false,
         "tags": [
           "admin"
         ],
@@ -1694,6 +1861,7 @@
     "/v1/admin/quota/recompute": {
       "post": {
         "operationId": "recomputePlatformQuota",
+        "x-energon-gateway": false,
         "tags": [
           "admin"
         ],
@@ -1735,6 +1903,7 @@
     "/v1/admin/sweep": {
       "post": {
         "operationId": "sweepExpiredNow",
+        "x-energon-gateway": false,
         "tags": [
           "admin"
         ],
@@ -1776,6 +1945,7 @@
     "/v1/admin/gates/unlock": {
       "post": {
         "operationId": "unlockShareGate",
+        "x-energon-gateway": false,
         "tags": [
           "admin"
         ],
@@ -1850,6 +2020,7 @@
     "/v1/connections": {
       "post": {
         "operationId": "startConnection",
+        "x-energon-gateway": false,
         "tags": [
           "discovery"
         ],
@@ -1939,6 +2110,7 @@
     "/v1/connections/{id}/token": {
       "post": {
         "operationId": "exchangeConnection",
+        "x-energon-gateway": false,
         "tags": [
           "discovery"
         ],
@@ -2092,6 +2264,7 @@
       ],
       "get": {
         "operationId": "getSite",
+        "x-energon-gateway": true,
         "tags": [
           "sites"
         ],
@@ -2165,6 +2338,7 @@
       },
       "patch": {
         "operationId": "patchSite",
+        "x-energon-gateway": true,
         "tags": [
           "sites"
         ],
@@ -2281,6 +2455,7 @@
       },
       "delete": {
         "operationId": "deleteSite",
+        "x-energon-gateway": true,
         "tags": [
           "sites"
         ],
@@ -2357,10 +2532,11 @@
       ],
       "get": {
         "operationId": "getSiteFile",
+        "x-energon-gateway": true,
         "tags": [
           "sites"
         ],
-        "summary": "Read one file's bytes",
+        "summary": "Read one site file's stored bytes (fetch the public URL for large or binary files)",
         "description": "Token read; the share password is not needed. Markdown comes back as source, not rendered HTML.",
         "responses": {
           "200": {
@@ -2434,6 +2610,7 @@
       },
       "put": {
         "operationId": "putSiteFile",
+        "x-energon-gateway": false,
         "tags": [
           "sites"
         ],
@@ -2553,6 +2730,7 @@
       },
       "delete": {
         "operationId": "deleteSiteFile",
+        "x-energon-gateway": true,
         "tags": [
           "sites"
         ],
@@ -2645,6 +2823,7 @@
       ],
       "post": {
         "operationId": "importSite",
+        "x-energon-gateway": false,
         "tags": [
           "sites"
         ],
@@ -2781,6 +2960,7 @@
       ],
       "get": {
         "operationId": "exportSite",
+        "x-energon-gateway": false,
         "tags": [
           "sites"
         ],
@@ -2880,11 +3060,12 @@
     "/v1/grants": {
       "post": {
         "operationId": "mintGrant",
+        "x-energon-gateway": true,
         "tags": [
           "grants"
         ],
-        "summary": "Mint a single-use upload grant",
-        "description": "The minting account must be able to write the target now. The upload re-checks that, and fails if the minting token is revoked or expired first. The tokenless client PUTs raw bytes to upload_url with Authorization: Bearer <secret>; success publishes immediately and uses the grant up. Retryable upload failures (busy target, storage cap) leave the grant usable until it expires; a deleted target or lost permission ends it. Read the result with GET /v1/grants/{id}. For target site_deployment, bind an existing owned immutable session. The secret authorizes only its returned status/files/archive/prepare/commit URLs and is consumed at commit. The session deadline and minting token expiry bound grant lifetime. A file target with expected_version is conditional: the upload replaces the file only if its content_generation still matches, and a mismatch ends the grant as failed with last_error file_conflict.",
+        "summary": "Publish, share, or upload a local file: mint an upload grant, then upload with the Energon skill's helper",
+        "description": "Publish or upload a local file without sending its bytes through tool arguments: inspect it on the machine (size, SHA-256), mint a grant here, upload from the machine with the helper from the attached Energon skill, verify the SHA-256, then return the URL and expiry.\n\nThe minting account must be able to write the target now. The upload re-checks that, and fails if the minting token is revoked or expired first. The tokenless client PUTs raw bytes to upload_url with Authorization: Bearer <secret>; success publishes immediately and uses the grant up. Retryable upload failures (busy target, storage cap) leave the grant usable until it expires; a deleted target or lost permission ends it. Read the result with GET /v1/grants/{id}. For target site_deployment, bind an existing owned immutable session. The secret authorizes only its returned status/files/archive/prepare/commit URLs and is consumed at commit. The session deadline and minting token expiry bound grant lifetime. A file target with expected_version is conditional: the upload replaces the file only if its content_generation still matches, and a mismatch ends the grant as failed with last_error file_conflict.",
         "requestBody": {
           "required": true,
           "content": {
@@ -2998,6 +3179,7 @@
     "/v1/grants/{id}": {
       "get": {
         "operationId": "getGrant",
+        "x-energon-gateway": true,
         "tags": [
           "grants"
         ],
@@ -3062,11 +3244,12 @@
       ],
       "post": {
         "operationId": "createDeployment",
+        "x-energon-gateway": true,
         "tags": [
           "deployments"
         ],
-        "summary": "create immutable full-replacement intent; expected_version, idempotency_key, files or archive; 201 new, 200 identical replay",
-        "description": "Sessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota.",
+        "summary": "Publish a local folder as a site: create a deployment, then upload with the Energon skill's helper",
+        "description": "Publish or replace a whole site from a local folder: inspect it on the machine, create this deployment with file or archive descriptors only (size, SHA-256), mint a site_deployment grant, upload from the machine with the helper from the attached Energon skill, prepare and commit, verify the SHA-256 of what was served, then return the URL and expiry.\n\nSessions expire after one hour. Committed receipts are retained for seven days. Stable public URLs resolve one active version per request; no page-wide pinning or rollback. All staged and retained bytes count toward quota.",
         "responses": {
           "200": {
             "description": "create immutable full-replacement intent; expected_version, idempotency_key, files or archive; 201 new, 200 identical replay",
@@ -3203,6 +3386,7 @@
       ],
       "get": {
         "operationId": "getDeployment",
+        "x-energon-gateway": true,
         "tags": [
           "deployments"
         ],
@@ -3293,6 +3477,7 @@
       },
       "delete": {
         "operationId": "cancelDeployment",
+        "x-energon-gateway": true,
         "tags": [
           "deployments"
         ],
@@ -3404,6 +3589,7 @@
       ],
       "put": {
         "operationId": "uploadDeploymentFile",
+        "x-energon-gateway": false,
         "tags": [
           "deployments"
         ],
@@ -3557,6 +3743,7 @@
       ],
       "put": {
         "operationId": "uploadDeploymentArchive",
+        "x-energon-gateway": false,
         "tags": [
           "deployments"
         ],
@@ -3710,6 +3897,7 @@
       ],
       "post": {
         "operationId": "prepareDeployment",
+        "x-energon-gateway": true,
         "tags": [
           "deployments"
         ],
@@ -3830,6 +4018,7 @@
       ],
       "post": {
         "operationId": "commitDeployment",
+        "x-energon-gateway": true,
         "tags": [
           "deployments"
         ],
@@ -3932,6 +4121,7 @@
       ],
       "get": {
         "operationId": "getDeploymentGrant",
+        "x-energon-gateway": false,
         "tags": [
           "grants"
         ],
@@ -4047,6 +4237,7 @@
       ],
       "put": {
         "operationId": "uploadDeploymentGrantFile",
+        "x-energon-gateway": false,
         "tags": [
           "grants"
         ],
@@ -4197,6 +4388,7 @@
       ],
       "put": {
         "operationId": "uploadDeploymentGrantArchive",
+        "x-energon-gateway": false,
         "tags": [
           "grants"
         ],
@@ -4347,6 +4539,7 @@
       ],
       "post": {
         "operationId": "prepareDeploymentGrant",
+        "x-energon-gateway": false,
         "tags": [
           "grants"
         ],
@@ -4464,6 +4657,7 @@
       ],
       "post": {
         "operationId": "commitDeploymentGrant",
+        "x-energon-gateway": false,
         "tags": [
           "grants"
         ],
@@ -5898,6 +6092,28 @@
             "$ref": "#/components/schemas/WritePolicy"
           }
         }
+      },
+      "FileCopyRequest": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string",
+            "description": "New filename; defaults to the source filename. Path segments are dropped."
+          },
+          "password": {
+            "$ref": "#/components/schemas/SharePassword"
+          },
+          "write_password": {
+            "$ref": "#/components/schemas/WritePassword"
+          },
+          "ttl": {
+            "$ref": "#/components/schemas/Ttl"
+          },
+          "write_policy": {
+            "$ref": "#/components/schemas/WritePolicy"
+          }
+        },
+        "description": "Options for POST /v1/files/{id}/duplicate. All fields are optional; an empty object copies with the source filename."
       },
       "FileUploadForm": {
         "type": "object",

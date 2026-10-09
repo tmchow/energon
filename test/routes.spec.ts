@@ -113,6 +113,23 @@ describe("host and route contracts", () => {
     expect(help.body.routes["GET /v1/export"]).toContain("owner_id");
   });
 
+  it("serves the gateway catalog without a token on the hub only", async () => {
+    const res = await req("/v1/openapi-gateway.json");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    expect(res.headers.get("cache-control")).toBe("public, max-age=300");
+    const doc = await res.json() as { servers: unknown; paths: Record<string, Record<string, { operationId: string }>> };
+    expect(doc.servers).toEqual([{ url: "https://hub.energon.example.com" }]);
+    expect(doc.paths["/v1/grants"].post.operationId).toBe("mintGrant");
+    expect(doc.paths["/v1/files"].post).toBeUndefined();
+    expect(doc.paths["/_deployment-grants/{grantId}/commit"]).toBeUndefined();
+
+    expect((await req("/v1/openapi-gateway.json", { method: "HEAD" })).status).toBe(200);
+    expect((await json("/v1/openapi-gateway.json", { method: "POST" })).status).toBe(405);
+    expect((await req("https://energon.example.com/v1/openapi-gateway.json")).status).toBe(404);
+  });
+
   it("moves the old token page to /keys", async () => {
     const res = await req("https://hub.energon.example.com/tokens?x=1", { redirect: "manual" });
     expect(res.status).toBe(301);

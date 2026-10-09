@@ -343,6 +343,14 @@ curl -sS {origin}/v1/whoami -H "Authorization: Bearer $YOURCO_ENERGON_TOKEN"
 
 Then they can say: “Put this folder on Energon as lunch-poll” or “Hand this screenshot to the other chat.”
 
+### Connect through a tool gateway
+
+A tool gateway that imports OpenAPI holds one credential for many machines. Point its import at `{origin}/v1/openapi-gateway.json` (`gateway_openapi` in `/v1/help`), not `/v1/openapi.json`. The gateway catalog lists grant, deployment, metadata, and read operations, and leaves out every operation that carries file bytes, returns a zip, runs on the content origin, revokes the calling key, runs the connection flow, or needs an admin key. Bind the gateway credential to `{origin}` only, and attach this Energon's well-known skill (`agent_skills_url` in `/v1/help`) so agents learn the grant workflow: mint a grant through the gateway, then upload from the machine with the skill's helper.
+
+A gateway that already imported `/v1/openapi.json` keeps the byte-upload tools until you re-point its import to the gateway catalog.
+
+A minted grant's secret and URLs pass through the gateway's tool output. They are short-lived bearer credentials, so keep them out of persistent gateway logs and transcripts.
+
 <a id="refresh-an-installed-plugin"></a>
 
 ### Refresh an installed plugin

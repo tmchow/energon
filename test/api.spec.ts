@@ -752,6 +752,80 @@ describe("Energon", () => {
     expect(missing.status).toBe(404);
   });
 
+  it("POST /v1/files/{id}/duplicate copies a loose file from a JSON body only", async () => {
+    const ada = await mint("ada-dup-route", "ada-dup-route@esperlabs.app");
+    const bob = await mint("bob-dup-route", "bob-dup-route@esperlabs.app");
+    const created = await json("/v1/files", {
+      method: "POST",
+      headers: auth(ada, { "X-Filename": "report.md" }),
+      body: "# report",
+    });
+    expect(created.status).toBe(201);
+    const source = created.body.id as string;
+
+    const copied = await json(`/v1/files/${source}/duplicate`, {
+      method: "POST",
+      headers: auth(bob, { "content-type": "application/json" }),
+      body: JSON.stringify({ filename: "report-copy.md", ttl: "7d" }),
+    });
+    expect(copied.status).toBe(201);
+    expect(copied.body.duplicated).toBe(true);
+    expect(copied.body.duplicated_from).toBe(source);
+    expect(copied.body.id).not.toBe(source);
+    expect(copied.body.filename).toBe("report-copy.md");
+    expect(copied.body.ttl).toBe("7d");
+    expect(copied.body.expires_at).toBeTruthy();
+    expect(copied.body.created_by).toBe("bob-dup-route@esperlabs.app");
+    expect(await (await req(`/v1/files/${copied.body.id}`, { headers: auth(bob) })).text()).toBe("# report");
+
+    const bare = await json(`/v1/files/${source}/duplicate`, { method: "POST", headers: auth(bob) });
+    expect(bare.status).toBe(201);
+    expect(bare.body.filename).toBe("report.md");
+
+    expect((await json("/v1/files/zzzzzz/duplicate", { method: "POST", headers: auth(bob) })).status).toBe(404);
+
+    const before = (await json("/v1/files", { headers: auth(bob) })).body.files.length;
+    const bytes = await json(`/v1/files/${source}/duplicate`, {
+      method: "POST",
+      headers: auth(bob, { "content-type": "text/plain", "X-Filename": "smuggled.txt" }),
+      body: "smuggled bytes",
+    });
+    expect(bytes.status).toBe(400);
+    const form = new FormData();
+    form.set("file", new Blob(["form bytes"]), "form.txt");
+    const multipart = await json(`/v1/files/${source}/duplicate`, { method: "POST", headers: auth(bob), body: form });
+    expect(multipart.status).toBe(415);
+    expect((await json("/v1/files", { headers: auth(bob) })).body.files.length).toBe(before);
+
+    const download = await req(`/v1/files/${source}/duplicate`, { headers: auth(ada) });
+    expect(download.status).toBe(200);
+    expect(await download.text()).toBe("# report");
+
+    const gated = await json(`/v1/files/${source}/duplicate`, {
+      method: "POST",
+      headers: auth(bob, { "content-type": "application/json" }),
+      body: JSON.stringify({ password: "share-phrase", write_password: "write-phrase", write_policy: "owner" }),
+    });
+    expect(gated.status).toBe(201);
+    expect(gated.body.password_protected).toBe(true);
+    expect(gated.body.password).toBe("share-phrase");
+    expect(gated.body.write_password_protected).toBe(true);
+    expect(gated.body.write_password).toBe("write-phrase");
+    expect(gated.body.write_policy).toBe("owner");
+
+    for (const method of ["PUT", "PATCH", "DELETE"]) {
+      const res = await json(`/v1/files/${source}/duplicate`, {
+        method,
+        headers: auth(ada, { "content-type": "application/json" }),
+        body: method === "DELETE" ? undefined : "{}",
+      });
+      expect(res.status, method).toBe(405);
+    }
+    expect((await req(`/v1/files/${source}`, { headers: auth(ada) })).status).toBe(200);
+
+    expect((await json(`/v1/files/${source}/duplicate`, { method: "POST" })).status).toBe(401);
+  });
+
   it("POST /v1/files with application/json and X-Filename still uploads the file", async () => {
     const token = await mint("json-file", "json-file@esperlabs.app");
     const payload = '{"hello":true}';
