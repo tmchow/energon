@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.0](https://github.com/tmchow/energon/compare/v1.13.1...v1.14.0) (2026-10-09)
+
+
+### Features
+
+* **api:** add gateway catalog; re-point imports to drop byte tools ([#161](https://github.com/tmchow/energon/issues/161)) ([9f1ff97](https://github.com/tmchow/energon/commit/9f1ff9777e49bf9ca8796f5fd66961a74e89cf3a))
+
 ## [1.13.1](https://github.com/tmchow/energon/compare/v1.13.0...v1.13.1) (2026-10-08)
 
 
