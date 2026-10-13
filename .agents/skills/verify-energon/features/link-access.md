@@ -16,7 +16,7 @@ Link access decides whether a site's or file's public URL opens at all. `public`
 
 - API: `link_access` on `POST /v1/sites`, `PATCH /v1/sites/{id}`, `PATCH /v1/files/{id}`, `POST /v1/files/{id}/duplicate`, and a `new_file` target on `POST /v1/grants`. `X-Energon-Link-Access` (or multipart `link_access`) on `POST /v1/files`.
 - Hub stage: open `#stage-access` (Link access) and pick `Only you and your agents` in `#stage-link-access` before `Publish`. The password fields disappear.
-- Hub catalog: a private row shows the `Private` mark; clicking it opens `#pw-dlg`. More actions → `Link access`. `#pw-dlg-access` switches between `Anyone with the link` and `Only you and your agents`.
+- Hub catalog: a private row shows the `Private` mark; clicking it opens `#pw-dlg`. More actions → `Link access` (a public row shows `Set password` or `Change or remove password`, which opens the same dialog). `#pw-dlg-access` switches between `Anyone with the link` and `Only you and your agents`.
 - Open the public URL in a browser or with `curl`.
 
 ## Driving it with energon-verify

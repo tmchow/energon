@@ -15,7 +15,7 @@ Share password lets a user lock a public site or file URL behind a phrase. Brows
 ## How to get to it (user POV)
 
 - Hub stage: open `#stage-access` (Link access), then fill `#stage-password` (or generate with `Generate a readable password`) before `Publish`.
-- Hub catalog: lock mark `View password` only when a view password is set. Unprotected rows have no password mark. No Password chip next to the slug. More actions still `Set password` / `Change or remove password`. Dialog `#pw-dlg` title is Link access. `#pw-dlg-share-door` / `#pw-dlg-write-door` are Off/On. Fields `#pw-dlg-input` and `#pw-dlg-write-input` show the stored phrases with generate and copy when that door is On. Off and Save removes that door.
+- Hub catalog: lock mark `View password` only when a view password is set. Unprotected rows have no password mark. No Password chip next to the slug. More actions still `Set password` / `Change or remove password` (`Link access` on a private row). Dialog `#pw-dlg` title is Link access. `#pw-dlg-share-door` / `#pw-dlg-write-door` are Off/On. Fields `#pw-dlg-input` and `#pw-dlg-write-input` show the stored phrases with generate and copy when that door is On. Off and Save removes that door.
 - API: `"password"` on `POST /v1/sites` or `PATCH /v1/sites/{id}`; `X-Energon-Set-Password` on `POST`/`PUT /v1/files`.
 - Open the public URL; submit the form, or retry with header `X-Energon-Password`.
 
@@ -36,6 +36,7 @@ Preconditions:
 
 ## Gotchas
 
+- A private object (link access `private`) answers its public URL with `403 link_private` before any password gate, and cannot take a share password (`400 link_access_conflict`). See [Link access](./link-access.md).
 - Write responses echo the password you just set. `/v1` GET list/detail never returns it — only `password_protected`. Hub `GET /account/sites/{id}` and `GET /account/files/{id}` return the stored phrase to the signed-in human.
 - Do not write the password into the published file.
 - `/v1` GET skipping the password is intended. It does not prove the public link is open.
