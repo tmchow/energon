@@ -1,6 +1,7 @@
-export type CatalogScanMark = 'lock' | 'lockup' | 'people' | 'peopleOff';
+export type CatalogScanMark = 'key' | 'lock' | 'lockup' | 'people' | 'peopleOff';
 
 export const CATALOG_SCAN_LABEL: Record<CatalogScanMark, string> = {
+  key: 'Private',
   lock: 'View password',
   lockup: 'Write password',
   people: 'Org can write',

@@ -1,5 +1,6 @@
 import { MAX_IMPORT_FILES } from "./config";
 import { ApiError, publicOrigin, readJson, secretJson, sha256Hex, tooLarge } from "./http";
+import { hiddenFrom } from "./link-access";
 import { assertCanMutate, instancePolicy } from "./policy";
 import { getSiteById, rejectSiteExpectedVersion } from "./sites";
 import { commitDeployment, createDeployment, DeploymentError, getDeployment, recordDeploymentFile, sealDeployment, type DeploymentAuthority } from "./site-deployments";
@@ -254,7 +255,7 @@ export async function deploymentApi(request: Request, env: Env, actor: Deploymen
     await authorize?.();
     if (!id) {
       const site = await getSiteById(env, siteId);
-      if (!site || site.lifecycle_state !== "live") throw new DeploymentError("deployment_missing", "Site not found.");
+      if (!site || site.lifecycle_state !== "live" || hiddenFrom(actor, site)) throw new DeploymentError("deployment_missing", "Site not found.");
       assertCanMutate(actor, site);
       const body = await readJson(request);
       if (typeof body.expected_version !== "number") throw new DeploymentError("invalid_intent", "expected_version must be the site's content generation.");
@@ -311,7 +312,7 @@ export async function deploymentApi(request: Request, env: Env, actor: Deploymen
 
 export async function importSiteArchive(request: Request, env: Env, actor: Actor, siteId: string, _ctx?: ExecutionContext): Promise<Response> {
   const site = await getSiteById(env, siteId);
-  if (!site) throw new ApiError(404, "site_not_found", "Site not found.");
+  if (!site || hiddenFrom(actor, site)) throw new ApiError(404, "site_not_found", "Site not found.");
   assertCanMutate(actor, site);
   rejectSiteExpectedVersion(request);
   const policy = instancePolicy(env);

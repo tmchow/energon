@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS sites (
   write_password_hash TEXT,
   write_password_secret TEXT,
   written_via TEXT,
-  last_read_at TEXT
+  last_read_at TEXT,
+  link_access TEXT NOT NULL DEFAULT 'public'
 );
 
 CREATE TABLE IF NOT EXISTS site_files (
@@ -64,7 +65,8 @@ CREATE TABLE IF NOT EXISTS loose_files (
   write_password_secret TEXT,
   written_via TEXT,
   last_read_at TEXT,
-  content_generation INTEGER NOT NULL DEFAULT 1
+  content_generation INTEGER NOT NULL DEFAULT 1,
+  link_access TEXT NOT NULL DEFAULT 'public'
 );
 
 CREATE TABLE IF NOT EXISTS tokens (
@@ -176,6 +178,7 @@ CREATE TABLE IF NOT EXISTS upload_grants (
   file_write_policy TEXT,
   file_password TEXT,
   file_write_password TEXT,
+  file_link_access TEXT,
   expected_version INTEGER,
   max_bytes INTEGER NOT NULL,
   sha256 TEXT,

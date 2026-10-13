@@ -31,6 +31,7 @@ import {
   writeGateScopes,
 } from "./gate";
 import { GUEST_WRITE_401_MESSAGE } from "./guest-write-protocol";
+import { linkPrivateError, storedLinkAccess } from "./link-access";
 import {
   ApiError,
   assertStorageRoom,
@@ -63,6 +64,7 @@ type GuestLooseRow = {
   updated_at: string | null;
   write_password_hash: string | null;
   content_generation: number;
+  link_access: string | null;
 };
 
 export const FORBIDDEN_PUT_HEADERS = [
@@ -129,13 +131,14 @@ async function guestLoose(
 ): Promise<Response> {
   if (!isFileId(target.id)) throw notFoundFile();
   const row = await env.DB.prepare(
-    `SELECT id, handle, filename, size, content_type, expires_at, created_by, last_written_by, updated_at, write_password_hash, content_generation
+    `SELECT id, handle, filename, size, content_type, expires_at, created_by, last_written_by, updated_at, write_password_hash, content_generation, link_access
      FROM loose_files WHERE id = ?`,
   )
     .bind(target.id)
     .first<GuestLooseRow>();
   if (!row || (row.handle && row.handle !== target.handle)) throw notFoundFile();
   if (isPurgeClaimed(row.last_written_by) || isExpired(row.expires_at)) throw expiredError("file");
+  if (storedLinkAccess(row.link_access) === "private") throw linkPrivateError();
 
   if (method !== "PUT") {
     return methodNotAllowed("GET");
@@ -271,6 +274,7 @@ async function guestSite(
   const site = await getSiteById(env, target.id);
   if (!site || site.handle !== target.handle || site.slug !== slug) throw notFoundSite();
   if (isPurgeClaimed(site.last_written_by) || isExpired(site.expires_at)) throw expiredError("site");
+  if (storedLinkAccess(site.link_access) === "private") throw linkPrivateError();
 
   const rawPath = target.rawPath;
   const isDirectory = rawPath === "" || rawPath === "/";

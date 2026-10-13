@@ -70,6 +70,7 @@ export type SiteRow = {
   write_password_secret?: string | null;
   written_via?: string | null;
   last_read_at?: string | null;
+  link_access?: string | null;
 };
 
 export type WriteAuthority = { kind: "writePassword"; hash: string };
@@ -103,6 +104,7 @@ export type LooseFileRow = {
   written_via?: string | null;
   last_read_at?: string | null;
   content_generation: number;
+  link_access?: string | null;
 };
 
 export type TokenRow = {

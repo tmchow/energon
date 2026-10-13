@@ -63,6 +63,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Connect an agent](./connect-agent.md) covers request, confirming a code from the link or typing it, approval/denial, one-time delivery, and revocation.
 - [Mint a token](./mint-token.md) covers mint with a lifetime, whoami with `expires_at`, `DELETE /v1/whoami` self-revoke, the expired-token `401 token_expired`, revoke on the Tokens page and hub API, the `Stale` badge and `Live`/`Stale`/`All` filter, and bulk revoke with preview-then-confirm.
 - [Share password](./share-password.md) covers setting a password, the public gate, header unlock, and clearing.
+- [Link access](./link-access.md) covers private sites and files: the refused public URL, token reads, password conflicts, switching back to public, and the hub `#stage-link-access` and `#pw-dlg-access` controls.
 - [Hub catalog](./hub-catalog.md) covers listing, search, scope, never-expires / 24h / 7d / size / oldest / last-read filters, Expires urgency, opening a public URL, and delete.
 - [Hub cleanup](./hub-cleanup.md) covers bulk Set expiry, Expire soon, and Delete from the hub catalog: row checkboxes, select all matching filters, preview, count-to-confirm, and confirm-hash drift.
 - [Guest write password](./guest-write-password.md) covers setting a write password, guest PUT/DELETE on the public URL, Hub Link access, and catalog lockup.

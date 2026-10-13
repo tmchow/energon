@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy, tick, untrack } from 'svelte';
-  import type { AdminCleanupPreview, AdminCleanupResult, CatalogData, CatalogItem, HubData, LinkAccess } from '../types';
+  import type { AdminCleanupPreview, AdminCleanupResult, CatalogData, CatalogItem, HubData, LinkAccess, LinkAccessMode } from '../types';
   import { api, jsonBody, errorMessage, formatTime, RequestError } from '../api';
   import { stageFiles, publish, slugify, pendingImport as loadPendingImport, resumeImport, cancelPendingImport, type PendingImport, type PublishProgress, type StagedUpload, type PublishResult } from '../uploads';
   import { nextNumberedSlug } from "../../slugs";
@@ -63,6 +63,7 @@
   let stageSettingsLocked = $derived(busy || Boolean(staged?.createdSite));
   let stagePassword = $state('');
   let stageWritePassword = $state('');
+  let stageLinkAccess = $state('public');
   let stageAccessOpen = $state(false);
   let stageTtl = $state(untrack(() => data.policy.default_ttl));
   let stageWrite = $state(untrack(() => data.policy.write_policy));
@@ -87,6 +88,8 @@
   let writeDoor = $state('off');
   let loadedShareOn = $state(false);
   let loadedWriteOn = $state(false);
+  let linkMode = $state('public');
+  let loadedLinkMode = $state('public');
   let passwordLoading = $state(false);
   let linkAccessLoaded = $state(false);
   let linkAccessSeq = 0;
@@ -108,6 +111,11 @@
   const ttlOptions = $derived(data.policy.presets.map(p => ({ value: p.id, label: p.label })));
   const writeOptions = [{ value: 'owner', label: 'Only the creator' }, { value: 'org', label: 'Anyone in the org' }];
   const doorOptions = [{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }];
+  const linkOptions = [{ value: 'public', label: 'Anyone with the link' }, { value: 'private', label: 'Only you and your agents' }];
+  const PRIVATE_LINK_NOTE = 'Only you, and agents using your keys through the API, can open it. The link refuses everyone else, including browsers. Only you can change it.';
+  const PUBLIC_LINK_NOTE = 'Anyone with the link can try to open it. A share password challenges them first.';
+  const PRIVATE_WRITE_NOTE = 'Private work can only be changed by you.';
+  const STAGE_WRITE_NOTE = 'Controls who with a key can update or delete this work. It does not grant or deny the write-password door.';
   const targetName = $derived(target ? (target.item.slug ?? target.item.filename) : '');
   const targetMeta = $derived(target ? [
     target.kind === 'site' ? 'Site' : 'File',
@@ -126,7 +134,16 @@
   const writeDirty = $derived(!isTargetCreator ? false : writeDoor !== (loadedWriteOn ? 'on' : 'off') || (writeDoor === 'on' && writePassword.trim() !== loadedWrite && !(writeUnrecovered && !writePassword.trim())));
   const sharePhraseOk = $derived(shareDoor === 'off' || !!password.trim() || (shareUnrecovered && shareDoor === 'on'));
   const writePhraseOk = $derived(!isTargetCreator || writeDoor === 'off' || !!writePassword.trim() || (writeUnrecovered && writeDoor === 'on'));
-  const linkAccessReady = $derived(linkAccessLoaded && !passwordLoading && (shareDirty || writeDirty) && sharePhraseOk && writePhraseOk);
+  const accessDirty = $derived(isTargetCreator && linkMode !== loadedLinkMode);
+  const removesPasswords = $derived(accessDirty && linkMode === 'private' && (loadedShareOn || loadedWriteOn));
+  const forcesOwnerWrite = $derived(accessDirty && linkMode === 'private' && target?.item.write_policy === 'org');
+  const accessNote = $derived((linkMode === 'private' ? PRIVATE_LINK_NOTE : PUBLIC_LINK_NOTE)
+    + (removesPasswords ? ' Saving removes the share password and write password.' : '')
+    + (forcesOwnerWrite ? ' Saving also sets Who can write to Only the creator.' : '')
+    + (isTargetCreator ? '' : ' Only the creator can change this.'));
+  const linkAccessReady = $derived(linkAccessLoaded && !passwordLoading && (linkMode === 'private'
+    ? accessDirty
+    : (accessDirty || shareDirty || writeDirty) && sharePhraseOk && writePhraseOk));
   const linkAccessBusy = $derived(mutationBusy || passwordLoading || !linkAccessLoaded);
   const moreFiltersActive = $derived([expires !== 'any', !!expiresBefore.trim(), !!updatedBefore.trim(), !!minSize.trim(), changedSince === 'changed'].filter(Boolean).length);
   const filtered = $derived(!!(q.trim() || scope !== 'involved' || kind !== 'all' || sort !== 'updated' || moreFiltersActive));
@@ -283,7 +300,7 @@
     } finally { cleanupBusy = false; }
   }
   function resetStage() {
-    stageSequence++; staged = null; stagePassword = ''; stageWritePassword = ''; stageAccessOpen = false; uploadProgress = null;
+    stageSequence++; staged = null; stagePassword = ''; stageWritePassword = ''; stageLinkAccess = 'public'; stageAccessOpen = false; uploadProgress = null;
   }
   async function choose(files: File[], entries: FileSystemEntry[] = [], folder = false) {
     if (busy || recoverableImport) return;
@@ -292,7 +309,7 @@
       const next = await stageFiles(files, entries, folder);
       if (sequence !== stageSequence || !next) return;
       if (!next.files.length) throw new Error('That folder is empty. Choose a folder containing files.');
-      staged = next; stagePassword = ''; stageWritePassword = ''; stageAccessOpen = false;
+      staged = next; stagePassword = ''; stageWritePassword = ''; stageLinkAccess = 'public'; stageAccessOpen = false;
       await tick();
       document.getElementById(next.kind === 'loose' ? 'stage-filename' : 'stage-slug')?.focus();
     } catch (error) { message(errorMessage(error), 'err'); }
@@ -310,10 +327,13 @@
     staged.slug = slugify(staged.slug);
     const upload = staged;
     try {
-      const result = await publish(upload, { password: stagePassword.trim(), write_password: stageWritePassword.trim(), ttl: stageTtl, write_policy: stageWrite }, {
+      const open = stageLinkAccess === 'public';
+      const sharePhrase = open ? stagePassword.trim() : '';
+      const writePhrase = open ? stageWritePassword.trim() : '';
+      const result = await publish(upload, { password: sharePhrase, write_password: writePhrase, ttl: stageTtl, write_policy: open ? stageWrite : 'owner', link_access: open ? 'public' : 'private' }, {
         onProgress: progress => { uploadProgress = progress; }, onPending: pending => { recoverableImport = pending; },
       });
-      message('Published', 'ok', { ...result, password: result.password || stagePassword.trim() || undefined, write_password: result.write_password || stageWritePassword.trim() || undefined });
+      message(open ? 'Published' : 'Published privately', 'ok', { ...result, url: open ? result.url : '', password: result.password || sharePhrase || undefined, write_password: result.write_password || writePhrase || undefined });
       resetStage(); await refresh();
     } catch (error) {
       uploadProgress = { phase: 'committing', text: 'Publication paused.' }; message(errorMessage(error), 'err'); await refresh();
@@ -361,10 +381,13 @@
     loadedWriteOn = !!item.write_password_protected;
     shareDoor = loadedShareOn ? 'on' : 'off';
     writeDoor = item.created_by === data.email && loadedWriteOn ? 'on' : 'off';
+    loadedLinkMode = modeOf(item.link_access);
+    linkMode = loadedLinkMode;
     linkAccessLoaded = false;
     passwordOpen = true;
     void loadLinkAccess();
   }
+  function modeOf(access: string | undefined): LinkAccessMode { return access === 'private' ? 'private' : 'public'; }
   function fillPhrase(): string {
     const words = data.words;
     if (!words.length) return '';
@@ -388,6 +411,8 @@
     try {
       const detail = await api<LinkAccess>(path);
       if (seq !== linkAccessSeq || !passwordOpen) return;
+      loadedLinkMode = modeOf(detail.link_access);
+      linkMode = loadedLinkMode;
       loadedShareOn = !!detail.password_protected;
       loadedShare = detail.password || '';
       password = loadedShare;
@@ -439,12 +464,19 @@
   async function saveLinkAccess() {
     if (!target || !linkAccessReady) return;
     const body: Record<string, unknown> = {};
-    if (shareDirty) body.password = shareDoor === 'off' ? '' : password.trim();
-    if (isTargetCreator && writeDirty) body.write_password = writeDoor === 'off' ? '' : writePassword.trim();
+    if (accessDirty) body.link_access = linkMode;
+    if (linkMode === 'private') {
+      if (loadedShareOn) body.password = '';
+      if (loadedWriteOn) body.write_password = '';
+    } else {
+      if (shareDirty) body.password = shareDoor === 'off' ? '' : password.trim();
+      if (isTargetCreator && writeDirty) body.write_password = writeDoor === 'off' ? '' : writePassword.trim();
+    }
     if (!Object.keys(body).length) return;
     await mutate(async () => {
       const result = await api<PublishResult>(targetPath, jsonBody('PATCH', body));
       const bits: string[] = [];
+      if ('link_access' in body) bits.push(result.link_access === 'private' ? `${targetName} is now private to you.` : `Anyone with the link can open ${targetName}.`);
       if ('password' in body) bits.push(result.password_protected ? `Share password set for ${targetName}.` : `Share password removed from ${targetName}.`);
       if ('write_password' in body) bits.push(result.write_password_protected ? `Write password set for ${targetName}.` : `Write password removed from ${targetName}.`);
       message(bits.join(' ') || 'Link access updated.', 'ok', { url: '', password: result.password, write_password: result.write_password });
@@ -459,6 +491,8 @@
       writeDoor = 'off';
       loadedShareOn = false;
       loadedWriteOn = false;
+      linkMode = 'public';
+      loadedLinkMode = 'public';
       linkAccessLoaded = false;
     });
   }
@@ -471,8 +505,8 @@
   const moreItems = $derived(target ? [
     ...(target.kind === 'file' || (target.item.file_count ?? 0) > 0 ? [{ label: target.kind === 'site' ? 'Download zip' : 'Download', icon: 'download' as const, href: `${targetPath}/${target.kind === 'site' ? 'export' : 'download'}` }] : []),
     { label: 'Duplicate', icon: 'fork' as const, onClick: duplicate },
-    { label: target.item.password_protected || target.item.write_password_protected ? 'Change or remove password' : 'Set password', icon: 'lock' as const, onClick: () => { moreOpen = false; editPassword(target!.item); } },
-    ...(target.item.created_by === data.email ? [{ label: 'Who can write', icon: 'person' as const, onClick: () => { write = target!.item.write_policy; writeOpen = true; } }] : []),
+    { label: target.item.link_access === 'private' ? 'Link access' : target.item.password_protected || target.item.write_password_protected ? 'Change or remove password' : 'Set password', icon: 'lock' as const, onClick: () => { moreOpen = false; editPassword(target!.item); } },
+    ...(target.item.created_by === data.email && target.item.link_access !== 'private' ? [{ label: 'Who can write', icon: 'person' as const, onClick: () => { write = target!.item.write_policy; writeOpen = true; } }] : []),
     ...(canMutateTarget ? [{ label: 'Change expiration', icon: 'clock' as const, onClick: () => { ttl = data.policy.default_ttl; ttlOpen = true; } }] : []),
     { label: 'Delete', icon: 'trash' as const, danger: true, onClick: () => { confirmAction = 'Delete'; confirmOpen = true; } },
   ] : []);
@@ -498,6 +532,7 @@
   $effect(() => {
     if (stagePassword.trim() || stageWritePassword.trim()) stageAccessOpen = true;
   });
+
   $effect(() => { setGatherFrame(dragDepth > 0 ? dropFrame : null); });
   onDestroy(() => setGatherFrame(null));
 </script>
@@ -567,11 +602,14 @@
     {#if staged.kind === 'loose'}<div id="stage-loose"><Field label="Filename" htmlFor="stage-filename" note="The last part of the public URL."><UrlField id="stage-filename" prefix={`${contentOrigin}/${handle}/f/{id}/`} bind:value={staged.filename} disabled={stageSettingsLocked} /></Field></div>
     {:else}<div id="stage-site"><Field label="Site slug" htmlFor="stage-slug" note="The last part of the public URL."><UrlField id="stage-slug" prefix={`${contentOrigin}/${handle}/s/{id}/`} suffix="/" bind:value={staged.slug} disabled={stageSettingsLocked} /></Field></div>{/if}
     <Field label="Expiration" htmlFor="stage-ttl" noteId="stage-ttl-note" note={ttlNote}><Select id="stage-ttl" aria-describedby="stage-ttl-note" options={ttlOptions} bind:value={stageTtl} disabled={stageSettingsLocked} /></Field>
-    <Field label="Who can write" htmlFor="stage-write" note="Controls who with a key can update or delete this work. It does not grant or deny the write-password door."><Select id="stage-write" aria-label="Who can write" options={writeOptions} bind:value={stageWrite} disabled={stageSettingsLocked} /></Field>
+    <Field label="Who can write" htmlFor="stage-write" note={stageLinkAccess === 'private' ? PRIVATE_WRITE_NOTE : STAGE_WRITE_NOTE}>{#if stageLinkAccess === 'private'}<Select id="stage-write" aria-label="Who can write" options={writeOptions} value="owner" disabled />{:else}<Select id="stage-write" aria-label="Who can write" options={writeOptions} bind:value={stageWrite} disabled={stageSettingsLocked} />{/if}</Field>
     <details id="stage-access" class="en-stage-access" bind:open={stageAccessOpen}>
       <summary>Link access</summary>
+      <Field label="Who can open" htmlFor="stage-link-access" noteId="stage-link-access-note" note={stageLinkAccess === 'private' ? PRIVATE_LINK_NOTE : PUBLIC_LINK_NOTE}><Select id="stage-link-access" aria-describedby="stage-link-access-note" options={linkOptions} bind:value={stageLinkAccess} disabled={stageSettingsLocked} /></Field>
+      {#if stageLinkAccess === 'public'}
       <Field label="Share password" htmlFor="stage-password" noteId="stage-password-note" note="Leave empty so anyone with the link can open it. Valid API keys on this host can read the work even with a share password."><PasswordField id="stage-password" generateId="stage-pw-gen" copyId="stage-pw-copy" words={data.words} bind:value={stagePassword} describedby="stage-password-note" disabled={stageSettingsLocked} /></Field>
       <Field label="Write password" htmlFor="stage-write-password" noteId="stage-write-password-note" note={staged.kind === 'loose' ? 'Replaces this file only. Leave empty to keep guests from writing.' : 'Full control of served bytes, including replacing index.html. Leave empty to keep guests from writing.'}><PasswordField id="stage-write-password" generateId="stage-wpw-gen" copyId="stage-wpw-copy" words={data.words} bind:value={stageWritePassword} describedby="stage-write-password-note" disabled={stageSettingsLocked} /></Field>
+      {/if}
     </details>
     {#if staged.createdSite && !busy}<p class="en-note">Retry continues the same site with these settings.</p>{/if}
     <div class="en-stage-actions"><Button id="stage-cancel" onclick={() => { if (recoverableImport) void cancelPublication(); else resetStage(); }} disabled={busy}>{recoverableImport ? 'Cancel publication' : 'Cancel'}</Button><Button type="submit" id="stage-go" variant="primary" disabled={busy}>{publicationLabel()}</Button></div>
@@ -581,9 +619,11 @@
 <Sheet bind:open={moreOpen} title={targetName} meta={targetMeta} items={moreItems} />
 <ConfirmDialog bind:open={confirmOpen} title={`${confirmAction} ${target?.kind || 'site'}`} message={confirmAction === 'Delete' ? `This removes the ${target?.kind} and its bytes. There is no recycle bin. Type the name to confirm.` : 'Creates a new site you own. Expiration starts now. The share password and write password are not copied.'}
   label={confirmAction === 'Delete' ? `Type “${targetName}” to delete` : 'New slug'} initial={confirmAction === 'Duplicate' ? duplicateSlug : ''} match={confirmAction === 'Delete' ? targetName : undefined} action={confirmAction} danger={confirmAction === 'Delete'} busy={mutationBusy} onConfirm={confirm} error={modalError} />
-<Dialog dismissible={!mutationBusy} id="pw-dlg" bind:open={passwordOpen} title="Link access" message="Copy a phrase to share the link. Turn a password off and save to remove it.">
+<Dialog dismissible={!mutationBusy} id="pw-dlg" bind:open={passwordOpen} title="Link access" message={linkMode === 'private' ? 'Choose who can open this.' : 'Copy a phrase to share the link. Turn a password off and save to remove it.'}>
   {#if modalError}<Flash tone="err">{modalError}</Flash>{/if}
   <form onsubmit={e => { e.preventDefault(); void saveLinkAccess(); }}>
+    <Field label="Who can open" htmlFor="pw-dlg-access" noteId="pw-dlg-access-note" note={accessNote}><Select id="pw-dlg-access" aria-describedby="pw-dlg-access-note" options={linkOptions} bind:value={linkMode} disabled={linkAccessBusy || !isTargetCreator} /></Field>
+    {#if linkMode === 'public'}
     <Field label="Share password" htmlFor={shareDoor === 'on' ? 'pw-dlg-input' : undefined} noteId="pw-dlg-note" note={shareDoor === 'off' ? 'Anyone with the link can open it. Valid API keys on this host can still read the work.' : shareUnrecovered && !password.trim() ? 'This password was set before Energon kept phrases for display. Generate a new one to copy it, or turn it off.' : 'Anyone with this password can open the link. Valid API keys on this host can still read the work.'}>
       {#snippet action()}
         <SegmentedControl id="pw-dlg-share-door" className="en-seg--door" bind:value={shareDoor} onChange={setShareDoor} ariaLabel="Share password" options={doorOptions} disabled={linkAccessBusy} />
@@ -601,6 +641,7 @@
           <PasswordField id="pw-dlg-write-input" generateId="pw-dlg-write-gen" copyId="pw-dlg-write-copy" describedby="pw-dlg-write-note" words={data.words} bind:value={writePassword} disabled={linkAccessBusy} />
         {/if}
       </Field>
+    {/if}
     {/if}
     <div class="en-dialog-actions"><Button disabled={mutationBusy} onclick={() => passwordOpen = false}>Cancel</Button><Button id="pw-dlg-ok" type="submit" variant="primary" disabled={mutationBusy || !linkAccessReady}>Save</Button></div>
   </form>

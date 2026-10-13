@@ -60,6 +60,7 @@ export function contentPatch(body: Record<string, unknown>): {
   ttl?: unknown;
   setTtl?: boolean;
   write_policy?: unknown;
+  link_access?: unknown;
 } {
   const patch: {
     password?: string;
@@ -67,6 +68,7 @@ export function contentPatch(body: Record<string, unknown>): {
     ttl?: unknown;
     setTtl?: boolean;
     write_policy?: unknown;
+    link_access?: unknown;
   } = {
     password: passwordField(body),
     ttl: body.ttl,
@@ -77,6 +79,9 @@ export function contentPatch(body: Record<string, unknown>): {
   }
   if (Object.prototype.hasOwnProperty.call(body, "write_policy")) {
     patch.write_policy = body.write_policy;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "link_access")) {
+    patch.link_access = body.link_access;
   }
   return patch;
 }

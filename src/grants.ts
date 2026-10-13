@@ -4,6 +4,7 @@ import { d1Changed, expiredError, isExpired, isPurgeClaimed } from "./expire";
 import { assertFilename, createLooseFile, generationConflict, putLooseFile } from "./files";
 import { hashesEqual, passwordHashFromInput, storedPasswordSecret, writePasswordHashFromInput } from "./gate";
 import { GRANT_UPLOAD_PREFIX } from "./grant-protocol";
+import { hiddenFrom, requestedLinkAccess, resolveCreateAccess, type LinkAccess } from "./link-access";
 import { grantBusy, type GrantGuard } from "./grant-guard";
 import { EXPECTED_VERSION_HEADER } from "./config";
 import { FORBIDDEN_PUT_HEADERS } from "./guest-write";
@@ -13,7 +14,6 @@ import {
   grantClaimable,
   grantClaimCutoff,
   instancePolicy,
-  resolveCreateWritePolicy,
   resolveExpiresAt,
   resolveGrantExpiresAt,
   tokenExpired,
@@ -49,6 +49,7 @@ type GrantRow = {
   file_write_policy: string | null;
   file_password: string | null;
   file_write_password: string | null;
+  file_link_access: string | null;
   expected_version: number | null;
   max_bytes: number;
   sha256: string | null;
@@ -63,7 +64,7 @@ type GrantRow = {
 };
 
 type Target =
-  | { kind: "new_file"; filename: string; ttl: string | null; writePolicy: string | null; password: string | null; writePassword: string | null }
+  | { kind: "new_file"; filename: string; ttl: string | null; writePolicy: string | null; password: string | null; writePassword: string | null; linkAccess: LinkAccess | null }
   | { kind: "file"; fileId: string; url: string; expectedVersion: number | null }
   | { kind: "site_path"; siteId: string; path: string; url: string };
 
@@ -108,10 +109,11 @@ async function resolveNewFileTarget(env: Env, target: Record<string, unknown>): 
   const ttl = optionalString(target.ttl, "target.ttl");
   const writePolicy = optionalString(target.write_policy, "target.write_policy");
   resolveExpiresAt(instancePolicy(env), ttl ?? undefined);
-  resolveCreateWritePolicy(env, writePolicy ?? undefined);
   const password = await readGrantPassword(target.password, "target.password", passwordHashFromInput);
   const writePassword = await readGrantPassword(target.write_password, "target.write_password", writePasswordHashFromInput);
-  return { kind: "new_file", filename, ttl, writePolicy, password, writePassword };
+  resolveCreateAccess(env, target.link_access, writePolicy ?? undefined, password, writePassword);
+  const linkAccess = requestedLinkAccess(target.link_access) ?? null;
+  return { kind: "new_file", filename, ttl, writePolicy, password, writePassword, linkAccess };
 }
 
 function readGrantExpectedVersion(raw: unknown): number | null {
@@ -127,12 +129,12 @@ async function resolveFileTarget(env: Env, actor: Actor, target: Record<string, 
   const expectedVersion = readGrantExpectedVersion(target.expected_version);
   const row = isFileId(fileId)
     ? await env.DB.prepare(
-        `SELECT id, handle, filename, expires_at, created_by, last_written_by, write_policy, owner_id, content_generation FROM loose_files WHERE id = ?`,
+        `SELECT id, handle, filename, expires_at, created_by, last_written_by, write_policy, owner_id, content_generation, link_access FROM loose_files WHERE id = ?`,
       )
         .bind(fileId)
-        .first<{ id: string; handle: string; filename: string; expires_at: string | null; created_by: string; last_written_by: string | null; write_policy: string | null; owner_id: string | null; content_generation: number }>()
+        .first<{ id: string; handle: string; filename: string; expires_at: string | null; created_by: string; last_written_by: string | null; write_policy: string | null; owner_id: string | null; content_generation: number; link_access: string | null }>()
     : null;
-  if (!row) throw new ApiError(404, "file_not_found", "No loose file with that id.");
+  if (!row || hiddenFrom(actor, row)) throw new ApiError(404, "file_not_found", "No loose file with that id.");
   if (isPurgeClaimed(row.last_written_by) || isExpired(row.expires_at)) throw expiredError("file");
   assertCanMutate(actor, row);
   if (expectedVersion !== null && expectedVersion !== row.content_generation) throw await generationConflict(env, row.id, row.content_generation, expectedVersion);
@@ -143,7 +145,7 @@ async function resolveSiteTarget(env: Env, actor: Actor, target: Record<string, 
   const siteId = optionalString(target.site_id, "target.site_id") ?? "";
   const path = assertFilePath(optionalString(target.path, "target.path") ?? "");
   const site = isSiteId(siteId) ? await getSiteById(env, siteId) : null;
-  if (!site) throw new ApiError(404, "site_not_found", "No such site.");
+  if (!site || hiddenFrom(actor, site)) throw new ApiError(404, "site_not_found", "No such site.");
   if (isPurgeClaimed(site.last_written_by) || isExpired(site.expires_at)) throw expiredError("site");
   assertCanMutate(actor, site);
   return { kind: "site_path", siteId: site.id, path, url: sitePublicUrl(env, site.handle, site.id, site.slug, path) };
@@ -167,8 +169,8 @@ function readSha256(raw: unknown): string | null {
 }
 
 /** Unset new-file options are omitted, matching the request shape the OpenAPI target schema describes. */
-function newFileTargetJson(filename: string | null, ttl: string | null, writePolicy: string | null) {
-  return { type: "new_file", filename, ...(ttl ? { ttl } : {}), ...(writePolicy ? { write_policy: writePolicy } : {}) };
+function newFileTargetJson(filename: string | null, ttl: string | null, writePolicy: string | null, linkAccess: string | null) {
+  return { type: "new_file", filename, ...(ttl ? { ttl } : {}), ...(writePolicy ? { write_policy: writePolicy } : {}), ...(linkAccess ? { link_access: linkAccess } : {}) };
 }
 
 function fileTargetJson(id: string | null, expectedVersion: number | null) {
@@ -177,9 +179,15 @@ function fileTargetJson(id: string | null, expectedVersion: number | null) {
 
 function targetJson(row: GrantRow) {
   if (row.target_kind === "site_deployment") return { type: "site_deployment", site_id: row.site_id, deployment_id: row.deployment_id };
-  if (row.target_kind === "new_file") return newFileTargetJson(row.filename, row.file_ttl, row.file_write_policy);
+  if (row.target_kind === "new_file") return newFileTargetJson(row.filename, row.file_ttl, row.file_write_policy, row.file_link_access);
   if (row.target_kind === "file") return fileTargetJson(row.file_id, row.expected_version);
   return { type: "site_path", site_id: row.site_id, path: row.path };
+}
+
+/** filename, file_ttl, file_write_policy, file_password, file_write_password, file_link_access. */
+function newFileColumns(target: Target): (string | null)[] {
+  if (target.kind !== "new_file") return [null, null, null, null, null, null];
+  return [target.filename, target.ttl, target.writePolicy, target.password, target.writePassword, target.linkAccess];
 }
 
 export async function mintGrant(env: Env, actor: Actor, body: Record<string, unknown>): Promise<Response> {
@@ -193,8 +201,8 @@ export async function mintGrant(env: Env, actor: Actor, body: Record<string, unk
   const id = nanoid(24);
   const secret = `${GRANT_SECRET_PREFIX}${nanoid(43)}`;
   await env.DB.prepare(
-    `INSERT INTO upload_grants (id, secret_hash, token_id, user_email, user_id, target_kind, file_id, site_id, path, filename, file_ttl, file_write_policy, file_password, file_write_password, expected_version, max_bytes, sha256, state, created_at, expires_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unused', ?, ?)`,
+    `INSERT INTO upload_grants (id, secret_hash, token_id, user_email, user_id, target_kind, file_id, site_id, path, filename, file_ttl, file_write_policy, file_password, file_write_password, file_link_access, expected_version, max_bytes, sha256, state, created_at, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unused', ?, ?)`,
   )
     .bind(
       id,
@@ -206,11 +214,7 @@ export async function mintGrant(env: Env, actor: Actor, body: Record<string, unk
       target.kind === "file" ? target.fileId : null,
       target.kind === "site_path" ? target.siteId : null,
       target.kind === "site_path" ? target.path : null,
-      target.kind === "new_file" ? target.filename : null,
-      target.kind === "new_file" ? target.ttl : null,
-      target.kind === "new_file" ? target.writePolicy : null,
-      target.kind === "new_file" ? target.password : null,
-      target.kind === "new_file" ? target.writePassword : null,
+      ...newFileColumns(target),
       target.kind === "file" ? target.expectedVersion : null,
       maxBytes,
       sha256,
@@ -232,7 +236,7 @@ export async function mintGrant(env: Env, actor: Actor, body: Record<string, unk
       target:
         target.kind === "new_file"
           ? {
-              ...newFileTargetJson(target.filename, target.ttl, target.writePolicy),
+              ...newFileTargetJson(target.filename, target.ttl, target.writePolicy, target.linkAccess),
               // Echoed once here, like POST /v1/files; GET /v1/grants/{id} never returns stored phrases.
               ...(target.password ? { password: target.password } : {}),
               ...(target.writePassword ? { write_password: target.writePassword } : {}),
@@ -429,7 +433,7 @@ async function claimLease(env: Env, row: GrantRow): Promise<GrantGuard> {
 
 async function commit(env: Env, ctx: ExecutionContext, actor: Actor, row: GrantRow, upload: Upload, guard: GrantGuard): Promise<Response> {
   if (row.target_kind === "new_file") {
-    const res = await createLooseFile(env, ctx, actor, row.filename ?? "", upload, null, row.file_password ?? undefined, row.file_ttl ?? undefined, row.file_write_policy ?? undefined, row.file_write_password ?? undefined, guard);
+    const res = await createLooseFile(env, ctx, actor, row.filename ?? "", upload, null, row.file_password ?? undefined, row.file_ttl ?? undefined, row.file_write_policy ?? undefined, row.file_write_password ?? undefined, row.file_link_access ?? undefined, guard);
     return looseResult(res, true);
   }
   if (row.target_kind === "file") {
