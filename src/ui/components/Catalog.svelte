@@ -12,13 +12,14 @@
   import Button from './Button.svelte';
   import CatalogScan from './CatalogScan.svelte';
   import { CATALOG_SCAN_LABEL, CATALOG_ACTION_SIZE, type CatalogScanMark } from '../catalog-scan';
-  let { items, cursor, busy, filtered = false, kind = 'all', writePolicyDefault, selected, onToggle, onToggleVisible, onSelectMatching, onMore, onPassword, onDelete, onLoadMore }:
+  let { items, cursor, busy, filtered = false, kind = 'all', writePolicyDefault, selected, onToggle, onToggleVisible, onSelectMatching, matchingBlocked = '', onMore, onPassword, onDelete, onLoadMore }:
     { items: CatalogItem[]; cursor: string | null; busy: boolean; filtered?: boolean; kind?: 'all' | 'sites' | 'files';
       writePolicyDefault: string;
       selected: (item: CatalogItem) => boolean;
       onToggle: (item: CatalogItem, on: boolean) => void;
       onToggleVisible: (on: boolean) => void;
       onSelectMatching: () => void;
+      matchingBlocked?: string;
       onMore: (item: CatalogItem) => void; onPassword: (item: CatalogItem) => void; onDelete: (item: CatalogItem) => void; onLoadMore: () => void } = $props();
   const name = (item: CatalogItem) => item.slug ?? item.filename;
   const size = (item: CatalogItem) => formatBytes(item.size) + (item.kind === 'site' ? ` · ${item.file_count} ${item.file_count === 1 ? 'file' : 'files'}` : '');
@@ -78,7 +79,8 @@
 {/snippet}
 {#snippet pager()}
   <Button id="catalog-select-visible" variant="ghost" size="sm" disabled={busy} onclick={() => onToggleVisible(!allVisible)}>{allVisible ? 'Clear visible' : 'Select visible'}</Button>
-  <Button id="catalog-select-matching" variant="ghost" size="sm" disabled={busy} onclick={onSelectMatching}>Select all matching these filters</Button>
+  <Button id="catalog-select-matching" variant="ghost" size="sm" disabled={busy || !!matchingBlocked} aria-describedby={matchingBlocked ? 'catalog-select-matching-note' : undefined} onclick={onSelectMatching}>Select all matching these filters</Button>
+  {#if matchingBlocked}<p id="catalog-select-matching-note" class="en-note en-catalog-matching-note">{matchingBlocked}</p>{/if}
   {#if cursor}<Button id="catalog-load-more" variant="ghost" size="sm" disabled={busy} onclick={onLoadMore}>{busy ? 'Loading…' : 'Load more'}</Button>{/if}
 {/snippet}
 {#if items.length}<Table rows={items} rowKey={item => `${item.kind}:${item.id}`} rowClassName={(item) => selected(item) ? 'row-selected' : ''} pager={pager}

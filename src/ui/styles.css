@@ -91,6 +91,8 @@
 .en-catalog-cleanup-count { margin: 0; color: var(--fg-1); font: var(--type-ui); font-weight: 500; display: flex; align-items: center; height: var(--control-h-lg); }
 .en-catalog-cleanup .en-btn--md { height: var(--control-h-lg); }
 .en-catalog-cleanup-note { flex-basis: 100%; margin: 0; }
+#catalog .en-pager:has(.en-catalog-matching-note) { flex-wrap: wrap; }
+.en-catalog-matching-note { flex-basis: 100%; margin: 4px 0 0; text-align: center; }
 .en-cleanup-facts { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 4px 0 12px; }
 .en-cleanup-facts div { display: flex; flex-direction: column; gap: 2px; }
 .en-cleanup-facts dt { font: var(--type-label); color: var(--fg-3); }
