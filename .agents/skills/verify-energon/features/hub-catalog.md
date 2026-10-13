@@ -1,6 +1,6 @@
 # Hub catalog
 
-Hub catalog lets a signed-in human see sites and files they created or last wrote, search slugs and filenames, filter created vs edited, never-expiring / 24h / 7d / oldest / largest / last-read, open a public URL, change expiration, and delete an object after typing its name.
+Hub catalog lets a signed-in human see sites and files they created or last wrote (private ones only for their creator), search slugs and filenames, filter created vs edited, never-expiring / 24h / 7d / oldest / largest / last-read, open a public URL, change expiration, and delete an object after typing its name.
 
 ## Sub-features
 
@@ -12,7 +12,7 @@ Hub catalog lets a signed-in human see sites and files they created or last wrot
 - `catalog-sort` orders by Updated, Name, Size, Oldest, or Last read (`#sort`). `last_read` is never-read first, then oldest stamp.
 - `catalog-filters` narrows through `#catalog-filters`, a panel behind the `More filters` toggle (`#catalog-filters-toggle`, `aria-expanded`): `#catalog-expires` Any / Never / 24h / 7d, `#catalog-expires-before`, `#catalog-updated-before`, `#catalog-min-size`, `#catalog-changed-since-read` Any / Changed since last open (`?changed_since_read=1`). 24h and 7d send `expires_within` (computed at request time); the custom date still sends `expires_before`. The panel is `hidden` until toggled, opens on load when the URL carries one of those filters, and the toggle shows a count of active panel filters. The same query string drives `GET /account/data` and hub SSR (`?expires=never&sort=size`, `?expires_within=24h`). `last_read_before` stays on `/admin`.
 - `catalog-expires-urgency` is the Expires cell: `en-badge--danger` when `expires_at` is within 24h, `en-badge--warn` within 7d, `en-badge--ttl` otherwise. Unlimited rows still omit the cell.
-- `catalog-open` follows the slug or filename link to the public URL.
+- `catalog-open` follows the slug or filename link to the public URL. A private row has no link: its name is plain text titled `Private: open it through the API or download it`.
 - `catalog-delete` removes the object after typing the exact name.
 - `catalog-expire` lets a mutator change expiration from More → Change expiration; the new timer starts now; catalog Expires and listing `expires_at` update.
 - `catalog-select` is row checkboxes (`#catalog-select-file-{id}`, `#catalog-select-site-{id}`) plus `#catalog-select-visible` and `#catalog-select-matching` under the list. Bulk actions are [Hub cleanup](./hub-cleanup.md).
@@ -41,7 +41,7 @@ Preconditions:
 
 ## Gotchas
 
-- Lists are not a company catalog. They only include what this identity created or last wrote. A 200 empty list is not a failed publish if you used a different email.
+- Lists are not a company catalog. They only include what this identity created or last wrote, and a private object only for the account that created it. A 200 empty list is not a failed publish if you used a different email.
 - Search debounce is 200ms. Assert the filtered table (or the `q=` network response), not a keystroke.
 - Scope `involved` is the Your work button inside `#scope`; the selected button has `aria-pressed="true"`.
 - Delete requires the exact slug or filename. Cancel leaves the object in place — confirm with a GET.
@@ -52,4 +52,5 @@ Preconditions:
 - Catalog load failures appear as a dismissable flash with a `Try again` button. Every hub flash has a `Dismiss` control and the list keeps at most six.
 - Opening the public link leaves the hub. Re-open `$ORIGIN/` before another catalog assertion.
 - Password marks: view-password-only is a padlock (`View password`). Any write password is the lockup (`Write password`). Neither hash: no password mark. More still offers `Set password`. No Password chip next to the slug.
+- A private row shows the `Private` key mark (opens Link access) instead of password marks. More offers `Link access` instead of `Set password`, and hides `Who can write`.
 - Change expiration measures the new TTL from now, not from the original publish. `never` appears only when this Energon's policy allows unlimited. The control is hidden when `write_policy` is owner and you are not the creator.

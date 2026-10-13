@@ -56,7 +56,6 @@ Keep implementation details out of the map. Name only user paths, stable handles
 ## Features
 
 - [Atomic site deployment](./atomic-site-deployment.md) covers staging, full replacement, explicit commit, retained receipts, conflicts, and whole-site grants.
-
 - [Discovery documents](./discovery.md) covers unauthenticated `GET /v1/help`, `GET /v1/openapi.json`, `GET /v1/health`, `GET /llms.txt`, `GET /auth.md`, and the well-known agent skill under `/.well-known/agent-skills/` with its `AGENT_SKILLS_DISCOVERY` switch.
 - [Publish a site](./publish-site.md) covers creating a named folder, writing files, serving the public URL, duplicate slug behavior, duplicate, sandboxed HTML and XML, mermaid on HTML markdown, and wide-table expand without mermaid.
 - [Publish a file](./publish-file.md) covers minting a loose file with a stable id, replacing bytes, conditional replacement with `content_generation` and `X-Energon-Expected-Version`, downloading, and uploads over 25 MB.

@@ -1,6 +1,6 @@
 # Discovery documents
 
-Discovery documents are the unauthenticated first reads on this Energon: `/v1/help` for origins, policy, and SOP, `/v1/openapi.json` for the `/v1` HTTP schema, `/v1/health` for liveness, `/llms.txt` for the agent overview, `/auth.md` for authentication instructions for connections and manual tokens, and `/.well-known/agent-skills/` for this Energon's rendered skill. They answer before a token exists.
+Discovery documents are the unauthenticated first reads on this Energon: `/v1/help` for origins, policy, and SOP, `/v1/openapi.json` for the `/v1` HTTP schema, `/v1/health` for liveness, `/llms.txt` for the agent overview, `/auth.md` for authentication instructions for connections and manual tokens, and `/.well-known/agent-skills/` for this Energon's rendered skill. They answer before a token exists. `/v1/openapi-gateway.json` (help `gateway_openapi`) is the gateway subset of the schema; [Gateway publish](./gateway-publish.md) drives it.
 
 ## Sub-features
 

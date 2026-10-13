@@ -10,6 +10,7 @@ An upload grant lets a token holder hand a machine without a token a short-lived
 - `grant-site-path` adds (`201`) or replaces (`200`) one site path.
 - `grant-single-use` refuses a second upload with `410 grant_used`, the published `url`, and its `result_id`.
 - `grant-protected` creates a new file with the share password set at mint, so it is gated from the moment it lands.
+- `grant-private` creates a new file with `link_access: "private"` set at mint; its public URL is `403 link_private`. Private plus `password` or `write_password` is `400 link_access_conflict` at mint.
 - `grant-checksum` rejects bytes that do not match `sha256` with `400 checksum_mismatch` and leaves the grant usable.
 - `grant-revoked` ends the grant with `410 grant_failed` (`reason: token_revoked`) once the minting token is revoked.
 - `grant-conditional` binds a `file` target to `expected_version`; if the file is replaced after mint, the upload writes nothing and ends the grant `failed` with `last_error` `file_conflict`.
@@ -40,12 +41,14 @@ Preconditions:
 - **Default — Stale grant does not overwrite newer work.** `POST /v1/files` with `X-Filename: plan.md` and body `older draft` (`content_generation` `1`). Mint `{"target":{"type":"file","id":"$FILE_ID","expected_version":1}}` → `201`, `target.expected_version` is `1`. `PUT /v1/files/$FILE_ID` with `$TOKEN` and body `newer work` → `200`, `content_generation` `2`. Tokenless PUT of `older draft, revised` to the grant `upload_url` → `410` `grant_failed`, `reason` `file_conflict`. Status → `failed`, `last_error` `file_conflict`. Public GET of the file still returns `newer work`. Minting again with `"expected_version":1` → `409 file_conflict` with `content_generation` `2`.
 - **Extra (grant-replace) — Replace keeps type.** `POST /v1/files` with `X-Filename: NOTES` and `content-type: text/plain`, mint `{"target":{"type":"file","id":"$FILE_ID"}}`, PUT with `content-type: text/html` → `200`, `content_type` still `text/plain`. Drive when replacement or content-type handling changes.
 - **Extra (grant-mint) — Errors.** `"expires_in":"2h"` → `400 bad_ttl`. A wrong secret and an unknown id both → `404 grant_invalid` with identical bodies. Drive when mint validation or secret checks change.
+- **Extra (grant-private) — Private new file.** Mint `{"target":{"type":"new_file","filename":"priv.txt","link_access":"private"}}` → `201`, `target.link_access` is `private`. PUT `p` → `201`. Public GET of `url` → `403 link_private`; `GET $ORIGIN/v1/files/{id}` with `$TOKEN` → `p`. Mint with `link_access` `private` and `"password":"x"` → `400 link_access_conflict`. Drive when grant mint or link access changes.
 - **Proof.** Default: mint body (secret redacted in notes), upload `201`, public GET bytes, second PUT `410` with `result_id`, status `consumed` with `result_id`, protected file `401` then bytes with the password, checksum `400` then `201`, revoked `410`.
 
 ## Gotchas
 
 - The grant secret is not an API token. Sending it to `/v1/whoami` is `401`; sending `$TOKEN` to the upload URL is `404 grant_invalid`.
 - `Content-Length` matters above 25 MB; `curl --data-binary @file` sets it.
+- `result_id` is the new file's id for a `new_file` grant and the site id for a `site_path` grant.
 - Metadata headers (`X-Filename`, set-password, TTL, write policy) on the upload are `400`; the grant fixed the target at mint. A protected new file gets its `password` in the mint `target`, never on the PUT.
 - A grant cannot outlive the token that minted it; `expires_at` may be earlier than `expires_in` asked for.
 - Local verify uses one origin, so a hub-origin `PUT` to `/_grants/` is served directly. In production it is a `404` naming the content-origin URL.

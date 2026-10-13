@@ -13,7 +13,7 @@ Operators listed on `ADMIN_EMAILS` list and revoke API token metadata across acc
 ## How to get to it (user POV)
 
 - Operator, agent: mint `scope: admin` at `/keys`, then `GET /v1/admin/tokens?owner=handle`. `POST /v1/admin/tokens/revoke` with `{ "owner", "target" }` to preview and the same body plus `confirm` to execute.
-- Operator, hub: open `/admin`. Fill `#admin-tokens-owner`, choose List, read `#admin-tokens-table`, choose Revoke stale or Revoke all, type the count in `#admin-tokens-dlg`.
+- Operator, hub: open `/admin`. Fill `#admin-tokens-owner`, choose List, read `#admin-tokens-table`, choose Revoke stale or Revoke all, type the count with its noun (`1 key`, `3 keys`) in `#admin-tokens-dlg`.
 - `GET $ORIGIN/v1/openapi.json` documents `/v1/admin/tokens` and `/v1/admin/tokens/revoke`; `GET $ORIGIN/v1/help` `routes` names both.
 - A person not on `ADMIN_EMAILS` gets `403 forbidden_admin` on both routes. An account token does too.
 

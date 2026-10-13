@@ -15,7 +15,7 @@ Guest write password lets the creator give someone outside the host a second sha
 ## How to get to it (user POV)
 
 - Hub stage: open `#stage-access` (Link access). Share input is `#stage-password`. Write input is `#stage-write-password`. URL, expiration, Who can write, and Publish stay visible outside the disclosure.
-- Hub catalog: lockup hover `Write password`, padlock hover `View password`, More actions still `Set password` / `Change or remove password`. Dialog `#pw-dlg` title is Link access. `#pw-dlg-write-door` Off/On; `#pw-dlg-write-input` shows the stored phrase when On.
+- Hub catalog: lockup hover `Write password`, padlock hover `View password`, More actions still `Set password` / `Change or remove password` (`Link access` on a private row). Dialog `#pw-dlg` title is Link access. `#pw-dlg-write-door` Off/On; `#pw-dlg-write-input` shows the stored phrase when On.
 - API: `"write_password"` on `POST /v1/sites` or `PATCH /v1/sites/{id}` / `PATCH /v1/files/{id}`; `X-Energon-Set-Write-Password` or multipart `write_password` on file create.
 - Outside agent: `GET $ORIGIN/llms.txt` (single-origin local includes the guest section) then `PUT` the public URL with `X-Energon-Write-Password`.
 
@@ -47,4 +47,5 @@ Preconditions:
 - Hub `GET /account/sites/{id}` returns the stored write phrase to the creator. `/v1` GET does not.
 - Identical phrases still bind to the header that carried them.
 - The HTML gate accepts the write password for reading. The gate and `energon_gate` cookie never authorize PUT or DELETE.
-- Catalog Last writer stays the last account. `Updated via shared write` is the via copy, not a person named guest.
+- Catalog Last writer stays the last account. The sheet reads `Last writer <email> via shared write`; the via copy is not a person named guest.
+- A private object cannot hold a write password (`400 link_access_conflict`; going private while one is set is `409` unless the same PATCH sends `"write_password": ""`). Guest PUT and DELETE on a private object's URL are `403 link_private`. See [Link access](./link-access.md).

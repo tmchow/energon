@@ -1,12 +1,12 @@
 # Account export
 
-Account export lets a person or agent download every site and loose file they own as one zip, with a `manifest.json` of ids, names, public URLs, sizes, expiry, and write policy, before a bulk cleanup. The archive is `owner_id` only. Work they only edited is omitted. Share and write passwords are omitted.
+Account export lets a person or agent download every site and loose file they own as one zip, with a `manifest.json` of ids, slugs or filenames, public URLs, sizes, expiry, and write policy, before a bulk cleanup. The archive is `owner_id` only. Work they only edited is omitted. Share and write passwords are omitted.
 
 ## Sub-features
 
 - `owned-zip` returns `200` `application/zip` named `{handle}-owned.zip` with `manifest.json`, each owned site under `sites/{id}/`, and each owned loose file under `files/{id}/{filename}`.
 - `owned-scope` omits sites and files owned by another identity, including objects the caller last edited.
-- `owned-manifest` lists `scope: "owned"`, `owner.email` / `owner.handle`, and per object `id`, name, `url`, `size`, `expires_at`, `write_policy`, and `archive_path`.
+- `owned-manifest` lists `scope: "owned"`, `owner.email` / `owner.handle`, `exported_at`, and per object `id`, `slug` (sites) or `filename` (files), `url`, `size`, `expires_at`, `write_policy`, and `archive_path`; sites also carry `file_count`.
 - `owned-empty` is `400 empty_export` when the caller owns nothing live.
 - `owned-cap` refuses an archive over the file-count cap with `400 too_many_files` and the totals (`limit_files`, `actual_files`, `sites`, `files`); the message names `GET /v1/sites/{id}/export`.
 - `owned-hub` is the Hub card `#account-export` linking to `GET /account/export`. The card appears only once the catalog has at least one item (or a filter is active); an empty catalog hides it.
@@ -39,6 +39,7 @@ Preconditions:
 
 - Catalog scope is involvement. This zip is ownership. A site the caller only edited does not appear. Cleanup `POST /v1/cleanup` with `{}` is involvement, which is wider than this archive.
 - Share and write passwords are not in `manifest.json`. Re-publishing later needs the human to set those again.
+- Private objects (link access `private`) are exported too. The manifest does not record link access, and their `url` is the public URL, which answers `403 link_private`.
 - Over the cap the Worker does not emit a truncated zip. `400 too_many_files` or `413 too_large` names the totals. Export each site with `GET /v1/sites/{id}/export` instead.
 - Empty ownership is `400 empty_export`, including a freshly minted identity that has never published.
 - Expired and purge-claimed rows are omitted. Live owned objects only.
