@@ -5,7 +5,7 @@
   import { stageFiles, publish, slugify, pendingImport as loadPendingImport, resumeImport, cancelPendingImport, type PendingImport, type PublishProgress, type StagedUpload, type PublishResult } from '../uploads';
   import { nextNumberedSlug } from "../../slugs";
   import { parseByteSize } from '../../config';
-  import { hubCleanupDoneMessage, hubCleanupTarget } from '../hub-cleanup-target';
+  import { HUB_MATCHING_BLOCKED_CHANGED_SINCE_READ, hubCleanupDoneMessage, hubCleanupTarget } from '../hub-cleanup-target';
   import { registerHubTools } from '../model-context';
   import { setGatherFrame } from '../ambient-field';
   import PageTitle from '../components/PageTitle.svelte';
@@ -245,7 +245,10 @@
     selectedFiles = on ? [...new Set([...selectedFiles, ...files])] : selectedFiles.filter((id) => !files.includes(id));
     if (!matching && selectedSites.length + selectedFiles.length === 0) dropCleanupPreview();
   }
+  const changedSinceRead = $derived(changedSince === 'changed');
+  const matchingBlocked = $derived(changedSinceRead ? HUB_MATCHING_BLOCKED_CHANGED_SINCE_READ : '');
   function selectMatching() {
+    if (matchingBlocked) return;
     matching = true;
     selectedSites = [];
     selectedFiles = [];
@@ -253,7 +256,7 @@
   function cleanupTarget(): Record<string, unknown> | null {
     return hubCleanupTarget(
       matching ? { matching: true } : { matching: false, sites: selectedSites, files: selectedFiles },
-      { q, scope, kind, expires, expiresBefore, updatedBefore, minSize },
+      { q, scope, kind, expires, expiresBefore, updatedBefore, minSize, changedSinceRead },
     );
   }
   function cleanupBody(confirm?: string): Record<string, unknown> | null {
@@ -569,7 +572,7 @@
         <Field label="Last open" note="Reads lag up to about a day." noteId="catalog-changed-since-read-note"><SegmentedControl id="catalog-changed-since-read" ariaLabel="Changed since last open" options={[{ value: 'any', label: 'Any' }, { value: 'changed', label: 'Changed since last open' }]} bind:value={changedSince} onChange={() => { applyFilters(); }} /></Field>
       </div>
       <p id="catalog-status" class="en-sr-only" role="status">{catalogStatus}</p>
-      <div id="catalog" aria-busy={loading}><Catalog items={lists.items} cursor={lists.cursor} busy={loading} filtered={filtered} {kind} writePolicyDefault={data.policy.write_policy} selected={itemSelected} onToggle={toggleItem} onToggleVisible={toggleVisible} onSelectMatching={selectMatching} onMore={openMore} onPassword={editPassword} onDelete={deleteItem} onLoadMore={() => refresh(true)} /></div>
+      <div id="catalog" aria-busy={loading}><Catalog items={lists.items} cursor={lists.cursor} busy={loading} filtered={filtered} {kind} writePolicyDefault={data.policy.write_policy} selected={itemSelected} onToggle={toggleItem} onToggleVisible={toggleVisible} onSelectMatching={selectMatching} {matchingBlocked} onMore={openMore} onPassword={editPassword} onDelete={deleteItem} onLoadMore={() => refresh(true)} /></div>
     </Card>
     {#if lists.total > 0 || filtered}<Card className="en-hub-export" id="account-export" title="Download what you own">
       <div class="en-stack">

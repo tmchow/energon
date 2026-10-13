@@ -9,6 +9,7 @@ const find: HubCleanupFind = {
   expiresBefore: '',
   updatedBefore: '',
   minSize: '',
+  changedSinceRead: false,
 };
 
 describe('hubCleanupTarget', () => {
@@ -25,7 +26,13 @@ describe('hubCleanupTarget', () => {
       expiresBefore: '',
       updatedBefore: '',
       minSize: '',
+      changedSinceRead: false,
     })).toEqual({});
+  });
+
+  it('refuses select-all-matching while changed-since-read narrows the list (cleanup cannot express it)', () => {
+    expect(hubCleanupTarget({ matching: true }, { ...find, changedSinceRead: true })).toBeNull();
+    expect(hubCleanupTarget({ matching: false, sites: [], files: ['RD2mvl'] }, { ...find, changedSinceRead: true })).toEqual({ files: ['RD2mvl'] });
   });
 
   it('sends checked ids and matching filters', () => {
