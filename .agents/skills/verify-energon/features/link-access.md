@@ -24,6 +24,7 @@ Link access decides whether a site's or file's public URL opens at all. `public`
 Preconditions:
 
 - `bin/up` passed. `$TOKEN` and `$HANDLE` known. Local verification serves content on `$ORIGIN`.
+- Fixture identities reuse the doctor identity's domain so they pass `ALLOWED_EMAIL_DOMAINS`: `DOMAIN="${EMAIL#*@}"` after sourcing `state.env`.
 
 - **Default — Create private file.** `.agents/skills/verify-energon/bin/save --expect 201 link-access create POST "$ORIGIN/v1/files" -H "Authorization: Bearer $TOKEN" -H "X-Filename: verify-private.md" -H "X-Energon-Link-Access: private" --data-binary '# private-ok'`. Body `link_access` is `private`. Keep `id` as `$FILE_ID`.
 - **Default — Public URL refused.** `GET "$ORIGIN/$HANDLE/f/$FILE_ID/verify-private.md"` is `403` JSON `link_private`, with no `private-ok` and no `/v1` in the body. With `-H "accept: text/html"` it is a `403` HTML page. `PUT` with `X-Energon-Write-Password: anything` is `403 link_private`.
