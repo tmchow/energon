@@ -7,7 +7,7 @@ Mint a token lets a signed-in human create an `ee_live_` secret for agents with 
 - `token-admin` lets an address on `ADMIN_EMAILS` mint `scope: admin` from `#mint-scope` (1 or 7 days, no never). The secret still starts with `ee_live_`; the hint is `ee_live_admin…` plus last four. Connect never grants admin. `GET /v1/whoami` has `scope` and `admin`. A person not on the list gets `403 forbidden_admin`.
 - `token-lifetime` offers presets in `#mint-ttl` (`1 day` … `1 year`, default `3 months`, `Never` only when this Energon allows it).
 - `token-whoami` accepts the secret and returns the owner email, label, and `expires_at` (`null` = never).
-- `token-self-revoke` lets an agent revoke its own token with `DELETE /v1/whoami`; the same secret is `401 unauthorized` afterwards, other tokens are untouched, and `/v1` has no route to list or revoke another token.
+- `token-self-revoke` lets an agent revoke its own token with `DELETE /v1/whoami`; the same secret is `401 unauthorized` afterwards, other tokens are untouched, and an account token has no `/v1` route to list or revoke another token (operators use `/v1/admin/tokens`; see [Admin tokens](./admin-tokens.md)).
 - `token-list` shows the last four characters, not the full secret, plus `expires_at` and `expired` in `/account/data`; the Agent keys page shows an `Expires` column.
 - `token-expired` rejects a token past its lifetime with `401 token_expired`; the row is greyed on `/keys` with only `Revoke`.
 - `token-never-disabled` removes `Never` from the menu and rejects `ttl: never` when this Energon sets `ALLOW_UNLIMITED_TOKENS=false`; tokens minted earlier keep working.
@@ -46,7 +46,7 @@ Preconditions:
 ## Gotchas
 
 - `/v1` cannot mint tokens. A passing whoami with a hand-typed secret is not a mint proof.
-- `DELETE /v1/whoami` is the only token mutation on `/v1`, and it acts on the bearer token alone. There is no `/v1/tokens`; a request to revoke another token belongs on `/keys` or `POST /account/tokens/revoke`.
+- For account tokens, `DELETE /v1/whoami` is the only token mutation on `/v1`, and it acts on the bearer token alone. An admin token can also bulk-revoke with `POST /v1/admin/tokens/revoke`. There is no `/v1/tokens`; a request to revoke another token belongs on `/keys` or `POST /account/tokens/revoke`.
 - Localhost does not require Access. Production hub minting needs a signed-in session; this skill does not drive production.
 - Revoke confirmation matches the label, not the token id. Typing the id fails validation. Bulk confirmation matches the count as `N keys` (`1 key` for one), not a label.
 - Calling `/v1` with a token bumps its `last_used_at`, so a `whoami` check after the stale fixture makes it live again and the stale preview drifts. Prove the token works before backdating, or backdate `last_used_at` too.

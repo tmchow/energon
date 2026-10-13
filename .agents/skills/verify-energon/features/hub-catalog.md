@@ -47,7 +47,7 @@ Preconditions:
 - Delete requires the exact slug or filename. Cancel leaves the object in place — confirm with a GET.
 - `Load more` appears only when a cursor is present. Do not treat a short list as a pagination bug. The merged hub list pages with one `cursor` on `/account/data`. `sites_cursor` / `files_cursor` still alias `GET /v1/sites` and `GET /v1/files` when `cursor` is absent; they do not page the hub union.
 - `#catalog-filters` is in the HTML while collapsed (`hidden`). Click `#catalog-filters-toggle` before driving a field inside it. Changing a panel field clears the selection like any filter.
-- `changed_since_read` is a list filter. Hub cleanup `Select all matching` does not send it; `POST /v1/cleanup` with that key is `400 bad_target`. `last_read_before` stays on `/admin`.
+- `changed_since_read` is a list filter. While it is on, hub cleanup `Select all matching` (`#catalog-select-matching`) is disabled with `#catalog-select-matching-note`, because `POST /v1/cleanup` with that key is `400 bad_target`. `last_read_before` stays on `/admin`.
 - A malformed `#catalog-expires-before`, `#catalog-updated-before`, or `#catalog-min-size` value shows an inline error under the field and the hub does not send the query. The server still ignores malformed filters when they arrive through the URL. `#catalog-status` is a visually hidden live region that announces the counts after each load.
 - Catalog load failures appear as a dismissable flash with a `Try again` button. Every hub flash has a `Dismiss` control and the list keeps at most six.
 - Opening the public link leaves the hub. Re-open `$ORIGIN/` before another catalog assertion.

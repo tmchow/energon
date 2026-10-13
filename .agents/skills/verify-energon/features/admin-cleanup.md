@@ -39,6 +39,7 @@ Preconditions:
 
 ## Gotchas
 
+- Admin cleanup sees private objects (link access `private`) from every account, including by explicit id, so a private fixture can appear in the sample. Ordinary `/v1/cleanup` reports another account's private id as `not_found`.
 - Launch must pass `ADMIN_EMAILS` matching the doctor email. `.dev.vars` `DEV_ACCESS_EMAIL` wins over the launch default `dev@example.com`; a mismatch makes `/admin` `403` for the doctor.
 - `bin/mint-token` mints an account token. Admin scope is `POST /account/tokens` with `"scope":"admin"` and `ttl` `1d` or `7d`. Connect never grants it.
 - `set_ttl` without `ttl` is 7 days. Sending `ttl` with `expire` or `delete` is `400 bad_action`.
