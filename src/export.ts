@@ -4,6 +4,7 @@ import { MAX_IMPORT_FILES, PRODUCT, fileKey, formatBytes, nowIso, siteKey } from
 import { isExpired, isPurgeClaimed } from "./expire";
 import { getUser, getUserById } from "./handles";
 import { ApiError, contentDisposition } from "./http";
+import { storedLinkAccess, type LinkAccess } from "./link-access";
 import { instancePolicy, resolveWritePolicy, type WritePolicy } from "./policy";
 import { noteRead } from "./reads";
 import type { Actor, Env } from "./types";
@@ -25,6 +26,7 @@ export type OwnedSiteManifest = {
   file_count: number;
   expires_at: string | null;
   write_policy: WritePolicy;
+  link_access: LinkAccess;
   archive_path: string;
 };
 
@@ -35,6 +37,7 @@ export type OwnedFileManifest = {
   size: number;
   expires_at: string | null;
   write_policy: WritePolicy;
+  link_access: LinkAccess;
   archive_path: string;
 };
 
@@ -52,6 +55,7 @@ type SiteRow = {
   slug: string;
   expires_at: string | null;
   write_policy: string | null;
+  link_access: string | null;
   last_written_by: string | null;
   last_read_at: string | null;
   path: string | null;
@@ -67,6 +71,7 @@ type LooseRow = {
   size: number;
   expires_at: string | null;
   write_policy: string | null;
+  link_access: string | null;
   last_written_by: string | null;
   last_read_at: string | null;
 };
@@ -78,6 +83,7 @@ type SitePlan = {
   expires_at: string | null;
   last_read_at: string | null;
   write_policy: WritePolicy;
+  link_access: LinkAccess;
   versionId: string | null;
   files: { path: string; size: number; key: string }[];
 };
@@ -133,6 +139,7 @@ function groupSites(rows: SiteRow[]): SitePlan[] {
         expires_at: row.expires_at,
         last_read_at: row.last_read_at,
         write_policy: resolveWritePolicy(row.write_policy),
+        link_access: storedLinkAccess(row.link_access),
         files: [],
         versionId: row.active_version_id,
       };
@@ -159,7 +166,7 @@ export async function exportOwnedZip(
   }
 
   const siteRows = await env.DB.prepare(
-    `SELECT s.id, s.handle, s.slug, s.expires_at, s.write_policy, s.last_written_by, s.last_read_at, s.active_version_id,
+    `SELECT s.id, s.handle, s.slug, s.expires_at, s.write_policy, s.link_access, s.last_written_by, s.last_read_at, s.active_version_id,
        COALESCE(vf.path, f.path) AS path, COALESCE(vf.size, f.size) AS size, vf.object_key
      FROM sites s
      LEFT JOIN site_files f ON s.id = f.site_id AND s.active_version_id IS NULL
@@ -172,7 +179,7 @@ export async function exportOwnedZip(
   const sites = groupSites(siteRows.results || []);
 
   const looseRows = await env.DB.prepare(
-    `SELECT id, handle, filename, size, expires_at, write_policy, last_written_by, last_read_at
+    `SELECT id, handle, filename, size, expires_at, write_policy, link_access, last_written_by, last_read_at
      FROM loose_files
      WHERE owner_id = ?
      ORDER BY filename, id`,
@@ -212,6 +219,7 @@ export async function exportOwnedZip(
       file_count: site.files.length,
       expires_at: site.expires_at,
       write_policy: site.write_policy,
+      link_access: site.link_access,
       archive_path: `sites/${site.id}/`,
     })),
     files: files.map((file) => ({
@@ -221,6 +229,7 @@ export async function exportOwnedZip(
       size: Number(file.size || 0),
       expires_at: file.expires_at,
       write_policy: resolveWritePolicy(file.write_policy),
+      link_access: storedLinkAccess(file.link_access),
       archive_path: fileArchivePath(file.id, file.filename),
     })),
   };

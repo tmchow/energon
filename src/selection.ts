@@ -12,6 +12,7 @@ import {
 import { isPurgeClaimed } from "./expire";
 import { involvedInLoose } from "./files";
 import { ApiError } from "./http";
+import { hiddenFrom } from "./link-access";
 import { canMutate } from "./policy";
 import { getSiteById, involvedInSite } from "./sites";
 import type { Actor, Env } from "./types";
@@ -155,6 +156,7 @@ type FileScanRow = {
   created_by: string;
   last_written_by: string | null;
   write_policy: string | null;
+  link_access: string | null;
   created_at: string;
   updated_at: string | null;
   expires_at: string | null;
@@ -203,7 +205,7 @@ function fileObject(actor: Actor, row: FileScanRow): CleanupObject {
 const SITE_SCAN_SELECT =
   `s.id, s.handle, s.slug, s.owner_id, s.created_by, s.last_written_by, s.write_policy, s.updated_at, s.expires_at, s.last_read_at, ${SITE_SIZE_SQL} AS size`;
 const FILE_SCAN_SELECT =
-  `id, filename, handle, owner_id, created_by, last_written_by, write_policy, created_at, updated_at, expires_at, last_read_at, size`;
+  `id, filename, handle, owner_id, created_by, last_written_by, write_policy, link_access, created_at, updated_at, expires_at, last_read_at, size`;
 
 type Scan = { objects: CleanupObject[]; truncated: boolean };
 
@@ -271,9 +273,9 @@ async function criteriaCandidates(
   return result;
 }
 
-async function lookupSite(env: Env, actor: Actor, id: string): Promise<CleanupObject | null> {
+async function lookupSite(env: Env, actor: Actor, id: string, asAdmin: boolean): Promise<CleanupObject | null> {
   const site = await getSiteById(env, id);
-  if (!site) return null;
+  if (!site || (!asAdmin && hiddenFrom(actor, site))) return null;
   const usage = await env.DB.prepare(`SELECT ${SITE_SIZE_SQL} AS size FROM sites s ${SITE_FILE_TOTALS_JOIN_SQL} WHERE s.id = ? AND s.lifecycle_state = 'live'`)
     .bind(site.id)
     .first<{ size: number }>();
@@ -292,13 +294,14 @@ async function lookupSite(env: Env, actor: Actor, id: string): Promise<CleanupOb
   });
 }
 
-async function lookupFile(env: Env, actor: Actor, id: string): Promise<CleanupObject | null> {
+async function lookupFile(env: Env, actor: Actor, id: string, asAdmin: boolean): Promise<CleanupObject | null> {
   if (!isFileId(id)) return null;
   const row = await env.DB.prepare(`SELECT ${FILE_SCAN_SELECT} FROM loose_files WHERE id = ?`).bind(id).first<FileScanRow>();
-  return row ? fileObject(actor, row) : null;
+  if (!row || (!asAdmin && hiddenFrom(actor, row))) return null;
+  return fileObject(actor, row);
 }
 
-async function explicitCandidates(env: Env, actor: Actor, sites: string[], files: string[]): Promise<Candidates> {
+async function explicitCandidates(env: Env, actor: Actor, sites: string[], files: string[], asAdmin: boolean): Promise<Candidates> {
   const result: Candidates = { objects: [], unresolved: [], truncated: false };
   const seen = new Set<string>();
   const keep = (object: CleanupObject | null, skipped: SkippedObject): void => {
@@ -310,8 +313,8 @@ async function explicitCandidates(env: Env, actor: Actor, sites: string[], files
     seen.add(object.key);
     result.objects.push(object);
   };
-  for (const id of sites) keep(await lookupSite(env, actor, id), { kind: "site", ref: id, reason: "not_found" });
-  for (const id of files) keep(await lookupFile(env, actor, id), { kind: "file", ref: id, reason: "not_found" });
+  for (const id of sites) keep(await lookupSite(env, actor, id, asAdmin), { kind: "site", ref: id, reason: "not_found" });
+  for (const id of files) keep(await lookupFile(env, actor, id, asAdmin), { kind: "file", ref: id, reason: "not_found" });
   return result;
 }
 
@@ -347,16 +350,17 @@ export async function resolveSelection(
   skip?: SkipPredicate,
   opts?: { admin?: boolean },
 ): Promise<ResolvedSelection> {
+  const admin = Boolean(opts?.admin);
   let candidates: Candidates;
   switch (selection.kind) {
     case "explicit": {
       const requested = selection.sites.length + selection.files.length;
       if (requested > CLEANUP_MAX_ITEMS) throw tooMany(requested);
-      candidates = await explicitCandidates(env, actor, selection.sites, selection.files);
+      candidates = await explicitCandidates(env, actor, selection.sites, selection.files, admin);
       break;
     }
     case "criteria":
-      candidates = await criteriaCandidates(env, actor, selection.criteria, selection.objects, opts?.admin ? false : true);
+      candidates = await criteriaCandidates(env, actor, selection.criteria, selection.objects, !admin);
       break;
     default:
       return assertNever(selection);
@@ -364,7 +368,7 @@ export async function resolveSelection(
   const eligible: CleanupObject[] = [];
   const skipped: SkippedObject[] = [...candidates.unresolved];
   for (const object of candidates.objects) {
-    const reason = classify(object, skip, Boolean(opts?.admin));
+    const reason = classify(object, skip, admin);
     if (reason) skipped.push({ kind: object.ref.kind, ref: refString(object.ref), reason });
     else eligible.push(object);
   }

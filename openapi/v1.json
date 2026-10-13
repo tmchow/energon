@@ -1314,7 +1314,7 @@
           "cleanup"
         ],
         "summary": "Download everything you own as a zip",
-        "description": "Token read. Zips every site and loose file keyed to the caller's owner_id, not everything they created or last wrote. Each site is under sites/{id}/ with its original paths. Loose files are under files/{id}/{filename}. manifest.json lists ids, names, public URLs, sizes, expiry, and write_policy. Share and write passwords are omitted. Same size and file-count caps as a site export; over the cap is 400 or 413 with the totals, and the message tells the caller to GET /v1/sites/{id}/export per site. Empty ownership is 400 empty_export. Do this before POST /v1/cleanup {} or retiring an account.",
+        "description": "Token read. Zips every site and loose file keyed to the caller's owner_id, not everything they created or last wrote. Each site is under sites/{id}/ with its original paths. Loose files are under files/{id}/{filename}. manifest.json lists ids, names, public URLs, sizes, expiry, write_policy, and link_access; a private object's public URL answers 403 link_private, so read it through /v1. Share and write passwords are omitted. Same size and file-count caps as a site export; over the cap is 400 or 413 with the totals, and the message tells the caller to GET /v1/sites/{id}/export per site. Empty ownership is 400 empty_export. Do this before POST /v1/cleanup {} or retiring an account.",
         "responses": {
           "200": {
             "description": "The archive, as an attachment named {handle}-owned.zip.",

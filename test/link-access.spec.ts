@@ -1,4 +1,5 @@
 import { env } from "cloudflare:test";
+import { unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { PASSWORD_HEADER, WRITE_PASSWORD_HEADER } from "../src/config";
 import { access, auth, createSite, json, mint, mintAdmin, req } from "./helpers";
@@ -327,5 +328,43 @@ describe("link access", () => {
     expect((await json(uploaded.body.url)).body.error).toBe("link_private");
     const status = await json(`/v1/grants/${minted.body.id}`, { headers: auth(token) });
     expect(status.body.target.link_access).toBe("private");
+  });
+  it("answers not_found for another account's private ids in cleanup, but not for the owner or an admin", async () => {
+    const owner = await mint("la-clean-owner", "la-clean@esperlabs.app");
+    const other = await mint("la-clean-other", "la-clean-other@esperlabs.app");
+    const admin = await mintAdmin("la-clean-ops");
+    const file = await createFile(owner, "la-clean.md", "c", { "x-energon-link-access": "private" });
+    const site = await createSite(owner, "la-clean", { link_access: "private" });
+    const shared = await createFile(owner, "la-clean-shared.md", "s", { "x-energon-write-policy": "owner" });
+    const preview = (token: string, path: string, target: Record<string, unknown>) =>
+      json(path, { method: "POST", headers: auth(token, { "content-type": "application/json" }), body: JSON.stringify({ target, action: "delete" }) });
+    const ids = { sites: [site.id], files: [file.body.id] };
+
+    const hidden = await preview(other, "/v1/cleanup", ids);
+    expect(hidden.body.eligible).toBe(0);
+    expect(hidden.body.skipped.by_reason).toEqual({ not_found: 2 });
+    const publicPreview = await preview(other, "/v1/cleanup", { files: [shared.body.id] });
+    expect(publicPreview.body.skipped.by_reason).toEqual({ not_writable: 1 });
+
+    expect((await preview(owner, "/v1/cleanup", ids)).body.eligible).toBe(2);
+    expect((await preview(admin, "/v1/admin/cleanup", ids)).body.eligible).toBe(2);
+  });
+
+  it("records link access in the account export manifest", async () => {
+    const token = await mint("la-export", "la-export@esperlabs.app");
+    const file = await createFile(token, "la-export.md", "p", { "x-energon-link-access": "private" });
+    const open = await createFile(token, "la-export-open.md", "o");
+    const site = await createSite(token, "la-export", { link_access: "private" });
+    await req(`/v1/sites/${site.id}/files/index.html`, { method: "PUT", headers: auth(token, { "content-type": "text/html" }), body: "<p>x</p>" });
+
+    const exported = await req("/v1/export", { headers: auth(token) });
+    expect(exported.status).toBe(200);
+    const unpacked = unzipSync(new Uint8Array(await exported.arrayBuffer()));
+    expect(new TextDecoder().decode(unpacked[`files/${file.body.id}/la-export.md`])).toBe("p");
+    const manifest = JSON.parse(new TextDecoder().decode(unpacked["manifest.json"]));
+    const linkAccessOf = (list: { id: string; link_access: string }[], id: string) => list.find((entry) => entry.id === id)?.link_access;
+    expect(linkAccessOf(manifest.sites, site.id)).toBe("private");
+    expect(linkAccessOf(manifest.files, file.body.id)).toBe("private");
+    expect(linkAccessOf(manifest.files, open.body.id)).toBe("public");
   });
 });
