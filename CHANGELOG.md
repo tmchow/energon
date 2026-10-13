@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.15.0](https://github.com/tmchow/energon/compare/v1.14.0...v1.15.0) (2026-10-13)
+
+
+### Features
+
+* let owners make sites and files private ([#163](https://github.com/tmchow/energon/issues/163)) ([a368cfa](https://github.com/tmchow/energon/commit/a368cfa15a90b1ae451aad828d82ffc31e41cf9c))
+
+
+### Bug Fixes
+
+* close private link access gaps in export, cleanup, and grant docs ([#167](https://github.com/tmchow/energon/issues/167)) ([a13b044](https://github.com/tmchow/energon/commit/a13b044899134f5cc00aa7c7ca5482ddb134258d))
+* **hub:** keep select-all cleanup inside the changed-since-read filter ([#166](https://github.com/tmchow/energon/issues/166)) ([239ee47](https://github.com/tmchow/energon/commit/239ee47262ba148dc1361fc2361d2687a0876bc3))
+
 ## [1.14.0](https://github.com/tmchow/energon/compare/v1.13.1...v1.14.0) (2026-10-09)
 
 
