@@ -245,6 +245,20 @@ describe("signed-in pages", () => {
     expect(html).not.toContain('id="catalog-last-read"');
   });
 
+  it("disables select-all-matching while changed-since-read is on", async () => {
+    const email = "svelte-changed@esperlabs.app";
+    const token = await mint("svelte-changed", email);
+    await json("/v1/files", { method: "POST", headers: { authorization: `Bearer ${token}`, "X-Filename": "changed-one.md", "content-type": "text/markdown" }, body: "# one" });
+    const on = await (await req("/?q=changed-one&changed_since_read=1", { headers: access(email) })).text();
+    expect(on).toContain("changed-one.md");
+    expect(on).toMatch(/id="catalog-select-matching"[^>]*disabled/);
+    expect(on).toContain('aria-describedby="catalog-select-matching-note"');
+    expect(on).toContain("Select all matching is off while Changed since last open is on.");
+    const off = await (await req("/?q=changed-one", { headers: access(email) })).text();
+    expect(off).not.toMatch(/id="catalog-select-matching"[^>]*disabled/);
+    expect(off).not.toContain('id="catalog-select-matching-note"');
+  });
+
   it("catalog password marks appear only when a hash is set", async () => {
     const email = "svelte-marks@esperlabs.app";
     const token = await mint("svelte-marks", email);

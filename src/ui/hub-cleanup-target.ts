@@ -6,7 +6,12 @@ export type HubCleanupFind = {
   expiresBefore: string;
   updatedBefore: string;
   minSize: string;
+  changedSinceRead: boolean;
 };
+
+// /v1/cleanup has no changed_since_read target, so matching would act on rows the filtered list hides.
+export const HUB_MATCHING_BLOCKED_CHANGED_SINCE_READ =
+  'Select all matching is off while Changed since last open is on. Check rows or use Select visible.';
 
 export type HubCleanupPick =
   | { matching: true }
@@ -14,6 +19,7 @@ export type HubCleanupPick =
 
 export function hubCleanupTarget(pick: HubCleanupPick, find: HubCleanupFind): Record<string, unknown> | null {
   if (pick.matching) {
+    if (find.changedSinceRead) return null;
     const target: Record<string, unknown> = {};
     if (find.q.trim()) target.q = find.q.trim();
     if (find.scope !== 'involved') target.scope = find.scope;
