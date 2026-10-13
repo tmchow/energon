@@ -1,4 +1,5 @@
 import { SITE_FILE_COUNT_SQL, SITE_SIZE_SQL, SITE_FILE_TOTALS_JOIN_SQL, catalogCursorSql, criteriaSql, nextCatalogCursor, takePage, type CatalogCursorRow, type ListPage, type ListQuery } from "./catalog";
+import { storedLinkAccess, type LinkAccess } from "./link-access";
 import { resolveWritePolicy } from "./policy";
 import { publicOrigin } from "./http";
 import { filePublicUrl, sitePublicUrl } from "./urls";
@@ -16,6 +17,7 @@ type UnionRow = CatalogCursorRow & {
   expires_at: string | null;
   last_read_at: string | null;
   write_policy: string | null;
+  link_access: string | null;
   file_count: number | null;
   content_type: string | null;
 };
@@ -33,6 +35,7 @@ type Shared = {
   expires_at: string | null;
   last_read_at: string | null;
   write_policy: string;
+  link_access: LinkAccess;
 };
 
 export type HubCatalogItem =
@@ -40,7 +43,7 @@ export type HubCatalogItem =
   | (Shared & { kind: "file"; filename: string; updated_at: string | null; content_type: string; api_url: string });
 
 const UNION_COLUMNS =
-  "kind, id, handle, name, sort_updated, created_at, updated_at, created_by, last_written_by, password_hash, write_password_hash, written_via, expires_at, last_read_at, write_policy, file_count, size, content_type";
+  "kind, id, handle, name, sort_updated, created_at, updated_at, created_by, last_written_by, password_hash, write_password_hash, written_via, expires_at, last_read_at, write_policy, link_access, file_count, size, content_type";
 
 /**
  * Sites and loose files as one keyset-paged list. Each branch keeps its own criteria
@@ -52,7 +55,7 @@ export async function listHubCatalog(env: Env, email: string, query: ListQuery, 
     const c = criteriaSql("sites", query, email, ownerId);
     branches.push({
       sql: `SELECT 'site' AS kind, s.id, s.handle, s.slug AS name, s.updated_at AS sort_updated, s.created_at, s.updated_at, s.created_by, s.last_written_by,
-              s.password_hash, s.write_password_hash, s.written_via, s.expires_at, s.last_read_at, s.write_policy,
+              s.password_hash, s.write_password_hash, s.written_via, s.expires_at, s.last_read_at, s.write_policy, s.link_access,
               ${SITE_FILE_COUNT_SQL} AS file_count, ${SITE_SIZE_SQL} AS size, NULL AS content_type
             FROM sites s ${SITE_FILE_TOTALS_JOIN_SQL}
             WHERE s.lifecycle_state = 'live' AND ${c.where} GROUP BY s.id${c.having ? ` HAVING ${c.having}` : ""}`,
@@ -63,7 +66,7 @@ export async function listHubCatalog(env: Env, email: string, query: ListQuery, 
     const c = criteriaSql("files", query, email, ownerId);
     branches.push({
       sql: `SELECT 'file' AS kind, id, handle, filename AS name, COALESCE(updated_at, created_at) AS sort_updated, created_at, updated_at, created_by, last_written_by,
-              password_hash, write_password_hash, written_via, expires_at, last_read_at, write_policy,
+              password_hash, write_password_hash, written_via, expires_at, last_read_at, write_policy, link_access,
               NULL AS file_count, size, content_type
             FROM loose_files WHERE ${c.where}`,
       binds: c.whereBinds,
@@ -93,6 +96,7 @@ export async function listHubCatalog(env: Env, email: string, query: ListQuery, 
       expires_at: row.expires_at ?? null,
       last_read_at: row.last_read_at ?? null,
       write_policy: resolveWritePolicy(row.write_policy),
+      link_access: storedLinkAccess(row.link_access),
     };
     if (row.kind === "site") {
       const handle = row.handle ?? "";

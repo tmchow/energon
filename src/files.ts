@@ -38,6 +38,7 @@ import { consumeGrantStatement, grantBusy, grantCommitFailure, GRANT_LEASE_SQL, 
 import { ensureHandle, ensureUser } from "./handles";
 import { maybeUnlockWithWritePassword, passwordEcho, passwordField, passwordHashFromInput, protectContent, readSetPasswordHeader, readSetWritePasswordHeader, assignPasswordStore, hubLinkAccessFields, storedPasswordSecret, writePasswordField, writePasswordHashFromInput } from "./gate";
 import { filePublicUrl, isFileId, urlFilename } from "./urls";
+import { assertLinkAccessGuard, hiddenFrom, linkAccessFromRequest, linkPrivateResponse, patchLinkAccess, privatePasswordConflict, resolveCreateAccess, STILL_PUBLIC_SQL, storedLinkAccess } from "./link-access";
 import {
   ApiError,
   applyIsolation,
@@ -70,7 +71,6 @@ import {
   canSetWritePolicy,
   instancePolicy,
   requestedWritePolicy,
-  resolveCreateWritePolicy,
   resolveExpiresAt,
   resolveWritePolicy,
   ttlFromRequest,
@@ -156,6 +156,7 @@ export async function createLooseFile(
   ttl?: unknown,
   writePolicy?: unknown,
   writePassword?: string,
+  linkAccess?: unknown,
   guard?: GrantGuard,
 ): Promise<Response> {
   const policy = instancePolicy(env);
@@ -171,12 +172,12 @@ export async function createLooseFile(
   const writeHash = await writePasswordHashFromInput(writePassword);
   const stored = hash === undefined ? null : hash;
   const storedWritePw = writeHash === undefined ? null : writeHash;
+  const { access, writePolicy: storedWrite } = resolveCreateAccess(env, linkAccess, writePolicy, stored, storedWritePw);
   const resolved = resolveExpiresAt(policy, ttl);
-  const storedWrite = resolveCreateWritePolicy(env, writePolicy);
   const key = fileKey(id, filename);
   const url = filePublicUrl(env, handle, id, filename);
-  const columns = `id, handle, owner_id, filename, size, content_type, created_at, created_by, updated_at, last_written_by, password_hash, password_secret, expires_at, write_policy, write_password_hash, write_password_secret`;
-  const values = [id, handle, user.id, filename, upload.size, contentType, ts, actor.email, ts, actor.email, stored, storedPasswordSecret(stored, password), resolved.expiresAt, storedWrite, storedWritePw, storedPasswordSecret(storedWritePw, writePassword)];
+  const columns = `id, handle, owner_id, filename, size, content_type, created_at, created_by, updated_at, last_written_by, password_hash, password_secret, expires_at, write_policy, write_password_hash, write_password_secret, link_access`;
+  const values = [id, handle, user.id, filename, upload.size, contentType, ts, actor.email, ts, actor.email, stored, storedPasswordSecret(stored, password), resolved.expiresAt, storedWrite, storedWritePw, storedPasswordSecret(storedWritePw, writePassword), access];
   const reserved = await assertStorageRoom(env.DB, upload.size, 0, policy.platformBytes,
     { fileId: id, targetKey: key, operation: "create", ownerId: user.id });
   let wrote = false;
@@ -189,7 +190,7 @@ export async function createLooseFile(
       const now = new Date(ts);
       const [inserted] = await env.DB.batch([
         env.DB.prepare(
-          `INSERT INTO loose_files (${columns}) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ${GRANT_LEASE_SQL}`,
+          `INSERT INTO loose_files (${columns}) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ${GRANT_LEASE_SQL}`,
         ).bind(...values, ...grantLeaseBinds(guard, now)),
         legacyHandoffStatement(env.DB, reserved),
         consumeGrantStatement(env, guard, now, { id, url }, `EXISTS (SELECT 1 FROM storage_allocations WHERE id = ? AND state = 'released')`, [reserved.id]),
@@ -200,7 +201,7 @@ export async function createLooseFile(
       }
     } else {
       await env.DB.batch([
-        env.DB.prepare(`INSERT INTO loose_files (${columns}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(...values),
+        env.DB.prepare(`INSERT INTO loose_files (${columns}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(...values),
         legacyHandoffStatement(env.DB, reserved),
         legacyQuotaStatement(env.DB),
       ]);
@@ -227,6 +228,7 @@ export async function createLooseFile(
     ttl: resolved.ttl,
     expires_at: resolved.expiresAt,
     write_policy: storedWrite,
+    link_access: access,
     content_generation: 1,
   };
   return jsonMaybeSecret(body, 201);
@@ -242,13 +244,14 @@ export async function duplicateLooseFile(
   ttl?: unknown,
   writePolicy?: unknown,
   writePassword?: string,
+  linkAccess?: unknown,
 ): Promise<Response> {
   const fromId = fromIdRaw.trim();
   if (!isFileId(fromId)) {
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
   const source = await env.DB.prepare(
-    `SELECT id, handle, filename, size, content_type, expires_at FROM loose_files WHERE id = ?`,
+    `SELECT id, handle, filename, size, content_type, expires_at, created_by, owner_id, link_access FROM loose_files WHERE id = ?`,
   )
     .bind(fromId)
     .first<{
@@ -258,8 +261,11 @@ export async function duplicateLooseFile(
       size: number;
       content_type: string;
       expires_at: string | null;
+      created_by: string;
+      owner_id: string | null;
+      link_access: string | null;
     }>();
-  if (!source) {
+  if (!source || hiddenFrom(actor, source)) {
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
   if (isExpired(source.expires_at)) {
@@ -281,8 +287,8 @@ export async function duplicateLooseFile(
   const writeHash = await writePasswordHashFromInput(writePassword);
   const stored = hash === undefined ? null : hash;
   const storedWritePw = writeHash === undefined ? null : writeHash;
+  const { access, writePolicy: storedWrite } = resolveCreateAccess(env, linkAccess, writePolicy, stored, storedWritePw);
   const resolved = resolveExpiresAt(policy, ttl);
-  const storedWrite = resolveCreateWritePolicy(env, writePolicy);
   const newKey = fileKey(id, filename);
   const reserved = await assertStorageRoom(env.DB, source.size, 0, policy.platformBytes,
     { fileId: id, targetKey: newKey, operation: "duplicate", ownerId: user.id });
@@ -293,10 +299,10 @@ export async function duplicateLooseFile(
     wrote = true;
     await markLegacyReservation(env.DB, reserved, "stored");
     await env.DB.batch([env.DB.prepare(
-      `INSERT INTO loose_files (id, handle, owner_id, filename, size, content_type, created_at, created_by, updated_at, last_written_by, password_hash, password_secret, expires_at, write_policy, write_password_hash, write_password_secret)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO loose_files (id, handle, owner_id, filename, size, content_type, created_at, created_by, updated_at, last_written_by, password_hash, password_secret, expires_at, write_policy, write_password_hash, write_password_secret, link_access)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-      .bind(id, handle, user.id, filename, source.size, source.content_type, ts, actor.email, ts, actor.email, stored, storedPasswordSecret(stored, password), resolved.expiresAt, storedWrite, storedWritePw, storedPasswordSecret(storedWritePw, writePassword)),
+      .bind(id, handle, user.id, filename, source.size, source.content_type, ts, actor.email, ts, actor.email, stored, storedPasswordSecret(stored, password), resolved.expiresAt, storedWrite, storedWritePw, storedPasswordSecret(storedWritePw, writePassword), access),
       legacyHandoffStatement(env.DB, reserved),
       legacyQuotaStatement(env.DB),
     ]);
@@ -323,6 +329,7 @@ export async function duplicateLooseFile(
     ttl: resolved.ttl,
     expires_at: resolved.expiresAt,
     write_policy: storedWrite,
+    link_access: access,
     content_generation: 1,
     duplicated: true,
     duplicated_from: source.id,
@@ -368,6 +375,7 @@ export function duplicateLooseFromJson(
     body.ttl,
     body.write_policy,
     writePasswordField(body),
+    body.link_access,
   );
 }
 
@@ -394,6 +402,7 @@ async function postLooseJson(
       ttlFromRequest(request),
       writePolicyFromRequest(request),
       readSetWritePasswordHeader(request),
+      linkAccessFromRequest(request),
     ));
   }
   const text = await request.text();
@@ -419,6 +428,7 @@ async function postLooseJson(
       body ? body.ttl : ttlFromRequest(request),
       body ? body.write_policy : writePolicyFromRequest(request),
       body ? writePasswordField(body) : readSetWritePasswordHeader(request),
+      body ? body.link_access : linkAccessFromRequest(request),
     );
   }
   throw new ApiError(
@@ -457,6 +467,7 @@ async function postLooseMultipart(
       ttlFromRequest(request, form),
       writePolicyFromRequest(request, form),
       formWritePassword(request, form),
+      linkAccessFromRequest(request, form),
     );
   }
   const file = form.get("file");
@@ -480,6 +491,7 @@ async function postLooseMultipart(
     ttlFromRequest(request, form),
     writePolicyFromRequest(request, form),
     formWritePassword(request, form),
+    linkAccessFromRequest(request, form),
   );
 }
 
@@ -509,6 +521,7 @@ export async function postLooseFromRequest(
       ttlFromRequest(request),
       writePolicyFromRequest(request),
       readSetWritePasswordHeader(request),
+      linkAccessFromRequest(request),
     );
   }
   const filename = filenameHeader(request);
@@ -530,6 +543,7 @@ export async function postLooseFromRequest(
     ttlFromRequest(request),
     writePolicyFromRequest(request),
     readSetWritePasswordHeader(request),
+    linkAccessFromRequest(request),
   ));
 }
 
@@ -588,7 +602,8 @@ async function commitLooseFileReplacement(
   assignPasswordStore(assignments, values, hash, password, "password_hash", "password_secret");
   const conditional = generationGuard(expectedVersion);
   const where = [id, claimToken, ...conditional.binds];
-  const update = `UPDATE loose_files SET ${assignments.join(", ")} WHERE id = ? AND last_written_by = ?${conditional.sql}`;
+  const stillPublic = hash ? ` AND ${STILL_PUBLIC_SQL}` : "";
+  const update = `UPDATE loose_files SET ${assignments.join(", ")} WHERE id = ? AND last_written_by = ?${conditional.sql}${stillPublic}`;
   let updated: D1Result<{ content_generation: number }>;
   if (guard) {
     const now = new Date(ts);
@@ -617,6 +632,7 @@ async function commitLooseFileReplacement(
     const grantProblem = guard ? await grantCommitFailure(env, guard) : null;
     if (grantProblem) throw grantProblem;
     await throwIfGenerationMoved(env, id, expectedVersion);
+    if (hash) await assertLinkAccessGuard(env.DB, "loose_files", id, STILL_PUBLIC_SQL);
     throw new ApiError(409, "file_write_lost", "The file changed during replacement; retry.");
   }
   return updated.results[0]!.content_generation;
@@ -624,7 +640,7 @@ async function commitLooseFileReplacement(
 
 type ReplaceableLooseFile = Pick<
   LooseFileRow,
-  "id" | "handle" | "filename" | "size" | "content_type" | "expires_at" | "created_by" | "last_written_by" | "updated_at" | "write_policy" | "owner_id" | "password_hash" | "content_generation"
+  "id" | "handle" | "filename" | "size" | "content_type" | "expires_at" | "created_by" | "last_written_by" | "updated_at" | "write_policy" | "owner_id" | "password_hash" | "content_generation" | "link_access"
 >;
 
 async function loadReplaceableLooseFile(
@@ -634,7 +650,7 @@ async function loadReplaceableLooseFile(
   id: string,
 ): Promise<ReplaceableLooseFile> {
   const existing = await env.DB.prepare(
-    `SELECT id, handle, filename, size, content_type, expires_at, created_by, last_written_by, updated_at, write_policy, owner_id, password_hash, content_generation FROM loose_files WHERE id = ?`,
+    `SELECT id, handle, filename, size, content_type, expires_at, created_by, last_written_by, updated_at, write_policy, owner_id, password_hash, content_generation, link_access FROM loose_files WHERE id = ?`,
   )
     .bind(id)
     .first<ReplaceableLooseFile>();
@@ -645,6 +661,7 @@ async function loadReplaceableLooseFile(
       `No loose file '${id}'. Create it first with POST /v1/files, then PUT /v1/files/{id} to replace it.`,
     );
   }
+  if (hiddenFrom(actor, existing)) throw new ApiError(404, "file_not_found", "No loose file with that id.");
   if (isWriteClaimed(existing.last_written_by) && !isStaleClaim(existing.updated_at)) {
     throw await looseFileBusy(env, id, "Another write is in progress; retry this replacement.");
   }
@@ -731,6 +748,7 @@ export async function putLooseFile(
   const contentType = guard && existing.content_type ? existing.content_type : contentTypeFor(filename, upload.head, hintType);
   const ts = new Date().toISOString();
   const hash = await passwordHashFromInput(password);
+  if (hash && storedLinkAccess(existing.link_access) === "private") throw privatePasswordConflict();
   const handle = existing.handle || (await ensureHandle(env, actor.email, actor.idpSub));
   const oldKey = fileKey(id, existing.filename);
   const newKey = fileKey(id, filename);
@@ -797,11 +815,11 @@ export async function putLooseFile(
   });
 }
 
-type LooseFilePatch = { password?: string; write_password?: string; ttl?: unknown; setTtl?: boolean; write_policy?: unknown };
+type LooseFilePatch = { password?: string; write_password?: string; ttl?: unknown; setTtl?: boolean; write_policy?: unknown; link_access?: unknown };
 
 async function prepareLooseFilePatch(
   actor: Actor,
-  existing: Pick<LooseFileRow, "created_by" | "owner_id" | "write_policy">,
+  existing: Pick<LooseFileRow, "created_by" | "owner_id" | "write_policy" | "link_access" | "password_hash" | "write_password_hash">,
   patch: LooseFilePatch,
   asAdmin: boolean,
 ) {
@@ -824,7 +842,11 @@ async function prepareLooseFilePatch(
     assertCanSetWritePolicy(actor, existing.created_by, existing.owner_id);
   }
   const hash = await passwordHashFromInput(patch.password);
-  return { wantsWrite, nextWrite, writeHash, hash };
+  const access = patchLinkAccess(existing.link_access, patch.link_access,
+    { password: Boolean(existing.password_hash), writePassword: Boolean(existing.write_password_hash), writePolicy: resolveWritePolicy(existing.write_policy) },
+    { password: hash, writePassword: writeHash, writePolicy: wantsWrite ? nextWrite : undefined });
+  if (access.changed) assertCanSetWritePolicy(actor, existing.created_by, existing.owner_id);
+  return { wantsWrite: wantsWrite || access.forcedOwner, nextWrite: access.writePolicy, writeHash, hash, access };
 }
 
 function looseFilePatchAssignments(
@@ -835,11 +857,11 @@ function looseFilePatchAssignments(
   ts: string,
   asAdmin: boolean,
 ) {
-  const { wantsWrite, nextWrite, writeHash, hash } = prepared;
-  const ttlOnlyAdmin = asAdmin && Boolean(patch.setTtl) && hash === undefined && writeHash === undefined && !wantsWrite;
+  const { wantsWrite, nextWrite, writeHash, hash, access } = prepared;
+  const ttlOnlyAdmin = asAdmin && Boolean(patch.setTtl) && hash === undefined && writeHash === undefined && !wantsWrite && !access.changed;
   const assignments: string[] = [];
   const values: unknown[] = [];
-  if (hash !== undefined || writeHash !== undefined || resolved || wantsWrite) {
+  if (hash !== undefined || writeHash !== undefined || resolved || wantsWrite || access.changed) {
     if (!ttlOnlyAdmin) {
       assignments.push("updated_at = ?", "last_written_by = ?", "written_via = NULL");
       values.push(ts, actor.email);
@@ -858,6 +880,10 @@ function looseFilePatchAssignments(
       assignments.push("write_policy = ?");
       values.push(nextWrite);
     }
+    if (access.changed) {
+      assignments.push("link_access = ?");
+      values.push(access.next);
+    }
   }
   return { assignments, values };
 }
@@ -874,7 +900,7 @@ export async function patchLoose(
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
   const existing = await env.DB.prepare(
-    `SELECT id, handle, filename, password_hash, write_password_hash, expires_at, created_by, last_written_by, updated_at, write_policy, owner_id, content_generation FROM loose_files WHERE id = ?`,
+    `SELECT id, handle, filename, password_hash, write_password_hash, expires_at, created_by, last_written_by, updated_at, write_policy, owner_id, content_generation, link_access FROM loose_files WHERE id = ?`,
   )
     .bind(id)
     .first<{
@@ -890,8 +916,9 @@ export async function patchLoose(
       write_policy: string | null;
       owner_id: string | null;
       content_generation: number;
+      link_access: string | null;
     }>();
-  if (!existing) {
+  if (!existing || (!asAdmin && hiddenFrom(actor, existing))) {
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
   if (isWriteClaimed(existing.last_written_by) && !isStaleClaim(existing.updated_at)) {
@@ -906,7 +933,7 @@ export async function patchLoose(
     throw expiredError("file");
   }
   const prepared = await prepareLooseFilePatch(actor, existing, patch, asAdmin);
-  const { nextWrite, writeHash, hash } = prepared;
+  const { nextWrite, writeHash, hash, access } = prepared;
   const ts = new Date().toISOString();
   const handle = existing.handle || (await ensureHandle(env, actor.email, actor.idpSub));
   const resolved = patch.setTtl ? resolveExpiresAt(instancePolicy(env), patch.ttl) : null;
@@ -915,13 +942,16 @@ export async function patchLoose(
   const { assignments, values } = looseFilePatchAssignments(actor, patch, prepared, resolved, ts, asAdmin);
   if (assignments.length) {
     const updated = await env.DB.prepare(
-      `UPDATE loose_files SET ${assignments.join(", ")} WHERE id = ? AND ${notClaimed} AND ${NO_LOOSE_RECOVERY_SQL}`,
+      `UPDATE loose_files SET ${assignments.join(", ")} WHERE id = ? AND ${notClaimed} AND ${NO_LOOSE_RECOVERY_SQL} AND ${access.guardSql}`,
     )
       .bind(...values, id, ...claimGuards)
       .run();
-    if (!d1Changed(updated)) await throwLooseFileMutationConflict(env, id);
+    if (!d1Changed(updated)) {
+      await assertLinkAccessGuard(env.DB, "loose_files", id, access.guardSql);
+      await throwLooseFileMutationConflict(env, id);
+    }
   }
-  if (hash !== undefined || writeHash !== undefined || resolved) {
+  if (hash !== undefined || writeHash !== undefined || resolved || access.purge) {
     await purgeContent(ctx, [filePrefix(handle, id)]);
   }
   const origin = publicOrigin(env);
@@ -940,6 +970,7 @@ export async function patchLoose(
     expires_at: resolved ? resolved.expiresAt : existing.expires_at ?? null,
     ttl: resolved ? resolved.ttl : undefined,
     write_policy: nextWrite,
+    link_access: access.next,
     content_generation: existing.content_generation,
   };
   return jsonMaybeSecret(body);
@@ -960,7 +991,7 @@ export async function hubLooseLinkAccess(env: Env, actor: Actor, id: string): Pr
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
   const row = await env.DB.prepare(
-    `SELECT id, handle, filename, created_by, last_written_by, owner_id, password_hash, password_secret, write_password_hash, write_password_secret, expires_at FROM loose_files WHERE id = ?`,
+    `SELECT id, handle, filename, created_by, last_written_by, owner_id, password_hash, password_secret, write_password_hash, write_password_secret, expires_at, link_access FROM loose_files WHERE id = ?`,
   )
     .bind(id)
     .first<{
@@ -975,8 +1006,9 @@ export async function hubLooseLinkAccess(env: Env, actor: Actor, id: string): Pr
       write_password_hash: string | null;
       write_password_secret: string | null;
       expires_at: string | null;
+      link_access: string | null;
     }>();
-  if (!row || !involvedInLoose(actor, row)) {
+  if (!row || !involvedInLoose(actor, row) || hiddenFrom(actor, row)) {
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
   if (isExpired(row.expires_at)) throw expiredError("file");
@@ -986,6 +1018,7 @@ export async function hubLooseLinkAccess(env: Env, actor: Actor, id: string): Pr
     handle,
     filename: row.filename,
     url: filePublicUrl(env, handle, row.id, row.filename),
+    link_access: storedLinkAccess(row.link_access),
     ...hubLinkAccessFields(canSetWritePolicy(actor, row.created_by, row.owner_id), row),
   });
 }
@@ -1045,6 +1078,7 @@ export async function putLooseFromRequest(
 export async function getLooseFile(
   env: Env,
   ctx: ExecutionContext | undefined,
+  actor: Actor,
   id: string,
   opts?: { attachment?: boolean },
 ): Promise<Response> {
@@ -1052,7 +1086,7 @@ export async function getLooseFile(
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
   const row = await env.DB.prepare(
-    `SELECT id, handle, filename, content_type, expires_at, write_policy, last_read_at, content_generation FROM loose_files WHERE id = ?`,
+    `SELECT id, handle, filename, content_type, expires_at, write_policy, last_read_at, content_generation, link_access, created_by, owner_id FROM loose_files WHERE id = ?`,
   )
     .bind(id)
     .first<{
@@ -1064,8 +1098,11 @@ export async function getLooseFile(
       write_policy: string | null;
       last_read_at: string | null;
       content_generation: number;
+      link_access: string | null;
+      created_by: string;
+      owner_id: string | null;
     }>();
-  if (!row) {
+  if (!row || hiddenFrom(actor, row)) {
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
   if (isExpired(row.expires_at)) {
@@ -1087,6 +1124,7 @@ export async function getLooseFile(
   headers.set("cache-control", "private, no-store");
   headers.set("content-disposition", contentDisposition(opts?.attachment ? "attachment" : "inline", row.filename));
   headers.set("x-energon-write-policy", resolveWritePolicy(row.write_policy));
+  headers.set("x-energon-link-access", storedLinkAccess(row.link_access));
   headers.set(CONTENT_GENERATION_HEADER, String(row.content_generation));
   if (obj.size != null) headers.set("content-length", String(obj.size));
   return new Response(obj.body, { headers });
@@ -1103,7 +1141,7 @@ export async function deleteLooseFile(
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
   const row = await env.DB.prepare(
-    `SELECT id, handle, filename, size, expires_at, created_by, last_written_by, updated_at, write_policy, owner_id FROM loose_files WHERE id = ?`,
+    `SELECT id, handle, filename, size, expires_at, created_by, last_written_by, updated_at, write_policy, owner_id, link_access FROM loose_files WHERE id = ?`,
   )
     .bind(id)
     .first<{
@@ -1117,8 +1155,9 @@ export async function deleteLooseFile(
       updated_at: string | null;
       write_policy: string | null;
       owner_id: string | null;
+      link_access: string | null;
     }>();
-  if (!row) {
+  if (!row || (!asAdmin && hiddenFrom(actor, row))) {
     throw new ApiError(404, "file_not_found", "No loose file with that id.");
   }
   if (!asAdmin) assertCanMutate(actor, row);
@@ -1208,6 +1247,7 @@ export async function listLooseFor(
     expires_at: string | null;
     last_read_at: string | null;
     write_policy: string;
+    link_access: string;
   }>
 > {
   const origin = publicOrigin(env);
@@ -1221,7 +1261,7 @@ export async function listLooseFor(
     .first<{ n: number }>();
   const total = Number(countRow?.n ?? 0);
   const rows = await env.DB.prepare(
-    `SELECT id, handle, filename, size, content_type, created_at, created_by, updated_at, last_written_by, content_generation, password_hash, write_password_hash, written_via, expires_at, last_read_at, write_policy
+    `SELECT id, handle, filename, size, content_type, created_at, created_by, updated_at, last_written_by, content_generation, password_hash, write_password_hash, written_via, expires_at, last_read_at, write_policy, link_access
      FROM loose_files
      WHERE ${clauses.where}
      ORDER BY ${cursor.order}
@@ -1242,6 +1282,7 @@ export async function listLooseFor(
       expires_at: f.expires_at ?? null,
       last_read_at: f.last_read_at ?? null,
       write_policy: resolveWritePolicy(write_policy),
+      link_access: storedLinkAccess(f.link_access),
     };
   });
   const last = page.items[page.items.length - 1];
@@ -1272,7 +1313,7 @@ export async function serveLoose(
   }
   filename = basename(filename);
   const row = await env.DB.prepare(
-    `SELECT id, handle, filename, password_hash, write_password_hash, expires_at, last_read_at, content_generation FROM loose_files WHERE id = ?`,
+    `SELECT id, handle, filename, password_hash, write_password_hash, expires_at, last_read_at, content_generation, link_access FROM loose_files WHERE id = ?`,
   )
     .bind(id)
     .first<{
@@ -1284,6 +1325,7 @@ export async function serveLoose(
       expires_at: string | null;
       last_read_at: string | null;
       content_generation: number;
+      link_access: string | null;
     }>();
   if (!row || (row.handle && row.handle !== handle)) {
     return new Response("Not found", { status: 404, headers: { "cache-control": "no-store" } });
@@ -1291,6 +1333,9 @@ export async function serveLoose(
   if (isExpired(row.expires_at)) {
     schedulePurgeExpiredFile(env, ctx, row.id, row.handle, row.filename);
     return expiredHtml("file");
+  }
+  if (storedLinkAccess(row.link_access) === "private") {
+    return linkPrivateResponse(request);
   }
 
   const cookiePath = `/${handle}/f/${id}/`;

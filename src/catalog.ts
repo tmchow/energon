@@ -303,6 +303,7 @@ type Columns = {
   lastRead: string;
   size: string;
   sizeClause: "where" | "having";
+  linkAccess: string;
 };
 
 /** Site size is an aggregate over site_files, so its predicates go in HAVING. */
@@ -318,6 +319,7 @@ const COLUMNS: Record<CatalogKind, Columns> = {
     lastRead: "s.last_read_at",
     size: SITE_SIZE_SQL,
     sizeClause: "having",
+    linkAccess: "s.link_access",
   },
   files: {
     created: "created_by",
@@ -330,6 +332,7 @@ const COLUMNS: Record<CatalogKind, Columns> = {
     lastRead: "last_read_at",
     size: "size",
     sizeClause: "where",
+    linkAccess: "link_access",
   },
 };
 
@@ -362,6 +365,10 @@ export function criteriaSql(
     const involvement = involvementSql(cols.created, cols.written, me, criteria, ownerId ? { col: cols.owner, id: ownerId } : undefined);
     where.push(involvement.sql);
     whereBinds.push(...involvement.binds);
+    // A private object is listed only for its creating account, never for someone who last wrote it before.
+    const owned = ownerId ? `${cols.owner} = ?` : `lower(${cols.created}) = lower(?)`;
+    where.push(`(ifnull(${cols.linkAccess}, 'public') != 'private' OR ${owned})`);
+    whereBinds.push(ownerId ?? me);
   }
   const having: string[] = [];
   const havingBinds: unknown[] = [];

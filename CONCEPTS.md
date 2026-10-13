@@ -68,6 +68,11 @@ A per-object shared secret that lets someone outside the host replace bytes at a
 ### Share Password
 A per-object shared secret that gates reading a published URL. Browsers use the gate form and cookie. Agents send the share-password header. If a write password is also set, that phrase also unlocks the gate form. The share-password header does not accept the write phrase. The cookie never authorizes PUT or DELETE. The Hub keeps the phrase so the signed-in owner can copy it again. `/v1` GET returns only whether it is set. Verification still uses a hash.
 
+### Link Access
+A per-object setting that decides whether the public URL opens at all. `public`, the default, serves anyone with the link, gated only by an optional Share Password. `private` refuses every public-URL request, including guest writes, and limits the object to its creating account: only that account's Agent Keys can read or write it through `/v1`, and every other account is told it does not exist.
+
+A private object has no Share Password or Write Password, so going private requires clearing both in the same request, and its write policy is always owner. Anyone holding one of the creator's Agent Keys acts as the creator and can read it. Only the creating account can change it, and copies do not inherit it. If the creating account goes away, nobody can read the object; admins can still see its metadata and expire or delete it.
+
 ### Upload Grant
 A short-lived, single-use credential a token holder mints so a machine without a token can upload one file: a new loose file, a replacement for an existing one, or one path in a site. The machine sends the bytes straight to the grant's upload URL on the content origin.
 
@@ -96,6 +101,7 @@ Locative only: the place (this origin, vs someone not on this host). Not the nam
 - An Agent Key authenticates against the Energon that issued it.
 - Purge claims and Write claims make competing content mutations resolve before storage changes begin.
 - A Share Password gates reading a published URL. A Write Password authorizes guest PUT (and site-path DELETE) on that same object without an account.
+- Private Link Access closes the published URL entirely and limits the object to its creating account, so it cannot have either password or an org write policy.
 - An Upload Grant authorizes one upload to one target on behalf of the Agent Key that minted it.
 - The Well-known skill and `GET /v1/help` describe the same Energon; neither carries a credential.
 

@@ -1,9 +1,10 @@
 import { api, jsonBody } from './api';
+import type { LinkAccessMode } from './types';
 
 export type UploadFile = { path: string; file: File };
 export type StagedUpload = { kind: 'loose' | 'folder' | 'zip'; file?: File; files: UploadFile[]; slug: string; filename: string; createdSite?: PublishResult; importKey?: string; pendingImport?: PendingImport; folderManifest?: ManifestFile[]; folderStatusUrl?: string };
 type ManifestFile = { path: string; size: number; sha256: string; content_type: string };
-export type PublishResult = { url: string; content_generation?: number; id?: string; slug?: string; filename?: string; file_count?: number; password?: string; password_protected?: boolean; write_password?: string; write_password_protected?: boolean; written?: string[] };
+export type PublishResult = { url: string; content_generation?: number; id?: string; slug?: string; filename?: string; file_count?: number; password?: string; password_protected?: boolean; write_password?: string; write_password_protected?: boolean; link_access?: LinkAccessMode; written?: string[] };
 
 export function safeFilename(name: string, fallback: string): string {
   const base = String(name || fallback || 'file').replace(/\\/g, '/').split('/').pop() || 'file';
@@ -144,7 +145,7 @@ async function stageFolder(upload: StagedUpload, site: PublishResult, siteId: st
   rememberImport(upload.pendingImport, hooks);
 }
 
-type PublishOptions = { password: string; write_password: string; ttl: string; write_policy: string };
+type PublishOptions = { password: string; write_password: string; ttl: string; write_policy: string; link_access?: LinkAccessMode };
 
 /** Raw bodies go past the server's multipart cap (IN_MEMORY_BYTES). Header values must be printable ASCII to survive as-is. */
 function rawUploadHeaders(file: File, filename: string, options: PublishOptions): Record<string, string> | null {
@@ -154,6 +155,7 @@ function rawUploadHeaders(file: File, filename: string, options: PublishOptions)
   if (options.write_password) headers['x-energon-set-write-password'] = options.write_password;
   if (options.ttl) headers['x-energon-ttl'] = options.ttl;
   if (options.write_policy) headers['x-energon-write-policy'] = options.write_policy;
+  if (options.link_access === 'private') headers['x-energon-link-access'] = 'private';
   return headers;
 }
 
@@ -168,12 +170,14 @@ export async function publish(upload: StagedUpload, options: PublishOptions, hoo
     if (options.write_password) form.set('write_password', options.write_password);
     if (options.ttl) form.set('ttl', options.ttl);
     if (options.write_policy) form.set('write_policy', options.write_policy);
+    if (options.link_access === 'private') form.set('link_access', 'private');
     return api('/account/files', { method: 'POST', body: form });
   }
   const slug = slugify(upload.slug);
   const siteBody: Record<string, unknown> = { slug, ttl: options.ttl, write_policy: options.write_policy };
   if (options.password) siteBody.password = options.password;
   if (options.write_password) siteBody.write_password = options.write_password;
+  if (options.link_access === 'private') siteBody.link_access = 'private';
   const site = upload.createdSite ?? await api<PublishResult>('/account/sites', jsonBody('POST', siteBody));
   upload.createdSite = site;
   const siteId = site.id || slug;

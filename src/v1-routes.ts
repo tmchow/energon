@@ -238,7 +238,7 @@ export const V1_TOKEN = {
       path: V1_LOOSE_ONE,
       methods: {
         GET: (c) =>
-          getLooseFile(c.env, c.ctx, decodeURIComponent(c.params[0]), { attachment: wantsDownload(c.request) }),
+          getLooseFile(c.env, c.ctx, c.actor, decodeURIComponent(c.params[0]), { attachment: wantsDownload(c.request) }),
         PUT: (c) => putLooseFromRequest(c.env, c.ctx, c.actor, decodeURIComponent(c.params[0]), c.request),
         PATCH: async (c) => {
           const body = await readJson(c.request);

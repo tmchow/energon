@@ -11,7 +11,7 @@ export type { BulkRevokePreview, BulkRevokeResult, BulkRevokeTarget, TokenStatus
 export type CatalogItem = {
   url: string; created_by: string; last_written_by: string | null;
   created_at: string; updated_at: string | null; expires_at: string | null; last_read_at?: string | null; size: number;
-  password_protected: boolean; write_password_protected?: boolean; written_via?: string | null; write_policy: string;
+  password_protected: boolean; write_password_protected?: boolean; written_via?: string | null; write_policy: string; link_access?: LinkAccessMode;
 } & ({ kind: 'site'; slug: string; file_count: number; id: string; filename?: never } | { kind: 'file'; id: string; filename: string; slug?: never; file_count?: never });
 export type CatalogItemKind = CatalogItem['kind'];
 export type CatalogData = {
@@ -28,7 +28,9 @@ export type HubQuery = {
   changedSinceRead?: boolean;
 };
 export type HubData = CatalogData & { handle: string | null; origin: string; content_origin: string; policy: RetentionPolicy; words: readonly string[]; query?: HubQuery };
+export type LinkAccessMode = 'public' | 'private';
 export type LinkAccess = {
+  link_access?: LinkAccessMode;
   password_protected: boolean;
   password?: string | null;
   write_password_protected?: boolean;

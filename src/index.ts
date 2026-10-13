@@ -223,7 +223,7 @@ const HUB_ROUTES: readonly PlainRoute[] = [
   { path: "/account/files", methods: { POST: human((c, actor) => postLooseFromRequest(c.env, c.ctx, actor, c.request)) } },
   {
     path: ACCOUNT_FILE_DOWNLOAD,
-    methods: { GET: human((c) => getLooseFile(c.env, c.ctx, decodeURIComponent(c.params[0]), { attachment: true })) },
+    methods: { GET: human((c, actor) => getLooseFile(c.env, c.ctx, actor, decodeURIComponent(c.params[0]), { attachment: true })) },
   },
   {
     path: ACCOUNT_FILE,

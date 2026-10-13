@@ -11,7 +11,7 @@
   import CopyButton from './CopyButton.svelte';
   import Button from './Button.svelte';
   import CatalogScan from './CatalogScan.svelte';
-  import { CATALOG_SCAN_LABEL, CATALOG_ACTION_SIZE } from '../catalog-scan';
+  import { CATALOG_SCAN_LABEL, CATALOG_ACTION_SIZE, type CatalogScanMark } from '../catalog-scan';
   let { items, cursor, busy, filtered = false, kind = 'all', writePolicyDefault, selected, onToggle, onToggleVisible, onSelectMatching, onMore, onPassword, onDelete, onLoadMore }:
     { items: CatalogItem[]; cursor: string | null; busy: boolean; filtered?: boolean; kind?: 'all' | 'sites' | 'files';
       writePolicyDefault: string;
@@ -22,9 +22,13 @@
       onMore: (item: CatalogItem) => void; onPassword: (item: CatalogItem) => void; onDelete: (item: CatalogItem) => void; onLoadMore: () => void } = $props();
   const name = (item: CatalogItem) => item.slug ?? item.filename;
   const size = (item: CatalogItem) => formatBytes(item.size) + (item.kind === 'site' ? ` · ${item.file_count} ${item.file_count === 1 ? 'file' : 'files'}` : '');
-  const orgMark = (item: CatalogItem) => item.write_policy === writePolicyDefault ? null : item.write_policy === 'org' ? 'people' as const : 'peopleOff' as const;
-  const passwordMark = (item: CatalogItem) => item.write_password_protected ? 'lockup' as const : item.password_protected ? 'lock' as const : null;
-  const passwordLabel = (item: CatalogItem) => item.write_password_protected ? CATALOG_SCAN_LABEL.lockup : CATALOG_SCAN_LABEL.lock;
+  const orgMark = (item: CatalogItem) => item.link_access === 'private' || item.write_policy === writePolicyDefault ? null : item.write_policy === 'org' ? 'people' as const : 'peopleOff' as const;
+  const passwordMark = (item: CatalogItem): CatalogScanMark | null => {
+    if (item.link_access === 'private') return 'key';
+    if (item.write_password_protected) return 'lockup';
+    return item.password_protected ? 'lock' : null;
+  };
+  const passwordLabel = (item: CatalogItem) => CATALOG_SCAN_LABEL[passwordMark(item) ?? 'lock'];
   const orgLabel = (item: CatalogItem) => item.write_policy === 'org' ? CATALOG_SCAN_LABEL.people : CATALOG_SCAN_LABEL.peopleOff;
   const downloadHref = (item: CatalogItem) => item.kind === 'site' ? `/account/sites/${encodeURIComponent(item.id)}/export` : `/account/files/${encodeURIComponent(item.id)}/download`;
   const allVisible = $derived(items.length > 0 && items.every((item) => selected(item)));
@@ -34,7 +38,7 @@
   <span class="en-catalog-name">
     <input type="checkbox" class="en-check" id="catalog-select-{item.kind}-{item.id}" aria-label="Select {name(item)}" checked={selected(item)} onchange={(event) => onToggle(item, event.currentTarget.checked)} />
     <Icon name={item.kind} size={16} title={item.kind === 'site' ? 'Site' : 'File'} className="en-catalog-kind" />
-    <a href={item.url}>{name(item)}</a>
+    {#if item.link_access === 'private'}<span title="Private: open it through the API or download it">{name(item)}</span>{:else}<a href={item.url}>{name(item)}</a>{/if}
   </span>
 {/snippet}
 {#snippet updated(item: CatalogItem)}<Timestamp value={item.updated_at || item.created_at} />{/snippet}

@@ -123,7 +123,7 @@ Write plain, declarative copy. Lead with the consequence, then explain the mecha
 | Publish; read, reference, or update | Language that reduces agent use to editing |
 | Stable link | Permanent link |
 | Independent copy | Version control, branch, or revision history |
-| Share password | Private workspace or per-person access promises |
+| Share password; Private for work only the creator's keys can open | Private workspace, shared-with lists, or per-person access beyond the creator |
 | This Energon; Want to deploy your own Energon?; anyone in the org; on this host (the place) | Instance as the product unit; host identity; this Energon’s identity; deploy your own instance/host |
 | “Nothing is written until you Publish.” | A success state while files are only staged |
 | “There is no recycle bin. Type the name to confirm.” | A vague “Are you sure?” for irreversible deletion |
@@ -138,7 +138,7 @@ Do not let visual simplification alter these contracts:
 - Agent key secrets are shown once; the key catalog remains redacted. Hub copy says "key", never "token", so people do not read it as LLM usage.
 - Share and write passwords stay visible on Hub Link access so they can be copied after creation. They are sharing secrets, not login passwords. `/v1` GET does not return them. Each door has an Off/On control. Phrase, generate, and copy appear only when that door is On. Off and Save removes it. Do not treat an emptied field as remove.
 - Connection approval remains a deliberate human action. Do not prefill or bypass the code step for convenience.
-- Read access, write policy, expiry, and share passwords remain distinct concepts. Catalog marks name those doors on hover: View password, Write password, Org can write, Org cannot write. Do not add a Password chip next to the lock. Show expiry in its own column only when a date is set; do not label unlimited work as Never.
+- Read access, write policy, expiry, and share passwords remain distinct concepts. Catalog marks name those doors on hover: Private, View password, Write password, Org can write, Org cannot write. A private object shows only Private: it cannot have either password and only its creator writes it, so those marks would be noise. Its name is not a link, because the public URL refuses browsers. Do not add a Password chip next to the lock. Show expiry in its own column only when a date is set; do not label unlimited work as Never.
 - Copy and success feedback describe an operation that actually completed.
 
 Reuse the existing formatting helpers for bytes, counts, and timestamps. Label the population and period behind a metric. Do not turn lifetime counts into an activity trend or infer readership from writes. Bars must encode actual values on a clear basis; preserve exact values alongside them. Tables should have enough width to scan labels and compare numbers without broken words.

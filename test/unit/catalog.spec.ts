@@ -235,10 +235,10 @@ describe("criteriaFrom", () => {
 });
 
 describe("criteriaSql", () => {
-  it("keeps the involvement predicate first and unchanged", () => {
+  it("keeps the involvement predicate first, then hides other accounts' private objects", () => {
     const sql = criteriaSql("files", q(""), ME);
-    expect(sql.where).toBe("(created_by = ? OR COALESCE(last_written_by, created_by) = ?)");
-    expect(sql.whereBinds).toEqual([ME, ME]);
+    expect(sql.where).toBe("(created_by = ? OR COALESCE(last_written_by, created_by) = ?) AND (ifnull(link_access, 'public') != 'private' OR lower(created_by) = lower(?))");
+    expect(sql.whereBinds).toEqual([ME, ME, ME]);
     expect(sql.having).toBe("");
     expect(sql.havingBinds).toEqual([]);
   });
@@ -258,16 +258,16 @@ describe("criteriaSql", () => {
   it("puts file filters in WHERE", () => {
     const sql = criteriaSql("files", q("?q=notes&expires=never&updated_before=2026-01-01&min_size=1kb"), ME, "u-ada");
     expect(sql.where).toBe(
-      "(owner_id = ? OR COALESCE(last_written_by, created_by) = ?) AND filename LIKE ? AND expires_at IS NULL AND COALESCE(updated_at, created_at) < ? AND size >= ?",
+      "(owner_id = ? OR COALESCE(last_written_by, created_by) = ?) AND (ifnull(link_access, 'public') != 'private' OR owner_id = ?) AND filename LIKE ? AND expires_at IS NULL AND COALESCE(updated_at, created_at) < ? AND size >= ?",
     );
-    expect(sql.whereBinds).toEqual(["u-ada", ME, "%notes%", "2026-01-01T00:00:00.000Z", 1024]);
+    expect(sql.whereBinds).toEqual(["u-ada", ME, "u-ada", "%notes%", "2026-01-01T00:00:00.000Z", 1024]);
     expect(sql.having).toBe("");
   });
 
   it("puts the site size floor in HAVING and the rest in WHERE", () => {
     const sql = criteriaSql("sites", q("?expires_before=2026-06-01&min_size=500mb"), ME);
-    expect(sql.where).toBe("(s.created_by = ? OR COALESCE(s.last_written_by, s.created_by) = ?) AND s.expires_at < ?");
-    expect(sql.whereBinds).toEqual([ME, ME, "2026-06-01T00:00:00.000Z"]);
+    expect(sql.where).toBe("(s.created_by = ? OR COALESCE(s.last_written_by, s.created_by) = ?) AND (ifnull(s.link_access, 'public') != 'private' OR lower(s.created_by) = lower(?)) AND s.expires_at < ?");
+    expect(sql.whereBinds).toEqual([ME, ME, ME, "2026-06-01T00:00:00.000Z"]);
     expect(sql.having).toBe("COALESCE(SUM(COALESCE(vf.size, f.size)), 0) >= ?");
     expect(sql.havingBinds).toEqual([500 * 1024 * 1024]);
   });
@@ -275,22 +275,22 @@ describe("criteriaSql", () => {
   it("expands expires_within to expires_before at request time", () => {
     const now = Date.parse("2026-09-16T00:00:00.000Z");
     const day = criteriaSql("files", q("?expires_within=24h"), ME, undefined, { now });
-    expect(day.where).toBe("(created_by = ? OR COALESCE(last_written_by, created_by) = ?) AND expires_at < ?");
-    expect(day.whereBinds).toEqual([ME, ME, "2026-09-17T00:00:00.000Z"]);
+    expect(day.where).toBe("(created_by = ? OR COALESCE(last_written_by, created_by) = ?) AND (ifnull(link_access, 'public') != 'private' OR lower(created_by) = lower(?)) AND expires_at < ?");
+    expect(day.whereBinds).toEqual([ME, ME, ME, "2026-09-17T00:00:00.000Z"]);
     expect(expiresWithinBefore("24h", now)).toBe("2026-09-17T00:00:00.000Z");
     const week = criteriaSql("files", q("?expires_within=7d"), ME, undefined, { now });
-    expect(week.whereBinds).toEqual([ME, ME, "2026-09-23T00:00:00.000Z"]);
+    expect(week.whereBinds).toEqual([ME, ME, ME, "2026-09-23T00:00:00.000Z"]);
   });
 
   it("filters changed_since_read with COALESCE never-read and does not bind a timestamp", () => {
     const files = criteriaSql("files", q("?changed_since_read=1"), ME);
     expect(files.where).toBe(
-      `(created_by = ? OR COALESCE(last_written_by, created_by) = ?) AND COALESCE(updated_at, created_at) > COALESCE(last_read_at, '${NEVER_READ_AT}')`,
+      `(created_by = ? OR COALESCE(last_written_by, created_by) = ?) AND (ifnull(link_access, 'public') != 'private' OR lower(created_by) = lower(?)) AND COALESCE(updated_at, created_at) > COALESCE(last_read_at, '${NEVER_READ_AT}')`,
     );
-    expect(files.whereBinds).toEqual([ME, ME]);
+    expect(files.whereBinds).toEqual([ME, ME, ME]);
     const sites = criteriaSql("sites", q("?changed_since_read=1"), ME);
     expect(sites.where).toBe(
-      `(s.created_by = ? OR COALESCE(s.last_written_by, s.created_by) = ?) AND s.updated_at > COALESCE(s.last_read_at, '${NEVER_READ_AT}')`,
+      `(s.created_by = ? OR COALESCE(s.last_written_by, s.created_by) = ?) AND (ifnull(s.link_access, 'public') != 'private' OR lower(s.created_by) = lower(?)) AND s.updated_at > COALESCE(s.last_read_at, '${NEVER_READ_AT}')`,
     );
   });
 });
@@ -407,10 +407,10 @@ describe("list helpers", () => {
     const composed = composeClauses(criteria, cursor);
     expect(composed.where).toBe(criteria.where);
     expect(composed.having).toBe(`COALESCE(SUM(COALESCE(vf.size, f.size)), 0) >= ? AND ${cursor.sql}`);
-    expect(composed.binds).toEqual([ME, ME, 1024, 5, 5, "Ab12Cd"]);
+    expect(composed.binds).toEqual([ME, ME, ME, 1024, 5, 5, "Ab12Cd"]);
     const plain = composeClauses(criteriaSql("files", q(""), ME), fileCursorSql(q("")));
     expect(plain.having).toBe("");
-    expect(plain.binds).toEqual([ME, ME]);
+    expect(plain.binds).toEqual([ME, ME, ME]);
   });
 
   it("strips LIKE wildcards so search cannot widen the involved set", () => {

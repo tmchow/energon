@@ -624,6 +624,9 @@
             "$ref": "#/components/parameters/XEnergonWritePolicy"
           },
           {
+            "$ref": "#/components/parameters/XEnergonLinkAccess"
+          },
+          {
             "$ref": "#/components/parameters/XEnergonSetPassword"
           },
           {
@@ -792,6 +795,12 @@
                   "minimum": 1
                 },
                 "description": "The content_generation of the file these bytes were read from. Pass it as X-Energon-Expected-Version on a later PUT."
+              },
+              "X-Energon-Link-Access": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkAccess"
+                },
+                "description": "Whether the public URL opens for anyone with the link (public) or refuses every request (private)."
               }
             },
             "content": {
@@ -4769,7 +4778,7 @@
     "schemas": {
       "Error": {
         "type": "object",
-        "description": "Every non-2xx JSON body. Some codes add fields: token_expired, cleanup_drift, and cleanup_too_many are typed below; too_large and storage_cap add limit_bytes plus actual_bytes or used_bytes; GET /v1/export too_many_files and too_large also add sites, files, and actual_files; bad_ttl, ttl_required, and ttl_too_long add presets and default_ttl or max_ttl; forbidden_domain adds allowed_email_domains; site_not_found adds hint; file_conflict adds content_generation (the file's current generation) and expected_version (what you sent); bad_query adds fields (the malformed cleanup target filters). bad_target comes from POST /v1/cleanup and POST /v1/admin/gates/unlock. bad_action and bad_confirm come only from POST /v1/cleanup. empty_export is GET /v1/export with no owned sites or files. password_required (401) and rate_limited (429) come from the public content gate, not /v1. bad_label, bad_origin, and token_not_found come from the hub /account API. not_found is any unknown route. bad_path is also returned for a URL that is not valid percent-encoding. connection_bad_code and connection_decided come from the human /account/connections API. grant_invalid (404), grant_used (410, adds url and result_id), grant_failed (410, adds reason), grant_expired (410), grant_busy (409, retryable), and checksum_mismatch (400) come from the upload grant route on the content origin, PUT {content_origin}/_grants/{id}, not /v1. file_recovery_required (409, not retryable) also answers a guest write-password PUT on the content origin, and ends an upload grant for that file as grant_failed with reason file_recovery_required.",
+        "description": "Every non-2xx JSON body. Some codes add fields: token_expired, cleanup_drift, and cleanup_too_many are typed below; too_large and storage_cap add limit_bytes plus actual_bytes or used_bytes; GET /v1/export too_many_files and too_large also add sites, files, and actual_files; bad_ttl, ttl_required, and ttl_too_long add presets and default_ttl or max_ttl; forbidden_domain adds allowed_email_domains; site_not_found adds hint; file_conflict adds content_generation (the file's current generation) and expected_version (what you sent); bad_query adds fields (the malformed cleanup target filters). bad_target comes from POST /v1/cleanup and POST /v1/admin/gates/unlock. bad_action and bad_confirm come only from POST /v1/cleanup. empty_export is GET /v1/export with no owned sites or files. password_required (401) and rate_limited (429) come from the public content gate, not /v1. bad_label, bad_origin, and token_not_found come from the hub /account API. not_found is any unknown route. bad_path is also returned for a URL that is not valid percent-encoding. connection_bad_code and connection_decided come from the human /account/connections API. grant_invalid (404), grant_used (410, adds url and result_id), grant_failed (410, adds reason), grant_expired (410), grant_busy (409, retryable), and checksum_mismatch (400) come from the upload grant route on the content origin, PUT {content_origin}/_grants/{id}, not /v1. file_recovery_required (409, not retryable) also answers a guest write-password PUT on the content origin, and ends an upload grant for that file as grant_failed with reason file_recovery_required. bad_link_access (400) is a link_access value other than public or private. link_access_conflict is 400 when one request asks for a private object with a share or write password or with write_policy org, and 409 when going private would keep an existing password (it adds password_protected and write_password_protected) or a concurrent change raced the update. link_private (403) comes from every method on the public content URL of a private object, not /v1.",
         "required": [
           "error",
           "message"
@@ -4786,6 +4795,7 @@
               "bad_filename",
               "bad_json",
               "bad_label",
+              "bad_link_access",
               "bad_origin",
               "bad_owner",
               "bad_password",
@@ -4845,6 +4855,8 @@
               "internal",
               "invalid_intent",
               "invalid_zip",
+              "link_access_conflict",
+              "link_private",
               "method_not_allowed",
               "missing_file",
               "missing_filename",
@@ -5437,6 +5449,14 @@
         ],
         "description": "owner: only the creating account (keyed by IdP identity) can write. org: any token on this host can write. Anyone with a token can read via /v1 either way."
       },
+      "LinkAccess": {
+        "type": "string",
+        "enum": [
+          "public",
+          "private"
+        ],
+        "description": "public (default): the content URL opens for anyone with the link, gated only by an optional share password. private: the content URL refuses every request, including guest writes, with 403 link_private, and only the creating account's tokens can read or write the object through /v1; other accounts get 404 and do not see it in lists. A private object has no share password or write password and is stored with write_policy owner. Creator-only to change. Copies do not inherit it."
+      },
       "Ttl": {
         "type": [
           "string",
@@ -5498,12 +5518,15 @@
               }
             ],
             "description": "Copy every file of that site (by id) into a new site. Cannot be combined with overwrite (400 bad_duplicate). You become created_by; write_policy defaults to this Energon's default; TTL is fresh; the share password and write password are not copied."
+          },
+          "link_access": {
+            "$ref": "#/components/schemas/LinkAccess"
           }
         }
       },
       "ContentPatch": {
         "type": "object",
-        "description": "A key that is absent leaves that setting unchanged. Sending only write_policy or write_password does not require write access, but is creator-only.",
+        "description": "A key that is absent leaves that setting unchanged. Sending only write_policy or write_password does not require write access, but is creator-only. link_access private is 409 link_access_conflict while a share or write password is set, unless the same request clears both; sending a password with link_access private (or on a private object) is 400 link_access_conflict.",
         "properties": {
           "password": {
             "$ref": "#/components/schemas/SharePassword"
@@ -5524,6 +5547,9 @@
           },
           "write_policy": {
             "$ref": "#/components/schemas/WritePolicy"
+          },
+          "link_access": {
+            "$ref": "#/components/schemas/LinkAccess"
           }
         }
       },
@@ -5541,7 +5567,8 @@
           "write_password",
           "ttl",
           "expires_at",
-          "write_policy"
+          "write_policy",
+          "link_access"
         ],
         "properties": {
           "id": {
@@ -5557,7 +5584,7 @@
           "url": {
             "type": "string",
             "format": "uri",
-            "description": "Human URL on the content origin. Opens without a token; gated only by an optional share password."
+            "description": "Human URL on the content origin. Opens without a token, gated only by an optional share password, unless link_access is private."
           },
           "created": {
             "const": true
@@ -5596,6 +5623,9 @@
           },
           "write_policy": {
             "$ref": "#/components/schemas/WritePolicy"
+          },
+          "link_access": {
+            "$ref": "#/components/schemas/LinkAccess"
           }
         }
       },
@@ -5639,7 +5669,8 @@
           "write_password",
           "write_password_protected",
           "expires_at",
-          "write_policy"
+          "write_policy",
+          "link_access"
         ],
         "properties": {
           "id": {
@@ -5690,6 +5721,9 @@
           },
           "write_policy": {
             "$ref": "#/components/schemas/WritePolicy"
+          },
+          "link_access": {
+            "$ref": "#/components/schemas/LinkAccess"
           }
         }
       },
@@ -5766,7 +5800,8 @@
           "write_password_protected",
           "files",
           "content_generation",
-          "version_id"
+          "version_id",
+          "link_access"
         ],
         "properties": {
           "id": {
@@ -5781,7 +5816,7 @@
           "url": {
             "type": "string",
             "format": "uri",
-            "description": "Human URL on the content origin. Opens without a token; gated only by an optional share password."
+            "description": "Human URL on the content origin. Opens without a token, gated only by an optional share password, unless link_access is private."
           },
           "created_at": {
             "type": "string",
@@ -5840,6 +5875,9 @@
               "string",
               "null"
             ]
+          },
+          "link_access": {
+            "$ref": "#/components/schemas/LinkAccess"
           }
         }
       },
@@ -5862,7 +5900,8 @@
           "last_read_at",
           "write_policy",
           "content_generation",
-          "version_id"
+          "version_id",
+          "link_access"
         ],
         "properties": {
           "id": {
@@ -5936,6 +5975,9 @@
               "string",
               "null"
             ]
+          },
+          "link_access": {
+            "$ref": "#/components/schemas/LinkAccess"
           }
         }
       },
@@ -6090,6 +6132,9 @@
           },
           "write_policy": {
             "$ref": "#/components/schemas/WritePolicy"
+          },
+          "link_access": {
+            "$ref": "#/components/schemas/LinkAccess"
           }
         }
       },
@@ -6111,13 +6156,16 @@
           },
           "write_policy": {
             "$ref": "#/components/schemas/WritePolicy"
+          },
+          "link_access": {
+            "$ref": "#/components/schemas/LinkAccess"
           }
         },
         "description": "Options for POST /v1/files/{id}/duplicate. All fields are optional; an empty object copies with the source filename."
       },
       "FileUploadForm": {
         "type": "object",
-        "description": "Send file, or duplicate_from (optionally with filename). Both together is 400 bad_duplicate. Header variants (X-Energon-TTL, X-Energon-Write-Policy, X-Energon-Set-Password, X-Energon-Set-Write-Password, X-Energon-Duplicate-From) override the matching field.",
+        "description": "Send file, or duplicate_from (optionally with filename). Both together is 400 bad_duplicate. Header variants (X-Energon-TTL, X-Energon-Write-Policy, X-Energon-Set-Password, X-Energon-Set-Write-Password, X-Energon-Link-Access, X-Energon-Duplicate-From) override the matching field.",
         "properties": {
           "file": {
             "type": "string",
@@ -6144,6 +6192,9 @@
           },
           "write_policy": {
             "$ref": "#/components/schemas/WritePolicy"
+          },
+          "link_access": {
+            "$ref": "#/components/schemas/LinkAccess"
           }
         }
       },
@@ -6186,7 +6237,8 @@
           "ttl",
           "expires_at",
           "write_policy",
-          "content_generation"
+          "content_generation",
+          "link_access"
         ],
         "properties": {
           "url": {
@@ -6253,6 +6305,9 @@
             "type": "integer",
             "const": 1,
             "description": "A new file or copy starts at 1. See LooseFileSummary.content_generation."
+          },
+          "link_access": {
+            "$ref": "#/components/schemas/LinkAccess"
           }
         }
       },
@@ -6363,7 +6418,8 @@
           "write_password_protected",
           "expires_at",
           "write_policy",
-          "content_generation"
+          "content_generation",
+          "link_access"
         ],
         "properties": {
           "id": {
@@ -6423,6 +6479,9 @@
             "type": "integer",
             "minimum": 1,
             "description": "Counter that goes up by one each time the file's bytes are replaced. Metadata changes (PATCH) do not change it. Send it back as expected_version to replace only if nobody else has replaced the file since."
+          },
+          "link_access": {
+            "$ref": "#/components/schemas/LinkAccess"
           }
         }
       },
@@ -6445,7 +6504,8 @@
           "expires_at",
           "last_read_at",
           "write_policy",
-          "content_generation"
+          "content_generation",
+          "link_access"
         ],
         "properties": {
           "id": {
@@ -6525,6 +6585,9 @@
             "type": "integer",
             "minimum": 1,
             "description": "Counter that goes up by one each time the file's bytes are replaced. Metadata changes (PATCH) do not change it. Send it back as expected_version to replace only if nobody else has replaced the file since."
+          },
+          "link_access": {
+            "$ref": "#/components/schemas/LinkAccess"
           }
         }
       },
@@ -7417,6 +7480,10 @@
                 "type": "string",
                 "maxLength": 128,
                 "description": "Write password the new file is created with. Echoed once in the mint response; GET /v1/grants/{id} never returns it."
+              },
+              "link_access": {
+                "$ref": "#/components/schemas/LinkAccess",
+                "description": "Link access the new file is created with. private cannot be combined with password or write_password (400 link_access_conflict)."
               }
             },
             "additionalProperties": false
@@ -8126,6 +8193,14 @@
           "$ref": "#/components/schemas/WritePolicy"
         },
         "description": "Who can write the new file. Overrides the multipart write_policy field. Omitted means this Energon's default (GET /v1/help retention.write_policy)."
+      },
+      "XEnergonLinkAccess": {
+        "name": "X-Energon-Link-Access",
+        "in": "header",
+        "schema": {
+          "$ref": "#/components/schemas/LinkAccess"
+        },
+        "description": "Link access for the new file. Overrides the multipart link_access field. Omitted means public."
       },
       "XEnergonSetPassword": {
         "name": "X-Energon-Set-Password",

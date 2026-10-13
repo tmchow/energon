@@ -57,7 +57,7 @@ describe("grant guard on the account write paths", () => {
   it("creates a loose file and consumes the grant in one commit", async () => {
     const { tokenId, actor } = await minter("guard-create");
     const guard = await leasedGrant(tokenId, { kind: "new_file", filename: "notes.txt" });
-    const res = await createLooseFile(env, undefined, actor, "notes.txt", bytes("hello"), null, undefined, undefined, undefined, undefined, guard);
+    const res = await createLooseFile(env, undefined, actor, "notes.txt", bytes("hello"), null, undefined, undefined, undefined, undefined, undefined, guard);
     expect(res.status).toBe(201);
     const body = (await res.json()) as { id: string; url: string };
     const row = await grantRow(guard.grantId);
@@ -70,7 +70,7 @@ describe("grant guard on the account write paths", () => {
     const before = await quotaUsed();
     const before_rows = await env.DB.prepare("SELECT COUNT(*) AS n FROM loose_files WHERE filename = 'lost-lease.txt'").first<{ n: number }>();
     await expect(
-      createLooseFile(env, undefined, actor, "lost-lease.txt", bytes("nope"), null, undefined, undefined, undefined, undefined, { ...guard, leaseId: "someone-else" }),
+      createLooseFile(env, undefined, actor, "lost-lease.txt", bytes("nope"), null, undefined, undefined, undefined, undefined, undefined, { ...guard, leaseId: "someone-else" }),
     ).rejects.toMatchObject({ status: 409, code: "grant_busy" });
     const after_rows = await env.DB.prepare("SELECT COUNT(*) AS n FROM loose_files WHERE filename = 'lost-lease.txt'").first<{ n: number }>();
     expect(after_rows?.n).toBe(before_rows?.n);
@@ -84,8 +84,8 @@ describe("grant guard on the account write paths", () => {
     const { tokenId, actor } = await minter("guard-race");
     const guard = await leasedGrant(tokenId, { kind: "new_file", filename: "race.txt" });
     const results = await Promise.allSettled([
-      createLooseFile(env, undefined, actor, "race-once.txt", bytes("a"), null, undefined, undefined, undefined, undefined, guard),
-      createLooseFile(env, undefined, actor, "race-once.txt", bytes("b"), null, undefined, undefined, undefined, undefined, guard),
+      createLooseFile(env, undefined, actor, "race-once.txt", bytes("a"), null, undefined, undefined, undefined, undefined, undefined, guard),
+      createLooseFile(env, undefined, actor, "race-once.txt", bytes("b"), null, undefined, undefined, undefined, undefined, undefined, guard),
     ]);
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     const rows = await env.DB.prepare("SELECT COUNT(*) AS n FROM loose_files WHERE filename = 'race-once.txt'").first<{ n: number }>();
@@ -98,7 +98,7 @@ describe("grant guard on the account write paths", () => {
     await env.DB.prepare("DELETE FROM upload_grants WHERE id = ?").bind(guard.grantId).run();
     const before = await quotaUsed();
     await expect(
-      createLooseFile(env, undefined, actor, "vanish.txt", bytes("x"), null, undefined, undefined, undefined, undefined, guard),
+      createLooseFile(env, undefined, actor, "vanish.txt", bytes("x"), null, undefined, undefined, undefined, undefined, undefined, guard),
     ).rejects.toMatchObject({ code: "grant_busy" });
     expect(await quotaUsed()).toBe(before);
   });
@@ -108,7 +108,7 @@ describe("grant guard on the account write paths", () => {
     const guard = await leasedGrant(tokenId, { kind: "new_file", filename: "late.txt" }, new Date(Date.now() - 6 * 60 * 1000).toISOString());
     const before = await quotaUsed();
     await expect(
-      createLooseFile(env, undefined, actor, "late.txt", bytes("x"), null, undefined, undefined, undefined, undefined, guard),
+      createLooseFile(env, undefined, actor, "late.txt", bytes("x"), null, undefined, undefined, undefined, undefined, undefined, guard),
     ).rejects.toMatchObject({ status: 410, code: "grant_expired" });
     expect(await quotaUsed()).toBe(before);
   });
@@ -119,7 +119,7 @@ describe("grant guard on the account write paths", () => {
     await env.DB.prepare("UPDATE tokens SET revoked_at = ? WHERE id = ?").bind(new Date().toISOString(), tokenId).run();
     const before = await quotaUsed();
     await expect(
-      createLooseFile(env, undefined, actor, "revoked-commit.txt", bytes("x"), null, undefined, undefined, undefined, undefined, guard),
+      createLooseFile(env, undefined, actor, "revoked-commit.txt", bytes("x"), null, undefined, undefined, undefined, undefined, undefined, guard),
     ).rejects.toMatchObject({ status: 410, code: "grant_failed" });
     const rows = await env.DB.prepare("SELECT COUNT(*) AS n FROM loose_files WHERE filename = 'revoked-commit.txt'").first<{ n: number }>();
     expect(rows?.n).toBe(0);
