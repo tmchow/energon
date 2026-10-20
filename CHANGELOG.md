@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.1](https://github.com/tmchow/energon/compare/v1.15.0...v1.15.1) (2026-10-20)
+
+
+### Performance
+
+* **markdown:** render diagrams with pele, falling back to mermaid ([#169](https://github.com/tmchow/energon/issues/169)) ([5c0345e](https://github.com/tmchow/energon/commit/5c0345e85863c55c15a31dded89e89b0ec5b3480))
+
 ## [1.15.0](https://github.com/tmchow/energon/compare/v1.14.0...v1.15.0) (2026-10-13)
 
 
