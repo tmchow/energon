@@ -42,6 +42,8 @@ export default defineConfig({
   ],
   test: {
     name: "worker",
+    // D1/R2-heavy cases run several times slower on 2-vCPU CI runners than locally.
+    testTimeout: 30_000,
     include: ["test/**/*.spec.ts"],
     exclude: ["test/unit/**", "**/node_modules/**"],
   },
