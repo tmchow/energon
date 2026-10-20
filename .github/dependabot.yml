@@ -1,0 +1,15 @@
+# Version updates only for the vendored diagram renderers; their bumps change what readers' browsers run.
+# Review each PR in a browser before merging: CI proves the files load, not that diagrams look right.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    allow:
+      - dependency-name: pele
+      - dependency-name: mermaid
+    commit-message:
+      prefix: fix
+      include: scope
+    open-pull-requests-limit: 2
