@@ -1330,6 +1330,7 @@ describe("Energon", () => {
     const html = await page.text();
     expect(html).toContain("<h1>Hello</h1>");
     expect(html).toContain('class="mermaid"');
+    expect(html).toContain("/static/pele/lazy.js");
     expect(html).toContain("/static/mermaid/mermaid.esm.min.mjs");
     expect(html).toContain("/static/md-expand.mjs");
     expect(html).toContain("mountMarkdownExpand");
@@ -1354,6 +1355,7 @@ describe("Energon", () => {
     const homeHtml = await home.text();
     expect(homeHtml).toContain("<h1>Docs home</h1>");
     expect(homeHtml).not.toContain("/static/mermaid/");
+    expect(homeHtml).not.toContain("/static/pele/");
     expect(homeHtml).not.toContain("/static/md-expand.mjs");
     expect(homeHtml).not.toContain('<script type="module"');
 
@@ -1368,6 +1370,7 @@ describe("Energon", () => {
     expect(gridHtml).toContain("/static/md-expand.mjs");
     expect(gridHtml).toContain("mountMarkdownExpand");
     expect(gridHtml).not.toContain("/static/mermaid/");
+    expect(gridHtml).not.toContain("/static/pele/");
     expect(grid.headers.get("content-security-policy")).toContain("script-src http://127.0.0.1");
 
     await json(`/v1/sites/${site_docs.id}/files/index.html`, {

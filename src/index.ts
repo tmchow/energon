@@ -33,7 +33,7 @@ import { identityFromEnv } from "./instance";
 import { MEMORABLE_WORDS } from "./memorable";
 import { deleteLooseFile, getLooseFile, hubLooseLinkAccess, patchLoose, postLooseFromRequest, putLooseFromRequest, serveLoose } from "./files";
 import { contentPatch } from "./gate";
-import { ApiError, accountOriginRequired, assertTrustedAccountOrigin, contentOrigin, dedicatedContentOrigin, isLocalHost, isMermaidAssetPath, isPublicContentPath, json, jsonMaybeSecret, methodNotAllowed, publicOrigin, readJson, secretJson, serveMermaidAsset } from "./http";
+import { ApiError, accountOriginRequired, assertTrustedAccountOrigin, contentOrigin, dedicatedContentOrigin, isLocalHost, isDiagramAssetPath, isPublicContentPath, json, jsonMaybeSecret, methodNotAllowed, publicOrigin, readJson, secretJson, serveDiagramAsset } from "./http";
 import { instancePolicy, policyPublic, tokenPolicy, tokenPolicyPublic, adminTokenPolicy, emailIsAdmin } from "./policy";
 import {
   deleteSite,
@@ -287,8 +287,8 @@ async function routeBeforeSchema(request: Request, env: Env, ctx: ExecutionConte
   const health = await dispatchPlain(request, env, ctx, url, HEALTH_ROUTES);
   if (health) return health;
 
-  if (isMermaidAssetPath(path) && (method === "GET" || method === "HEAD")) {
-    return serveMermaidAsset(env, request);
+  if (isDiagramAssetPath(path) && (method === "GET" || method === "HEAD")) {
+    return serveDiagramAsset(env, request);
   }
 
   if (DEPLOYMENT_GRANT_PATH.test(path)) {

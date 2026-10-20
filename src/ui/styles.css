@@ -278,6 +278,19 @@ body.page-markdown .en-md > .en-md-figure {
 .en-md tbody tr:last-child th, .en-md tbody tr:last-child td { border-bottom: 0; }
 .en-md code:not(pre code) { background: var(--bg-sunken); color: var(--fg-1); border-color: var(--border-1); }
 .en-md pre.mermaid { background: transparent; border: 0; color: inherit; padding: 0; box-shadow: none; }
+body.page-markdown {
+  --pele-bg: light-dark(var(--paper-2), var(--ink-2));
+  --pele-fg: var(--fg-1);
+  --pele-muted: var(--fg-3);
+  --pele-line: light-dark(#3a3452, #c8c0de);
+  --pele-surface: light-dark(#ffffff, #2a2548);
+  --pele-surface-alt: light-dark(#d6d0e8, #151a2c);
+  --pele-border: var(--fg-3);
+  --pele-accent: var(--accent);
+  --pele-font: var(--font-sans);
+  --pele-radius: var(--radius-1);
+}
+body.page-markdown .pele-edge-label rect { fill: var(--pele-surface); stroke: var(--pele-border); }
 body.page-markdown .en-md .mermaid .nodeLabel,
 body.page-markdown .en-md .mermaid .cluster-label,
 body.page-markdown .en-md .mermaid .edgeLabel {

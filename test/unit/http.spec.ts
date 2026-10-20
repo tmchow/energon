@@ -8,10 +8,11 @@ import {
   contentDisposition,
   hasDedicatedContentOrigin,
   isolationCsp,
-  isMermaidAssetPath,
+  isDiagramAssetPath,
   isPublicContentPath,
   mermaidDocumentCsp,
   MERMAID_SCRIPT_PATH,
+  PELE_SCRIPT_PATH,
   MD_EXPAND_SCRIPT_PATH,
   isWorkersDev,
   normalizeRelPath,
@@ -96,18 +97,22 @@ describe("path and download helpers", () => {
     expect(isolationCsp("application/json")).toBeNull();
   });
 
-  it("locks mermaid pages to the serving origin and serves the ESM under /static/mermaid/", () => {
+  it("locks diagram pages to the serving origin and serves the ESM under /static/pele/ and /static/mermaid/", () => {
     const csp = mermaidDocumentCsp("https://energon.example.com");
     expect(csp).toContain("sandbox");
     expect(csp).not.toContain("allow-same-origin");
     expect(csp).toContain("script-src https://energon.example.com 'unsafe-inline'");
-    expect(isMermaidAssetPath(MERMAID_SCRIPT_PATH)).toBe(true);
-    expect(isMermaidAssetPath(MD_EXPAND_SCRIPT_PATH)).toBe(true);
-    expect(isMermaidAssetPath("/static/md-mermaid.mjs")).toBe(false);
-    expect(isMermaidAssetPath("/static/mermaid/chunks/mermaid.esm.min/chunk-abc.mjs")).toBe(true);
-    expect(isMermaidAssetPath("/static/logo.svg")).toBe(false);
-    expect(isMermaidAssetPath("/ada/s/docs/notes.md")).toBe(false);
+    expect(isDiagramAssetPath(PELE_SCRIPT_PATH)).toBe(true);
+    expect(isDiagramAssetPath("/static/pele/chunks/NV4XNBIS.js")).toBe(true);
+    expect(isDiagramAssetPath(MERMAID_SCRIPT_PATH)).toBe(true);
+    expect(isDiagramAssetPath(MD_EXPAND_SCRIPT_PATH)).toBe(true);
+    expect(isDiagramAssetPath("/static/md-mermaid.mjs")).toBe(false);
+    expect(isDiagramAssetPath("/static/pele.js")).toBe(false);
+    expect(isDiagramAssetPath("/static/mermaid/chunks/mermaid.esm.min/chunk-abc.mjs")).toBe(true);
+    expect(isDiagramAssetPath("/static/logo.svg")).toBe(false);
+    expect(isDiagramAssetPath("/ada/s/docs/notes.md")).toBe(false);
     const wrangler = readFileSync(new URL("../../wrangler.toml", import.meta.url), "utf8");
+    expect(wrangler).toContain('"/static/pele/*"');
     expect(wrangler).toContain('"/static/mermaid/*"');
     expect(wrangler).toContain('"/static/md-expand.mjs"');
   });
