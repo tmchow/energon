@@ -4,7 +4,7 @@ import xss, { type IWhiteList, type SafeAttrValueHandler } from "xss";
 import { privateCacheControl } from "./cache";
 import { escapeHtml } from "./chrome";
 import { PRODUCT } from "./config";
-import { applyIsolation, basename, contentDisposition, mermaidDocumentCsp, MD_EXPAND_SCRIPT_PATH, MERMAID_SCRIPT_PATH, wantsDownload } from "./http";
+import { applyIsolation, basename, contentDisposition, mermaidDocumentCsp, MD_EXPAND_SCRIPT_PATH, MERMAID_SCRIPT_PATH, PELE_SCRIPT_PATH, wantsDownload } from "./http";
 
 const MERMAID_FENCE = /^(```|~~~)[ \t]*mermaid\b/im;
 
@@ -78,7 +78,7 @@ export function renderMarkdown(md: string): { html: string; mermaid: boolean; ta
 }
 
 export function markdownPage(opts: { title: string; html: string; mermaid: boolean; tables?: boolean }): string {
-  const extraHead = opts.mermaid ? mermaidRuntimeHead() : opts.tables ? expandHead() : "";
+  const extraHead = opts.mermaid ? diagramRuntimeHead() : opts.tables ? expandHead() : "";
   return uiPage(`${opts.title} — ${PRODUCT}`, { page: "markdown", data: { html: opts.html } }, extraHead);
 }
 
@@ -114,7 +114,7 @@ export async function respondMarkdown(
   );
 }
 
-const MERMAID_FONT = '"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif';
+const DIAGRAM_FONT = '"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif';
 
 type MermaidPalette = {
   darkMode: boolean;
@@ -169,7 +169,7 @@ function mermaidTheme(p: MermaidPalette) {
     noteTextColor: p.noteText,
     noteBorderColor: p.noteBorder,
     scaleLabelColor: p.text,
-    fontFamily: MERMAID_FONT,
+    fontFamily: DIAGRAM_FONT,
     useGradient: false,
     dropShadow: "none",
   };
@@ -217,46 +217,66 @@ const MERMAID_THEME_DARK_JSON = JSON.stringify(MERMAID_THEME_DARK);
 const MERMAID_THEME_LIGHT_CSS_JSON = JSON.stringify(mermaidThemeCss(MERMAID_THEME_LIGHT));
 const MERMAID_THEME_DARK_CSS_JSON = JSON.stringify(mermaidThemeCss(MERMAID_THEME_DARK));
 
-// Run mermaid before loading expand. A failed expand import must not leave
-// fences as source. Mount after run so every SVG is wrapped, not only the first.
-const MERMAID_RUNTIME_HEAD = `<script type="module">
-import mermaid from "${MERMAID_SCRIPT_PATH}";
-const light = matchMedia("(prefers-color-scheme: light)").matches;
-const fit = { useMaxWidth: false };
-const theme = light ? ${MERMAID_THEME_LIGHT_JSON} : ${MERMAID_THEME_DARK_JSON};
-mermaid.initialize({
-  startOnLoad: false,
-  theme: "base",
-  securityLevel: "strict",
-  flowchart: fit,
-  sequence: fit,
-  gantt: fit,
-  class: fit,
-  er: fit,
-  state: fit,
-  gitGraph: fit,
-  journey: fit,
-  timeline: fit,
-  mindmap: fit,
-  c4: fit,
-  pie: fit,
-  quadrantChart: fit,
-  sankey: fit,
-  requirement: fit,
-  block: fit,
-  architecture: fit,
-  kanban: fit,
-  packet: fit,
-  radar: fit,
-  treemap: fit,
-  xyChart: fit,
-  themeVariables: theme,
-  themeCSS: light ? ${MERMAID_THEME_LIGHT_CSS_JSON} : ${MERMAID_THEME_DARK_CSS_JSON},
-});
-try {
-  await mermaid.run({ querySelector: ".en-md pre.mermaid" });
-} catch {
-  /* keep whatever SVG mermaid drew */
+// Pele cannot draw KaTeX ($$); those diagrams, and any Pele error (including its size limit), go to mermaid.
+// Render before loading expand: a failed expand import must not leave fences as source.
+const DIAGRAM_RUNTIME_HEAD = `<script type="module">
+const pres = [...document.querySelectorAll(".en-md pre.mermaid")];
+const fallback = [];
+const peleImport = import("${PELE_SCRIPT_PATH}").catch(() => null);
+await document.fonts.ready;
+const pele = await peleImport;
+for (const [index, pre] of pres.entries()) {
+  const source = pre.textContent || "";
+  if (!pele || source.includes("$$")) {
+    fallback.push(pre);
+    continue;
+  }
+  try {
+    const { svg } = await pele.renderAsync(source, { responsive: false, autoDirection: false, fontFamily: ${JSON.stringify(DIAGRAM_FONT)}, idPrefix: "en-diagram-" + index + "-" });
+    pre.innerHTML = svg;
+  } catch {
+    fallback.push(pre);
+  }
+}
+if (fallback.length) {
+  try {
+    const { default: mermaid } = await import("${MERMAID_SCRIPT_PATH}");
+    const light = matchMedia("(prefers-color-scheme: light)").matches;
+    const fit = { useMaxWidth: false };
+    const theme = light ? ${MERMAID_THEME_LIGHT_JSON} : ${MERMAID_THEME_DARK_JSON};
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: "base",
+      securityLevel: "strict",
+      flowchart: fit,
+      sequence: fit,
+      gantt: fit,
+      class: fit,
+      er: fit,
+      state: fit,
+      gitGraph: fit,
+      journey: fit,
+      timeline: fit,
+      mindmap: fit,
+      c4: fit,
+      pie: fit,
+      quadrantChart: fit,
+      sankey: fit,
+      requirement: fit,
+      block: fit,
+      architecture: fit,
+      kanban: fit,
+      packet: fit,
+      radar: fit,
+      treemap: fit,
+      xyChart: fit,
+      themeVariables: theme,
+      themeCSS: light ? ${MERMAID_THEME_LIGHT_CSS_JSON} : ${MERMAID_THEME_DARK_CSS_JSON},
+    });
+    await mermaid.run({ nodes: fallback });
+  } catch {
+    /* keep whatever SVG mermaid drew */
+  }
 }
 try {
   const { mountMarkdownExpand } = await import("${MD_EXPAND_SCRIPT_PATH}");
@@ -266,8 +286,8 @@ try {
 }
 </script>`;
 
-function mermaidRuntimeHead(): string {
-  return MERMAID_RUNTIME_HEAD;
+function diagramRuntimeHead(): string {
+  return DIAGRAM_RUNTIME_HEAD;
 }
 
 function expandHead(): string {

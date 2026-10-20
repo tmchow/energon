@@ -178,6 +178,17 @@ describe("host and route contracts", () => {
     const mermaidSrc = await mermaid.text();
     expect(mermaidSrc).toContain("chunks/mermaid.esm.min/");
     expect(mermaidSrc.length).toBeGreaterThan(1_000);
+    const pele = await req("https://energon.example.com/static/pele/lazy.js");
+    expect(pele.status).toBe(200);
+    expect(pele.headers.get("content-type")).toMatch(/javascript|ecmascript/);
+    expect(pele.headers.get("access-control-allow-origin")).toBe("*");
+    const peleSrc = await pele.text();
+    const peleChunk = peleSrc.match(/"\.\/(chunks\/[A-Z0-9]+\.js)"/)?.[1];
+    expect(peleChunk).toBeTruthy();
+    const chunk = await req(`https://energon.example.com/static/pele/${peleChunk}`);
+    expect(chunk.status).toBe(200);
+    expect(chunk.headers.get("access-control-allow-origin")).toBe("*");
+    await chunk.text();
     const expand = await req("https://energon.example.com/static/md-expand.mjs");
     expect(expand.status).toBe(200);
     expect(expand.headers.get("content-type")).toMatch(/javascript|ecmascript/);
