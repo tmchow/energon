@@ -1,15 +1,39 @@
-# Version updates only for the vendored diagram renderers; their bumps change what readers' browsers run.
-# Review each PR in a browser before merging: CI proves the files load, not that diagrams look right.
+# pele and mermaid are vendored into public/static and run in readers' browsers. They stay ungrouped
+# so each bump gets its own PR; check diagrams in a browser before merging (CI proves the files load, not how they draw).
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
-    allow:
-      - dependency-name: pele
-      - dependency-name: mermaid
     commit-message:
       prefix: fix
+      prefix-development: chore
       include: scope
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 5
+    groups:
+      runtime:
+        dependency-type: production
+        exclude-patterns:
+          - pele
+          - mermaid
+        update-types:
+          - minor
+          - patch
+      tooling:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      actions:
+        patterns:
+          - "*"
