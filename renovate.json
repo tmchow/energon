@@ -1,0 +1,48 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Inert unless the Renovate app is installed on the repository. Install it on the upstream repository only; deployment repositories take dependency changes through upstream releases.",
+  "extends": ["config:recommended"],
+  "enabledManagers": ["npm", "github-actions"],
+  "semanticCommits": "enabled",
+  "schedule": ["* 0-3 * * 1"],
+  "prConcurrentLimit": 5,
+  "packageRules": [
+    {
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["dependencies"],
+      "semanticCommitType": "fix",
+      "semanticCommitScope": "deps"
+    },
+    {
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["devDependencies"],
+      "semanticCommitType": "chore",
+      "semanticCommitScope": "deps-dev"
+    },
+    {
+      "description": "Vendored into public/static and run in readers' browsers: one PR each, never grouped.",
+      "matchPackageNames": ["pele", "mermaid"],
+      "prBodyNotes": ["Check diagrams in a browser before merging (verify-energon `features/publish-site.md`, site-mermaid). CI proves the vendored files load, not how they draw."]
+    },
+    {
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["dependencies"],
+      "matchPackageNames": ["!pele", "!mermaid"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "runtime"
+    },
+    {
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "tooling"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "actions",
+      "schedule": ["* 0-3 1 * *"],
+      "semanticCommitType": "chore",
+      "semanticCommitScope": "deps"
+    }
+  ]
+}
