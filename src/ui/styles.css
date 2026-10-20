@@ -282,9 +282,9 @@ body.page-markdown {
   --pele-bg: light-dark(var(--paper-2), var(--ink-2));
   --pele-fg: var(--fg-1);
   --pele-muted: var(--fg-3);
-  --pele-line: light-dark(#3a3452, #c8c0de);
-  --pele-surface: light-dark(#ffffff, #2a2548);
-  --pele-surface-alt: light-dark(#d6d0e8, #151a2c);
+  --pele-line: light-dark(var(--paper-8), var(--ink-8));
+  --pele-surface: light-dark(var(--paper-1), #2a2548);
+  --pele-surface-alt: light-dark(var(--paper-4), var(--ink-3));
   --pele-border: var(--fg-3);
   --pele-accent: var(--accent);
   --pele-font: var(--font-sans);
@@ -302,7 +302,7 @@ body.page-markdown .en-md .mermaid .labelBkg {
   padding: 0;
 }
 body.page-markdown .en-md .mermaid span.edgeLabel p {
-  background-color: light-dark(#ffffff, #2a2548);
+  background-color: var(--pele-surface);
   color: var(--fg-1);
   border: 1px solid var(--fg-3);
   border-radius: var(--radius-1);

@@ -1,3 +1,4 @@
+import { dependencies } from "../package.json";
 import { DEFAULT_PUBLIC_ORIGIN, IN_MEMORY_BYTES, MAX_FILE_BYTES, MAX_PLATFORM_BYTES, PRODUCT, RESERVED_HANDLES, formatBytes, tmpKey } from "./config";
 import type { Env } from "./types";
 
@@ -123,9 +124,14 @@ export function applyIsolation(headers: Headers, contentType: string): void {
   if (csp) headers.set("content-security-policy", csp);
 }
 
-/** ESM entries + lazy chunks. Served from assets, not the Worker isolate. */
+/**
+ * ESM entries + lazy chunks. Served from assets, not the Worker isolate.
+ * Chunks are content-hashed but entries are not; the version query makes an upgrade miss stale caches.
+ */
 export const PELE_SCRIPT_PATH = "/static/pele/lazy.js";
 export const MERMAID_SCRIPT_PATH = "/static/mermaid/mermaid.esm.min.mjs";
+export const PELE_SCRIPT_URL = `${PELE_SCRIPT_PATH}?v=${dependencies.pele}`;
+export const MERMAID_SCRIPT_URL = `${MERMAID_SCRIPT_PATH}?v=${dependencies.mermaid}`;
 export const MD_EXPAND_SCRIPT_PATH = "/static/md-expand.mjs";
 
 export function isDiagramAssetPath(path: string): boolean {

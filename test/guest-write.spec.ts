@@ -442,7 +442,7 @@ describe("guest write password", () => {
     expect(replace.status).toBe(200);
     const del = await json(`${CONTENT}/guest-cap/s/${site_guest_cap.id}/guest-cap/f0.txt`, { method: "DELETE", headers: WRITE });
     expect(del.status).toBe(200);
-  }, 15_000);
+  });
 
   it("omits hub from a guest 500", async () => {
     const token = await mint("guest-500", "guest-500@esperlabs.app");
