@@ -12,7 +12,9 @@ import {
   isPublicContentPath,
   mermaidDocumentCsp,
   MERMAID_SCRIPT_PATH,
+  MERMAID_SCRIPT_URL,
   PELE_SCRIPT_PATH,
+  PELE_SCRIPT_URL,
   MD_EXPAND_SCRIPT_PATH,
   isWorkersDev,
   normalizeRelPath,
@@ -102,6 +104,11 @@ describe("path and download helpers", () => {
     expect(csp).toContain("sandbox");
     expect(csp).not.toContain("allow-same-origin");
     expect(csp).toContain("script-src https://energon.example.com 'unsafe-inline'");
+    const { dependencies } = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
+    expect(dependencies.pele).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(dependencies.mermaid).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(PELE_SCRIPT_URL).toBe(`/static/pele/lazy.js?v=${dependencies.pele}`);
+    expect(MERMAID_SCRIPT_URL).toBe(`/static/mermaid/mermaid.esm.min.mjs?v=${dependencies.mermaid}`);
     expect(isDiagramAssetPath(PELE_SCRIPT_PATH)).toBe(true);
     expect(isDiagramAssetPath("/static/pele/chunks/NV4XNBIS.js")).toBe(true);
     expect(isDiagramAssetPath(MERMAID_SCRIPT_PATH)).toBe(true);

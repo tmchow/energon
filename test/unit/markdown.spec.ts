@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { MERMAID_SCRIPT_URL, PELE_SCRIPT_URL } from "../../src/http";
 import { markdownPage, renderMarkdown } from "../../src/markdown";
 
 describe("markdown diagram vendor", () => {
@@ -53,7 +54,7 @@ describe("markdown page shell", () => {
 
   it("skips mermaid when Pele draws every diagram", async () => {
     const run = await runDiagramRuntime(["graph LR"], { pele: { render: () => Promise.resolve({ svg: "<svg></svg>" }) } });
-    expect(run.imports).not.toContain("/static/mermaid/mermaid.esm.min.mjs");
+    expect(run.imports).not.toContain(MERMAID_SCRIPT_URL);
     expect(run.events).toEqual(["pele", "expand"]);
   });
 
@@ -78,8 +79,44 @@ describe("markdown page shell", () => {
 
   it("starts loading Pele before waiting on fonts", async () => {
     const run = await runDiagramRuntime(["graph LR"], { pele: { render: () => Promise.resolve({ svg: "<svg></svg>" }) }, holdFonts: true });
-    expect(run.imports[0]).toBe("/static/pele/lazy.js");
+    expect(run.imports[0]).toBe(PELE_SCRIPT_URL);
     expect(run.events).toEqual(["pele", "expand"]);
+  });
+
+  it("keeps the mermaid fallback palette on the design tokens Pele uses", () => {
+    const vars = new Map<string, string>();
+    for (const file of ["src/ui/design/tokens/colors.css", "src/ui/styles.css"]) {
+      const css = readFileSync(resolve(file), "utf8");
+      for (const [, name, value] of css.matchAll(/(--[\w-]+):\s*([^;]+);/g)) {
+        if (file.endsWith("styles.css") || !vars.has(name)) vars.set(name, value.trim());
+      }
+    }
+    const cssColor = (value: string, mode: 0 | 1): string => {
+      const pair = /^light-dark\((.+?),\s*(.+)\)$/.exec(value);
+      if (pair) return cssColor(pair[1 + mode], mode);
+      const ref = /^var\((--[\w-]+)\)$/.exec(value);
+      if (ref) return cssColor(vars.get(ref[1]) ?? `missing ${ref[1]}`, mode);
+      return value.toLowerCase();
+    };
+    const html = markdownPage({ title: "d.md", html: "", mermaid: true });
+    const [, lightJson, darkJson] = /const theme = light \? (\{.*?\}) : (\{.*?\});/.exec(html) ?? [];
+    const themes = [JSON.parse(lightJson), JSON.parse(darkJson)];
+    const expected: Record<string, string> = {
+      primaryColor: "var(--pele-surface)",
+      edgeLabelBackground: "var(--pele-surface)",
+      secondaryColor: "var(--pele-surface-alt)",
+      lineColor: "var(--pele-line)",
+      nodeBorder: "var(--pele-border)",
+      textColor: "var(--pele-fg)",
+      secondaryBorderColor: "light-dark(var(--paper-6), var(--ink-7))",
+      background: "light-dark(var(--paper-0), var(--ink-2))",
+      noteBkgColor: "light-dark(var(--amber-100), #2a2418)",
+      noteTextColor: "light-dark(var(--paper-9), var(--amber-400))",
+      noteBorderColor: "light-dark(var(--amber-200), var(--amber-600))",
+    };
+    for (const [key, css] of Object.entries(expected)) {
+      for (const mode of [0, 1] as const) expect(themes[mode][key], `${key} ${mode ? "dark" : "light"}`).toBe(cssColor(css, mode));
+    }
   });
 
   it("loads mermaid with a system light and dark theme", () => {
@@ -171,7 +208,7 @@ async function runDiagramRuntime(
   const fontsReady = opts.holdFonts ? new Promise<void>((resolve) => (releaseFonts = resolve)) : Promise.resolve();
   const load = async (path: string) => {
     imports.push(path);
-    if (path === "/static/pele/lazy.js") {
+    if (path === PELE_SCRIPT_URL) {
       if (!opts.pele) throw new Error("pele unavailable");
       const fake = opts.pele;
       return {
@@ -182,7 +219,7 @@ async function runDiagramRuntime(
         },
       };
     }
-    if (path === "/static/mermaid/mermaid.esm.min.mjs") {
+    if (path === MERMAID_SCRIPT_URL) {
       if (opts.mermaid === null) throw new Error("mermaid unavailable");
       return {
         default: {
@@ -204,7 +241,7 @@ async function runDiagramRuntime(
   const done = new AsyncFunction("document", "matchMedia", "load", body)(document, matchMedia, load);
   if (opts.holdFonts) {
     await Promise.resolve();
-    expect(imports).toEqual(["/static/pele/lazy.js"]);
+    expect(imports).toEqual([PELE_SCRIPT_URL]);
     releaseFonts();
   }
   await done;

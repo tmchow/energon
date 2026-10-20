@@ -4,7 +4,7 @@ import xss, { type IWhiteList, type SafeAttrValueHandler } from "xss";
 import { privateCacheControl } from "./cache";
 import { escapeHtml } from "./chrome";
 import { PRODUCT } from "./config";
-import { applyIsolation, basename, contentDisposition, mermaidDocumentCsp, MD_EXPAND_SCRIPT_PATH, MERMAID_SCRIPT_PATH, PELE_SCRIPT_PATH, wantsDownload } from "./http";
+import { applyIsolation, basename, contentDisposition, mermaidDocumentCsp, MD_EXPAND_SCRIPT_PATH, MERMAID_SCRIPT_URL, PELE_SCRIPT_URL, wantsDownload } from "./http";
 
 const MERMAID_FENCE = /^(```|~~~)[ \t]*mermaid\b/im;
 
@@ -182,8 +182,8 @@ function mermaidThemeCss(theme: { edgeLabelBackground: string; textColor: string
   return `.labelBkg{background:transparent;border:0;padding:0}span.edgeLabel p{background-color:${bg};color:${fg};border:1px solid ${bd};border-radius:4px;padding:1px 6px}span.edgeLabel:empty{display:none}g.edgeLabel rect{display:none}`;
 }
 
-// Mermaid bakes fills at initialize and cannot read CSS variables. Hex matches
-// the design ramp except node/note fills that need extra elevation on dark.
+// Mermaid bakes fills at initialize and cannot read CSS variables, so these hex copy the
+// design tokens and --pele-* in styles.css; markdown.spec.ts fails when they drift.
 const MERMAID_THEME_LIGHT = mermaidTheme({
   darkMode: false,
   background: "#f6f4fb",
@@ -222,7 +222,7 @@ const MERMAID_THEME_DARK_CSS_JSON = JSON.stringify(mermaidThemeCss(MERMAID_THEME
 const DIAGRAM_RUNTIME_HEAD = `<script type="module">
 const pres = [...document.querySelectorAll(".en-md pre.mermaid")];
 const fallback = [];
-const peleImport = import("${PELE_SCRIPT_PATH}").catch(() => null);
+const peleImport = import("${PELE_SCRIPT_URL}").catch(() => null);
 await document.fonts.ready;
 const pele = await peleImport;
 for (const [index, pre] of pres.entries()) {
@@ -240,7 +240,7 @@ for (const [index, pre] of pres.entries()) {
 }
 if (fallback.length) {
   try {
-    const { default: mermaid } = await import("${MERMAID_SCRIPT_PATH}");
+    const { default: mermaid } = await import("${MERMAID_SCRIPT_URL}");
     const light = matchMedia("(prefers-color-scheme: light)").matches;
     const fit = { useMaxWidth: false };
     const theme = light ? ${MERMAID_THEME_LIGHT_JSON} : ${MERMAID_THEME_DARK_JSON};

@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { access, auth, createSite, json, mint, mintAdmin, req } from "./helpers";
+import { MERMAID_SCRIPT_URL, PELE_SCRIPT_URL } from "../src/http";
 
 describe("host and route contracts", () => {
   it("serves authentication instructions before login and links them from discovery and token errors", async () => {
@@ -171,14 +172,14 @@ describe("host and route contracts", () => {
     });
     expect(account.status).toBe(404);
 
-    const mermaid = await req("https://energon.example.com/static/mermaid/mermaid.esm.min.mjs");
+    const mermaid = await req(`https://energon.example.com${MERMAID_SCRIPT_URL}`);
     expect(mermaid.status).toBe(200);
     expect(mermaid.headers.get("content-type")).toMatch(/javascript|ecmascript/);
     expect(mermaid.headers.get("access-control-allow-origin")).toBe("*");
     const mermaidSrc = await mermaid.text();
     expect(mermaidSrc).toContain("chunks/mermaid.esm.min/");
     expect(mermaidSrc.length).toBeGreaterThan(1_000);
-    const pele = await req("https://energon.example.com/static/pele/lazy.js");
+    const pele = await req(`https://energon.example.com${PELE_SCRIPT_URL}`);
     expect(pele.status).toBe(200);
     expect(pele.headers.get("content-type")).toMatch(/javascript|ecmascript/);
     expect(pele.headers.get("access-control-allow-origin")).toBe("*");
