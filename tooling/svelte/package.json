@@ -6,7 +6,7 @@
     "check": "svelte-check --workspace ../.. --tsconfig src/ui/tsconfig.json"
   },
   "devDependencies": {
-    "svelte-check": "4.7.6",
+    "svelte-check": "4.7.7",
     "typescript": "^6.0.0"
   }
 }
