@@ -52,6 +52,9 @@ type(scope)?: subject
 - Yes: `feat(hub): show expiry on the catalog row`
 - No: `Cap public edge cache at one day` / `feat: Cap public edge cache` / `Updates`
 
+Release notes list `feat`, `fix`, `perf`, `revert`, breaking changes, and `build` (under Dependencies).
+Use `build` only for dependency updates; other build or tooling edits are `chore` or `ci`.
+
 Do not put `feat:` on every commit on the branch. Those commits are squashed away.
 Commit bodies explain why when the subject cannot.
 

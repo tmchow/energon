@@ -8,6 +8,11 @@
   "prConcurrentLimit": 5,
   "packageRules": [
     {
+      "description": "Release notes show build as Dependencies. Overrides the chore type from config:recommended, which release-please hides.",
+      "matchPackageNames": ["*"],
+      "semanticCommitType": "build"
+    },
+    {
       "matchManagers": ["npm"],
       "matchDepTypes": ["dependencies"],
       "semanticCommitType": "fix",
@@ -16,7 +21,6 @@
     {
       "matchManagers": ["npm"],
       "matchDepTypes": ["devDependencies"],
-      "semanticCommitType": "chore",
       "semanticCommitScope": "deps-dev"
     },
     {
@@ -29,19 +33,18 @@
       "matchDepTypes": ["dependencies"],
       "matchPackageNames": ["!pele", "!mermaid"],
       "matchUpdateTypes": ["minor", "patch"],
-      "groupName": "runtime"
+      "groupName": "runtime dependencies"
     },
     {
       "matchManagers": ["npm"],
       "matchDepTypes": ["devDependencies"],
       "matchUpdateTypes": ["minor", "patch"],
-      "groupName": "tooling"
+      "groupName": "dev tooling"
     },
     {
       "matchManagers": ["github-actions"],
-      "groupName": "actions",
+      "groupName": "GitHub Actions",
       "schedule": ["* 0-3 1 * *"],
-      "semanticCommitType": "chore",
       "semanticCommitScope": "deps"
     }
   ]
