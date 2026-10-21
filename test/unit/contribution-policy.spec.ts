@@ -128,6 +128,7 @@ describe("contribution policy", () => {
     expect(config).toMatch(/"type": "ci",\s*"hidden": true/);
     expect(config).toMatch(/"type": "chore",\s*"hidden": true/);
     expect(config).toMatch(/\{ "type": "build", "section": "Dependencies" \}/);
+    expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toContain("`build` (Dependencies)");
     expect(readFileSync(join(root, "CONTRIBUTING.md"), "utf8")).toContain("## Releases");
     expect(readFileSync(join(root, "CONTRIBUTING.md"), "utf8")).toContain(
       "version.txt` (the plugin version source)",
