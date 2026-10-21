@@ -40,6 +40,9 @@ export function inspectRepository(cwd = process.cwd(), run = runCommand) {
     isPrivate: metadata.isPrivate, upstream: UPSTREAM_REPO, upstreamUrl: UPSTREAM_URL, upstreamConfigured };
 }
 
+// GitHub's documented gate: protection and rulesets need Pro, Team, or Enterprise for private repositories.
+const PLAN_GATE = /Upgrade to GitHub \w+ or make this repository public to enable this feature/i;
+
 function ghApi(run, cwd, path) {
   try {
     return { ok: true, body: JSON.parse(run("gh", ["api", path], cwd)) };
@@ -47,20 +50,46 @@ function ghApi(run, cwd, path) {
     const message = String(error.stderr || error.message || error).trim();
     // A 404 with this body is GitHub's definitive answer for a branch with no classic protection.
     if (/Branch not protected/i.test(message)) return { ok: true, body: null };
-    return { ok: false, message };
+    return { ok: false, message, planGated: /\(HTTP 403\)/.test(message) && PLAN_GATE.test(message) };
   }
+}
+
+// Organization rulesets need Team or Enterprise, which also unlock private-repository protection, and the
+// rules endpoint already aggregates them; a plan gate on it therefore rules them out too.
+function confirmPlanGate(run, cwd, repository) {
+  const repo = ghApi(run, cwd, `repos/${repository}`);
+  if (!repo.ok) return { failure: `repository plan check: ${repo.message}` };
+  if (repo.body?.private !== true) {
+    return { failure: "GitHub reported a plan limit, but the repository is not private; public repositories always have protection" };
+  }
+  const evidence = ["the repository is private", "branch protection and the branch rules endpoint (which includes organization rulesets) both report the plan limit"];
+  if (repo.body.owner?.type !== "Organization") return { evidence: [...evidence, "a personal account has no organization rulesets"] };
+  const org = ghApi(run, cwd, `orgs/${repo.body.owner.login}`);
+  const plan = org.ok ? org.body?.plan?.name : undefined;
+  if (plan === undefined) return { evidence: [...evidence, "the organization plan is not visible to this account"] };
+  if (plan !== "free") return { failure: `GitHub reported a plan limit, but the organization plan is ${plan}` };
+  return { evidence: [...evidence, "the organization is on the free plan, which has no organization rulesets"] };
 }
 
 export function inspectBranchPolicy(repository, branch = "main", cwd = process.cwd(), run = runCommand) {
   const encoded = encodeURIComponent(branch);
   const protection = ghApi(run, cwd, `repos/${repository}/branches/${encoded}/protection`);
   const rules = ghApi(run, cwd, `repos/${repository}/rules/branches/${encoded}`);
+  if (protection.planGated && rules.planGated) {
+    const gate = confirmPlanGate(run, cwd, repository);
+    if (gate.failure) return { status: "unknown", repository, branch, failures: [gate.failure] };
+    return { status: "unavailable", repository, branch, requiresPullRequest: false, blocksMergeCommits: false, sources: [],
+      evidence: gate.evidence };
+  }
   const failures = [];
   if (!protection.ok) failures.push(`branch protection: ${protection.message}`);
   if (!rules.ok) failures.push(`rulesets: ${rules.message}`);
   if (failures.length) return { status: "unknown", repository, branch, failures };
-  const body = protection.body ?? {};
-  const ruleTypes = Array.isArray(rules.body) ? rules.body.map((rule) => rule.type) : [];
+  return { status: "known", repository, branch, ...summarizePolicy(protection.body ?? {}, rules.body) };
+}
+
+function summarizePolicy(body, rules) {
+  const ruleTypes = Array.isArray(rules) ? rules.map((rule) => rule.type) : [];
   // Classic protection reports some settings as objects that are present when set, others as { enabled }.
   const sources = [];
   if (body.required_pull_request_reviews || ruleTypes.includes("pull_request")) sources.push("a pull request is required");
@@ -68,12 +97,12 @@ export function inspectBranchPolicy(repository, branch = "main", cwd = process.c
   if (body.required_signatures?.enabled || ruleTypes.includes("required_signatures")) sources.push("commits must be signed");
   if (body.restrictions || ruleTypes.includes("update")) sources.push("pushes to the branch are restricted");
   const blocksMergeCommits = Boolean(body.required_linear_history?.enabled) || ruleTypes.includes("required_linear_history");
-  return { status: "known", repository, branch, requiresPullRequest: sources.length > 0, blocksMergeCommits, sources };
+  return { requiresPullRequest: sources.length > 0, blocksMergeCommits, sources };
 }
 
 export function decideLandingPath({ policy, instructionsRequirePullRequest = false, reviewRequested = false,
   unresolvedDecisions = [], deployment }) {
-  if (!policy || policy.status !== "known") {
+  if (!policy || !["known", "unavailable"].includes(policy.status)) {
     const failures = policy?.failures?.length ? policy.failures : ["repository policy was not inspected"];
     return { path: "blocked", reasons: failures.map((failure) => `policy unknown: ${failure}`) };
   }
@@ -86,7 +115,9 @@ export function decideLandingPath({ policy, instructionsRequirePullRequest = fal
   if (reviewRequested) reasons.push("the operator asked for review");
   if (unresolvedDecisions.length) reasons.push(...unresolvedDecisions.map((item) => `needs a human decision: ${item}`));
   if (reasons.length) return { path: "pull-request", reasons };
-  return deploymentGate(deployment);
+  const gate = deploymentGate(deployment);
+  if (policy.status !== "unavailable") return gate;
+  return { ...gate, reasons: ["branch protection and rulesets are unavailable on this private repository's GitHub plan, so GitHub enforces no landing policy", ...gate.reasons] };
 }
 
 function deploymentGate(deployment) {
