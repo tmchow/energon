@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.3](https://github.com/tmchow/energon/compare/v1.15.2...v1.15.3) (2026-10-21)
+
+
+### Bug Fixes
+
+* **deploy:** push main when GitHub's plan provides no branch protection ([#190](https://github.com/tmchow/energon/issues/190)) ([ded1039](https://github.com/tmchow/energon/commit/ded1039864910f14418ad7c82e3033f153c215ed))
+
 ## [1.15.2](https://github.com/tmchow/energon/compare/v1.15.1...v1.15.2) (2026-10-21)
 
 
