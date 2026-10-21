@@ -1,4 +1,6 @@
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { formatBytes, formatCount } from "../../src/config";
 import {
@@ -25,6 +27,7 @@ import {
 } from "../../src/http";
 import type { Env } from "../../src/types";
 
+const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const originEnv = (overrides: Partial<Pick<Env, "PUBLIC_ORIGIN" | "CONTENT_ORIGIN">> = {}) =>
   ({ PUBLIC_ORIGIN: "https://hub.example.com", CONTENT_ORIGIN: "https://content.example.com", ...overrides }) as Env;
 
@@ -104,7 +107,7 @@ describe("path and download helpers", () => {
     expect(csp).toContain("sandbox");
     expect(csp).not.toContain("allow-same-origin");
     expect(csp).toContain("script-src https://energon.example.com 'unsafe-inline'");
-    const { dependencies } = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
+    const { dependencies } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
     expect(dependencies.pele).toMatch(/^\d+\.\d+\.\d+$/);
     expect(dependencies.mermaid).toMatch(/^\d+\.\d+\.\d+$/);
     expect(PELE_SCRIPT_URL).toBe(`/static/pele/lazy.js?v=${dependencies.pele}`);
@@ -118,7 +121,7 @@ describe("path and download helpers", () => {
     expect(isDiagramAssetPath("/static/mermaid/chunks/mermaid.esm.min/chunk-abc.mjs")).toBe(true);
     expect(isDiagramAssetPath("/static/logo.svg")).toBe(false);
     expect(isDiagramAssetPath("/ada/s/docs/notes.md")).toBe(false);
-    const wrangler = readFileSync(new URL("../../wrangler.toml", import.meta.url), "utf8");
+    const wrangler = readFileSync(join(root, "wrangler.toml"), "utf8");
     expect(wrangler).toContain('"/static/pele/*"');
     expect(wrangler).toContain('"/static/mermaid/*"');
     expect(wrangler).toContain('"/static/md-expand.mjs"');
