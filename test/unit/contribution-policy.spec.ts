@@ -159,6 +159,9 @@ describe("contribution policy", () => {
     expect(update).toContain("Never squash, rebase away upstream history, or force-push");
     expect(update).toContain("The temporary local branch is not a PR");
     expect(update).toContain("`policy unknown` means the policy read failed");
+    expect(update).toContain("push without asking for a policy override");
+    expect(update).toContain("a 403 for missing permission stays unknown");
+    expect(update).toContain("a confirmed plan limit does not authorize a deploy");
     expect(update).toContain("Reuse existing authorization");
     expect(update).toContain("updated source, not an updated Energon");
     expect(update).toContain("contributions to upstream still go through the upstream PR process");
@@ -175,6 +178,9 @@ describe("contribution policy", () => {
     expect(repoDoc).toContain("| `pull-request` |");
     expect(repoDoc).toContain("| `blocked` |");
     expect(repoDoc).toContain("Do not assume \"unprotected\" and do not assume \"PR required\"");
+    expect(repoDoc).toContain("Upgrade to GitHub Pro or make this repository public to enable this feature.");
+    expect(repoDoc).toContain("the branch rules endpoint already includes organization rulesets");
+    expect(repoDoc).toContain("do not retry with force");
     expect(repoDoc).toContain("Never squash, rebase away upstream commits, or force-push");
     expect(repoDoc).toContain("always use the process in [CONTRIBUTING.md](../CONTRIBUTING.md)");
 

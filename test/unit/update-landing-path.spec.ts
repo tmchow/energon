@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { decideLandingPath, inspectBranchPolicy, parseLandingArgs } from "../../scripts/deployment-repo.mjs";
 
-type Reply = string | { error: string };
+type Reply = string | { error: string; stdout?: string };
 
 function ghFixture(replies: Record<string, Reply>) {
   const calls: string[] = [];
@@ -13,6 +13,7 @@ function ghFixture(replies: Record<string, Reply>) {
     if (typeof reply !== "string") {
       const error = new Error(reply.error) as Error & { stderr: string };
       error.stderr = reply.error;
+      if (reply.stdout) (error as Error & { stdout: string }).stdout = reply.stdout;
       throw error;
     }
     return reply;
@@ -28,6 +29,21 @@ const prRequired = {
   [protectionPath]: JSON.stringify({ required_pull_request_reviews: { required_approving_review_count: 1 } }),
   [rulesPath]: JSON.stringify([{ type: "pull_request" }, { type: "non_fast_forward" }]),
 };
+
+const upgradeMessage = "Upgrade to GitHub Pro or make this repository public to enable this feature.";
+const planGated = (docs: string) => ({
+  error: `gh: ${upgradeMessage} (HTTP 403)`,
+  stdout: JSON.stringify({ message: upgradeMessage, documentation_url: `https://docs.github.com/rest/${docs}`, status: "403" }),
+});
+const repoPath = `repos/${repo}`;
+const orgPath = "orgs/company";
+const freePrivateOrg = {
+  [protectionPath]: planGated("branches/branch-protection#get-branch-protection"),
+  [rulesPath]: planGated("repos/rules#get-rules-for-a-branch"),
+  [repoPath]: JSON.stringify({ private: true, owner: { type: "Organization", login: "company" } }),
+  [orgPath]: JSON.stringify({ plan: { name: "free" } }),
+};
+const planNote = "branch protection and rulesets are unavailable on this private repository's GitHub plan, so GitHub enforces no landing policy";
 
 describe("update landing path", () => {
   it("pushes main directly for an ordinary personal update", () => {
@@ -152,5 +168,45 @@ describe("update landing path", () => {
     expect(() => parseLandingArgs(["--deploy", "maybe"])).toThrow("--deploy takes on, off, or unknown.");
     expect(() => parseLandingArgs(["--decision"])).toThrow("--decision needs a value.");
     expect(() => parseLandingArgs(["--force"])).toThrow("Unknown option --force.");
+  });
+
+  it("pushes main when GitHub's plan gate rules out protection and organization rulesets", () => {
+    const f = ghFixture(freePrivateOrg);
+    const policy = inspectBranchPolicy(repo, "main", "/tmp", f.run);
+    expect(policy).toMatchObject({ status: "unavailable", requiresPullRequest: false, blocksMergeCommits: false, sources: [] });
+    expect(policy.evidence).toContain("the organization is on the free plan, which has no organization rulesets");
+    expect(f.calls).toEqual([`gh api ${protectionPath}`, `gh api ${rulesPath}`, `gh api ${repoPath}`, `gh api ${orgPath}`]);
+    expect(decideLandingPath({ policy, deployment: { status: "off" } })).toEqual({ path: "push-main", reasons: [planNote] });
+    expect(decideLandingPath({ policy, deployment: { status: "on", authorized: true } })).toEqual({
+      path: "push-main",
+      reasons: [planNote, "pushing main migrates D1 and deploys under the operator's existing authorization"],
+    });
+    expect(decideLandingPath({ policy, deployment: { status: "on" } }).path).toBe("blocked");
+    expect(decideLandingPath({ policy, instructionsRequirePullRequest: true, deployment: { status: "off" } }).path).toBe("pull-request");
+  });
+
+  it("accepts the plan gate for a personal account or an organization whose plan is hidden", () => {
+    const personal = inspectBranchPolicy(repo, "main", "/tmp", ghFixture({
+      ...freePrivateOrg, [repoPath]: JSON.stringify({ private: true, owner: { type: "User", login: "someone" } }),
+    }).run);
+    expect(personal.status).toBe("unavailable");
+    const hidden = inspectBranchPolicy(repo, "main", "/tmp", ghFixture({ ...freePrivateOrg, [orgPath]: "{}" }).run);
+    expect(hidden.status).toBe("unavailable");
+    expect(hidden.evidence).toContain("the organization plan is not visible to this account");
+  });
+
+  it("keeps policy unknown when the plan gate is partial or contradicted", () => {
+    const inspect = (overrides: Record<string, Reply>) => inspectBranchPolicy(repo, "main", "/tmp", ghFixture({ ...freePrivateOrg, ...overrides }).run);
+    expect(inspect({ [rulesPath]: "[]" })).toEqual({
+      status: "unknown", repository: repo, branch: "main", failures: [`branch protection: gh: ${upgradeMessage} (HTTP 403)`],
+    });
+    expect(inspect({ [repoPath]: JSON.stringify({ private: false, owner: { type: "Organization", login: "company" } }) }).failures)
+      .toEqual(["GitHub reported a plan limit, but the repository is not private; public repositories always have protection"]);
+    expect(inspect({ [orgPath]: JSON.stringify({ plan: { name: "team" } }) }).failures)
+      .toEqual(["GitHub reported a plan limit, but the organization plan is team"]);
+    expect(inspect({ [repoPath]: { error: "gh: Not Found (HTTP 404)" } }).failures)
+      .toEqual(["repository plan check: gh: Not Found (HTTP 404)"]);
+    const forbidden = { error: "gh: Must have admin rights to Repository. (HTTP 403)" };
+    expect(inspect({ [protectionPath]: forbidden, [rulesPath]: forbidden }).status).toBe("unknown");
   });
 });
