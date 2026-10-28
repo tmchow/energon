@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.15.4](https://github.com/tmchow/energon/compare/v1.15.3...v1.15.4) (2026-10-28)
+
+
+### Bug Fixes
+
+* **deps:** update dependency pele to v1.12.0 ([#192](https://github.com/tmchow/energon/issues/192)) ([eefe98a](https://github.com/tmchow/energon/commit/eefe98a8a3b0ec1129dd431ae46ad3f0bb4af421))
+* **deps:** update runtime dependencies ([#195](https://github.com/tmchow/energon/issues/195)) ([1f861ec](https://github.com/tmchow/energon/commit/1f861ecd1b685d4bf65d7cb10c2c65f1e208fb0d))
+
+
+### Dependencies
+
+* **deps-dev:** update dev tooling ([#193](https://github.com/tmchow/energon/issues/193)) ([bc15acb](https://github.com/tmchow/energon/commit/bc15acb94a87fabd33658bb28c549a62e75d1ded))
+* **deps:** update dependency undici to v8 ([#194](https://github.com/tmchow/energon/issues/194)) ([934ef8b](https://github.com/tmchow/energon/commit/934ef8bc5d3fc51c0420acf7834faec68d3d4c71))
+
 ## [1.15.3](https://github.com/tmchow/energon/compare/v1.15.2...v1.15.3) (2026-10-21)
 
 
