@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.5](https://github.com/tmchow/energon/compare/v1.15.4...v1.15.5) (2026-10-29)
+
+
+### Bug Fixes
+
+* **content:** let sandboxed site pages read their own files ([#199](https://github.com/tmchow/energon/issues/199)) ([f223c6c](https://github.com/tmchow/energon/commit/f223c6c7cb8f47c193b58d4496d75904ed41b1f4))
+
 ## [1.15.4](https://github.com/tmchow/energon/compare/v1.15.3...v1.15.4) (2026-10-28)
 
 
