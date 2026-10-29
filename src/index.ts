@@ -348,8 +348,7 @@ async function routePublicContent(request: Request, env: Env, ctx: ExecutionCont
       if (method === "GET" || method === "POST") {
         return contentResponse(
           await serveLoose(env, ctx, handle, decodeURIComponent(pubFile[2]), pubFile[3], request),
-          env,
-          onContentHost,
+          onContentHost ? publicOrigin(env) : null,
         );
       }
     }
@@ -368,11 +367,9 @@ async function routePublicContent(request: Request, env: Env, ctx: ExecutionCont
         if (method === "GET" && !pubSite[4] && !path.endsWith("/")) {
           return Response.redirect(sitePublicUrl(env, handle, id, slug), 302);
         }
-        return contentResponse(
-          await serveSite(env, ctx, handle, id, slug, pubSite[4] || "", request),
-          env,
-          onContentHost,
-        );
+        // The sandbox CSP gives site pages an opaque origin, so fetch(), fonts, and module scripts for the
+        // site's own files are CORS requests. `*` never covers credentialed reads, so it exposes only anonymous responses.
+        return contentResponse(await serveSite(env, ctx, handle, id, slug, pubSite[4] || "", request), "*");
       }
     }
   }
@@ -446,10 +443,10 @@ async function accountDeployment(c: RouteContext): Promise<Response> {
   return deploymentApi(c.request, c.env, actor, decodeURIComponent(siteId), deploymentId && decodeURIComponent(deploymentId), action, filePath === undefined ? undefined : decodeURIComponent(filePath));
 }
 
-function contentResponse(response: Response, env: Env, contentHost: boolean): Response {
-  if (!contentHost) return response;
+function contentResponse(response: Response, allowOrigin: string | null): Response {
+  if (!allowOrigin) return response;
   const headers = new Headers(response.headers);
-  headers.set("access-control-allow-origin", publicOrigin(env));
+  headers.set("access-control-allow-origin", allowOrigin);
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 

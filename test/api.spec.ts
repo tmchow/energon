@@ -117,6 +117,15 @@ describe("Energon", () => {
     expect(page.headers.get("x-energon-site-version")).toBeTruthy();
     expect(page.headers.get("content-security-policy")).toContain("sandbox");
     expect(page.headers.get("content-security-policy")).not.toContain("allow-same-origin");
+    // The sandboxed page has origin "null"; its own fetch() and fonts need CORS, including on the content host.
+    for (const host of ["", "https://energon.example.com"]) {
+      const file = await req(`${host}/ada/s/${created.body.id}/demo/index.html`, { headers: { origin: "null" } });
+      expect(file.status).toBe(200);
+      expect(file.headers.get("access-control-allow-origin")).toBe("*");
+    }
+    const missing = await req(`https://energon.example.com/ada/s/${created.body.id}/demo/missing.json`);
+    expect(missing.status).toBe(404);
+    expect(missing.headers.get("access-control-allow-origin")).toBe("*");
 
     const again = await createSite(token, "demo");
     expect(again.status).toBe(201);
@@ -127,6 +136,15 @@ describe("Energon", () => {
     const listing = await json(`/v1/sites/${created.body.id}`, { headers: auth(token) });
     expect(listing.status).toBe(200);
     expect(listing.body.files).toHaveLength(1);
+
+    await json(`/v1/sites/${created.body.id}/files/notes.md`, {
+      method: "PUT",
+      headers: auth(token, { "content-type": "text/markdown" }),
+      body: "# notes",
+    });
+    const notes = await req(`https://energon.example.com/ada/s/${created.body.id}/demo/notes.md`);
+    expect(notes.status).toBe(200);
+    expect(notes.headers.get("access-control-allow-origin")).toBe("*");
   });
 
   it("duplicate slug sites are independent", async () => {
@@ -1079,6 +1097,7 @@ describe("Energon", () => {
 
     const blocked = await req(`/ada/s/${created.body.id}/gated/`);
     expect(blocked.status).toBe(401);
+    expect(blocked.headers.get("access-control-allow-origin")).toBe("*");
     const html = await blocked.text();
     expect(html).toContain("password-protected");
     expect(html).toContain("X-Energon-Password");
