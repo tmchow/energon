@@ -117,6 +117,11 @@ describe("Energon", () => {
     expect(page.headers.get("x-energon-site-version")).toBeTruthy();
     expect(page.headers.get("content-security-policy")).toContain("sandbox");
     expect(page.headers.get("content-security-policy")).not.toContain("allow-same-origin");
+    // The sandboxed page has origin "null"; its own fetch() and fonts need CORS.
+    expect(page.headers.get("access-control-allow-origin")).toBe("*");
+    const file = await req(`/ada/s/${created.body.id}/demo/index.html`, { headers: { origin: "null" } });
+    expect(file.status).toBe(200);
+    expect(file.headers.get("access-control-allow-origin")).toBe("*");
 
     const again = await createSite(token, "demo");
     expect(again.status).toBe(201);
@@ -1079,6 +1084,7 @@ describe("Energon", () => {
 
     const blocked = await req(`/ada/s/${created.body.id}/gated/`);
     expect(blocked.status).toBe(401);
+    expect(blocked.headers.get("access-control-allow-origin")).toBeNull();
     const html = await blocked.text();
     expect(html).toContain("password-protected");
     expect(html).toContain("X-Energon-Password");
