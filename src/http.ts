@@ -125,14 +125,6 @@ export function applyIsolation(headers: Headers, contentType: string): void {
 }
 
 /**
- * The sandbox gives a site page an opaque origin, so its own fetch(), fonts, and module scripts are CORS requests.
- * `*` never covers credentialed requests, so this exposes only what an anonymous request already gets.
- */
-export function allowSandboxedReads(headers: Headers): void {
-  headers.set("access-control-allow-origin", "*");
-}
-
-/**
  * ESM entries + lazy chunks. Served from assets, not the Worker isolate.
  * Chunks are content-hashed but entries are not; the version query makes an upgrade miss stale caches.
  */

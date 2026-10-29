@@ -33,7 +33,7 @@ import { maybeUnlockWithWritePassword, passwordEcho, passwordField, passwordHash
 import { ensureUser } from "./handles";
 import { mintObjectId } from "./ids";
 import { type GrantGuard } from "./grant-guard";
-import { allowSandboxedReads, ApiError, applyIsolation, basename, contentDisposition, htmlPage, json, jsonMaybeSecret, normalizeRelPath, publicOrigin, secretJson, sha256Hex, tooLarge, wantsDownload } from "./http";
+import { ApiError, applyIsolation, basename, contentDisposition, htmlPage, json, jsonMaybeSecret, normalizeRelPath, publicOrigin, secretJson, sha256Hex, tooLarge, wantsDownload } from "./http";
 import { contentTypeFor } from "./mime";
 import {
   OWNER_WRITE_SQL,
@@ -811,7 +811,6 @@ export async function serveSite(
       const headers = new Headers({ "content-type": type, "content-length": String(file.size),
         etag: `"${file.sha256}"`, "x-content-type-options": "nosniff", "cache-control": "private, no-store" });
       applyIsolation(headers, type);
-      allowSandboxedReads(headers);
       if (!index) headers.set("content-disposition", contentDisposition(wantsDownload(request) ? "attachment" : "inline", basename(path)));
       return withSiteBodyCache(env, ctx, request, { siteId: site.id, versionId: snapshot.versionId,
         path, objectKey: file.object_key, representation: "raw", rendererRevision: "1",
@@ -913,7 +912,6 @@ function serveObject(
   headers.set("content-type", contentType);
   headers.set("x-content-type-options", "nosniff");
   applyIsolation(headers, contentType);
-  allowSandboxedReads(headers);
   headers.set("cache-control", cacheable ? publicCacheControl(remainingSeconds) : privateCacheControl());
   if (cacheable) headers.set("cache-tag", tag);
   headers.set("etag", obj.httpEtag);
