@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.8](https://github.com/tmchow/energon/compare/v1.15.7...v1.15.8) (2026-10-30)
+
+
+### Bug Fixes
+
+* **content:** stop HEAD requests from stamping site last_read_at ([#206](https://github.com/tmchow/energon/issues/206)) ([614d053](https://github.com/tmchow/energon/commit/614d053d203ce8d27638ee9a55ecaa51896ba5f9))
+
 ## [1.15.7](https://github.com/tmchow/energon/compare/v1.15.6...v1.15.7) (2026-10-30)
 
 
