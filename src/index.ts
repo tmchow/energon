@@ -369,8 +369,8 @@ async function routePublicSite(request: Request, env: Env, ctx: ExecutionContext
     return guestWrite(env, ctx, request, { kind: "site", handle, id, slug, rawPath });
   }
   if (method === "OPTIONS") return sitePreflight();
-  if (method !== "GET" && method !== "POST") return null;
-  if (method === "GET" && !rawPath && !path.endsWith("/")) {
+  if (method !== "GET" && method !== "HEAD" && method !== "POST") return null;
+  if ((method === "GET" || method === "HEAD") && !rawPath && !path.endsWith("/")) {
     return Response.redirect(sitePublicUrl(env, handle, id, slug), 302);
   }
   // The sandbox CSP gives site pages an opaque origin, so fetch(), fonts, and module scripts for the

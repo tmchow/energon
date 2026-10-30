@@ -138,12 +138,33 @@ describe("host and route contracts", () => {
     expect((await req("https://energon.example.com/tokens", { redirect: "manual" })).status).toBe(404);
   });
 
-  it("redirects a site URL without a trailing slash", async () => {
+  it.each(["GET", "HEAD"])("redirects a %s site URL without a trailing slash", async (method) => {
     const token = await mint("slash");
     const site_slash_me = await createSite(token, "slash-me");
-    const res = await req(`/ada/s/${site_slash_me.id}/slash-me`, { redirect: "manual" });
+    const res = await req(`/ada/s/${site_slash_me.id}/slash-me`, { method, redirect: "manual" });
     expect(res.status).toBe(302);
     expect(res.headers.get("location")).toBe(`https://energon.example.com/ada/s/${site_slash_me.id}/slash-me/`);
+  });
+
+  it("serves site HEAD requests with GET status and headers and no body", async () => {
+    const token = await mint("site-head");
+    const site = await createSite(token, "site-head");
+    const uploaded = await req(`/v1/sites/${site.id}/files/index.html`, {
+      method: "PUT", headers: auth(token, { "content-type": "text/html" }), body: "<h1>HEAD works</h1>",
+    });
+    expect(uploaded.status).toBe(201);
+    for (const path of ["", "index.html", "missing.txt"]) {
+      const url = `https://energon.example.com/ada/s/${site.id}/site-head/${path}`;
+      const get = await req(url);
+      const head = await req(url, { method: "HEAD" });
+      expect(get.status).toBe(path === "missing.txt" ? 404 : 200);
+      expect(head.status).toBe(get.status);
+      for (const header of ["content-type", "content-length", "content-security-policy", "cache-control", "access-control-allow-origin"]) {
+        expect(head.headers.get(header), header).toBe(get.headers.get(header));
+      }
+      expect(await head.text()).toBe("");
+      await get.text();
+    }
   });
 
   it("redirects hub content links and keeps account routes off the content origin", async () => {
