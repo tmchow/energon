@@ -7,6 +7,8 @@ This file is how to **change this tree**. It is not a product README and not the
 | Job | Go here |
 | --- | --- |
 | Edit the Worker, hub, tests, or skill templates | rest of this file |
+| Write or change code, skill templates, scripts, or verify recipes | [CODING_STANDARDS.md](./CODING_STANDARDS.md): the defect classes that have needed follow-up PRs here. Add a rule when a class recurs and no check covers it; the bar is in the file. |
+| Review or triage a PR | [REVIEW.md](./REVIEW.md) for how to raise, grade, and skip findings; check the diff against [CODING_STANDARDS.md](./CODING_STANDARDS.md). Add a skip category only after the team has declined it across several PRs. |
 | Add, change, or review UI layout, styling, copy, or interactions | Read and follow [DESIGN.md](./DESIGN.md). Use [docs/design/README.md](./docs/design/README.md) for implementation and verification. |
 | Publish or fetch against a live Energon | the installed plugin skill; `GET {origin}/v1/help` and `{origin}/llms.txt`. Never invent a token. |
 | Deploy your own Energon or connect an agent | [INSTALL.md](./INSTALL.md) |
