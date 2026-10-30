@@ -2414,7 +2414,7 @@ describe("Energon", () => {
       expect(hub.body.items.find((s: { id: string }) => s.id === created.id).last_read_at).toBe(first);
     });
 
-    it("ignores 404s and the generated listing on a public site", async () => {
+    it("ignores HEAD, 404s, and the generated listing on a public site", async () => {
       const token = await mint("reader-miss", email);
       const created = await createSite(token, "missing-read");
       await req(`/v1/sites/${created.id}/files/about.html`, {
@@ -2425,6 +2425,8 @@ describe("Energon", () => {
 
       const listing = await req(`/${created.handle}/s/${created.id}/missing-read/`);
       expect(listing.status).toBe(200);
+      const head = await req(`/${created.handle}/s/${created.id}/missing-read/about.html`, { method: "HEAD" });
+      expect(head.status).toBe(200);
       const missing = await req(`/${created.handle}/s/${created.id}/missing-read/nope.html`);
       expect(missing.status).toBe(404);
       const badPath = await req(`/${created.handle}/s/${created.id}/missing-read/..%2Fx`);

@@ -794,8 +794,10 @@ export async function serveSite(
   if (request.method === "POST") {
     return json({ error: "method_not_allowed", message: "Method not allowed." }, 405);
   }
-  // Stamp only when stored bytes are served; 404s and the generated listing do not count.
-  const read = () => noteRead(env, ctx, { table: "sites", id: site.id, last_read_at: site.last_read_at });
+  // Stamp only when stored bytes are served; 404s, HEAD, and the generated listing do not count.
+  const read = () => {
+    if (request.method !== "HEAD") noteRead(env, ctx, { table: "sites", id: site.id, last_read_at: site.last_read_at });
+  };
 
   return withSiteRead(env, site, "visitor", async snapshot => {
   if (snapshot.versionId) {
