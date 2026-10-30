@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.6](https://github.com/tmchow/energon/compare/v1.15.5...v1.15.6) (2026-10-30)
+
+
+### Bug Fixes
+
+* **content:** answer CORS preflight for site files ([#201](https://github.com/tmchow/energon/issues/201)) ([f4dfd23](https://github.com/tmchow/energon/commit/f4dfd2318ea6ded94d91677bc4f4bf099666d007))
+
 ## [1.15.5](https://github.com/tmchow/energon/compare/v1.15.4...v1.15.5) (2026-10-29)
 
 
