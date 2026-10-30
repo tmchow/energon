@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.7](https://github.com/tmchow/energon/compare/v1.15.6...v1.15.7) (2026-10-30)
+
+
+### Bug Fixes
+
+* **content:** support HEAD requests for published sites ([#203](https://github.com/tmchow/energon/issues/203)) ([6bcedbe](https://github.com/tmchow/energon/commit/6bcedbe5c4ef0e1d2bc107c15308c4ed0c607895))
+
 ## [1.15.6](https://github.com/tmchow/energon/compare/v1.15.5...v1.15.6) (2026-10-30)
 
 
