@@ -155,6 +155,14 @@ describe("host and route contracts", () => {
 
     const content = await req(`https://energon.example.com/ada/s/${site_content_origin.id}/content-origin/`);
     expect(content.headers.get("access-control-allow-origin")).toBe("*");
+    const preflight = await req(`https://energon.example.com/ada/s/${site_content_origin.id}/content-origin/data.json`, {
+      method: "OPTIONS",
+      headers: { origin: "null", "access-control-request-method": "GET", "access-control-request-headers": "x-energon-password" },
+    });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("access-control-allow-origin")).toBe("*");
+    expect(preflight.headers.get("access-control-allow-methods")).toBe("GET, HEAD");
+    expect(preflight.headers.get("access-control-allow-headers")).toBe("*");
 
     const corsToken = await mint("cors-file");
     const created = await json("/v1/files", {

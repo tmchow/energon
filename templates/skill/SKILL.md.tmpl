@@ -113,6 +113,11 @@ curl -sS -X PUT {{ORIGIN}}/v1/sites/{id}/files/index.html \
 
 For a whole folder, prefer Scenario E (or its one-command helper form) over one PUT per file.
 
+Published HTML runs in a browser sandbox with no origin of its own. A multi-file site works: the page can load its own files with relative URLs, including `fetch()`, `@font-face`, and `<script type="module">`, so do not bundle everything into one file. Within that sandbox:
+
+- `localStorage`, `sessionStorage`, IndexedDB, and `document.cookie` throw `SecurityError`. Wrap storage access in `try`/`catch` and fall back to memory, or the page can stay blank. State does not survive a reload.
+- On a password-protected site, `fetch()`, web fonts, and module scripts for the site's own files get `401`. Inline them, or publish without a password.
+
 A site does **not** need `index.html`. `index.md` is the homepage if `index.html` is missing. If you only PUT `notes.md`, `/{handle}/s/{id}/{slug}/` shows a file list and `/{handle}/s/{id}/{slug}/notes.md` serves the file (rendered in a browser, raw to `curl` / `?raw=1`).
 
 ## Scenario B — Hand a file to another session

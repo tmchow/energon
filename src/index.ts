@@ -355,26 +355,27 @@ async function routePublicContent(request: Request, env: Env, ctx: ExecutionCont
   }
 
   const pubSite = PUBLIC_SITE.exec(path);
-  if (pubSite) {
-    const handle = decodeURIComponent(pubSite[1]).toLowerCase();
-    const id = decodeURIComponent(pubSite[2]);
-    const slug = decodeURIComponent(pubSite[3]);
-    if (!RESERVED_HANDLES.has(handle) && isSiteId(id)) {
-      if (method === "PUT" || method === "DELETE") {
-        return guestWrite(env, ctx, request, { kind: "site", handle, id, slug, rawPath: pubSite[4] || "" });
-      }
-      if (method === "GET" || method === "POST") {
-        if (method === "GET" && !pubSite[4] && !path.endsWith("/")) {
-          return Response.redirect(sitePublicUrl(env, handle, id, slug), 302);
-        }
-        // The sandbox CSP gives site pages an opaque origin, so fetch(), fonts, and module scripts for the
-        // site's own files are CORS requests. `*` never covers credentialed reads, so it exposes only anonymous responses.
-        return contentResponse(await serveSite(env, ctx, handle, id, slug, pubSite[4] || "", request), "*");
-      }
-    }
-  }
+  return pubSite ? routePublicSite(request, env, ctx, path, pubSite) : null;
+}
 
-  return null;
+async function routePublicSite(request: Request, env: Env, ctx: ExecutionContext, path: string, pubSite: RegExpExecArray): Promise<Response | null> {
+  const method = request.method;
+  const handle = decodeURIComponent(pubSite[1]).toLowerCase();
+  const id = decodeURIComponent(pubSite[2]);
+  const slug = decodeURIComponent(pubSite[3]);
+  const rawPath = pubSite[4] || "";
+  if (RESERVED_HANDLES.has(handle) || !isSiteId(id)) return null;
+  if (method === "PUT" || method === "DELETE") {
+    return guestWrite(env, ctx, request, { kind: "site", handle, id, slug, rawPath });
+  }
+  if (method === "OPTIONS") return sitePreflight();
+  if (method !== "GET" && method !== "POST") return null;
+  if (method === "GET" && !rawPath && !path.endsWith("/")) {
+    return Response.redirect(sitePublicUrl(env, handle, id, slug), 302);
+  }
+  // The sandbox CSP gives site pages an opaque origin, so fetch(), fonts, and module scripts for the
+  // site's own files are CORS requests. `*` never covers credentialed reads, so it exposes only anonymous responses.
+  return contentResponse(await serveSite(env, ctx, handle, id, slug, rawPath, request), "*");
 }
 
 function isContentHost(configuredContentOrigin: string | null, url: URL): boolean {
@@ -441,6 +442,18 @@ async function accountDeployment(c: RouteContext): Promise<Response> {
   if (!allowed || (filePath && action !== "files")) return methodNotAllowed();
   const actor = await requireHuman(c.request, c.env, c.ctx);
   return deploymentApi(c.request, c.env, actor, decodeURIComponent(siteId), deploymentId && decodeURIComponent(deploymentId), action, filePath === undefined ? undefined : decodeURIComponent(filePath));
+}
+
+function sitePreflight(): Response {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "GET, HEAD",
+      "access-control-allow-headers": "*",
+      "access-control-max-age": "86400",
+    },
+  });
 }
 
 function contentResponse(response: Response, allowOrigin: string | null): Response {
