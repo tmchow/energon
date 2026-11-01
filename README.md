@@ -68,6 +68,8 @@ The agent then follows `{origin}/auth.md`. If the token variable is already set,
 
 ### Run the source locally
 
+Requires Node.js 24 or newer.
+
 ```bash
 git clone https://github.com/tmchow/energon.git
 cd energon

@@ -36,6 +36,16 @@ describe("contribution policy", () => {
     }
   });
 
+  it("tests every supported Node version behind the required check name", () => {
+    const ci = readFileSync(join(workflowsDir, "ci.yml"), "utf8");
+    // The main ruleset requires this exact check context; matrix legs report suffixed names.
+    expect(ci).toMatch(/^    name: Typecheck and tests$/m);
+    expect(ci).toMatch(/^        node: \[24, 26\]$/m);
+    expect(ci).toContain("node-version: ${{ matrix.node }}");
+    const deploy = ci.slice(ci.indexOf("\n  deploy:"));
+    expect(deploy).toContain("node-version: 24\n");
+  });
+
   it("keeps a PR template agents can fill with conventional-commit titles", () => {
     const template = readFileSync(join(root, ".github/PULL_REQUEST_TEMPLATE.md"), "utf8");
     for (const heading of [
