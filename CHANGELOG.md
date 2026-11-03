@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.9](https://github.com/tmchow/energon/compare/v1.15.8...v1.15.9) (2026-11-01)
+
+
+### Dependencies
+
+* test on node 24 and 26 and require node 24 or newer ([#209](https://github.com/tmchow/energon/issues/209)) ([cadbe70](https://github.com/tmchow/energon/commit/cadbe70d9ffb99e0f737fe79b4033ffa84574426))
+
 ## [1.15.8](https://github.com/tmchow/energon/compare/v1.15.7...v1.15.8) (2026-10-30)
 
 
