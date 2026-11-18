@@ -45,7 +45,7 @@
     "marked": "^18.0.11",
     "mermaid": "12.2.0",
     "pele": "1.13.0",
-    "svelte": "5.57.3",
+    "svelte": "5.58.0",
     "xss": "^1.0.15"
   },
   "devDependencies": {
