@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.15.10](https://github.com/tmchow/energon/compare/v1.15.9...v1.15.10) (2026-11-18)
+
+
+### Bug Fixes
+
+* **deps:** update dependency mermaid to v12.3.0 ([#213](https://github.com/tmchow/energon/issues/213)) ([3337d71](https://github.com/tmchow/energon/commit/3337d716a8d85beec666788fb2bc78a2d5114b9a))
+* **deps:** update dependency pele to v1.13.0 ([#214](https://github.com/tmchow/energon/issues/214)) ([37fdab7](https://github.com/tmchow/energon/commit/37fdab71da4fbfaf13ef5494c3fe0a6186c6870d))
+* **deps:** update runtime dependencies ([#216](https://github.com/tmchow/energon/issues/216)) ([64d0ef6](https://github.com/tmchow/energon/commit/64d0ef6c8be2219fd98b6a5523514b66138d4a70))
+
+
+### Dependencies
+
+* **deps:** update dependency undici to v8.12.4 ([#211](https://github.com/tmchow/energon/issues/211)) ([487c134](https://github.com/tmchow/energon/commit/487c134346b7ac49373c0afe1c2054802f51cd41))
+* **deps:** update dependency ws to v8.23.0 ([#212](https://github.com/tmchow/energon/issues/212)) ([bcd6edf](https://github.com/tmchow/energon/commit/bcd6edf111fef59449ac83e79d6f533065fe99dd))
+
 ## [1.15.9](https://github.com/tmchow/energon/compare/v1.15.8...v1.15.9) (2026-11-01)
 
 
